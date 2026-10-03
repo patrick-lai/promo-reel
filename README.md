@@ -55,7 +55,9 @@ up to 4 lines. Nothing fakes an audience: chat lines are the hosts' own asides (
 `chat.scripted_label` is set and shown on the strip; the header has a neutral `tag` ("EP 1"), never a LIVE badge or
 viewer counts. Hosts stay on one side (`hosts_side: left|right`) with no slide by default; an optional single `move`
 (>= 0.5 s, on a beat change) slides them off the frame edge, never behind the screen. `keep_clear` rectangles on
-the app screen may not be covered by anything (their outlines are drawn only with `promo --debug`). The Live2D
+the app screen may not be covered by anything (their outlines are drawn only with `promo --debug`). Every host sits
+in its own panel and is framed by per-model head/chest anchors (`live2d/assets.yaml`), so all hosts get the same
+mid-chest-up crop, head height and scale. The Live2D
 credit is a `live2d_credits` end card (full notice + model credits, >= 28 px, >= 2 s). `promo check` gates all of
 this. The Cubism Core and the sample models are fetched from live2d.com and never committed. Licences and the
 required notice are in [`docs/live2d-licences.md`](docs/live2d-licences.md). Example: `projects/live2d-demo/`.

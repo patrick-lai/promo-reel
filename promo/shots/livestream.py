@@ -247,17 +247,12 @@ class Livestream(ShotType):
         hw, hh = LS.host_size(c)
         readers = [LayerReader(layers[str(h.get("id", i))], hw * K, hh * K, shot.f0, spec.fps) for i, h in enumerate(hosts)]
         tags = [name_tag(ctx, h.get("name", h["model"])) for h in hosts]
-        # hosts whose layer ends above the frame bottom get a soft fade instead of a hard cut across the body
-        L0 = LS.layout_at(spec, shot.t0)
-        fades = []
-        for b in L0["hosts"]:
-            if b[3] < LS.FRAME_H - 1:
-                hpx, fpx = hh * K, int(110 * K)
-                g = np.ones(hpx, np.float32)
-                g[hpx - fpx:] = np.linspace(1, 0, fpx) ** 1.5
-                fades.append(g[:, None])
-            else:
-                fades.append(None)
+        # every host sits in its own panel (rounded card, same size): the bust is cropped by the panel edge at
+        # mid-chest, so neither host floats and nobody is cut by the frame edge
+        panel = Image.new("RGBA", (hw * K, hh * K), (0, 0, 0, 0))
+        ImageDraw.Draw(panel).rounded_rectangle([0, 0, hw * K - 1, hh * K - 1], radius=int(16 * K), fill=(26, 27, 38, 215))
+        pmask = np.asarray(R.rounded_mask(hw * K, hh * K, int(16 * K))).astype(np.float32) / 255.0
+        fades = [pmask for _ in hosts]
         bg = stream_bg(ctx)
         sc = cfg.get("screen") or {"placeholder": "APP FOOTAGE"}
         sw, sh = LS.screen_size(c)
@@ -283,12 +278,13 @@ class Livestream(ShotType):
                 fr = r.next()
                 if fr is not None and g is not None:
                     a = np.asarray(fr).copy()
-                    a[..., 3] = (a[..., 3] * g).astype(np.uint8)
+                    a[..., 3] = (a[..., 3] * g).astype(np.uint8)          # clip to the rounded panel
                     fr = Image.fromarray(a, "RGBA")
                 frames.append(fr)
 
             def draw_hosts():
                 for k, (fr, b) in enumerate(zip(frames, L["hosts"])):
+                    comp(out, panel, b[0] * K, b[1] * K)
                     if fr is not None:
                         comp(out, fr, b[0] * K, b[1] * K)
                 for k, (tg_, b) in enumerate(zip(tags, L["hosts"])):
@@ -347,42 +343,50 @@ def credit_lines(spec):
     return reg["notice"]["long"], models
 
 
+LICENCE_LINE = "Live2D sample models used under the Live2D Free Material License Agreement (Original Characters)."
+
+
 def credits_card(ctx, notice, models, size=30, title="Credits"):
+    """Centred credit block (horizontally + vertically, centred lines): title, the official notice, the licence line
+    on its own line under it (same size/weight/colour), then one line per model credit."""
     K = ctx.K
     out = stream_bg(ctx)
-    d = ImageDraw.Draw(out)
-    W = ctx.OW
-    fb, fh, fn = ctx.font(size, "Medium"), ctx.font(size * 1.6, "Bold"), ctx.font(size, "Bold")
+    d = ImageDraw.Draw(Image.new("RGBA", (4, 4)))
+    W, H = ctx.OW, ctx.OH
+    fb, fh = ctx.font(size, "Medium"), ctx.font(size * 1.6, "Bold")
+    body = (228, 230, 238, 255)
     lh = size * 1.45 * K
-    x0 = 200 * K
-    maxw = W - 2 * x0
-    blocks = []
-    if title:
-        blocks.append([(title, fh, (255, 255, 255, 255), size * 2.4 * K)])
+    maxw = W - 2 * 200 * K
 
-    def wrap(text, font, col):
+    def wrap(text, font, col, adv):
         words, line, rows = text.split(), "", []
         for wd in words:
             cand = (line + " " + wd).strip()
             if d.textlength(cand, font=font) > maxw and line:
-                rows.append((line, font, col, lh))
+                rows.append((line, font, col, adv))
                 line = wd
             else:
                 line = cand
         if line:
-            rows.append((line, font, col, lh))
+            rows.append((line, font, col, adv))
         return rows
-    blocks.append(wrap(notice, fb, (228, 230, 238, 255)))
-    for name, cr in models:
-        blocks.append(wrap(f"{name}: {cr}", fb, (228, 230, 238, 255)) if cr else wrap(name, fb, (228, 230, 238, 255)))
-    blocks.append(wrap("Live2D sample models used under the Live2D Free Material License (Original Characters).", fb, (180, 184, 198, 255)))
-    total = sum(r[3] for b in blocks for r in b) + 24 * K * (len(blocks) - 1)
-    y = (ctx.OH - total) / 2
+    blocks = []
+    if title:
+        blocks.append(wrap(title, fh, (255, 255, 255, 255), size * 2.4 * K))
+    blocks.append(wrap(notice, fb, body, lh) + wrap(LICENCE_LINE, fb, body, lh))      # licence line right under the notice
+    blocks.append([r for name, cr in models for r in wrap(f"{name}: {cr}" if cr else name, fb, body, lh)])
+    gap = 28 * K
+    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    dl = ImageDraw.Draw(layer)
+    y = 0
     for b in blocks:
         for text, font, col, adv in b:
-            d.text((x0, y), text, font=font, fill=col)
+            tw = dl.textlength(text, font=font)
+            dl.text(((W - tw) / 2, y), text, font=font, fill=col)       # each line centred
             y += adv
-        y += 24 * K
+        y += gap
+    x0, y0, x1, y1 = layer.getbbox()                                    # centre the INK of the whole block
+    comp(out, layer, (W - (x1 - x0)) / 2 - x0, (H - (y1 - y0)) / 2 - y0)
     return out
 
 

@@ -1,6 +1,6 @@
 // promo-reel Live2D renderer: deterministic frame-by-frame capture from headless Chromium.
 //   node render.mjs job.json > frames.rgba      (raw RGBA, straight alpha, top-down rows, job.width x job.height)
-// job.json: {modelDir, model3, core, width, height, fps, frames, seed, warmup, frame:{zoom,cy,dx}, tracks:{ParamId:{v:[..], mode:set|add}}}
+// job.json: {modelDir, model3, core, width, height, fps, frames, seed, warmup, frame:{zoom,at_x,at_y} (or legacy {zoom,cy,dx}), tracks:{ParamId:{v:[..], mode:set|add}}}
 // The model clock advances exactly 1/fps per frame (performance.now is virtualised in page.html); wall clock is
 // never read, so the same job gives the same pixels. Progress + stats go to stderr; frames go to stdout.
 import fs from "node:fs";

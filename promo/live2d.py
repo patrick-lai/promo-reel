@@ -20,6 +20,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -418,7 +419,7 @@ def render_host(model_name, out, *, wav=None, partner_wav=None, duration=None, f
     os.makedirs(os.path.dirname(os.path.abspath(out)) or ".", exist_ok=True)
     side = os.path.splitext(out)[0]
     job = dict(modelDir=model["dir"], model3=os.path.relpath(model["model3_path"], model["dir"]), core=model["core"], width=width, height=height,
-               fps=fps, frames=n, seed=seed, warmup=warmup, frame=dict(model.get("frame") or {"zoom": 1.0, "cy": 0.5}, **(frame or {})),
+               fps=fps, frames=n, seed=seed, warmup=warmup, frame=frame_job(model, frame, height),
                tracks={k: dict(v=[round(float(x), 4) for x in v], mode="set") for k, v in tracks.items()},
                readback=info["mouth_ids"][:1], readbackPath=side + ".readback.json",
                chromium=os.environ.get("PROMO_CHROMIUM") or _default_chromium())
@@ -448,14 +449,103 @@ def render_host(model_name, out, *, wav=None, partner_wav=None, duration=None, f
         rep["lip_lag_applied"] = lip_lag(applied, y, r, fps)     # what the renderer actually set, frame by frame
         rep["mouth_offset_frames"] = int(np.argmax(np.correlate(applied - applied.mean(), mouth - mouth.mean(), "full")) - (n - 1))
     np.save(side + ".mouth.npy", mouth)
-    at = (model.get("frame") or {}).get("mouth_at")
-    if wav and at and not frame and fmt in (None, "prores4444") and out.endswith(".mov") and not bg:
+    inf = rb.get("info") or {}
+    aspect = (inf.get("width") or 1) / (inf.get("height") or 1)
+    at = mouth_probe_at(model, width, height, aspect, frame)
+    fr_px = framing(model, height, frame)
+    rep["framing"] = {k: (round(v, 3) if isinstance(v, float) else v) for k, v in fr_px.items()}
+    if wav and at and fmt in (None, "prores4444") and out.endswith(".mov") and not bg:
         pix = pixel_mouth(out, width, height, at)
         rep["lip_lag_pixels"] = lip_lag(pix, y, r, fps)
         rep["pixel_vs_track_corr"] = round(float(np.corrcoef(pix, mouth)[0, 1]), 3)
     with open(side + ".report.json", "w") as f:
         json.dump(rep, f, indent=1)
     return rep
+
+
+# Shared bust framing for every host (fractions of the layer height): the head (head_top -> chin anchors) is HEAD_FRAC
+# of the layer tall and its top sits at HEAD_TOP_AT, face centre on the vertical centre line. With anime proportions
+# (mid-chest ~1.7 heads below the skull top) the layer bottom lands at mid-chest, and a hat gets ~0.8 heads of room.
+HEAD_FRAC = 0.38
+HEAD_TOP_AT = 0.30
+
+
+def framing(model, H, override=None):
+    """Bust framing from the model's anchors: {zoom, at_x, at_y, head_top_px, chin_px, chest_px, head_px} for a layer
+    of height H. Same rule for every model, so heads land at the same height and scale. `override` (host `frame:`)
+    may set head_frac / head_top_at, or a legacy {zoom, cy, dx} (then the px fields are None)."""
+    o = dict(override or {})
+    an = model.get("anchors")
+    if "zoom" in o or not an:
+        f = dict(model.get("frame") or {"zoom": 1.0, "cy": 0.5}, **o)
+        return dict(f, head_top_px=None, chin_px=None, chest_px=None, head_px=None)
+    hf, ht = float(o.get("head_frac", HEAD_FRAC)), float(o.get("head_top_at", HEAD_TOP_AT))
+    head = an["chin"] - an["head_top"]
+    if head <= 0 or not (an["head_top"] < an["chin"] < an["chest"]):
+        raise Live2DError(f"{model.get('id')}: anchors must satisfy head_top < chin < chest (got {an})")
+    zoom = hf / head                                    # model height in layer heights
+    px = lambda y: (ht + (y - an["head_top"]) * zoom) * H
+    return dict(zoom=zoom, at_x=[an.get("cx", 0.5), 0.5], at_y=[an["head_top"], ht],
+                head_top_px=px(an["head_top"]), chin_px=px(an["chin"]), chest_px=px(an["chest"]), head_px=hf * H)
+
+
+def frame_job(model, override=None, H=None):
+    f = framing(model, H or 1, override)
+    return {k: f[k] for k in ("zoom", "at_x", "at_y", "cy", "dx") if k in f}
+
+
+def mouth_probe_at(model, W, H, aspect, override=None):
+    """Normalised layer coords of the mouth anchor under `framing` (aspect = model width / height in model units)."""
+    an = model.get("anchors") or {}
+    if "mouth" not in an or (override and "zoom" in override):
+        return (model.get("frame") or {}).get("mouth_at")
+    f = framing(model, H, override)
+    mx, my = an["mouth"]
+    x = 0.5 + (mx - f["at_x"][0]) * f["zoom"] * H * aspect / W
+    y = f["at_y"][1] + (my - f["at_y"][0]) * f["zoom"]
+    return [x, y]
+
+
+def render_stills(model_name, width, height, tracks, *, frame=None, warmup=60, seed=1, fps=30):
+    """Render len(track) still frames with constant/stepped parameter tracks (no audio). Returns (frames uint8
+    [n, H, W, 4], info {width, height: model units, ...}). Used by `probe_face` and the framing tests."""
+    model = resolve_model(model_name)
+    n = max(len(v) for v in tracks.values())
+    d = tempfile.mkdtemp(prefix="l2d-still-")
+    job = dict(modelDir=model["dir"], model3=os.path.relpath(model["model3_path"], model["dir"]), core=model["core"], width=width,
+               height=height, fps=fps, frames=n, seed=seed, warmup=warmup, frame=frame_job(model, frame, height),
+               tracks={k: dict(v=[float(x) for x in v], mode="set") for k, v in tracks.items()}, readback=[],
+               readbackPath=os.path.join(d, "rb.json"), chromium=os.environ.get("PROMO_CHROMIUM") or _default_chromium())
+    jpath = os.path.join(d, "job.json")
+    json.dump(job, open(jpath, "w"))
+    with render_lock(lambda *a: None):
+        raw = subprocess.run(["nice", "-n", "10", os.environ.get("PROMO_NODE", "node"), os.path.join(L2D_DIR, "render.mjs"), jpath],
+                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, cwd=L2D_DIR, check=True).stdout
+    info = json.load(open(job["readbackPath"])).get("info", {})
+    shutil.rmtree(d, ignore_errors=True)
+    return np.frombuffer(raw, np.uint8).reshape(n, height, width, 4), info
+
+
+def _diff_centroid(a, b, thr=24):
+    d = np.abs(a[..., :3].astype(np.int16) - b[..., :3].astype(np.int16)).max(-1) + np.abs(a[..., 3].astype(np.int16) - b[..., 3].astype(np.int16))
+    ys, xs = np.nonzero(d > thr)
+    if len(ys) < 10:
+        return None
+    return dict(x=float(np.median(xs)), y=float(np.median(ys)), box=[int(np.percentile(xs, 2)), int(np.percentile(ys, 2)),
+                                                                  int(np.percentile(xs, 98)), int(np.percentile(ys, 98))])
+
+
+def probe_face(model_name, width, height, frame=None):
+    """Locate the eyes and the mouth in RENDERED pixels, model-agnostically: diff a frame with eyes open vs closed,
+    and mouth shut vs open. Returns {eyes: {x, y, box}, mouth: {...}, eye_mouth_px} in layer pixels."""
+    model = resolve_model(model_name)
+    mo = (model.get("mouth") or {}).get("open") or ["ParamMouthOpenY"]
+    tr = {"ParamEyeLOpen": [1, 0, 1], "ParamEyeROpen": [1, 0, 1]}
+    for m in mo:
+        tr[m] = [0, 0, 1]
+    fr, info = render_stills(model_name, width, height, tr, frame=frame)
+    eyes, mouth = _diff_centroid(fr[0], fr[1]), _diff_centroid(fr[0], fr[2])
+    return dict(eyes=eyes, mouth=mouth, eye_mouth_px=(mouth["y"] - eyes["y"]) if eyes and mouth else None, info=info, frame0=fr[0])
 
 
 def _default_chromium():

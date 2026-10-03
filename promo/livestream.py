@@ -22,6 +22,7 @@ Spec (show level, in promo.yaml):
         - {id: a, model: hiyori, wav: media/host_a.wav, name: Hiyori, seed: 11}
         - {id: b, model: mao, wav: media/host_b.wav, name: Mao, seed: 22}
 
+Hosts are framed by per-model head/chest anchors (promo.live2d.framing): same head height + scale, mid-chest crop.
 Credits: a `live2d_credits` shot (end card) shows the full Live2D notice + model credits at body size (>= 28 px at
 1080p) for >= 2 s at full opacity; `promo check` (livestream-licence) fails without it.
 
@@ -41,6 +42,7 @@ MIN_MOVE_S = 0.5
 MIN_SLOT_GAP = 12
 HOST_W = 420                      # host layer width (canvas px); height follows the slot (head-and-shoulders framing)
 HOSTS_TOP = 168                   # below the header
+HOSTS_BOTTOM = FRAME_H - 14       # host panels end 14 px above the frame edge (same margin as the chat strip)
 CREDIT_MIN_PX = 28
 CREDIT_MIN_HOLD = 2.0
 LIVE_RE = re.compile(r"\blive\b", re.I)
@@ -70,9 +72,9 @@ def slot_gap(c):
 
 
 def host_size(c):
-    """(w, h) of every host layer: equal stacked slots between HOSTS_TOP and the frame bottom, `slot_gap` apart."""
+    """(w, h) of every host layer: equal stacked panels between HOSTS_TOP and HOSTS_BOTTOM, `slot_gap` apart."""
     n = max(1, len(c.get("hosts") or []))
-    h = (FRAME_H - HOSTS_TOP - slot_gap(c) * (n - 1)) / n
+    h = (HOSTS_BOTTOM - HOSTS_TOP - slot_gap(c) * (n - 1)) / n
     if n == 1:
         h = min(h, 600)
     return HOST_W, int(round(h))
@@ -93,11 +95,12 @@ def _side_pos(c, side):
     n = len(hosts)
     hw, hh = host_size(c)
     hb = []
-    # Stacked duo in the host column: equal slots with a `slot_gap` between them (no overlap; the upper host fades
-    # out at its slot bottom). Side-by-side busts don't fit next to a >= 55 % screen without covering each other's faces.
+    # Stacked duo in the host column: equal panels with a `slot_gap` between them (no overlap); every host is cropped
+    # by its own panel at mid-chest (same anchor framing, promo.live2d.framing). Side-by-side busts don't fit next to
+    # a >= 55 % screen without covering each other's faces.
     for i in range(n):
-        y0 = FRAME_H - hh if n == 1 else HOSTS_TOP + i * (hh + slot_gap(c))
-        x0 = (col_w - hw) / 2 + (0 if n == 1 else (-12 + 24 * i / (n - 1)))
+        y0 = HOSTS_BOTTOM - hh if n == 1 else HOSTS_TOP + i * (hh + slot_gap(c))
+        x0 = (col_w - hw) / 2
         if side == "right":
             x0 = FRAME_W - x0 - hw                      # mirror into the right-hand column
         hb.append([x0, y0, x0 + hw, y0 + hh])
@@ -249,6 +252,30 @@ def check(spec, ctx=None):
     rows.append(("livestream-licence", "FAIL" if lic else "PASS",
                  "; ".join(lic) if lic else f"{len(c.get('hosts') or [])} Live2D Original Character host(s); end-card credit shot "
                  f"{good[0].id}: {float(good[0].get('size', 30)):.0f} px, {credit_hold(good[0]):.2f} s at full opacity"))
+    # 0b. framing: every host cropped by the same anchor rule (same head height + scale, layer bottom at mid-chest)
+    fr_rows, probs = [], []
+    hw, hh = host_size(c)
+    for h in c.get("hosts") or []:
+        try:
+            m = L2.model_entry(h["model"])
+        except L2.Live2DError:
+            continue
+        f = L2.framing(dict(m, id=h["model"]), hh, h.get("frame"))
+        if f["head_px"] is None:
+            probs.append(f"host {h.get('id')}: no framing anchors (legacy zoom/cy framing)")
+            continue
+        fr_rows.append((h.get("id"), f))
+        if not (0.85 * hh <= f["chest_px"] <= 1.08 * hh):
+            probs.append(f"host {h.get('id')}: mid-chest at {f['chest_px']:.0f} px of a {hh} px slot (want 0.85-1.08)")
+    if len(fr_rows) > 1:
+        tops = [f["head_top_px"] for _, f in fr_rows]
+        heads = [f["head_px"] for _, f in fr_rows]
+        if max(tops) - min(tops) > 0.05 * hh or max(heads) > 1.05 * min(heads):
+            probs.append("hosts framed differently: head tops " + ", ".join(f"{t:.0f}" for t in tops) + " px, head heights "
+                         + ", ".join(f"{x:.0f}" for x in heads) + " px")
+    rows.append(("livestream-framing", "FAIL" if probs else "PASS", "; ".join(probs) if probs else
+                 "; ".join(f"host {i}: head {f['head_top_px']:.0f}-{f['chin_px']:.0f} px, mid-chest {f['chest_px']:.0f} px of {hh}"
+                           for i, f in fr_rows)))
     # 1. screen share
     sw, sh = screen_size(c)
     frac = sw * sh / (FRAME_W * FRAME_H)

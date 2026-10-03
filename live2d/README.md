@@ -24,6 +24,13 @@ promo live2d lag build/hiyori.mouth.npy host_a.wav
   a 20 ms close ease. The follower's delay is measured and removed. Each frame samples its own display interval
   centre. The render report includes lip lag from the track, from the parameter values read back per frame, and
   from the rendered pixels (mouth probe).
+- **Framing:** every model carries `anchors` in `assets.yaml`, in model units (fraction of the model's width and
+  height): `head_top` (skull/hair top, not hats or ahoge), `chin`, `chest` (mid-chest), `cx` (face centre) and
+  `mouth` (pixel lip-lag probe). `promo/live2d.py` `framing` applies one rule to all models: the head is
+  `HEAD_FRAC` (0.38) of the layer tall, its top at `HEAD_TOP_AT` (0.30), face centred. With anime proportions the
+  layer bottom lands at mid-chest. A new model just needs its anchors: render it full-body (`render_stills` /
+  `probe_face` measure the eye and mouth lines from pixels) and read the rest off a grid. `promo check`
+  (`livestream-framing`) and `tests/test_live2d.py` check that hosts get the same head height and scale.
 - **Sidecars:** each render writes `<out>.report.json`, `<out>.mouth.npy` and `<out>.readback.json`.
 - **Licences:** only Live2D Original Characters are accepted, and a `live2d_credits` end card (full notice + model
   credits, >= 28 px at 1080p, >= 2 s) is required by `promo check`. See

@@ -198,7 +198,7 @@ def test_slot_gap():
     s = _spec()
     hs = LS.layout_at(s, 0.0)["hosts"]
     assert hs[1][1] - hs[0][3] >= 12 and hs[1][1] - hs[0][3] == 16, hs    # default 16 px, no overlap
-    assert hs[1][3] == 1080 and LS.host_size(LS.cfg(s))[1] == hs[0][3] - hs[0][1]
+    assert hs[1][3] == LS.HOSTS_BOTTOM and LS.host_size(LS.cfg(s))[1] == hs[0][3] - hs[0][1]
     wide = _spec(lambda r: r["livestream"].__setitem__("slot_gap", 40))
     hw = LS.layout_at(wide, 0.0)["hosts"]
     assert round(hw[1][1] - hw[0][3]) == 40 and _gates(wide)["livestream-side"][0] == "PASS"
@@ -279,6 +279,66 @@ def test_heavy_lock_reentrant_and_exclusive():
         os.environ.pop("PROMO_HEAVY_LOCK", None)
         shutil.rmtree(d)
     assert LK.DEFAULT == "/tmp/commission-ai-cargo.lock" and not hasattr(L2, "LOCK")   # old live2d-only lock is gone
+
+
+def test_credits_card_text_and_centring():
+    from promo.render import RenderContext
+    from promo.shots import livestream as SL
+    assert SL.LICENCE_LINE == "Live2D sample models used under the Live2D Free Material License Agreement (Original Characters)."
+    src = open(SL.__file__).read()
+    assert "wrap(notice, fb, body, lh) + wrap(LICENCE_LINE, fb, body, lh)" in src     # own line, same font/size/colour
+    s = _spec()
+    ctx = RenderContext.from_spec(s)
+    notice, models = SL.credit_lines(s)
+    a = np.asarray(SL.credits_card(ctx, notice, models, 30).convert("L")).astype(int)
+    bg = np.asarray(SL.stream_bg(ctx).convert("L")).astype(int)
+    ys, xs = np.nonzero(np.abs(a - bg) > 30)
+    cx, cy = (xs.min() + xs.max()) / 2, (ys.min() + ys.max()) / 2
+    assert abs(cx - ctx.OW / 2) <= 3 and abs(cy - ctx.OH / 2) <= 3, (cx, cy)     # block centred both ways
+    rows = sorted(set(ys))                                                      # every text line centred on its own
+    lines, start = [], rows[0]
+    for p_, q in zip(rows, rows[1:] + [10 ** 9]):
+        if q - p_ > 3:
+            lines.append((start, p_))
+            start = q
+    for y0, y1 in lines:
+        lx = xs[(ys >= y0) & (ys <= y1)]
+        assert abs((lx.min() + lx.max()) / 2 - ctx.OW / 2) <= 4, (y0, lx.min(), lx.max())
+
+
+def test_framing_anchors_same_rule():
+    s = _spec()
+    c = LS.cfg(s)
+    hw, hh = LS.host_size(c)
+    fr = {h["model"]: L2.framing(dict(L2.model_entry(h["model"]), id=h["model"]), hh) for h in c["hosts"]}
+    a, b = fr["hiyori"], fr["mao"]
+    assert abs(a["head_top_px"] - b["head_top_px"]) < 0.5 and abs(a["head_px"] - b["head_px"]) < 0.5
+    for f in fr.values():
+        assert 0.9 * hh <= f["chest_px"] <= 1.05 * hh, f      # crop at mid-chest: not floating, not cut at the face
+    assert "frame" not in L2.registry()["models"]["hiyori"] and "zoom" not in str(L2.registry()["models"]["mao"].get("anchors"))
+    assert _gates(s)["livestream-framing"][0] == "PASS"
+    bad = _spec(lambda r: r["livestream"]["hosts"][1].__setitem__("frame", {"head_frac": 0.5}))
+    assert _gates(bad)["livestream-framing"][0] == "FAIL"
+
+
+def test_hosts_render_same_head_height_and_scale():
+    """Rendered pixels (model-agnostic): eye line height and eye span of both hosts at their slot size within 5 %."""
+    if not _render_ready():
+        print("skip test_hosts_render_same_head_height_and_scale (needs `promo live2d fetch` + node)")
+        return
+    hw, hh = LS.host_size(LS.cfg(_spec()))
+    m = {}
+    for name in ("hiyori", "mao"):
+        r = L2.probe_face(name, hw, hh)
+        e = r["eyes"]["box"]
+        m[name] = dict(eye_y=(e[1] + e[3]) / 2, span=e[2] - e[0], mouth=r["mouth"]["y"],
+                       probe=L2.mouth_probe_at(L2.resolve_model(name), hw, hh, r["info"]["width"] / r["info"]["height"])[1] * hh)
+    h, o = m["hiyori"], m["mao"]
+    assert abs(h["eye_y"] - o["eye_y"]) <= 0.05 * max(h["eye_y"], o["eye_y"]), m      # head at the same height
+    assert abs(h["span"] - o["span"]) <= 0.05 * max(h["span"], o["span"]), m          # same visible scale
+    for v in m.values():
+        assert abs(v["mouth"] - v["probe"]) <= 0.02 * hh, m                           # anchors land where predicted
+    print("framing:", m)
 
 
 def _render_ready():

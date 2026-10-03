@@ -43,12 +43,15 @@ window.L2D = {
     im.eyeBlink = undefined;
     im.breath = undefined;
     im.focusController.update = () => {};
-    // Bust framing: the model height is `zoom` x H; normalised model point (0.5, cy) lands in the canvas centre.
-    const zoom = job.frame.zoom, cy = job.frame.cy;
+    // Framing (computed in promo/live2d.py `frame_job` from the model's head/chest anchors): the model height is
+    // `zoom` x H; normalised model point at_x[0] (fraction of model width) lands at at_x[1] x W and at_y[0]
+    // (fraction of model height) at at_y[1] x H. Legacy {zoom, cy, dx} = at_y [cy, 0.5], at_x [0.5, 0.5] + dx.
+    const fr = job.frame, zoom = fr.zoom;
+    const ay = fr.at_y || [fr.cy, 0.5], ax = fr.at_x || [0.5, 0.5 + (fr.dx || 0)];
     const s = (H * zoom) / im.originalHeight;
     model.scale.set(s);
-    model.x = W / 2 - (im.originalWidth * s) / 2 + (job.frame.dx || 0) * W;
-    model.y = H / 2 - im.originalHeight * s * cy;
+    model.x = ax[1] * W - im.originalWidth * s * ax[0];
+    model.y = ay[1] * H - im.originalHeight * s * ay[0];
     const core = im.coreModel;
     const ids = Object.keys(job.tracks);
     const known = new Set(core.getModel().parameters.ids);
