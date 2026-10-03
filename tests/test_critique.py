@@ -78,6 +78,34 @@ def test_element_px_scale_and_inside():
     assert N.MIN_NAMED_PX == 18
 
 
+def test_named_measures_native_frame_pixels_not_css_or_preview():
+    """Regression for the shot-15-prcard question: measurement reads the clip's own full-res frame (no 1024-wide preview,
+    no CSS / DPR assumption). A 12-row cap in a 1920x1080 clip is 12 px at 1.0x whatever the manifest DPR says; the same
+    glyph in a 3840x2160 clip (box given in a 1080-tall frame via src_px) gives the same output px."""
+    tmp = tempfile.mkdtemp()
+    out = {}
+    for W, H in ((1920, 1080), (3840, 2160)):
+        k = W // 1920
+        im = Image.new("RGB", (W, H), (40, 40, 46))
+        ImageDraw.Draw(im).rectangle([850 * k, 478 * k, 900 * k, 489 * k + k - 1], fill=(120, 160, 230))   # 12-row 'cap'
+        png = os.path.join(tmp, f"f{W}.png")
+        im.save(png)
+        mov = os.path.join(tmp, f"c{W}.mkv")
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-loop", "1", "-i", png, "-frames:v", "3", "-r", "30", "-c:v", "ffv1", "-pix_fmt", "bgr0",
+                        "-threads", "2", mov], check=True)
+        g, w, h = N.gray_frame(mov, 0.0)
+        assert (w, h) == (W, H) and g.shape == (H, W)                  # native resolution, not a preview
+        m = N.element_px((g, w, h), (0.5, 0.5, 1.0), (1920, 1080), [845, 466, 940, 500], src_px=1080)
+        out[W] = m
+    assert out[1920]["src"] == 12 and abs(out[1920]["scale"] - 1.0) < 1e-9 and abs(out[1920]["px"] - 12.0) < 1e-9
+    assert out[3840]["src"] == 24 and abs(out[3840]["scale"] - 0.5) < 1e-9 and abs(out[3840]["px"] - 12.0) < 1e-9
+    # 1.3x / 1.5x pushes on the 1080p clip scale linearly (the DPR in the manifest never enters the measurement)
+    for w_, want in ((1 / 1.3, 15.6), (1 / 1.5, 18.0)):
+        g, w, h = N.gray_frame(os.path.join(tmp, "c1920.mkv"), 0.0)
+        m = N.element_px((g, w, h), (0.47, 0.45, w_), (1920, 1080), [845, 466, 940, 500])
+        assert abs(m["px"] - want) < 0.05, (w_, m)
+
+
 # ---------------------------------------------------------------- anime named gate
 def _gates(p):
     return {g: (st, msg) for g, st, msg in style_check.run(load_spec(p))}

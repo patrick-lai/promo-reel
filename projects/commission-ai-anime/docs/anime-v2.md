@@ -8,9 +8,14 @@ Output `out/anime-v4-1080.mp4`.
 2. **PR payoff (14, 'MERGED.'):** real take `shot-15-prcard` (v1-1080 "Shot 16 (PR-card payoff)", DPR 2, registered with
    `promo footage add`, sha256 matches manifest.md). The PR badge flips Open -> Merged at src 7.70 s (frame 462); it lands
    at shot 1.20 s, 5 frames before the card (bar 1). Real time to just after the flip, then the static Merged hold at 0.6x.
-   Push-in 1.0x -> 1.2x lands with the flip and holds. No PR number in any card (#438 is only in the app frame).
-   **Open issue:** the 'Merged' badge is 12 source px, so at the 1.2x cap it renders 14.4 px: the `named` gate FAILs
-   (min 18). The PR title reads 20.4 px. Fix options: allow ~1.5x on this DPR 2 take (badge ~18 px), or a tighter retake.
+   Push-in 1.0x -> 1.3x (the cap) lands with the flip and holds; crop src x 443-1920, so the whole PR card (src x 694-1862,
+   y 447-647, incl. the 'Builds pass · 1 approval' row) stays in frame. No PR number in any card (#438 is only in the app frame).
+   **Re-measured** on full-res 1920x1080 source frames at 8.0 / 8.75 / 9.4 s: 'Merged' cap height = 12 px (rows 478-489,
+   stable over thr 80-130), PR title = 17 px (rows 513-529). The take is 1.6x CSS (DPR 2 of a 1200x675 clip), so the 12 CSS
+   px badge font is ~19 px — but that is the font size; cap height is ~0.63 em. The `named` code reads the clip's native
+   frame and has no CSS/DPR assumption (regression test `test_named_measures_native_frame_pixels_not_css_or_preview`).
+   **Open issue:** at 1.3x the badge renders 15.6 px (title 22.1 px), so `named` FAILs (min 18, not overridden). Clearing
+   18 px needs >= 1.5x (cuts the card's right edge ~9 px at 1.5625x) or a closer / higher-DPR retake of the PR card.
 3. **'8 TASKS.' (04):** stays a placeholder for the shot-11 full board (DPR 2). `talk-dag-tight` is not used (3 cards from
    another demo board). The card text now comes from `claims.plan_count`: '8 TASKS.' only if `shot11_legible.cards == 8`,
    else 'THE PLAN.', a softened fallback flagged `confirm: Marketing` (check WARNs, critique pack marks it provisional).
