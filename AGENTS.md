@@ -61,6 +61,11 @@ Look at the contact sheet and watch the whole video with sound before asking for
 - Pacing and taste: does each cut land on a musical moment, does VO sit clear of the music, is the SFX tasteful, does the story read with the sound off?
 - Colour/brand: fonts, colours, end card text and URL.
 Write a short review note (open items, what's demo footage, what's old footage) like `projects/commission-ai-hero/docs/hero-v1.md`.
+For a reviewer model (e.g. Claude in Cursor), `promo critique-pack projects/<name>` writes `out/critique-pack/`: BRIEF.md (rubric:
+hook, legibility, story, pacing, calm composition, style fidelity, polish 1-5 + truth pass/fail; pass = truth pass, nothing under 3,
+average >= 4.2; the hard rules), TEXT-LINES.md, full-res stills per shot and per text card with sidecar JSON (measured cap-height px
+and effective scale of every card and `named:` element), the contact sheet, copy files, footage manifest.md, Zen's reviews, the full
+`promo check` output and the VO whisper transcript. The agent prepares the pack; it does not run the reviewer.
 
 ## 8. Deliver
 Hand over: `out/<name>-1080.mp4` (web, -14 LUFS), `out/<name>-1080-social.mp4` (~-9 LUFS), optional 2160 master, contact sheet, check report, EDL.md, licence/credit lines from `assets.yaml`. **Do not publish**; a human approves and posts.

@@ -217,10 +217,47 @@ def anime_gates(spec, st, checks):
                 bad.append(f"marker {m} at {t:.3f}s has no cut within 1 frame (nearest {min(cuts, key=lambda c: abs(c - t)):.3f}s)")
         out.append(("markers", "FAIL" if bad else "PASS", "; ".join(bad) or (f"cuts on markers: {', '.join(want)}" if want else "no cut_markers listed")))
 
+    if "named" in checks:
+        out += named_gates(spec)
+
     if "placeholders" in checks:
         ph = [f"{s.id}={s['placeholder'].get('id', s.id)}" for s in shots if s.get("placeholder")]
         out.append(("placeholders", "WARN" if ph else "PASS", f"placeholder slates still waiting on footage: {', '.join(ph)}" if ph else "no placeholders"))
     return out
+
+
+def named_gates(spec):
+    """named: FAIL if an element a card names renders under min_px (18 px cap height at 1080p) or is not fully in frame;
+    named-upscale: WARN if its effective scale (output px / source px) is > 1.0 (soft text: use the DPR 2 take)."""
+    from .shots.anime import measure_named
+    res, up = [], []
+    for s in spec.shots:
+        if s.type != "anime":
+            continue
+        for el in s.get("named") or []:
+            if el.get("t") is not None or el.get("at") is not None:
+                ms = [measure_named(spec, s, el)]
+            else:                    # no time given: the smallest it gets on screen (head, middle, last frame)
+                ms = [measure_named(spec, s, el, t=t) for t in (0.0, s.dur / 2, s.dur - 1.0 / spec.fps)]
+            errs = [x for x in ms if x.get("error")]
+            m = errs[0] if errs else min(ms, key=lambda x: x["px"] if x["inside"] else -1)
+            nm = m["name"]
+            if m.get("error"):
+                if s.get("placeholder"):
+                    continue                 # measured once the real take replaces the slate
+                res.append(f"!shot {s.id} {nm!r}: cannot measure ({m['error']})")
+                continue
+            res.append(("" if m["ok"] else "!") + f"shot {s.id} {nm!r} @ {m['t']:.2f}s: {m['src']} src px x{m['scale']:.2f} = {m['px']:.1f} px (min {m['min_px']})"
+                       + ("" if m["inside"] else ", NOT fully in frame"))
+            if m["scale"] > 1.0 + 1e-6:
+                up.append(f"shot {s.id} {nm!r} x{m['scale']:.2f} ({s.get('source') or s.get('still')})")
+    if not res:
+        return [("named", "PASS", "no named elements listed")]
+    bad = [m for m in res if m.startswith("!")]
+    return [("named", "FAIL" if bad else "PASS", "; ".join(m.lstrip("!") for m in res)),
+            ("named-upscale", "WARN" if up else "PASS",
+             ("upscaled (effective scale > 1.0, soft text; swap in the DPR 2 take): " + "; ".join(up)) if up
+             else "every named element at effective scale <= 1.0")]
 
 
 def _src_size(spec, shot):

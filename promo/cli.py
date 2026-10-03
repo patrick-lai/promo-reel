@@ -18,6 +18,7 @@ from . import footage as FT
 from .cache import PKG, Stamps, code_hash, digest, file_sig
 from .spec import SpecError, load_spec
 
+QA_ONLY_KEYS = ("named", "contact_at")
 SHOT_CODE = ["render", "overlays", "spec", "footage", "shots/__init__", "shots/clip", "shots/card"]
 
 
@@ -34,7 +35,8 @@ def shot_digest(spec, shot):
     extra = []
     if shot.type == "anime":        # card text can come from claims tables; the band/typography from the resolved preset
         extra = [spec.style, spec.raw.get("claims"), spec.timeline.bpm]
-    return digest(shot.cfg, shot.n, spec.raw.get("style"), plates, spec.scale, spec.fps, clips,
+    cfg = {k: v for k, v in shot.cfg.items() if k not in QA_ONLY_KEYS}      # QA-only keys never force a re-render
+    return digest(cfg, shot.n, spec.raw.get("style"), plates, spec.scale, spec.fps, clips,
                   code_hash(*code, extra_files=spec.plugins), *extra)
 
 
@@ -355,6 +357,11 @@ def build_parser():
     sp = add("segpeek", "tiles from a rendered segment")
     sp.add_argument("id")
     sp.add_argument("times", nargs="*", type=float)
+    cpk = add("critique-pack", "self-contained review folder (stills + sidecars, contact, copy, manifests, reviews, check, BRIEF.md) for a reviewer model", True)
+    cpk.add_argument("project_dir", nargs="?", help="project dir or promo.yaml (default: -p / ./promo.yaml)")
+    cpk.add_argument("--out", help="pack folder (default <project>/out/critique-pack, or critique.out in promo.yaml)")
+    cpk.add_argument("--no-check", action="store_true", help="reuse the last saved check report instead of running promo check")
+    cpk.add_argument("--video", action="store_true", help="also copy the primary render into the pack")
     mp = add("mpeek", "grid of frames: out.png clip-id:t[:x0,y0,x1,y1] ...")
     mp.add_argument("out")
     mp.add_argument("specs", nargs="+")
@@ -399,6 +406,13 @@ def dispatch(spec, args):
         else:
             print(*contact.mpeek(spec, args.out, args.specs))
         return None, None, 0
+    if c == "critique-pack":
+        from . import critique
+        from .lock import heavy_lock
+        with heavy_lock("promo critique-pack"):     # frame extraction, check (loudness, contact), whisper
+            r = critique.build(spec, out=args.out, reuse_check=args.no_check, video=args.video,
+                               log=lambda *a: print(*a, file=sys.stderr))
+        return r, critique.print_summary, 0
     if c == "grid":
         r = cmd_grid(spec, args)
         return r, print_grid, 0 if r["ok"] else 1
@@ -445,6 +459,9 @@ def main(argv=None):
                 else:
                     print_styles(r)
                 return 0
+            pd = getattr(args, "project_dir", None)
+            if pd:
+                args.project = os.path.join(pd, "promo.yaml") if os.path.isdir(pd) else pd
             spec = load_spec(args.project, scale=args.scale)
             payload, human, rc = dispatch(spec, args)
             if not as_json and human and payload is not None:

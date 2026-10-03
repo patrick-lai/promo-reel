@@ -62,7 +62,7 @@ PRESETS = {
         transitions=dict(allowed=["cut", "flash", "speed_lines"], placement="between-shots",
                          flash=dict(frames=3, alpha=0.85), speed_lines=dict(frames=6, alpha=0.7)),
         checks=["grid", "bar-cuts", "shot-hold", "card-hold", "card-band", "card-ui-clear", "fx-between", "flash-rate",
-                "claims", "markers", "placeholders"],
+                "claims", "named", "markers", "placeholders"],
         qa=dict(min_caption_hold=2.0, beat_subdivision=2),
     ),
     "livestream": dict(

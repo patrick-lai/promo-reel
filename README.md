@@ -43,6 +43,8 @@ promo -p projects/<name>/promo.yaml <cmd>
   shot <id...> | sfx | vo | music | events | mix | assemble | contact     individual steps
   timeline [--json]                      shot table: beats, seconds, frames
   grid [--json]                          bar/beat table + markers of the music grid (timeline.grid)
+  critique-pack [project] [--out D] [--no-check] [--video]   review folder for a reviewer model (BRIEF.md, stills + size sidecars, contact,
+                                         copy, footage manifest.md, reviews, check output, VO transcript); config: critique: in promo.yaml
   check [--json]                         QA gates (exit 1 on FAIL)
   compare <ref.mp4> [--json]             per-shot PSNR + audio diff against a reference render
   peek <clip> <t> [box] | segpeek <shot> [t..] | mpeek out.png clip:t[:box] ...   framing helpers (build/peek/)
@@ -66,7 +68,7 @@ Builds are **idempotent**. Each step stamps a hash of its inputs (spec subtree, 
 | contact sheet | the contact sheet is missing, or doesn't have one tile per shot |
 | VO vs script | the whisper read-back of a VO line doesn't match the script word for word (normalised, with per-line aliases). WARN and skip if whisper isn't installed |
 | freshness | WARN if an output is stale against its inputs |
-| style: anime-opening | grid (music JSON present, no drift); bar-cuts (cuts on bar lines, half bars only beside text-free shots; cards start on bars); shot-hold (UI >= 1 bar, text-free >= 1/2 bar, `ui:` set); card-hold (>= 1 bar, words >= 0.6 s); card-band (one fixed band, no per-card positions or free overlays); card-ui-clear (no card over `ui_text`, UI shots framed above the band); fx-between (fx_in/fx_out only, <= 6 frames, never full-frame on UI shots); flash-rate (<= 3/s); claims (numbers come from claim tables or cite evidence); markers (listed grid markers land on cuts); placeholders (WARN) |
+| style: anime-opening | grid (music JSON present, no drift); bar-cuts (cuts on bar lines, half bars only beside text-free shots; cards start on bars); shot-hold (UI >= 1 bar, text-free >= 1/2 bar, `ui:` set); card-hold (>= 1 bar, words >= 0.6 s); card-band (one fixed band, no per-card positions or free overlays); card-ui-clear (no card over `ui_text`, UI shots framed above the band); fx-between (fx_in/fx_out only, <= 6 frames, never full-frame on UI shots); flash-rate (<= 3/s); claims (numbers come from claim tables or cite evidence); named (app text a card names, `named:` boxes, renders >= 18 px cap height at 1080p; `named-upscale` WARNs above 1.0x); markers (listed grid markers land on cuts); placeholders (WARN) |
 | style: livestream | shot-hold (>= 4 s), no-fx |
 
 ## Licences

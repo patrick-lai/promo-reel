@@ -21,6 +21,10 @@ If the brief says "anime", "opening", "kinetic titles", "J-rock", "speed lines" 
 - Words go in `cards: [{row: title|sub|tag, text: ..., bars: [a, b]}]`: held >= 1 bar, start on a bar line, all in ONE fixed lower-third band (no per-card positions). Full-bleed UI shots must list `ui_text` rects (source coords) and no card may cover them.
 - Flashes / speed lines: `fx_in` / `fx_out` (`kind: flash|speed_lines`, <= 6 frames) only, i.e. at a cut. On UI shots they draw in the band only; <= 3 flashes per second.
 - Numbers on cards come from `claims` tables (`text_from: claims.<table>`), selected by what the footage manifest says is legible; a literal number needs `evidence:`.
+- App text a card names (a chip label, a reviewer line) goes in the shot's `named: [{name, box: [x0, y0, x1, y1]}]` (source px).
+  Gate `named` FAILs under 18 px cap height at 1080p (measured at the shot head, middle and last frame); `named-upscale` WARNs
+  when the effective scale is > 1.0 (push-in on a 1x take: swap in the DPR 2 take). Same contract as the talk show.
+  `fit: contain` + `aspect: 1.6` frames one panel without a neighbour sliver.
 - A shot that is not captured yet is `placeholder: {id, label, expects}` (a labelled slate). Swapping in the real take = replace it with `source:` + `cam:`.
 Need something the preset can't do? Extend the preset or the `anime` shot type in `promo/` (with a test), not a one-off renderer in the project.
 
@@ -37,12 +41,19 @@ Need something the preset can't do? Extend the preset or the `anime` shot type i
    do not wrap them in another `flock` and never SIGCONT a paused render.
 6. **Check**: `promo check` (exit 1 on FAIL). Fix FAILs; read WARNs (soft upscale, demo footage, short labels) and decide.
 7. **Review**: open `out/<name>-1080-contact.png` and the mp4. A human watches every frame that has text, captions or pushes.
+   For the final reviewer model, run `promo critique-pack projects/<name>` and hand over the folder it prints
+   (`out/critique-pack/`: BRIEF.md with the rubric + hard rules, stills with size sidecars, contact sheet, copy, footage
+   manifest.md, Zen's reviews, full check output, VO transcript). Do not run or impersonate the reviewer yourself.
+   Per-project sources: `critique: {copy: [...], reviews: [...], footage_md: [...]}` in promo.yaml (defaults by kind:
+   hero = captions-v1-cut.md + vo-script-v1.md; anime / talk show = scripts-3-directions-v1.md; talk show also gets Zen's
+   talkshow-preview REVIEW.md).
 8. **Deliver**: only after human approval. Re-render at 4K with `--scale 2` if asked. Never publish or upload on your own.
 
 ## CLI cheat-sheet
 - `promo styles`; `promo new <name> --style hero|anime-opening|livestream`; `promo grid` (bars, beats, markers of `timeline.grid`)
 - `promo status [--json]` what is up-to-date / stale / missing; `promo timeline`, `promo assets`, `promo footage list|verify|add`
 - `promo build [--shots 05 06] [--force] [--scale 2]`; `promo shot <id...>`; `promo sfx|vo|music|events|mix|assemble|contact`
+- `promo critique-pack [projects/<name>] [--out DIR] [--no-check] [--video]` (review folder for a reviewer model; holds the lock)
 - `promo check [--json]`; `promo compare <ref.mp4> [--json]` (per-shot PSNR + audio diff vs a reference)
 - `promo peek <clip-id> <t> [x0 y0 x1 y1]`, `promo segpeek <shot> [t...]`, `promo mpeek out.png clip:t[:box] ...` (output in build/peek/)
 - `--json` prints only JSON on stdout (always has `ok`), logs go to stderr. `promo fetch` downloads licensed assets (sha256 checked).

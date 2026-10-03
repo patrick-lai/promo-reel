@@ -13,10 +13,14 @@ Spec keys (per shot):
     placeholder: {id, label, expects}   labelled slate for a shot that is not captured yet (swap = replace with source:)
     cam: [[t, cx, cy, w], ...]  camera keys (w = box width / source width); box aspect follows the viewport
     ui_text: [[x0, y0, x1, y1]] normalised SOURCE rects holding app text that cards must never cover (e.g. a notice)
-    cards: [{row: title|sub|tag, text: "..." | text_from: claims.<table>, bars: [a, b] | t: [t0, t1], slam: true}]
+    cards: [{row: title|sub|tag, text: "..." | text_from: claims.<table>, bars: [a, b] | t: [t0, t1], slam: true, fade_out: s}]
             bars are shot-local bar edges (1 bar = beats_per_bar beats of the grid); "end" = shot end
     fx_in / fx_out: {kind: flash|speed_lines, frames: N} (or a list)   at the head / tail of the shot, i.e. at a cut only
     blur: N                     shutter blur (frames averaged)
+    fit: contain [+ aspect: w/h]   band layout only: pillarbox the footage above the band at 16:9 (or `aspect`)
+    named: [{name, box: [x0, y0, x1, y1], src_px, t | at, min_px, thr}]   app text a card names (QA only, not rendered):
+                                gate `named` FAILs under min_px (default 18 px cap height at 1080p), `named-upscale` WARNs
+                                when its effective scale is > 1.0 (see promo/named.py; same contract as the talk show)
 """
 from __future__ import annotations
 
@@ -102,8 +106,8 @@ def viewport(spec, shot):
     st = style_of(spec)
     if layout_of(shot) == "band":
         h = st["band"]["y0"]
-        if shot.get("fit") == "contain":
-            w = h * 16 / 9
+        if shot.get("fit") == "contain":       # pillarboxed above the band at 16:9, or at `aspect:` (w/h) to frame a panel
+            w = h * float(shot.get("aspect", 16 / 9))
             return [(1920 - w) / 2, 0, (1920 + w) / 2, h]
         return [0, 0, 1920, h]
     return [0, 0, 1920, 1080]
@@ -132,6 +136,64 @@ def cam_keys(shot):
     if cam and not isinstance(cam[0], list):
         cam = [[0] + list(cam)]
     return resolve_cam_keys(cam, shot.dur)
+
+
+def source_at(spec, shot, t):
+    """(path, source seconds) shown at shot-local output time t, or (None, None) for a placeholder slate."""
+    cfg = shot.cfg
+    if cfg.get("placeholder"):
+        return None, None
+    if cfg.get("still"):
+        return spec.footage_path(cfg["still"]), 0.0
+    if cfg.get("freeze") is not None:
+        return spec.footage_path(cfg["source"]), float(cfg["freeze"])
+    acc = 0.0
+    segs = segments(shot)
+    for k, s in enumerate(segs):
+        if t <= acc + s["dur"] + 1e-6 or k == len(segs) - 1:
+            u = min(1.0, max(0.0, (t - acc) / max(s["dur"], 1e-6)))
+            return spec.footage_path(s.get("source", cfg.get("source"))), s["t_in"] + (s["t_out"] - s["t_in"]) * u
+        acc += s["dur"]
+    return None, None
+
+
+def _src_to_out(shot, t_src):
+    from . import get_type
+    return get_type(shot.type).src_to_out(shot, t_src)
+
+
+def measure_named(spec, shot, el, t=None):
+    """Measure one `named:` element of an anime shot at shot-local time t (default: el `t`, else the time whose source
+    frame is el `at`, else the shot middle). Returns dict(name, t, src_t, px, src, scale, inside, box_out, min_px, ok)
+    with box_out in 1920x1080 canvas units, or dict(..., error) if it cannot be measured."""
+    from .. import named as N
+    from .. import render as R
+    from ..spec import number
+    name = el.get("name", "?")
+    if t is None:
+        if el.get("t") is not None:
+            t = number(el["t"])
+        elif el.get("at") is not None and shot.get("freeze") is None:
+            t = _src_to_out(shot, float(el["at"]))
+        t = shot.dur / 2 if t is None else t
+    path, src_t = source_at(spec, shot, t)
+    need = el.get("min_px", N.MIN_NAMED_PX)
+    if path is None:
+        return dict(name=name, t=round(t, 3), min_px=need, ok=False, error="placeholder slate: element not on screen")
+    if el.get("at") is not None and shot.get("freeze") is None and el.get("t") is None:
+        src_t = float(el["at"])
+    if shot.type == "anime":
+        vp, keys = viewport(spec, shot), cam_keys(shot)
+    else:                       # clip / other full-frame camera shots
+        vp, keys = [0, 0, 1920, 1080], resolve_cam_keys(shot.cfg.get("cam") or [[0, 0.5, 0.5, 1.0]], shot.dur)
+    vw, vh = vp[2] - vp[0], vp[3] - vp[1]
+    m = N.element_px(N.gray_frame(path, src_t), R.cam_at(keys, t), (vw, vh), el["box"], el.get("src_px"), el.get("thr", 110))
+    if m is None:
+        return dict(name=name, t=round(t, 3), src_t=round(src_t, 3), min_px=need, ok=False, error="no ink in its box")
+    ob = m.pop("out_box")
+    box_out = [round(ob[0] + vp[0], 1), round(ob[1] + vp[1], 1), round(ob[2] + vp[0], 1), round(ob[3] + vp[1], 1)]
+    return dict(name=name, t=round(t, 3), src_t=round(src_t, 3), box_out=box_out, min_px=need,
+                ok=bool(m["px"] >= need and m["inside"]), **m)
 
 
 # ---------------------------------------------------------------- drawing
@@ -333,7 +395,8 @@ class Anime(ShotType):
             for lay, g, t0, t1, c, _ in cards:
                 if not (t0 - 1e-6 <= t < t1):
                     continue
-                a = min(1.0, (t1 - t) / fout) if fout else 1.0
+                fo = c.get("fade_out", fout)          # 0 = hold to the cut (a card carried across a cut)
+                a = min(1.0, (t1 - t) / fo) if fo else 1.0
                 if c.get("slam", c.get("row", "title") == "title") and t - t0 < slam.get("dur", 0.12):
                     p = (t - t0) / slam.get("dur", 0.12)
                     z = slam.get("scale", 1.22) - (slam.get("scale", 1.22) - 1) * R.ease(p, "out")
