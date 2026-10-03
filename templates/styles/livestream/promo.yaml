@@ -1,0 +1,45 @@
+# Livestream / talk-show composite (style preset `livestream`): long holds, lower-left chyron, cuts only, no flashes.
+project: {name: my-promo, title: "My livestream cut"}
+output: {name: my-promo, resolution: 1080, fps: 30, duration: 20.0}
+paths: {build: build, out: out}
+assets: assets.yaml
+footage: footage/manifest.yaml
+
+style:
+  preset: livestream           # chyron zone x 64-1000, y 900-1020; captions >= 2.5 s; shots >= 4 s; no fx
+
+music:
+  asset: music-track
+  bpm: 120
+  track_beat: 0.5
+  track_offset: 0.0
+  edit: {segments: [[0, 0, 40]], crossfade: 0.030, gains: []}
+
+timeline: {bpm: 120, beats: 40}
+
+shots:
+  - id: "01"
+    beats: [0, 20]
+    type: clip
+    source: my-clip
+    t_in: 0.0
+    cam: [[0, 0.5, 0.5, 1.0], [end, 0.5, 0.5, 0.9]]
+    overlays:
+      - {type: caption, text: "Live: building the checkout revamp", t: [0.5, 99]}
+  - id: "02"
+    beats: [20, 40]
+    type: clip
+    source: my-clip
+    t_in: 10.0
+    cam: [[0, 0.5, 0.5, 1.0]]
+
+sfx: {library: {tick: {asset: sfx-tick}}}
+
+mix:
+  sr: 48000
+  bus_db: {music: -5.0, sfx: -8.0, vo: 1.5}
+  vo_line_lufs: -16.0
+  duck: {db: 7.0, attack: 0.12, release: 0.35, pre: 0.12, post: 0.1}
+  fade_out: 0.03
+  masters:
+    - {name: web, suffix: "", lufs: -14.0, ceiling: -1.2, max_true_peak: -1.0}

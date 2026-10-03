@@ -20,7 +20,7 @@ def shot_psnr(ref, new, f0, n):
 
 
 def decode_audio(path, sr=48000):
-    raw = subprocess.run(["ffmpeg", "-v", "error", "-i", path, "-vn", "-f", "f32le", "-ac", "2", "-ar", str(sr), "-"], capture_output=True).stdout
+    raw = subprocess.run(["ffmpeg", "-v", "error", "-threads", "2", "-i", path, "-vn", "-f", "f32le", "-ac", "2", "-ar", str(sr), "-"], capture_output=True).stdout
     return np.frombuffer(raw, np.float32).reshape(-1, 2)
 
 

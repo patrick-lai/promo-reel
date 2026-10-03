@@ -45,7 +45,7 @@ class RenderContext:
 
     @classmethod
     def from_spec(cls, spec):
-        st = spec.raw.get("style", {})
+        st = getattr(spec, "style", None) or spec.raw.get("style", {})
         fnt = st.get("font", {})
         cap = dict(cx=960, cy=905, size=32, max_w=608, zone=dict(x0=656, x1=1264, y0=860, y1=950))
         cap.update({k: v for k, v in st.get("caption", {}).items() if k != "zone"})

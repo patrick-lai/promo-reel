@@ -34,7 +34,7 @@ def run(spec, force=False):
     for s in spec.shots:
         off = s.get("contact_at", (s.t1 - s.t0) * 0.6)
         t = s.t0 + off
-        subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", f"{t:.3f}", "-i", src, "-frames:v", "1", tmp], check=True)
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-threads", "2", "-ss", f"{t:.3f}", "-i", src, "-frames:v", "1", tmp], check=True)
         im = Image.open(tmp).convert("RGB").resize((TW, TH), Image.LANCZOS)
         dr = ImageDraw.Draw(im)
         dr.rectangle([0, 0, 330, 26], fill=(0, 0, 0))
@@ -77,7 +77,7 @@ def _grid(im, box, step, f, label_every=1):
 
 
 def _grab(path, t, tmp):
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", str(t), "-i", path, "-frames:v", "1", tmp], check=True)
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-threads", "2", "-ss", str(t), "-i", path, "-frames:v", "1", tmp], check=True)
     return Image.open(tmp).convert("RGB")
 
 

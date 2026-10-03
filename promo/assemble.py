@@ -50,7 +50,7 @@ def run(spec, force=False):
             assert n == s.n, (s.id, n, s.n)
             f.write(f"file '{p}'\n")
     vid = os.path.join(spec.segs_dir, "video-only.mp4")
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", lst, "-c", "copy", vid], check=True)
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-threads", "2", "-f", "concat", "-safe", "0", "-i", lst, "-c", "copy", vid], check=True)
     outs = []
     for m in spec.masters:
         wav = master_path(spec, m["name"])

@@ -1,0 +1,71 @@
+# Anime-opening promo (style preset `anime-opening`; see promo/styles.py and skills/promo-reel/SKILL.md).
+# Do NOT write your own renderer: shot type `anime` already does kinetic cards in one fixed lower-third band, beat
+# flashes / speed lines at cuts, placeholder slates, and `promo check` enforces the style rules.
+#   promo -p projects/my-promo/promo.yaml grid       # bar table + markers from the music JSON: plan cuts on bars
+#   promo -p projects/my-promo/promo.yaml timeline   # shot table
+project: {name: my-promo, title: "My promo (anime opening)"}
+output: {name: my-promo, resolution: 1080, fps: 30, duration: 10.8475}   # = frames of timeline.beats / fps (see `promo timeline`)
+paths: {build: build, out: out}
+assets: assets.yaml
+footage: footage/manifest.yaml
+
+style:
+  preset: anime-opening        # pacing, band, typography, transitions, checks; override keys here (e.g. band: {y0: 780})
+
+# Beat grid from the music analysis JSON: tempo_bpm, beats [{i, t, downbeat}], bars [{bar, t, phrase_start}], markers {}.
+# Shot `beats:` are edit beats (beat k at k*60/bpm); `bars: [a, b]` is the same in bar edges. Cuts go on bar lines.
+timeline: {grid: "${PROMO_MUSIC_GRID:-music/grid.json}", beats: 32}
+
+music:
+  asset: music-track           # a pre-cut master on the same grid: one segment from beat 0
+  track_beat: 0.3389830508     # = 60 / tempo_bpm
+  track_offset: 0.0
+  edit: {segments: [[0, 0, 32]], crossfade: 0.0, gains: []}
+
+claims:                        # numbers on cards come from what the footage legibly shows (promo/claims.py)
+  legible:
+    board_legible: {cards: null, logos: null}      # fill from the footage manifest.md once the shot is captured
+  tables:
+    merged_count:
+      selector: board_legible
+      rows:
+        - {cards: 8, logos: 3, text: "8 TASKS · 3 AGENTS · ALL MERGED"}
+        - {logos: 3, text: "3 AGENTS · ALL MERGED"}
+        - {cards: 8, text: "8 TASKS · ALL MERGED"}
+        - {text: "ALL MERGED."}
+
+shots:
+  - id: "01"                   # text-free scenery: full-bleed, may cut on half bars, speed lines allowed
+    bars: [0, 4]
+    type: anime
+    ui: false
+    source: my-scene-clip
+    t_in: 0.2
+    cam: [[0, 0.5, 0.55, 0.9], [end, 0.5, 0.55, 0.8]]
+    cards:
+      - {row: title, text: "my-product", bars: [0, 4]}
+      - {row: sub, text: "Say it in four words", bars: [0, 4]}
+    fx_in: {kind: speed_lines, frames: 6}
+  - id: "02"                   # UI shot: footage framed above the band, holds >= 1 bar; fx only inside the band
+    bars: [4, 8]
+    type: anime
+    ui: true
+    placeholder: {id: shot-02, label: "board, all tasks landed", expects: "swap in the real take: source: <clip id> + cam"}
+    cards:
+      - {row: title, text_from: claims.merged_count, bars: [0, 4]}
+    fx_in: {kind: flash, frames: 3}
+
+sfx: {library: {}}
+
+mix:
+  sr: 48000
+  bus_db: {music: 0.0, sfx: -8.0, vo: 0.0}
+  vo_line_lufs: -16.0
+  duck: {db: 0.0, attack: 0.12, release: 0.35, pre: 0.12, post: 0.1}
+  fade_out: 0.05
+  masters:
+    - {name: web, suffix: "", lufs: -14.0, ceiling: -1.5, max_true_peak: -1.0}
+
+qa:
+  lufs_tolerance: 0.5
+  cut_markers: []              # e.g. [intro_hit, lift, peak_start, final_hit]: each must land on a cut

@@ -30,8 +30,12 @@ def log(args, *a):
 def shot_digest(spec, shot):
     clips = {cid: FT.verified_sha(spec, cid) for cid in sorted(FT.referenced(spec, {shot.id})) if os.path.exists(FT.clip_path(spec, cid))}
     plates = {k: v for k, v in (spec.raw.get("plates") or {}).items()}
+    code = SHOT_CODE + (["shots/anime", "styles", "claims"] if shot.type == "anime" else [])
+    extra = []
+    if shot.type == "anime":        # card text can come from claims tables; the band/typography from the resolved preset
+        extra = [spec.style, spec.raw.get("claims"), spec.timeline.bpm]
     return digest(shot.cfg, shot.n, spec.raw.get("style"), plates, spec.scale, spec.fps, clips,
-                  code_hash(*SHOT_CODE, extra_files=spec.plugins))
+                  code_hash(*code, extra_files=spec.plugins), *extra)
 
 
 def _sfx_outputs(spec):
@@ -240,13 +244,51 @@ def cmd_new(args):
     if os.path.exists(dest) and os.listdir(dest):
         raise SystemExit(f"{dest} exists and is not empty")
     shutil.copytree(src, dest, dirs_exist_ok=True)
+    style = getattr(args, "style", None) or "hero"
+    from . import styles as STY
+    if style not in STY.PRESETS:
+        raise SystemExit(f"unknown style {style!r}; have {STY.names()}")
+    sdir = os.path.join(root, "templates", "styles", style)
+    if os.path.isdir(sdir):          # style overlay: promo.yaml (+ assets.yaml, shots docs) for this preset
+        shutil.copytree(sdir, dest, dirs_exist_ok=True)
     for f in ("promo.yaml", "assets.yaml", "footage/manifest.yaml", "footage/manifest.md"):
         p = os.path.join(dest, f)
         t = open(p).read().replace("my-promo", name)
         open(p, "w").write(t)
     for d in ("media/music", "media/models"):
         os.makedirs(os.path.join(dest, d), exist_ok=True)
-    print(f"created {dest}: fill footage/manifest.yaml (+ manifest.md), assets.yaml, promo.yaml, then `promo -p {dest}/promo.yaml timeline`")
+    print(f"created {dest} (style {style}): fill footage/manifest.yaml (+ manifest.md), assets.yaml, promo.yaml, then `promo -p {dest}/promo.yaml timeline`")
+
+
+def cmd_styles():
+    from . import styles as STY
+    return dict(ok=True, presets={k: dict(v) for k, v in STY.PRESETS.items()})
+
+
+def print_styles(r):
+    for name, p in r["presets"].items():
+        print(f"{name:<14} {p['description']}")
+        print(f"{'':<14} pacing: {p['pacing']}")
+        print(f"{'':<14} transitions: {p['transitions']['allowed']}  checks: {', '.join(p['checks'])}")
+    print("\nscaffold with `promo new <name> --style <preset>`; override any key under style: in promo.yaml")
+
+
+def cmd_grid(spec, args):
+    g = spec.grid
+    if not g:
+        return dict(ok=False, error="no timeline.grid in this spec")
+    return dict(ok=True, bpm=g.bpm, beat_s=g.B, beats_per_bar=g.beats_per_bar, bar_s=g.B * g.beats_per_bar, markers=g.markers,
+                bars=g.table(), timeline_beats=spec.timeline.beats)
+
+
+def print_grid(r):
+    if not r["ok"]:
+        print(r["error"])
+        return
+    print(f"{r['bpm']:g} BPM, beat {r['beat_s']:.6f}s, bar {r['bar_s']:.4f}s ({r['beats_per_bar']} beats); timeline {r['timeline_beats']} beats")
+    print(f"{'bar':>4} {'beat':>5} {'t (s)':>8}  phrase  markers")
+    for b in r["bars"]:
+        print(f"{b['bar']:>4} {b['beat']:>5} {b['t']:8.3f}  {'*' if b['phrase'] else ' ':^6}  {', '.join(b['markers'])}")
 
 
 def build_parser():
@@ -267,6 +309,9 @@ def build_parser():
     n = add("new", "scaffold projects/<name>/ (or --dir)")
     n.add_argument("name")
     n.add_argument("--dir", help="explicit destination directory")
+    n.add_argument("--style", default="hero", help="style preset: hero | anime-opening | livestream (see `promo styles`)")
+    sub.add_parser("styles", help="list style presets (pacing, band, typography, transitions, checks)", parents=[common]).add_argument("--json", action="store_true")
+    add("grid", "bar/beat table of the music grid (timeline.grid) with markers and phrase starts", True)
     add("assets", "validate the assets manifest and print a table", True)
     add("fetch", "download missing assets (sha256 verified)")
     ft = sub.add_parser("footage", help="footage manifest: verify | list | add", parents=[common])
@@ -333,7 +378,9 @@ def dispatch(spec, args):
         return r, print_status, 0 if r["ok"] else 1
     if c == "check":
         from . import check
-        r = check.run(spec)
+        from .lock import heavy_lock
+        with heavy_lock("promo check"):         # loudness scans + contact sheet run ffmpeg
+            r = check.run(spec)
         return r, check.print_report, 1 if r["failed"] else 0
     if c == "compare":
         from . import compare
@@ -352,6 +399,17 @@ def dispatch(spec, args):
         else:
             print(*contact.mpeek(spec, args.out, args.specs))
         return None, None, 0
+    if c == "grid":
+        r = cmd_grid(spec, args)
+        return r, print_grid, 0 if r["ok"] else 1
+    if c in ("sfx", "vo", "music", "mix", "build", "events", "shot", "assemble", "contact"):
+        from .lock import heavy_lock
+        with heavy_lock(f"promo {c}"):          # shared with Commission-ai cargo test gates: never overlap a render and a test gate
+            return _dispatch_heavy(spec, args, c)
+    return None, None, 0
+
+
+def _dispatch_heavy(spec, args, c):
     if c in ("sfx", "vo", "music", "mix", "build", "events", "shot"):
         A.gate(spec)          # licence gate: music/vo_model/sfx must carry licence + source_url
     if c == "shot":
@@ -380,6 +438,13 @@ def main(argv=None):
         with (contextlib.redirect_stdout(sys.stderr) if as_json else contextlib.nullcontext()):
             if args.cmd == "new":
                 return cmd_new(args) or 0
+            if args.cmd == "styles":
+                r = cmd_styles()
+                if as_json:
+                    print(json.dumps(r, indent=1), file=real_out)
+                else:
+                    print_styles(r)
+                return 0
             spec = load_spec(args.project, scale=args.scale)
             payload, human, rc = dispatch(spec, args)
             if not as_json and human and payload is not None:

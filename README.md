@@ -32,7 +32,8 @@ tests/                    fast unit tests (python tests/test_core.py)
 
 ## CLI
 ```
-promo new <name>                         scaffold projects/<name>/
+promo new <name> [--style hero|anime-opening|livestream]   scaffold projects/<name>/ for a style preset
+promo styles                             list style presets (pacing, band, typography, transitions, checks)
 promo -p projects/<name>/promo.yaml <cmd>
   status [--json]                        what is up to date, stale or missing, step by step
   assets [--json] | fetch                licence gate | download music/models (sha256-verified)
@@ -41,6 +42,7 @@ promo -p projects/<name>/promo.yaml <cmd>
   build [--shots 05 06] [--force]        sfx -> vo -> music -> changed shots -> events -> mix -> assemble -> contact
   shot <id...> | sfx | vo | music | events | mix | assemble | contact     individual steps
   timeline [--json]                      shot table: beats, seconds, frames
+  grid [--json]                          bar/beat table + markers of the music grid (timeline.grid)
   check [--json]                         QA gates (exit 1 on FAIL)
   compare <ref.mp4> [--json]             per-shot PSNR + audio diff against a reference render
   peek <clip> <t> [box] | segpeek <shot> [t..] | mpeek out.png clip:t[:box] ...   framing helpers (build/peek/)
@@ -64,6 +66,8 @@ Builds are **idempotent**. Each step stamps a hash of its inputs (spec subtree, 
 | contact sheet | the contact sheet is missing, or doesn't have one tile per shot |
 | VO vs script | the whisper read-back of a VO line doesn't match the script word for word (normalised, with per-line aliases). WARN and skip if whisper isn't installed |
 | freshness | WARN if an output is stale against its inputs |
+| style: anime-opening | grid (music JSON present, no drift); bar-cuts (cuts on bar lines, half bars only beside text-free shots; cards start on bars); shot-hold (UI >= 1 bar, text-free >= 1/2 bar, `ui:` set); card-hold (>= 1 bar, words >= 0.6 s); card-band (one fixed band, no per-card positions or free overlays); card-ui-clear (no card over `ui_text`, UI shots framed above the band); fx-between (fx_in/fx_out only, <= 6 frames, never full-frame on UI shots); flash-rate (<= 3/s); claims (numbers come from claim tables or cite evidence); markers (listed grid markers land on cuts); placeholders (WARN) |
+| style: livestream | shot-hold (>= 4 s), no-fx |
 
 ## Licences
 Music is **never committed**: for example, the Pixabay Content License forbids redistributing the file standalone. `assets.yaml` holds the track page, licence, `fetch_url` and `sha256`; run `promo fetch`. The Kokoro VO model is Apache-2.0 and fetched the same way. SFX are synthesised by `promo sfx` (no samples). Raw footage stays on the box and is tracked by sha256 in the footage manifest. It never goes in git, including Git LFS.

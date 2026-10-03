@@ -31,7 +31,7 @@ def ffprobe_json(path, *args):
 
 def loudness(path):
     """ffmpeg ebur128 (peak=true): returns (integrated LUFS, true peak dBFS)."""
-    r = subprocess.run(["ffmpeg", "-nostats", "-i", path, "-vn", "-af", "ebur128=peak=true", "-f", "null", "-"], capture_output=True, text=True)
+    r = subprocess.run(["ffmpeg", "-nostats", "-threads", "2", "-i", path, "-vn", "-af", "ebur128=peak=true", "-f", "null", "-"], capture_output=True, text=True)
     tail = r.stderr[r.stderr.rfind("Summary:"):]
     i = re.search(r"I:\s+(-?[\d.]+) LUFS", tail)
     p = re.search(r"True peak:\s+Peak:\s+(-?[\d.]+) dBFS", tail) or re.search(r"Peak:\s+(-?[\d.]+) dBFS", tail)
@@ -79,7 +79,7 @@ def transcribe(path, model_name):
 
 def run(spec):
     rep = Report()
-    qa = spec.raw.get("qa", {})
+    qa = spec.qa
     hold_min = qa.get("min_caption_hold", 2.0)
     stamps = Stamps(spec.build)
 
@@ -170,6 +170,11 @@ def run(spec):
     hw = [m for st, m in holds if st == "WARN"]
     rep.add("caption-hold", "FAIL" if hf else ("WARN" if hw else "PASS"), "; ".join(hf + hw) if (hf or hw) else f"all captions >= {hold_min}s")
     rep.add("caption-zone", "FAIL" if zones else "PASS", "; ".join(zones) if zones else "all caption pills inside the safe zone")
+
+    # 7b. style-preset gates (anime-opening: bar cuts, holds, band, UI-clear cards, fx at cuts, claims, markers ...)
+    from . import style_check
+    for g, st_, msg in style_check.run(spec):
+        rep.add(g, st_, msg)
 
     # 8. contact sheet
     from . import contact

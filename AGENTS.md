@@ -34,6 +34,7 @@ What to ask for, per shot:
 - **Handoff = the footage manifest.** Media stays on the box (never git, never LFS). The capturing agent registers every take in `projects/<name>/footage/manifest.yaml` with `promo footage add <abs path> --id ... --shots ... --commit <full app SHA> --capture '<URL params>' --framing '...' --dpr 2 [--demo]` (computes sha256, probes resolution/fps, refreshes the table in `manifest.md`). Capture scripts follow `capture/README.md`. `promo build` refuses to run if a referenced clip is missing or its sha256 changed.
 
 ## 4. Spec
+Pick the **style preset** first (`promo styles`): `hero` (calm VO-led hero), `anime-opening` (kinetic cards, bar-snapped cuts from a music grid, one fixed lower-third band, flashes/speed lines only at cuts), `livestream` (long holds, chyron, no flashes). `promo new my-promo --style anime-opening` scaffolds a working spec for that look; the preset's gates run in `promo check`. Do not write a bespoke renderer for a style: extend the preset (`promo/styles.py`, `promo/shots/anime.py`) with a test.
 `promo new my-promo` scaffolds `projects/my-promo/` (`promo.yaml`, `assets.yaml`, `footage/manifest.yaml` + `manifest.md`). Fill in:
 - `output` (name, resolution 1080|2160, fps, duration), `timeline` (bpm, beats), `style` (font, caption zone).
 - `shots`: id, `beats: [start, end]`, `type` (`clip`, `card`, or a project plugin type from `shots.py`), `source: <clip id from footage/manifest.yaml>` + `t_in`/`speed` or `segs`, camera keys `cam: [[t, cx, cy, w], ...]` (normalised: centre x/y and box width as a fraction of the source width; smaller w = tighter), overlays (`caption`, `text`, `pill`, `scrim`), `sfx` events, `contact_at`.
@@ -76,6 +77,7 @@ Hand over: `out/<name>-1080.mp4` (web, -14 LUFS), `out/<name>-1080-social.mp4` (
 | QA gates, contact sheet | Final approval to publish |
 
 ## Operational notes for agents on the shared box
+- Heavy steps take the box-wide lock `/tmp/commission-ai-cargo.lock` (`promo/lock.py`, shared with Commission-ai's cargo test gates) and wait while it is held. Never SIGCONT or kill a render that something else paused.
 - Use the project venv (`/workspace/videos/commission-ai-promo/.venv` on Patrick's box has every dependency; `pip install -e .[vo,asr]` elsewhere).
 - Render one shot at a time (ffmpeg `-threads 2`); never run two renders at once. A full 1080 build takes ~15-25 min on 8 cores.
 - Do not commit media, builds or the music file; `.gitignore` covers `media/`, `build/`, `out/`, `*.mov`, `*.mp4`, `*.wav`, `*.mp3`, models.
