@@ -30,7 +30,7 @@ from promo.spec import load_spec  # noqa: E402
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--out-dir", default="/workspace/promo-reel-evals")
-ap.add_argument("--name", default="live2d-demo-v3")
+ap.add_argument("--name", default="live2d-demo-v4")
 ap.add_argument("--force", action="store_true")
 a = ap.parse_args()
 _lock = heavy_lock("live2d demo (shots + mux + contact)")
@@ -73,7 +73,7 @@ for t in times:
     d.text((528, 340), f"t = {t:.2f} s", fill=(255, 230, 90), font=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 15))
     tiles.append(im)
 sheet = Image.new("RGB", (3 * 640 + 4 * 8, 2 * 360 + 3 * 8 + 36), (20, 20, 24))
-ImageDraw.Draw(sheet).text((10, 8), "Live2D talk-show prototype: Hiyori + Mao framed by shared head/chest anchors, host-aside chat, EP 1 tag; centred credits 7.5-10 s",
+ImageDraw.Draw(sheet).text((10, 8), "Live2D talk-show prototype: shared head/chest anchors, Mao's hat breaks out above her panel; host-aside chat; credits 7.5-10 s",
                            fill=(230, 230, 230), font=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 17))
 for i, im in enumerate(tiles):
     sheet.paste(im, (8 + (i % 3) * 648, 44 + (i // 3) * 368))

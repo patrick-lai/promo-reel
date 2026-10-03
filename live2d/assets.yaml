@@ -39,9 +39,10 @@ models:
     mouth: {open: [ParamMouthOpenY], form: ParamMouthForm}
     # Framing anchors in MODEL units (x = fraction of model width, y = fraction of model height, from the top), read
     # off a full-body render (`promo live2d anchors --model hiyori` draws the grid + the measured eye/mouth lines).
+    # top = top of the FULL silhouette incl. ahoge / hat (alpha, full-body render, minus ~0.003 for physics sway);
     # head_top = top of the skull/hair (not ahoge, hats or accessories); chin; chest = mid-chest; cx = face centre;
     # mouth = QA pixel probe. promo/live2d.py `framing` turns them into the same crop for every model.
-    anchors: {head_top: 0.080, chin: 0.236, chest: 0.345, cx: 0.499, mouth: [0.499, 0.220]}
+    anchors: {top: 0.072, head_top: 0.080, chin: 0.236, chest: 0.345, cx: 0.499, mouth: [0.499, 0.220]}
   mao:
     name: Niziiro Mao (PRO)
     character_type: original
@@ -57,7 +58,7 @@ models:
     mouth: {open: [ParamA], form: null}
     # skull top is hidden by the hat: the hat band (forehead line) is at ~0.175 and the crown encloses the skull, so the
     # top of the head is ~0.03 above it (same forehead-to-crown share as Hiyori). Eye line 0.243 (measured).
-    anchors: {head_top: 0.152, chin: 0.287, chest: 0.380, cx: 0.500, mouth: [0.500, 0.282]}
+    anchors: {top: 0.082, head_top: 0.152, chin: 0.287, chest: 0.380, cx: 0.500, mouth: [0.500, 0.282]}
   natori:
     name: Jin Natori
     character_type: collaboration        # refused: Collaboration Character = non-commercial only

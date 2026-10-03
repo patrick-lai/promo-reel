@@ -26,9 +26,14 @@ promo live2d lag build/hiyori.mouth.npy host_a.wav
   from the rendered pixels (mouth probe).
 - **Framing:** every model carries `anchors` in `assets.yaml`, in model units (fraction of the model's width and
   height): `head_top` (skull/hair top, not hats or ahoge), `chin`, `chest` (mid-chest), `cx` (face centre) and
-  `mouth` (pixel lip-lag probe). `promo/live2d.py` `framing` applies one rule to all models: the head is
-  `HEAD_FRAC` (0.38) of the layer tall, its top at `HEAD_TOP_AT` (0.30), face centred. With anime proportions the
-  layer bottom lands at mid-chest. A new model just needs its anchors: render it full-body (`render_stills` /
+  `mouth` (pixel lip-lag probe), plus `top` = top of the FULL silhouette incl. hat/ahoge (first alpha row of a
+  full-body render, minus a little for physics sway). `promo/live2d.py` `framing` applies one rule to all models:
+  the head is `HEAD_FRAC` (0.48) of the PANEL tall, its top at `HEAD_TOP_AT` (0.14), face centred; with anime
+  proportions the panel bottom lands at mid-chest. Hosts are clipped by their panel's sides and bottom only:
+  anything above the head (Mao's hat) breaks out above the panel into the layer's headroom. `promo.livestream
+  .host_layout` widens the gap above each panel to fit its break-out (and only shrinks the common head scale if
+  panels would get too small), and `livestream-framing` fails if a silhouette is clipped at the top or its
+  break-out overlaps the header, another host, the screen, the chat strip or a keep-clear rectangle. A new model just needs its anchors: render it full-body (`render_stills` /
   `probe_face` measure the eye and mouth lines from pixels) and read the rest off a grid. `promo check`
   (`livestream-framing`) and `tests/test_live2d.py` check that hosts get the same head height and scale.
 - **Sidecars:** each render writes `<out>.report.json`, `<out>.mouth.npy` and `<out>.readback.json`.

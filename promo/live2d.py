@@ -466,27 +466,34 @@ def render_host(model_name, out, *, wav=None, partner_wav=None, duration=None, f
 # Shared bust framing for every host (fractions of the layer height): the head (head_top -> chin anchors) is HEAD_FRAC
 # of the layer tall and its top sits at HEAD_TOP_AT, face centre on the vertical centre line. With anime proportions
 # (mid-chest ~1.7 heads below the skull top) the layer bottom lands at mid-chest, and a hat gets ~0.8 heads of room.
-HEAD_FRAC = 0.38
-HEAD_TOP_AT = 0.30
+HEAD_FRAC = 0.48
+HEAD_TOP_AT = 0.14
 
 
 def framing(model, H, override=None):
-    """Bust framing from the model's anchors: {zoom, at_x, at_y, head_top_px, chin_px, chest_px, head_px} for a layer
-    of height H. Same rule for every model, so heads land at the same height and scale. `override` (host `frame:`)
-    may set head_frac / head_top_at, or a legacy {zoom, cy, dx} (then the px fields are None)."""
+    """Bust framing from the model's anchors for a layer of height H. The layer = `pad_top` px of break-out headroom
+    (override key, default 0) above a PANEL of height H - pad_top; fractions (head_frac, head_top_at) are of the panel.
+    Returns {zoom, at_x, at_y (layer terms, for page.html), head_top_px, chin_px, chest_px, top_px (panel-relative px;
+    top_px < 0 = the silhouette breaks out above the panel), top_layer_px (>= 0 = not clipped), head_px, panel_h}.
+    Same rule for every model, so heads land at the same height and scale. A legacy {zoom, cy, dx} override returns
+    the px fields as None."""
     o = dict(override or {})
     an = model.get("anchors")
     if "zoom" in o or not an:
         f = dict(model.get("frame") or {"zoom": 1.0, "cy": 0.5}, **o)
-        return dict(f, head_top_px=None, chin_px=None, chest_px=None, head_px=None)
+        return dict(f, head_top_px=None, chin_px=None, chest_px=None, head_px=None, top_px=None, top_layer_px=None, panel_h=H)
     hf, ht = float(o.get("head_frac", HEAD_FRAC)), float(o.get("head_top_at", HEAD_TOP_AT))
+    pad = float(o.get("pad_top", 0))
+    P = H - pad
     head = an["chin"] - an["head_top"]
-    if head <= 0 or not (an["head_top"] < an["chin"] < an["chest"]):
-        raise Live2DError(f"{model.get('id')}: anchors must satisfy head_top < chin < chest (got {an})")
-    zoom = hf / head                                    # model height in layer heights
-    px = lambda y: (ht + (y - an["head_top"]) * zoom) * H
-    return dict(zoom=zoom, at_x=[an.get("cx", 0.5), 0.5], at_y=[an["head_top"], ht],
-                head_top_px=px(an["head_top"]), chin_px=px(an["chin"]), chest_px=px(an["chest"]), head_px=hf * H)
+    top = an.get("top", an["head_top"])
+    if head <= 0 or not (top <= an["head_top"] < an["chin"] < an["chest"]):
+        raise Live2DError(f"{model.get('id')}: anchors must satisfy top <= head_top < chin < chest (got {an})")
+    zp = hf / head                                      # model height in PANEL heights
+    px = lambda y: (ht + (y - an["head_top"]) * zp) * P
+    return dict(zoom=zp * P / H, at_x=[an.get("cx", 0.5), 0.5], at_y=[an["head_top"], (pad + ht * P) / H],
+                head_top_px=px(an["head_top"]), chin_px=px(an["chin"]), chest_px=px(an["chest"]), top_px=px(top),
+                top_layer_px=pad + px(top), head_px=hf * P, panel_h=P, has_top="top" in an)
 
 
 def frame_job(model, override=None, H=None):

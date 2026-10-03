@@ -197,11 +197,16 @@ def test_credit_gate():
 def test_slot_gap():
     s = _spec()
     hs = LS.layout_at(s, 0.0)["hosts"]
-    assert hs[1][1] - hs[0][3] >= 12 and hs[1][1] - hs[0][3] == 16, hs    # default 16 px, no overlap
+    hl = LS.host_layout(LS.cfg(s))
+    gap = hs[1][1] - hs[0][3]
+    assert gap >= 16 and gap >= -hl["tops"][1] + LS.BREAK_MARGIN - 1, (hs, hl["tops"])  # >= slot_gap, fits Mao's hat
     assert hs[1][3] == LS.HOSTS_BOTTOM and LS.host_size(LS.cfg(s))[1] == hs[0][3] - hs[0][1]
-    wide = _spec(lambda r: r["livestream"].__setitem__("slot_gap", 40))
+    no_hat = _spec(lambda r: r["livestream"]["hosts"].__setitem__(1, dict(r["livestream"]["hosts"][1], model="hiyori")))
+    hn = LS.layout_at(no_hat, 0.0)["hosts"]
+    assert round(hn[1][1] - hn[0][3]) == 16                                    # no break-out: plain slot_gap
+    wide = _spec(lambda r: r["livestream"].__setitem__("slot_gap", 70))
     hw = LS.layout_at(wide, 0.0)["hosts"]
-    assert round(hw[1][1] - hw[0][3]) == 40 and _gates(wide)["livestream-side"][0] == "PASS"
+    assert round(hw[1][1] - hw[0][3]) == 70 and _gates(wide)["livestream-side"][0] == "PASS"
     assert _gates(_spec(lambda r: r["livestream"].__setitem__("slot_gap", 4)))["livestream-side"][0] == "FAIL"
 
 
@@ -309,35 +314,92 @@ def test_credits_card_text_and_centring():
 def test_framing_anchors_same_rule():
     s = _spec()
     c = LS.cfg(s)
-    hw, hh = LS.host_size(c)
-    fr = {h["model"]: L2.framing(dict(L2.model_entry(h["model"]), id=h["model"]), hh) for h in c["hosts"]}
+    hl = LS.host_layout(c)
+    hh = hl["h"]
+    fr = {h["model"]: L2.framing(dict(L2.model_entry(h["model"]), id=h["model"]), hh + hl["pads"][i], hl["frames"][i])
+          for i, h in enumerate(c["hosts"])}
     a, b = fr["hiyori"], fr["mao"]
     assert abs(a["head_top_px"] - b["head_top_px"]) < 0.5 and abs(a["head_px"] - b["head_px"]) < 0.5
     for f in fr.values():
         assert 0.9 * hh <= f["chest_px"] <= 1.05 * hh, f      # crop at mid-chest: not floating, not cut at the face
+        assert f["has_top"] and f["top_layer_px"] >= 0, f     # full silhouette inside the layer: never clipped at the top
+    assert b["top_px"] < 0 <= a["top_px"] < 0.15 * hh         # Mao's hat breaks out above her panel; little air over Hiyori
     assert "frame" not in L2.registry()["models"]["hiyori"] and "zoom" not in str(L2.registry()["models"]["mao"].get("anchors"))
     assert _gates(s)["livestream-framing"][0] == "PASS"
-    bad = _spec(lambda r: r["livestream"]["hosts"][1].__setitem__("frame", {"head_frac": 0.5}))
+    bad = _spec(lambda r: r["livestream"]["hosts"][1].__setitem__("frame", {"head_frac": 0.6}))
     assert _gates(bad)["livestream-framing"][0] == "FAIL"
 
 
+def test_breakout_never_clipped_or_overlapping():
+    s = _spec()
+    L = LS.layout_at(s, 0.0)
+    bo = L["breakouts"][1]
+    assert L["breakouts"][0] is None and bo and bo[3] == L["hosts"][1][1]    # only Mao's hat leaves her panel
+    for other in (L["header"], L["screen"], L["chat"], L["hosts"][0]) + tuple(k["box"] for k in L["keep_clear"]):
+        assert not LS.overlap(bo, other), (bo, other)
+    assert L["layers"][1][1] <= bo[1]                                      # the layer has room for the whole hat
+
+    def clipped(r):                                                         # no headroom: hat cut by the layer top
+        r["livestream"]["hosts"][1]["frame"] = {"pad_top": 0}
+    g = _gates(_spec(clipped))["livestream-framing"]
+    assert g[0] == "FAIL" and "clipped at the top" in g[1], g
+
+    real = LS.host_layout                                                   # a fixed 16 px gap (no nudge): the hat
+                                                                            # would reach into Hiyori's panel
+    def fixed_gap(c):
+        hl = dict(real(c))
+        hl["y0s"] = [hl["y0s"][0], hl["y0s"][0] + hl["h"] + 16]
+        return hl
+    LS.host_layout = fixed_gap
+    try:
+        g = _gates(_spec())["livestream-framing"]
+    finally:
+        LS.host_layout = real
+    assert g[0] == "FAIL" and "overlaps the host a panel" in g[1], g
+
+    swapped = _spec(lambda r: r["livestream"].__setitem__("hosts", r["livestream"]["hosts"][::-1]))
+    Ls = LS.layout_at(swapped, 0.0)                                         # Mao on top: first panel moves down
+    assert Ls["breakouts"][0] and not LS.overlap(Ls["breakouts"][0], Ls["header"])
+    assert _gates(swapped)["livestream-framing"][0] == "PASS"
+
+    orig = L2.model_entry
+
+    def strip_top(name):
+        m = orig(name)
+        return dict(m, anchors={k: v for k, v in m["anchors"].items() if k != "top"}) if name == "hiyori" else m
+    L2.model_entry = strip_top
+    LS._HL_CACHE.clear()
+    try:
+        g = _gates(_spec())["livestream-framing"]
+    finally:
+        L2.model_entry = orig
+        LS._HL_CACHE.clear()
+    assert g[0] == "FAIL" and "no `top` anchor" in g[1], g
+
+
 def test_hosts_render_same_head_height_and_scale():
-    """Rendered pixels (model-agnostic): eye line height and eye span of both hosts at their slot size within 5 %."""
+    """Rendered pixels (model-agnostic): eye line height and eye span of both hosts in their layers within 5 %, and the
+    full silhouette (incl. Mao's hat) starts below the layer top, i.e. is never clipped."""
     if not _render_ready():
         print("skip test_hosts_render_same_head_height_and_scale (needs `promo live2d fetch` + node)")
         return
-    hw, hh = LS.host_size(LS.cfg(_spec()))
+    c = LS.cfg(_spec())
+    hl = LS.host_layout(c)
     m = {}
-    for name in ("hiyori", "mao"):
-        r = L2.probe_face(name, hw, hh)
+    for i, h in enumerate(c["hosts"]):
+        name, W, H, ov = h["model"], hl["w"], hl["h"] + hl["pads"][i], hl["frames"][i]
+        r = L2.probe_face(name, W, H, frame=ov)
         e = r["eyes"]["box"]
-        m[name] = dict(eye_y=(e[1] + e[3]) / 2, span=e[2] - e[0], mouth=r["mouth"]["y"],
-                       probe=L2.mouth_probe_at(L2.resolve_model(name), hw, hh, r["info"]["width"] / r["info"]["height"])[1] * hh)
+        alpha_rows = np.nonzero(r["frame0"][..., 3].max(1) > 8)[0]
+        m[name] = dict(eye_y=(e[1] + e[3]) / 2, span=e[2] - e[0], mouth=r["mouth"]["y"], top=int(alpha_rows[0]),
+                       probe=L2.mouth_probe_at(L2.resolve_model(name), W, H, r["info"]["width"] / r["info"]["height"], ov)[1] * H)
     h, o = m["hiyori"], m["mao"]
     assert abs(h["eye_y"] - o["eye_y"]) <= 0.05 * max(h["eye_y"], o["eye_y"]), m      # head at the same height
     assert abs(h["span"] - o["span"]) <= 0.05 * max(h["span"], o["span"]), m          # same visible scale
     for v in m.values():
-        assert abs(v["mouth"] - v["probe"]) <= 0.02 * hh, m                           # anchors land where predicted
+        assert abs(v["mouth"] - v["probe"]) <= 0.02 * hl["h"], m                      # anchors land where predicted
+        assert v["top"] >= 2, m                                                       # silhouette not clipped at the top
+    assert o["top"] < hl["pads"][1], m                                                # the hat really breaks out
     print("framing:", m)
 
 

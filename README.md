@@ -57,7 +57,8 @@ viewer counts. Hosts stay on one side (`hosts_side: left|right`) with no slide b
 (>= 0.5 s, on a beat change) slides them off the frame edge, never behind the screen. `keep_clear` rectangles on
 the app screen may not be covered by anything (their outlines are drawn only with `promo --debug`). Every host sits
 in its own panel and is framed by per-model head/chest anchors (`live2d/assets.yaml`), so all hosts get the same
-mid-chest-up crop, head height and scale. The Live2D
+mid-chest-up crop, head height and scale; a taller silhouette (a hat, `top` anchor) breaks out above its panel,
+and `promo check` keeps that clear of everything else. The Live2D
 credit is a `live2d_credits` end card (full notice + model credits, >= 28 px, >= 2 s). `promo check` gates all of
 this. The Cubism Core and the sample models are fetched from live2d.com and never committed. Licences and the
 required notice are in [`docs/live2d-licences.md`](docs/live2d-licences.md). Example: `projects/live2d-demo/`.

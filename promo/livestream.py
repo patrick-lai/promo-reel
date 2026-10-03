@@ -9,7 +9,7 @@ Spec (show level, in promo.yaml):
       #                             # edge (never behind the screen). No second move, no instant flip (`promo check`).
       screen: {w: 1440}           # 16:9 app screen width in 1920-canvas px (area must stay >= 55 % of the frame)
       margin: 24
-      slot_gap: 16                # px between the stacked host slots (>= 12)
+      slot_gap: 16                # min px between the stacked host panels (>= 12); widened to fit a hat breaking out
       keep_clear:                 # rectangles on the APP SCREEN (normalised 0..1 of the screen) that nothing may cover;
         - {name: status-corner, box: [0.80, 0.0, 1.0, 0.14]}   # outlines drawn only with `promo --debug`
       tag: "EP 1"                 # neutral episode tag in the header (no LIVE badges, no viewer counts: linted)
@@ -32,6 +32,8 @@ what is checked is what is drawn. All boxes are [x0, y0, x1, y1] in 1920x1080 ca
 from __future__ import annotations
 
 import re
+
+import numpy as np
 
 from .render import ease
 
@@ -71,13 +73,70 @@ def slot_gap(c):
     return float(c.get("slot_gap", 16))
 
 
+BREAK_MARGIN = 6                  # px kept clear between a break-out silhouette (hat) and anything else
+MIN_PANEL_H = 300
+_HL_CACHE = {}
+
+
+def host_layout(c):
+    """Panel geometry shared by every host. Each host is clipped by its panel at the sides and bottom (mid-chest crop),
+    NOT at the top: a silhouette taller than the head (Mao's hat, anchor `top`) breaks out above the panel into the
+    layer's `pad` px of headroom. The gap above panel i (gap 0 = under the header) is widened to fit host i's
+    break-out (+ BREAK_MARGIN), i.e. the slot layout is nudged; only if the panels would then drop below MIN_PANEL_H
+    does the COMMON head scale shrink (3 % steps), so all hosts stay matched. Returns {w, h (panel), pad, gaps[n] (gap above each panel; [0] = space
+    under the header), y0s[n], head_frac, head_top_at, tops[n] (silhouette top, panel-relative px), frames[n]
+    (render overrides)}."""
+    import json
+    from . import live2d as L2
+    key = json.dumps([c.get(k) for k in ("hosts", "slot_gap", "margin", "head_frac", "head_top_at")], sort_keys=True, default=str)
+    if key in _HL_CACHE:
+        return _HL_CACHE[key]
+    hosts = c.get("hosts") or []
+    n = max(1, len(hosts))
+    margin = float(c.get("margin", 24))
+    hdr_bottom = margin + 120
+    above0 = HOSTS_TOP - hdr_bottom                     # default space between the header box and the first panel
+    avail = HOSTS_BOTTOM - hdr_bottom
+    hf, ht = float(c.get("head_frac", L2.HEAD_FRAC)), float(c.get("head_top_at", L2.HEAD_TOP_AT))
+    models = []
+    for h in hosts:
+        try:
+            models.append(dict(L2.model_entry(h["model"]), id=h["model"]))
+        except L2.Live2DError:
+            models.append(None)
+    for _ in range(40):
+        ov = [dict(dict(head_frac=hf, head_top_at=ht), **(h.get("frame") or {})) for h in hosts]
+        b = []
+        for m, o in zip(models, ov):
+            f = L2.framing(m, 1.0, {k: v for k, v in o.items() if k != "pad_top"}) if m else {}
+            b.append(max(0.0, -(f.get("top_px") or 0.0)))   # break-out height as a fraction of the panel
+        b = b or [0.0]
+        # nudge the slot layout first: each gap grows to fit the break-out below it (gap 0 = under the header)
+        P = (avail - above0 - slot_gap(c) * (n - 1)) / n
+        for _ in range(30):
+            gaps = [max(above0, b[0] * P + BREAK_MARGIN)] + [max(slot_gap(c), b[i] * P + BREAK_MARGIN) for i in range(1, n)]
+            P = (avail - sum(gaps)) / n
+        if n == 1:
+            P = min(P, 600)
+        P = int(P)
+        if P >= MIN_PANEL_H or hf < 0.2:
+            break
+        hf *= 0.97                                      # ... and only then shrink the common head scale
+    gaps = [int(np.ceil(max(above0, b[0] * P + BREAK_MARGIN)))] + [int(np.ceil(max(slot_gap(c), b[i] * P + BREAK_MARGIN))) for i in range(1, n)]
+    y0s = [HOSTS_BOTTOM - (n - i) * P - sum(gaps[i + 1:]) for i in range(n)]   # last panel ends at HOSTS_BOTTOM
+    gaps[0] = y0s[0] - hdr_bottom                                               # rounding slack goes under the header
+    pad = int(np.ceil(max(b) * P + BREAK_MARGIN)) if max(b) > 0 else 0
+    frames = [dict(dict(head_frac=hf, head_top_at=ht, pad_top=pad), **(h.get("frame") or {})) for h in hosts]
+    tops = [-bb * P for bb in b]
+    out = dict(w=HOST_W, h=P, pad=pad, pads=[int(f["pad_top"]) for f in frames], gaps=gaps, y0s=y0s, head_frac=hf, head_top_at=ht, tops=tops, frames=frames)
+    _HL_CACHE[key] = out
+    return out
+
+
 def host_size(c):
-    """(w, h) of every host layer: equal stacked panels between HOSTS_TOP and HOSTS_BOTTOM, `slot_gap` apart."""
-    n = max(1, len(c.get("hosts") or []))
-    h = (HOSTS_BOTTOM - HOSTS_TOP - slot_gap(c) * (n - 1)) / n
-    if n == 1:
-        h = min(h, 600)
-    return HOST_W, int(round(h))
+    """(w, h) of every host PANEL (the rendered layer is `host_layout(c)['pad']` px taller, for break-out headroom)."""
+    hl = host_layout(c)
+    return hl["w"], hl["h"]
 
 
 def _side_pos(c, side):
@@ -93,13 +152,14 @@ def _side_pos(c, side):
         col0 = sx0 + sw + margin
     screen = [sx0, margin, sx0 + sw, margin + sh]
     n = len(hosts)
-    hw, hh = host_size(c)
+    hl = host_layout(c)
+    hw, hh = hl["w"], hl["h"]
     hb = []
     # Stacked duo in the host column: equal panels with a `slot_gap` between them (no overlap); every host is cropped
     # by its own panel at mid-chest (same anchor framing, promo.live2d.framing). Side-by-side busts don't fit next to
     # a >= 55 % screen without covering each other's faces.
     for i in range(n):
-        y0 = HOSTS_BOTTOM - hh if n == 1 else HOSTS_TOP + i * (hh + slot_gap(c))
+        y0 = hl["y0s"][i]
         x0 = (col_w - hw) / 2
         if side == "right":
             x0 = FRAME_W - x0 - hw                      # mirror into the right-hand column
@@ -164,6 +224,10 @@ def layout_at(spec, t):
     else:
         S, hosts, hdr = B, B["hosts"], B["header"]
     L = dict(screen=S["screen"], chat=S["chat"], header=hdr, hosts=hosts, phase=ph)
+    hl = host_layout(c)
+    # layer = panel + `pad` headroom above it; break-out = the silhouette part above the panel top (e.g. a hat)
+    L["layers"] = [[b[0], b[1] - pd, b[2], b[3]] for b, pd in zip(hosts, hl["pads"])]
+    L["breakouts"] = [[b[0], b[1] + tp, b[2], b[1]] if tp < -0.5 else None for b, tp in zip(hosts, hl["tops"])]
     s = L["screen"]
     sw, sh = s[2] - s[0], s[3] - s[1]
     L["keep_clear"] = [dict(name=k.get("name", f"keep_clear_{i}"),
@@ -252,21 +316,39 @@ def check(spec, ctx=None):
     rows.append(("livestream-licence", "FAIL" if lic else "PASS",
                  "; ".join(lic) if lic else f"{len(c.get('hosts') or [])} Live2D Original Character host(s); end-card credit shot "
                  f"{good[0].id}: {float(good[0].get('size', 30)):.0f} px, {credit_hold(good[0]):.2f} s at full opacity"))
-    # 0b. framing: every host cropped by the same anchor rule (same head height + scale, layer bottom at mid-chest)
+    # 0b. framing: every host cropped by the same anchor rule (same head height + scale, panel bottom at mid-chest);
+    # the full silhouette (anchor `top`, e.g. a hat) is never clipped at the top and its break-out above the panel
+    # never covers the header, another host, the screen, the chat strip or a keep-clear rectangle.
     fr_rows, probs = [], []
-    hw, hh = host_size(c)
-    for h in c.get("hosts") or []:
+    hl = host_layout(c)
+    hh = hl["h"]
+    L0 = layout_at(spec, spec.shots[0].t0 if spec.shots else 0.0)
+    for i, h in enumerate(c.get("hosts") or []):
         try:
             m = L2.model_entry(h["model"])
         except L2.Live2DError:
             continue
-        f = L2.framing(dict(m, id=h["model"]), hh, h.get("frame"))
+        pad = hl["pads"][i]
+        f = L2.framing(dict(m, id=h["model"]), hh + pad, hl["frames"][i])
         if f["head_px"] is None:
             probs.append(f"host {h.get('id')}: no framing anchors (legacy zoom/cy framing)")
             continue
+        if not f.get("has_top"):
+            probs.append(f"host {h.get('id')} ({h['model']}): no `top` anchor (top of the full silhouette incl. hat) in live2d/assets.yaml")
         fr_rows.append((h.get("id"), f))
+        if f["top_layer_px"] < -0.5:
+            probs.append(f"host {h.get('id')}: silhouette clipped at the top by {-f['top_layer_px']:.0f} px (layer headroom {pad} px)")
         if not (0.85 * hh <= f["chest_px"] <= 1.08 * hh):
-            probs.append(f"host {h.get('id')}: mid-chest at {f['chest_px']:.0f} px of a {hh} px slot (want 0.85-1.08)")
+            probs.append(f"host {h.get('id')}: mid-chest at {f['chest_px']:.0f} px of a {hh} px panel (want 0.85-1.08)")
+        bo = L0["breakouts"][i]
+        if bo:
+            others = [("header", L0["header"]), ("app screen", L0["screen"]), ("chat strip", L0["chat"])]
+            others += [(f"host {o.get('id')} panel", L0["hosts"][j]) for j, o in enumerate(c.get("hosts") or []) if j != i]
+            others += [(f"host {o.get('id')} break-out", L0["breakouts"][j]) for j, o in enumerate(c.get("hosts") or []) if j != i and L0["breakouts"][j]]
+            others += [(f"keep-clear '{k['name']}'", k["box"]) for k in L0["keep_clear"]]
+            for nm, ob in others:
+                if overlap(bo, ob):
+                    probs.append(f"host {h.get('id')}: silhouette break-out {[round(v) for v in bo]} overlaps the {nm}")
     if len(fr_rows) > 1:
         tops = [f["head_top_px"] for _, f in fr_rows]
         heads = [f["head_px"] for _, f in fr_rows]
@@ -274,7 +356,9 @@ def check(spec, ctx=None):
             probs.append("hosts framed differently: head tops " + ", ".join(f"{t:.0f}" for t in tops) + " px, head heights "
                          + ", ".join(f"{x:.0f}" for x in heads) + " px")
     rows.append(("livestream-framing", "FAIL" if probs else "PASS", "; ".join(probs) if probs else
-                 "; ".join(f"host {i}: head {f['head_top_px']:.0f}-{f['chin_px']:.0f} px, mid-chest {f['chest_px']:.0f} px of {hh}"
+                 f"head scale {hl['head_frac']:.3f} of a {hh} px panel; " +
+                 "; ".join(f"host {i}: head {f['head_top_px']:.0f}-{f['chin_px']:.0f} px, mid-chest {f['chest_px']:.0f}, silhouette top "
+                           f"{f['top_px']:.0f} px" + (" (breaks out above the panel, clear)" if f['top_px'] < -0.5 else "")
                            for i, f in fr_rows)))
     # 1. screen share
     sw, sh = screen_size(c)
@@ -329,7 +413,7 @@ def check(spec, ctx=None):
     rows.append(("livestream-side", "FAIL" if probs else "PASS",
                  "; ".join(probs) if probs else f"hosts {side} for the whole show" +
                  (f", one {float(ms[0].get('dur', 0)):.2f}s off-edge slide at beat {ms[0]['beat']}" if ms else ", no slide") +
-                 f"; slots {slot_gap(c):g} px apart"))
+                 f"; panels {', '.join(str(g) for g in host_layout(c)['gaps'][1:]) or '-'} px apart (min {slot_gap(c):g})"))
     # 4. keep-clear: every livestream frame, nothing drawn may intersect a keep-clear rectangle on the app screen
     hits = {}
     kc = c.get("keep_clear") or []
@@ -346,6 +430,7 @@ def check(spec, ctx=None):
                 L = layout_at(spec, t)
                 items = [("chat strip", L["chat"]), ("header", L["header"])]
                 items += [(f"host {h.get('id', i)}", b) for i, (h, b) in enumerate(zip(c.get("hosts") or [], L["hosts"]))]
+                items += [(f"host {h.get('id', i)} break-out", b) for i, (h, b) in enumerate(zip(c.get("hosts") or [], L["breakouts"])) if b]
                 items += [(nm, b) for (nm, b, t0, t1) in over if t0 <= t < t1]
                 for k in L["keep_clear"]:
                     for nm, b in items:

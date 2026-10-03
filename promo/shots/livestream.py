@@ -53,8 +53,10 @@ def ensure_host_layers(spec, log=print):
     out = {}
     here = os.path.dirname(L2.__file__)
     extra = [os.path.join(L2.L2D_DIR, f) for f in ("render.mjs", "page.html", "assets.yaml")]
-    hw, hh = LS.host_size(c)
+    hl = LS.host_layout(c)
+    hw, hh = hl["w"], hl["h"]
     for i, h in enumerate(hosts):
+        fr_ov, lh = hl["frames"][i], hh + hl["pads"][i]          # layer = panel + break-out headroom above it
         hid = str(h.get("id", i))
         p = host_layer_path(spec, hid)
         wav = spec.resolve(h["wav"]) if h.get("wav") else None
@@ -62,12 +64,12 @@ def ensure_host_layers(spec, log=print):
         partner = partner[0] if partner else None
         gz = gaze_track(spec)
         dig = digest(h, file_sig(wav) if wav else None, file_sig(partner) if partner else None, spec.duration, spec.fps, spec.scale,
-                     [round(float(g), 3) for g in gz], hw, hh, code_hash(*L2D_CODE, extra_files=extra))
+                     [round(float(g), 3) for g in gz], hw, lh, fr_ov, code_hash(*L2D_CODE, extra_files=extra))
         key = f"live2d_{hid}_{spec.OW}"
         if not st.is_fresh(key, dig, [p]):
             rep = L2.render_host(h["model"], p, wav=wav, partner_wav=partner if c.get("listening_nod", True) else None,
-                                 duration=spec.duration, fps=spec.fps, width=hw * spec.scale, height=hh * spec.scale,
-                                 seed=int(h.get("seed", 1 + i)), gaze=gz, frame=h.get("frame"), log=log)
+                                 duration=spec.duration, fps=spec.fps, width=hw * spec.scale, height=lh * spec.scale,
+                                 seed=int(h.get("seed", 1 + i)), gaze=gz, frame=dict(fr_ov, pad_top=fr_ov["pad_top"] * spec.scale), log=log)
             st.write(key, dig, report=rep)
         out[hid] = p
     return out
@@ -244,15 +246,19 @@ class Livestream(ShotType):
     def _render(self, ctx, shot, c, hosts, K):
         spec, cfg = ctx.spec, shot.cfg
         layers = ensure_host_layers(spec)
-        hw, hh = LS.host_size(c)
-        readers = [LayerReader(layers[str(h.get("id", i))], hw * K, hh * K, shot.f0, spec.fps) for i, h in enumerate(hosts)]
+        hl = LS.host_layout(c)
+        hw, hh = hl["w"], hl["h"]
+        readers = [LayerReader(layers[str(h.get("id", i))], hw * K, (hh + hl["pads"][i]) * K, shot.f0, spec.fps) for i, h in enumerate(hosts)]
         tags = [name_tag(ctx, h.get("name", h["model"])) for h in hosts]
-        # every host sits in its own panel (rounded card, same size): the bust is cropped by the panel edge at
-        # mid-chest, so neither host floats and nobody is cut by the frame edge
+        # every host sits in its own panel (rounded card, same size). The host is clipped by the panel's sides and
+        # bottom (mid-chest crop, rounded bottom corners) but NOT its top: a hat breaks out above the panel into the
+        # layer's headroom (`promo check` livestream-framing keeps that break-out clear of everything else)
+        R16 = int(16 * K)
         panel = Image.new("RGBA", (hw * K, hh * K), (0, 0, 0, 0))
-        ImageDraw.Draw(panel).rounded_rectangle([0, 0, hw * K - 1, hh * K - 1], radius=int(16 * K), fill=(26, 27, 38, 215))
-        pmask = np.asarray(R.rounded_mask(hw * K, hh * K, int(16 * K))).astype(np.float32) / 255.0
-        fades = [pmask for _ in hosts]
+        ImageDraw.Draw(panel).rounded_rectangle([0, 0, hw * K - 1, hh * K - 1], radius=R16, fill=(26, 27, 38, 215))
+        pm = np.asarray(R.rounded_mask(hw * K, hh * K, R16)).astype(np.float32) / 255.0
+        pm[: hh * K // 2] = 1.0                                   # only the bottom corners round off
+        fades = [np.concatenate([np.ones((hl["pads"][i] * K, hw * K), np.float32), pm]) for i in range(len(hosts))]
         bg = stream_bg(ctx)
         sc = cfg.get("screen") or {"placeholder": "APP FOOTAGE"}
         sw, sh = LS.screen_size(c)
@@ -283,10 +289,11 @@ class Livestream(ShotType):
                 frames.append(fr)
 
             def draw_hosts():
-                for k, (fr, b) in enumerate(zip(frames, L["hosts"])):
+                for b in L["hosts"]:
                     comp(out, panel, b[0] * K, b[1] * K)
+                for fr, lb in zip(frames, L["layers"]):
                     if fr is not None:
-                        comp(out, fr, b[0] * K, b[1] * K)
+                        comp(out, fr, lb[0] * K, lb[1] * K)
                 for k, (tg_, b) in enumerate(zip(tags, L["hosts"])):
                     x = int(round(((b[0] + b[2]) / 2) * K - tg_.width / 2))
                     comp(out, tg_, x, (b[3] - 44) * K)
