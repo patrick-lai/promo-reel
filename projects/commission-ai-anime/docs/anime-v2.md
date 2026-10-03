@@ -1,26 +1,53 @@
-# commission-ai anime opening — v2 (Direction 2, style preset `anime-opening`)
+# commission-ai anime opening — v2 → v3 (Direction 2, style preset `anime-opening`)
+
+## v3: director's notes on v2 (applied 2026-10-04)
+Output now `out/anime-v3-1080.mp4` (2286 frames). What changed:
+1. **Tail:** the timeline ends where the music master ends: 76.192188 s = 224.76695 beats; the end card (19) is trimmed,
+   not padded. At 30 fps the last video frame ends at 76.200 s (frame grid); audio stops at 76.192 s, no silence added.
+2. **Opening 0–6 s:** 01 = dusk plate held (0–1.36 s); 01b = the same dusk plate, frame-continuous, steady linear
+   push-in starting on the 1.36 s intro hit (logo slam + flash there); 02 = cut on the next bar (2.71 s) to the shot-03 night
+   plate from frame 12 (lamp lit; Zen: frame 8 or later), push continues; the logo card carries over without a re-slam.
+3. **Chip montage 25.8–36.6 s (08–11):** steady push-in centred on the active stepper chip (w 0.62 → 0.54 of source width,
+   band layout). Each chip label is a `named:` element: `promo check` gate `named` requires >= 18 px cap height (same
+   minimum as the talk show) and `named-upscale` WARNs: the labels measure 27–29 px at x1.61 (upscaled from the
+   shot-08 take). When the 08-dpr2 take lands: `source: shot-08` → `source: shot-08-dpr2` on 08–11 (one line each), re-run check.
+4. **Peak 44.7–50.2 s (13):** shot-12 1x, top-left crop down to the 10:40 PM divider (src x 0–745, y 0–466:
+   sidebar + conversation pane), pillarboxed at aspect 1.6 so there is no board sliver. The reviewer's 'Approved. …' line
+   is a `named:` element: 18.9 px at x1.72 (passes, upscale WARN). Card stays in the band and `ui_text` keeps it off the
+   line. When the DPR 2 retake is approved, swap to `shot-12-dpr2` (+ its own cam / named box). Note: a `shot-12-dpr2`
+   take is already registered in v1-1080 `manifest.md` ("Shot 12 (DPR2, preferred)"); per the director it is not used yet.
+5. **Stop-time:** 16/17 stay placeholders until the 14b **dusk retake** lands; the old 14b (08:02) is not used. Then
+   18 = morning Workshop under 'GOOD MORNING.', 19 = dusk end card (bookend).
+6. **Roll call (confirmed by Commission-ai):** see "Roll call source" below.
+
+## Roll call source
+CLAUDE CODE is over PAY-103, CODEX over PAY-104, CURSOR over PAY-106. Source: Commission-ai's demo scenario
+`clients/web/src/dev/demoPromo.ts` (Commission-ai repo), checked at the capture commit `4a427fc0` and at main `00429ca5`:
+line 61 `key: "PAY-103" … agent: "claude"`, line 62 `key: "PAY-104" … agent: "codex"`, line 64 `key: "PAY-106" … agent: "cursor"`.
+Confirmed by Commission-ai on 2026-10-04. The frames show the agents' logos on those board cards (shot-10-dpr2 frozen at 0.20 s), not the words.
 
 Built with `promo new --style anime-opening` + the `anime` shot type; no bespoke renderer.
-Output: `out/anime-v2-1080.mp4` (1920x1080 30 fps, 2288 frames, 76.267 s, web master -14 LUFS / -2.2 dBTP).
+v2 output was `out/anime-v2-1080.mp4` (1920x1080 30 fps, 2288 frames, 76.267 s, web master -14 LUFS / -2.2 dBTP); v3 see above.
 Music: Pixabay 324102 edit-v1 (`anime/music/edit-v1-master.wav`), grid `edit-v1.json` (177 BPM, 1 bar = 1.356 s);
 every cut is on a bar line; intro_hit, lift, peak_start, seam_A_to_B_outro, final_hit all land on cuts.
 
 ## Text map (cards all in the fixed lower-third band y 800-1040)
 | Shot | Beats | Picture | Card |
 |---|---|---|---|
-| 01 | 0-4 | dusk Workshop (shot-01-dusk) | — |
-| 02 | 4-20 | night Workshop (shot-03-night), flash + speed lines at head | commission-ai / Your AI dev crew |
+| 01 | 0-4 | dusk Workshop (shot-01-dusk), held | — |
+| 01b | 4-8 | dusk Workshop, steady push-in from the intro hit; flash + speed lines at head | commission-ai / Your AI dev crew (slam) |
+| 02 | 8-20 | night Workshop (shot-03-night, frame 12+), push continues | commission-ai / Your AI dev crew (carried over) |
 | 03 | 20-36 | PLACEHOLDER S3 composer | ONE ASK. → TONIGHT. |
 | 04 | 36-52 | PLACEHOLDER S4 board / talk-dag | 8 TASKS. (evidence: shot-10-dpr2 "eight checkout tickets", "0 / 8 tasks done") |
 | 05-07 | 52-76 | shot-10-dpr2 frozen, push on PAY-103/104/106 cards | CLAUDE CODE / CODEX / CURSOR + "on the job" |
-| 08-11 | 76-108 | shot-08 PR card stepping Coding→PR raised | CODING. / CHECKS. / PUSHED. / PR RAISED. |
+| 08-11 | 76-108 | shot-08 PR card, push-in on the active chip (Coding→PR raised) | CODING. / CHECKS. / PUSHED. / PR RAISED. |
 | 12 | 108-132 | shot-10-dpr2 needs-you card | …ONLY WHEN IT NEEDS YOU. |
-| 13 | 132-148 | shot-12 Zen review (contain, 1.2x) | REVIEWED, WITH THE REASON WHY. |
+| 13 | 132-148 | shot-12 reviewer thread, top-left to the 10:40 PM divider (aspect 1.6) | REVIEWED, WITH THE REASON WHY. |
 | 14 | 148-160 | PLACEHOLDER shot-16 PR Open→Merged | MERGED. |
 | 15 | 160-180 | PLACEHOLDER shot-11 board all landed | `claims.merged_count` → currently ALL MERGED. |
-| 16-17 | 180-200 | PLACEHOLDER shot-14b Street glide + freeze | — |
+| 16-17 | 180-200 | PLACEHOLDER 14b dusk retake: Street glide + stop-time freeze | — |
 | 18 | 200-212 | morning Workshop (shot-15-morning) | GOOD MORNING. |
-| 19 | 212-225 | dusk freeze, blur/dim | commission-ai / Your AI dev crew, on your Mac. / macOS alpha (no URL) |
+| 19 | 212-224.767 | dusk freeze, blur/dim (ends with the music, 76.192 s) | commission-ai / Your AI dev crew, on your Mac. / macOS alpha (no URL) |
 
 ## Shot-11 claim (config table, `claims.merged_count`)
 Selected by `shot11_legible: {cards: N, logos: N}` (fill in from v1-1080 `manifest.md` "### Shot 11" once captured):
@@ -30,16 +57,17 @@ and FAILs if the selected row claims more than the manifest entry says. Same sel
 
 ## Placeholders waiting on footage
 S3 composer (03); S4 board / talk-dag (04); shot-16 PR Open→Merged (14); shot-11 board all landed (15, + fill `shot11_legible`);
-shot-14b Street glide (16) and freeze (17). Also pending: shot-12 DPR2 retake (1x in use).
+shot-14b dusk retake: Street glide (16) and freeze (17). Also pending: 08-dpr2 take (shot-08 in use) and the shot-12 DPR 2 swap (1x in use).
+Newly registered in v1-1080 since v2 but not yet wired in (not in the director's notes): `shot-15-prcard` ("Shot 16 (PR-card payoff)") and `talk-dag-tight`.
 
 ## Script vs footage mismatches
 - v1-1080 numbering ≠ script S-numbers: shot-03 is the night Workshop (no composer take; the sent ask is visible in shot-10-dpr2); shot-15 is the morning Workshop, not the merge (that is shot-16, uncaptured).
 - "Robot's light flicks on" in the night Workshop is not verified in shot-03 (lamp lights by frame 12; shot starts after it).
 - Marketing's final map drops "THE COMMANDER PLANS." — dropped.
-- Roll call wants rail rows lighting; footage only has board-card logos. Names come from the capture manifest (shot-08 spells "Codex"); shot-12 1x rail rows too small to enlarge.
-- 14b take (08:02) exists but its Street notice sits under an achievements toast — treated as not captured.
+- Roll call wants rail rows lighting; footage only has board-card logos. Agent per card confirmed from demoPromo.ts (see Roll call source); shot-08 spells "Codex".
+- 14b take (08:02) exists but its Street notice sits under an achievements toast — not used; waiting for the 14b dusk retake.
 - shot-12 shows demo persona "Maya's" in the sidebar; board reflow ghosts at source 3-4 s (avoided).
-- Music master 76.19 s vs 225-beat timeline 76.27 s → 0.08 s tail silence.
+- v3: timeline trimmed to the music master (76.192 s); the v2 0.08 s tail silence is gone.
 - Direction 2 "on the job" subtitles kept although the Marketing final map doesn't list them.
 - End-card URL off per team decision.
 - All footage is demo-mode (`footage-demo` WARN).

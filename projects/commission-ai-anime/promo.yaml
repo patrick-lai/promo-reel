@@ -4,7 +4,7 @@
 # slates: swapping one in is a config change (replace `placeholder:` with `source:` + `cam:`). No URL on the end card.
 # Heavy steps hold flock /tmp/commission-ai-cargo.lock (promo/lock.py) and run niced with ffmpeg -threads 2.
 project: {name: commission-ai-anime, title: "commission-ai anime opening (Direction 2)"}
-output: {name: anime-v2, resolution: 1080, fps: 30, duration: 76.26667}   # 225 beats @ 177 BPM = 2288 frames
+output: {name: anime-v3, resolution: 1080, fps: 30, duration: 76.192188}  # ends where the music master ends (76.192 s = 224.767 beats); 2286 frames, no tail pad
 paths: {build: build, out: out}
 assets: assets.yaml
 footage: footage/manifest.yaml
@@ -13,14 +13,15 @@ style:
   preset: anime-opening        # bar-snapped cuts, 1-bar UI holds, cards >= 1 bar in ONE fixed lower-third band, fx at cuts only
 
 # edit-v1.json: 177 BPM, 221 beats (0..220), 56 bars, 8-bar phrase flags, markers. 1 bar = 4 beats = 1.3559 s.
-# Timeline runs 225 beats (76.27 s) so the master's reverb tail (to 76.19 s) is not cut; the last 0.08 s is silence.
-timeline: {grid: "${COMMISSION_AI_PROMO:-/workspace/videos/commission-ai-promo}/anime/music/edit-v1.json", beats: 225}
+# Timeline ends exactly at the end of the music master (76.192188 s = 224.76695 beats): the end card is trimmed, not
+# padded (director v2 note 1). The video frame grid rounds the last frame to 76.200 s (2286 frames); audio ends at 76.192 s.
+timeline: {grid: "${COMMISSION_AI_PROMO:-/workspace/videos/commission-ai-promo}/anime/music/edit-v1.json", beats: 224.76695}
 
 music:
   asset: music-324102-edit-v1   # already cut + mastered on the grid: one segment from beat 0
   track_beat: 0.3389830508474576
   track_offset: 0.0
-  edit: {segments: [[0, 0, 225]], crossfade: 0.0, gains: []}
+  edit: {segments: [[0, 0, 224.76695]], crossfade: 0.0, gains: []}
 
 # Truth gate for the peak card: text is picked from what shot 11's manifest.md entry says is legible. Until shot 11 is
 # captured and Commission-ai writes its legible counts, both are null and the card shows the number-free fallback.
@@ -38,7 +39,7 @@ claims:
         - {text: "ALL MERGED."}
 
 shots:
-  # ---- pickup bar (0-1.36 s): dusk Workshop, text-free
+  # ---- pickup bar (0-1.36 s): dusk Workshop, text-free, held
   - id: "01"
     beats: [0, 4]
     type: anime
@@ -46,23 +47,38 @@ shots:
     source: shot-01-dusk
     label: "shot-01 dusk Workshop (19:30), after the first-frame brightness dip"
     t_in: 0.25                 # frames 0-7 are the brightness dip; steady from frame 8 (0.133 s)
-    cam: [[0, 0.50, 0.56, 0.90], [end, 0.50, 0.57, 0.84]]      # header bar (Workshop/Live/HD/progress) cropped out
+    cam: [[0, 0.50, 0.56, 0.90]]                                # held; header bar (Workshop/Live/HD/progress) cropped out
     contact_at: 0.8
     notes: "Header bar text cropped by the camera (box top y >= 0.10). Pet cat 'zzz' bubble is real app art."
 
-  # ---- 1.36 s intro hit: logo slam (4 bars)
+  # ---- 1.36 s intro hit: logo slam + a steady push-in starts on the same dusk plate (continuous source + framing, so
+  # the cut on the marker is invisible: the hit reads as the push starting), 1 bar
+  - id: "01b"
+    beats: [4, 8]
+    type: anime
+    ui: false
+    source: shot-01-dusk
+    label: "shot-01 dusk Workshop, steady push-in from the intro hit"
+    t_in: 1.6166667            # = 0.25 + 41 frames: continues shot 01 frame-exactly
+    cam: [[0, 0.50, 0.56, 0.90, linear], [end, 0.50, 0.565, 0.84, linear]]
+    cards:
+      - {row: title, text: "commission-ai", bars: [0, 1], fade_out: 0}
+      - {row: sub, text: "Your AI dev crew", bars: [0, 1], fade_out: 0}
+    fx_in: [{kind: flash, frames: 3}, {kind: speed_lines, frames: 6}]
+    contact_at: 0.9
+
+  # ---- 2.71 s next bar: cut to the night Workshop (lamp lit), push continues; the logo card carries over (no re-slam)
   - id: "02"
-    beats: [4, 20]
+    beats: [8, 20]
     type: anime
     ui: false
     source: shot-03-night
     label: "shot-03 night Workshop (22:00), lamp lit"
     t_in: 0.20                 # Zen: start at frame 8 or later (lamp lit from frame 7); 0.20 s = frame 12
-    cam: [[0, 0.50, 0.58, 0.80], [end, 0.50, 0.56, 0.90]]       # punch in on the hit, ease out; header cropped
+    cam: [[0, 0.50, 0.58, 0.88, linear], [end, 0.50, 0.58, 0.76, linear]]   # steady push-in; header cropped
     cards:
-      - {row: title, text: "commission-ai", bars: [0, 4]}
-      - {row: sub, text: "Your AI dev crew", bars: [0, 4]}
-    fx_in: [{kind: flash, frames: 3}, {kind: speed_lines, frames: 6}]
+      - {row: title, text: "commission-ai", bars: [0, 3], slam: false}
+      - {row: sub, text: "Your AI dev crew", bars: [0, 3]}
     contact_at: 2.0
     notes: "Script asks for a robot's light flicking on: not verified in this take (lamp is already lit at frame 7)."
 
@@ -141,7 +157,9 @@ shots:
     contact_at: 1.4
     notes: "Logo per capture manifest (shot 10: 'PAY-106 Cursor logo', Commander card says 'Answer Cursor')."
 
-  # ---- 25.76 s: montage A, the exact chip words, 2 bars each (shot-08 PAY-104 drawer, Codex)
+  # ---- 25.76 s: montage A, the exact chip words, 2 bars each (shot-08 PAY-104 drawer, Codex). Push in on the active
+  # stepper chip. shot-08 is the take in use; when the 08-dpr2 take lands, swap `source: shot-08` -> `source: shot-08-dpr2`
+  # on 08-11 (one line each; re-check the named boxes with `promo check`).
   - id: "08"
     beats: [76, 84]
     type: anime
@@ -149,7 +167,9 @@ shots:
     source: shot-08
     label: "shot-08 PAY-104 drawer: Running / Coding chip"
     segs: [{t_in: 0.0, t_out: 1.95, dur: 2.7118644}]
-    cam: [[0, 0.57, 0.35, 0.80], [end, 0.57, 0.36, 0.76]]
+    cam: [[0, 0.40, 0.4167, 0.62, linear], [end, 0.40, 0.4167, 0.54, linear]]   # steady push on the active 'Coding' chip
+    named:                     # the chip label the card names: >= 18 px cap height (gate `named`; upscale WARNs)
+      - {name: "Coding chip label", box: [720, 538, 820, 572]}
     cards: [{row: title, text: "CODING.", bars: [0, 2]}]
     fx_in: {kind: flash, frames: 3}
     contact_at: 1.4
@@ -160,7 +180,9 @@ shots:
     source: shot-08
     label: "shot-08 PAY-104 drawer: Verifying / Checks chip"
     segs: [{t_in: 2.0, t_out: 4.85, dur: 2.7118644}]
-    cam: [[0, 0.57, 0.35, 0.80], [end, 0.57, 0.36, 0.76]]
+    cam: [[0, 0.52, 0.4167, 0.62, linear], [end, 0.52, 0.4167, 0.54, linear]]   # steady push on the active 'Checks' chip
+    named:                     # the chip label the card names: >= 18 px cap height (gate `named`; upscale WARNs)
+      - {name: "Checks chip label", box: [950, 498, 1050, 534]}
     cards: [{row: title, text: "CHECKS.", bars: [0, 2]}]
     fx_in: {kind: flash, frames: 3}
     contact_at: 1.4
@@ -171,7 +193,9 @@ shots:
     source: shot-08
     label: "shot-08 PAY-104 drawer: In review / Pushed chip"
     segs: [{t_in: 4.95, t_out: 7.75, dur: 2.7118644}]
-    cam: [[0, 0.57, 0.35, 0.80], [end, 0.57, 0.36, 0.76]]
+    cam: [[0, 0.64, 0.4167, 0.62, linear], [end, 0.64, 0.4167, 0.54, linear]]   # steady push on the active 'Pushed' chip
+    named:                     # the chip label the card names: >= 18 px cap height (gate `named`; upscale WARNs)
+      - {name: "Pushed chip label", box: [1180, 502, 1285, 538]}
     cards: [{row: title, text: "PUSHED.", bars: [0, 2]}]
     fx_in: {kind: flash, frames: 3}
     contact_at: 1.4
@@ -182,7 +206,9 @@ shots:
     source: shot-08
     label: "shot-08 PAY-104 drawer: PR raised #432 chip"
     segs: [{t_in: 7.85, t_out: 9.20, dur: 2.7118644}]
-    cam: [[0, 0.57, 0.35, 0.80], [end, 0.57, 0.36, 0.76]]
+    cam: [[0, 0.76, 0.4167, 0.62, linear], [end, 0.76, 0.4167, 0.54, linear]]   # steady push on the active 'PR raised' chip
+    named:                     # the chip label the card names: >= 18 px cap height (gate `named`; upscale WARNs)
+      - {name: "PR raised chip label", box: [1400, 502, 1525, 538]}
     cards: [{row: title, text: "PR RAISED.", bars: [0, 2]}]
     fx_in: {kind: flash, frames: 3}
     contact_at: 1.4
@@ -205,17 +231,20 @@ shots:
     beats: [132, 148]
     type: anime
     ui: true
-    fit: contain               # keep Zen's 16:9 box: top-left ~1.2x, right edge in the gap before the 'Later' column
-    source: shot-12
-    label: "shot-12 (1x; DPR2 retake pending): reviewer thread 'Approved. ...' for PR #432"
+    fit: contain               # pillarboxed above the band at the panel's own aspect (no board sliver at the right edge)
+    aspect: 1.6
+    source: shot-12            # 1x take in use; when the DPR 2 retake is approved swap to shot-12-dpr2 (+ its own cam/named box)
+    label: "shot-12 (1x): reviewer thread 'Approved. ...' for PR #432, top-left crop to the 10:40 PM divider"
     segs: [{t_in: 1.70, t_out: 6.25, dur: 5.4237288}]
-    cam: [[0, 0.41667, 0.41667, 0.83333]]
+    cam: [[0, 0.19401, 0.21556, 0.38802]]   # src x 0-745 (sidebar + conversation pane), y 0-466 (down to the 10:40 PM divider)
     ui_text:
       - [0.150, 0.210, 0.385, 0.280]     # reviewer's 'Approved. Cart summary uses the pricing engine matches the plan ...'
+    named:
+      - {name: "reviewer 'Approved.' line", box: [300, 233, 712, 252]}
     cards: [{row: title, text: "REVIEWED, WITH THE REASON WHY.", bars: [0, 4]}]
     fx_in: {kind: flash, frames: 3}
     contact_at: 2.5
-    notes: "Zen crop: 1.2x top-left (x 0-0.833, y 0-0.833) down past the 10:40 PM divider; no panel sliver at the right edge. Board reflow ghosts at src 3-4 s are real. Demo persona 'Maya's' visible in the sidebar."
+    notes: "Director v2 note 4: top-left crop down to the 10:40 PM divider so 'Approved. ...' and its reason read. Card in the band, never over the line. Demo persona 'Maya's' sits below the crop."
   - id: "14"
     beats: [148, 160]
     type: anime
@@ -243,9 +272,9 @@ shots:
     type: anime
     ui: true
     placeholder:
-      id: shot-14b
-      label: "Outside -> Street glide with the real 'Your workshop is now a Street' notice (top-right)"
-      expects: "Not captured yet as specified: the 08:02 take's notice is stacked under an achievements toast (not legible).\nNo card on this shot; the notice area stays clear."
+      id: shot-14b dusk retake
+      label: "Outside -> Street glide (dusk) with the real 'Your workshop is now a Street' notice (top-right)"
+      expects: "Waiting for the 14b dusk retake. The old 14b (08:02) is NOT used: its notice is stacked under an achievements toast.\nNo card on this shot; the notice area stays clear."
     ui_text:
       - [0.70, 0.00, 1.00, 0.18]         # Street notice, top-right: never under a card
     contact_at: 2.0
@@ -256,9 +285,9 @@ shots:
     type: anime
     ui: true
     placeholder:
-      id: shot-14b freeze
-      label: "Freeze on the last Street frame (stop-time)"
-      expects: "Freeze of shot 14b once captured (freeze: <source s>)."
+      id: shot-14b dusk freeze
+      label: "Stop-time: freeze on the last Street frame of the 14b dusk retake"
+      expects: "Stays a placeholder until the 14b dusk retake lands (freeze: <source s>); the old 14b is not used.\nThen the morning Workshop under 'GOOD MORNING.' and the dusk end card bookend."
     ui_text:
       - [0.70, 0.00, 1.00, 0.18]
     contact_at: 0.6
@@ -276,7 +305,7 @@ shots:
 
   # ---- 71.86 s final hit: end card (no web address)
   - id: "19"
-    beats: [212, 225]
+    beats: [212, 224.76695]    # trimmed to the end of the music (76.192 s)
     type: anime
     ui: false
     source: shot-01-dusk
