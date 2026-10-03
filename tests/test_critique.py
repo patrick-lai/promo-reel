@@ -128,6 +128,24 @@ def test_contain_aspect_viewport():
     assert abs((vp[2] - vp[0]) - 800 * 1.6) < 1e-6 and vp[3] == 800
 
 
+def test_timeline_may_end_off_grid_but_cuts_may_not():
+    from promo import check
+    p, _ = still_project(tempfile.mkdtemp())
+    raw = yaml.safe_load(open(p))
+    end = 23.7
+    raw["shots"][-1]["beats"] = [16, end]
+    raw["timeline"]["beats"] = end
+    raw["output"]["duration"] = end * B
+    yaml.safe_dump(raw, open(p, "w"), sort_keys=False)
+    rows = {r["gate"]: r for r in check.run(load_spec(p))["results"]}
+    assert "off the beat grid" not in rows["beat-grid"]["msg"] and "ends off-grid at beat 23.7" in rows["beat-grid"]["msg"], rows["beat-grid"]
+    raw["shots"][-2]["beats"] = [12, 15.25]
+    raw["shots"][-1]["beats"] = [15.25, end]
+    yaml.safe_dump(raw, open(p, "w"), sort_keys=False)
+    rows = {r["gate"]: r for r in check.run(load_spec(p))["results"]}
+    assert "off the beat grid" in rows["beat-grid"]["msg"]
+
+
 # ---------------------------------------------------------------- critique pack
 def test_kind_and_default_sources():
     p, _ = still_project(tempfile.mkdtemp())

@@ -77,6 +77,25 @@ def transcribe(path, model_name):
     return " ".join(s.text.strip() for s in segs)
 
 
+def _anime_effective_dpr(spec, warns, limit=1.5):
+    """Anime shots frame footage in a viewport narrower than the frame (band / contain): restate their soft-upscale WARNs
+    with the real effective scale (viewport px per source px), and drop them when that is within the limit."""
+    from . import footage as FT
+    out = []
+    for w in warns:
+        sid = w.split(":")[0].replace("shot ", "")
+        s = next((x for x in spec.shots if x.id == sid), None)
+        if s is None or s.type != "anime":
+            out.append(w)
+            continue
+        from .shots.anime import viewport
+        vp = viewport(spec, s)
+        mag = FT.max_magnification(s) * (vp[2] - vp[0]) / 1920
+        if mag > limit:
+            out.append(w.replace(w.split(":")[1].split(" push-in")[0], f" {mag:.2f}x effective"))
+    return out
+
+
 def run(spec):
     rep = Report()
     qa = spec.qa
@@ -91,6 +110,7 @@ def run(spec):
         bad = [r for r in FT.verify(spec) if not r["ok"]]
         rep.add("footage", "FAIL" if bad else "PASS", "; ".join(r["error"] for r in bad) if bad else f"{len(FT.referenced(spec))} referenced clips present, sha256 match")
         dpr_w, demo = FT.qa_findings(spec)
+        dpr_w = _anime_effective_dpr(spec, dpr_w)
         rep.add("footage-dpr", "WARN" if dpr_w else "PASS", "; ".join(dpr_w) if dpr_w else "no soft-upscale risk (dpr >= 2 or push-in <= 1.5x)")
         rep.add("footage-demo", "WARN" if demo else "PASS", f"demo-mode footage in use: {', '.join(demo)}" if demo else "no demo-mode footage")
     except FT.FootageError as e:
@@ -100,7 +120,10 @@ def run(spec):
 
     # 5. beat grid
     sub = qa.get("beat_subdivision", 1)
-    bad = [s.id for s in spec.shots if any(abs(b * sub - round(b * sub)) > 1e-9 for b in (s.b0, s.b1))]
+    # the very end may stop off-grid (trimmed to where the music ends, e.g. timeline.beats: 224.76695); every cut stays on the grid
+    last = spec.shots[-1] if spec.shots else None
+    bad = [s.id for s in spec.shots if any(abs(b * sub - round(b * sub)) > 1e-9 for b in (s.b0, s.b1)
+                                           if not (s is last and b == s.b1 and abs(b - spec.timeline.beats) < 1e-9))]
     expect = round(spec.duration * spec.fps)
     tot = spec.total_frames()
     msgs = []
@@ -117,7 +140,8 @@ def run(spec):
                     msgs.append(f"segment {s.id}: {n} frames != {s.n}")
             except Exception as e:  # noqa: BLE001
                 msgs.append(f"segment {s.id}: unreadable ({e})")
-    rep.add("beat-grid", "FAIL" if msgs else "PASS", "; ".join(msgs) if msgs else f"all cuts on beats, {tot} frames, rendered segments match")
+    rep.add("beat-grid", "FAIL" if msgs else "PASS", "; ".join(msgs) if msgs else f"all cuts on beats, {tot} frames, rendered segments match"
+            + (f"; ends off-grid at beat {spec.timeline.beats:g} (tail trimmed to output.duration)" if abs(spec.timeline.beats - round(spec.timeline.beats * sub) / sub) > 1e-9 else ""))
 
     # 2/3/4. per-output checks
     for m in spec.masters:
