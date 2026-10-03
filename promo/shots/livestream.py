@@ -5,6 +5,11 @@ Shot keys (per shot; the show-level layout, hosts and chat live in the spec's `l
     screen: {placeholder: "APP FOOTAGE"}                                       grey placeholder for drafts / demos
     overlays: [...]                                                            usual overlays (QA'd against keep-clear)
 
+`live2d_credits` shot (end card): the full Live2D notice + per-model credits from live2d/assets.yaml at body size.
+    size: 30          # text px at 1080p (`promo check` requires >= 28)
+    fade_in: 0.25     # the remaining shot duration (>= 2 s) is full opacity; no fade-out
+    title: "Credits"
+
 Host layers are rendered once for the whole show by `promo.live2d.render_host` (offline, deterministic, ProRes 4444
 with alpha) into build/live2d/, stamped by a digest of the host config, WAV hashes and renderer code, and re-used by
 every livestream shot. Layer frame = global frame index, so cuts between livestream shots stay in lip sync.
@@ -48,6 +53,7 @@ def ensure_host_layers(spec, log=print):
     out = {}
     here = os.path.dirname(L2.__file__)
     extra = [os.path.join(L2.L2D_DIR, f) for f in ("render.mjs", "page.html", "assets.yaml")]
+    hw, hh = LS.host_size(c)
     for i, h in enumerate(hosts):
         hid = str(h.get("id", i))
         p = host_layer_path(spec, hid)
@@ -56,11 +62,11 @@ def ensure_host_layers(spec, log=print):
         partner = partner[0] if partner else None
         gz = gaze_track(spec)
         dig = digest(h, file_sig(wav) if wav else None, file_sig(partner) if partner else None, spec.duration, spec.fps, spec.scale,
-                     [round(float(g), 3) for g in gz], LS.HOST_W, LS.HOST_H, code_hash(*L2D_CODE, extra_files=extra))
+                     [round(float(g), 3) for g in gz], hw, hh, code_hash(*L2D_CODE, extra_files=extra))
         key = f"live2d_{hid}_{spec.OW}"
         if not st.is_fresh(key, dig, [p]):
             rep = L2.render_host(h["model"], p, wav=wav, partner_wav=partner if c.get("listening_nod", True) else None,
-                                 duration=spec.duration, fps=spec.fps, width=LS.HOST_W * spec.scale, height=LS.HOST_H * spec.scale,
+                                 duration=spec.duration, fps=spec.fps, width=hw * spec.scale, height=hh * spec.scale,
                                  seed=int(h.get("seed", 1 + i)), gaze=gz, frame=h.get("frame"), log=log)
             st.write(key, dig, report=rep)
         out[hid] = p
@@ -120,12 +126,28 @@ def dashed_rect(d, box, K, col=(255, 210, 80, 230)):
             p += 2 * dash
 
 
-def chat_panel(ctx, box, lines, t):
+def pill(ctx, text, size=20, fill=(70, 74, 88, 235), fg=(235, 237, 245, 255), weight="Bold"):
+    f = ctx.font(size, weight)
+    d = ImageDraw.Draw(Image.new("RGBA", (4, 4)))
+    tw = d.textlength(text, font=f)
+    w, h = int(tw + 28 * ctx.K), int((size + 16) * ctx.K)
+    im = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    dd = ImageDraw.Draw(im)
+    dd.rounded_rectangle([0, 0, w - 1, h - 1], radius=int(8 * ctx.K), fill=fill)
+    dd.text((14 * ctx.K, 6 * ctx.K), text, font=f, fill=fg)
+    return im
+
+
+def chat_panel(ctx, box, lines, t, label=None):
+    """Chat strip. Lines are the hosts' own asides; `label` (e.g. "scripted chat") is drawn top-right, always visible."""
     K = ctx.K
     w, h = int((box[2] - box[0]) * K), int((box[3] - box[1]) * K)
     im = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     d = ImageDraw.Draw(im)
     d.rounded_rectangle([0, 0, w - 1, h - 1], radius=int(12 * K), fill=(16, 17, 24, 200))
+    if label:
+        lp = pill(ctx, label, 18, fill=(60, 64, 78, 240), weight="SemiBold")
+        im.alpha_composite(lp, (int(w - lp.width - 12 * K), int(10 * K)))
     fu, ft = ctx.font(24, "Bold"), ctx.font(24, "Medium")
     lh = (h - 24 * K) / LS.MAX_CHAT_LINES
     cols = [(255, 138, 101), (129, 199, 255), (178, 235, 120), (240, 160, 255), (255, 214, 102)]
@@ -135,7 +157,7 @@ def chat_panel(ctx, box, lines, t):
         a = min(1.0, max(0.0, (t - float(ln["t"])) / 0.25))
         y = 12 * K + slot * lh + (1 - a) * 10 * K
         x = 20 * K
-        user = str(ln.get("user", "viewer"))
+        user = str(ln.get("user", ""))
         col = cols[sum(map(ord, user)) % len(cols)]
         d.text((x, y), user, font=fu, fill=col + (int(255 * a),))
         x += d.textlength(user + "  ", font=fu)
@@ -143,27 +165,22 @@ def chat_panel(ctx, box, lines, t):
     return im
 
 
-def header_panel(ctx, box, title, notice):
+def header_panel(ctx, box, title, tag="EP 1"):
+    """Neutral episode tag (grey pill, no LIVE badge) + title. The Live2D credit lives on the end card, not here."""
     K = ctx.K
     w, h = int((box[2] - box[0]) * K), int((box[3] - box[1]) * K)
     im = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     d = ImageDraw.Draw(im)
-    fl = ctx.font(22, "Bold")
-    lw = d.textlength("LIVE", font=fl)
-    d.rounded_rectangle([0, 6 * K, lw + 46 * K, 44 * K], radius=int(8 * K), fill=(229, 57, 53, 255))
-    d.ellipse([12 * K, 19 * K, 24 * K, 31 * K], fill=(255, 255, 255, 255))
-    d.text((32 * K, 11 * K), "LIVE", font=fl, fill=(255, 255, 255, 255))
-    y = 58 * K
+    y = 6 * K
+    if tag:
+        tp = pill(ctx, tag, 20)
+        im.alpha_composite(tp, (0, int(y)))
+        y += tp.height + 14 * K
     if title:
         ft = ctx.font(26, "SemiBold")
         for ln in textwrap.wrap(title, 26)[:2]:
             d.text((0, y), ln, font=ft, fill=(240, 240, 245, 255))
             y += 32 * K
-    fn = ctx.font(13, "Medium")
-    y = max(y + 4 * K, h - 3 * 17 * K)
-    for ln in textwrap.wrap(notice, 52)[:3]:
-        d.text((0, y), ln, font=fn, fill=(170, 172, 186, 255))
-        y += 17 * K
     return im
 
 
@@ -220,15 +237,22 @@ class Livestream(ShotType):
             raise ValueError("livestream shot needs a show-level `livestream:` block in promo.yaml")
         K = ctx.K
         hosts = c.get("hosts") or []
+        from ..lock import heavy_lock
+        with heavy_lock(f"livestream shot {shot.id}"):        # whole render holds /tmp/commission-ai-cargo.lock (re-entrant)
+            return self._render(ctx, shot, c, hosts, K)
+
+    def _render(self, ctx, shot, c, hosts, K):
+        spec, cfg = ctx.spec, shot.cfg
         layers = ensure_host_layers(spec)
-        readers = [LayerReader(layers[str(h.get("id", i))], LS.HOST_W * K, LS.HOST_H * K, shot.f0, spec.fps) for i, h in enumerate(hosts)]
+        hw, hh = LS.host_size(c)
+        readers = [LayerReader(layers[str(h.get("id", i))], hw * K, hh * K, shot.f0, spec.fps) for i, h in enumerate(hosts)]
         tags = [name_tag(ctx, h.get("name", h["model"])) for h in hosts]
         # hosts whose layer ends above the frame bottom get a soft fade instead of a hard cut across the body
         L0 = LS.layout_at(spec, shot.t0)
         fades = []
         for b in L0["hosts"]:
             if b[3] < LS.FRAME_H - 1:
-                hpx, fpx = LS.HOST_H * K, int(110 * K)
+                hpx, fpx = hh * K, int(110 * K)
                 g = np.ones(hpx, np.float32)
                 g[hpx - fpx:] = np.linspace(1, 0, fpx) ** 1.5
                 fades.append(g[:, None])
@@ -245,11 +269,10 @@ class Livestream(ShotType):
             still = None
         else:
             still = framed(ctx, placeholder_screen(ctx, SW, SH, sc.get("placeholder", "APP FOOTAGE")))
-        from .. import live2d as L2
-        notice = L2.registry()["notice"]["short"]
         hdr_cache = {}
         overlays = build_overlays(ctx, cfg.get("overlays"))
-        show_kc = bool(c.get("show_keep_clear")) and src is None       # outline only on placeholders, never on real UI
+        show_kc = os.environ.get("PROMO_DEBUG") == "1"        # keep-clear outlines: `promo --debug` only, never in normal output
+        label = (c.get("chat") or {}).get("scripted_label")
 
         def f(i, t):
             tg = shot.t0 + t
@@ -275,13 +298,10 @@ class Livestream(ShotType):
             key = tuple(round(v, 1) for v in hb)
             if key not in hdr_cache:
                 hdr_cache.clear()
-                hdr_cache[key] = header_panel(ctx, hb, c.get("title", ""), notice)
+                hdr_cache[key] = header_panel(ctx, hb, c.get("title", ""), c.get("tag", "EP 1"))
 
             def draw_header():
                 comp(out, hdr_cache[key], hb[0] * K, hb[1] * K)
-            if L["hosts_z"] == "below":
-                draw_header()
-                draw_hosts()
             if src is not None:
                 im = src.frame(sc.get("t_in", 0.0) + t * sc.get("speed", 1.0))
                 cam = sc.get("cam", (0.5, 0.5, 1.0))
@@ -294,11 +314,10 @@ class Livestream(ShotType):
                 d = ImageDraw.Draw(out)
                 for kc in L["keep_clear"]:
                     dashed_rect(d, [v * K for v in kc["box"]], K)
-            if L["hosts_z"] == "above":
-                draw_header()
-                draw_hosts()
+            draw_header()          # hosts/header never overlap the screen (a move slides them off the frame edge)
+            draw_hosts()
             ch = L["chat"]
-            comp(out, chat_panel(ctx, ch, LS.chat_lines_at(c, tg), tg), ch[0] * K, ch[1] * K)
+            comp(out, chat_panel(ctx, ch, LS.chat_lines_at(c, tg), tg, label), ch[0] * K, ch[1] * K)
             return apply_overlays(overlays, out, t)
 
         try:
@@ -311,4 +330,78 @@ class Livestream(ShotType):
         return dict(src=sc.get("source") or "placeholder screen", inout=f"global frames {shot.f0}-{shot.f0 + shot.n - 1}",
                     move=f"livestream layout, hosts {c.get('hosts_side', 'left')}" + (", one slide" if LS.moves(c) else ""),
                     caption=" / ".join(f"'{o.cfg['text']}'" for o in overlays if o.role == "caption") or "none",
-                    notes=f"Live2D hosts: {', '.join(h['model'] for h in hosts)}; notice: {notice}")
+                    notes=f"Live2D hosts: {', '.join(h['model'] for h in hosts)}; credit on the live2d_credits end card")
+
+
+def credit_lines(spec):
+    """(notice, [(model name, credit)]) for every Live2D model used by the show's hosts."""
+    from .. import live2d as L2
+    reg = L2.registry()
+    seen, models = set(), []
+    for h in LS.cfg(spec).get("hosts") or []:
+        if h["model"] in seen:
+            continue
+        seen.add(h["model"])
+        m = reg["models"][h["model"]]
+        models.append((m["name"], m.get("credit", "")))
+    return reg["notice"]["long"], models
+
+
+def credits_card(ctx, notice, models, size=30, title="Credits"):
+    K = ctx.K
+    out = stream_bg(ctx)
+    d = ImageDraw.Draw(out)
+    W = ctx.OW
+    fb, fh, fn = ctx.font(size, "Medium"), ctx.font(size * 1.6, "Bold"), ctx.font(size, "Bold")
+    lh = size * 1.45 * K
+    x0 = 200 * K
+    maxw = W - 2 * x0
+    blocks = []
+    if title:
+        blocks.append([(title, fh, (255, 255, 255, 255), size * 2.4 * K)])
+
+    def wrap(text, font, col):
+        words, line, rows = text.split(), "", []
+        for wd in words:
+            cand = (line + " " + wd).strip()
+            if d.textlength(cand, font=font) > maxw and line:
+                rows.append((line, font, col, lh))
+                line = wd
+            else:
+                line = cand
+        if line:
+            rows.append((line, font, col, lh))
+        return rows
+    blocks.append(wrap(notice, fb, (228, 230, 238, 255)))
+    for name, cr in models:
+        blocks.append(wrap(f"{name}: {cr}", fb, (228, 230, 238, 255)) if cr else wrap(name, fb, (228, 230, 238, 255)))
+    blocks.append(wrap("Live2D sample models used under the Live2D Free Material License (Original Characters).", fb, (180, 184, 198, 255)))
+    total = sum(r[3] for b in blocks for r in b) + 24 * K * (len(blocks) - 1)
+    y = (ctx.OH - total) / 2
+    for b in blocks:
+        for text, font, col, adv in b:
+            d.text((x0, y), text, font=font, fill=col)
+            y += adv
+        y += 24 * K
+    return out
+
+
+@shot_type("live2d_credits")
+class Live2DCredits(ShotType):
+    """End card with the full Live2D notice + model credits (body size, >= 2 s at full opacity)."""
+
+    def render(self, ctx, shot):
+        notice, models = credit_lines(ctx.spec)
+        size = float(shot.get("size", 30))
+        card = credits_card(ctx, notice, models, size=size, title=shot.get("title", "Credits"))
+        bg = stream_bg(ctx)
+        fin = float(shot.get("fade_in", 0.25))
+        overlays = build_overlays(ctx, shot.cfg.get("overlays"))
+
+        def f(i, t):
+            a = 1.0 if fin <= 0 else min(1.0, t / fin)
+            return apply_overlays(overlays, Image.blend(bg, card, a) if a < 1 else card.copy(), t)
+        R.run_shot(ctx, shot, f)
+        return dict(src="generated end card", inout="-", move="none", caption="none",
+                    notes=f"Live2D notice + credits for {', '.join(n for n, _ in models)} at {size:.0f} px, "
+                          f"{shot.dur - fin:.2f} s at full opacity")

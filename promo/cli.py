@@ -30,7 +30,8 @@ def log(args, *a):
 def shot_digest(spec, shot):
     clips = {cid: FT.verified_sha(spec, cid) for cid in sorted(FT.referenced(spec, {shot.id})) if os.path.exists(FT.clip_path(spec, cid))}
     plates = {k: v for k, v in (spec.raw.get("plates") or {}).items()}
-    return digest(shot.cfg, shot.n, spec.raw.get("style"), plates, spec.scale, spec.fps, clips,
+    return digest(shot.cfg, shot.n, spec.raw.get("style"), plates, spec.scale, spec.fps, clips, spec.raw.get("livestream"),
+                  os.environ.get("PROMO_DEBUG") == "1",
                   code_hash(*SHOT_CODE, extra_files=spec.plugins))
 
 
@@ -256,6 +257,7 @@ def build_parser():
     common.add_argument("--scale", type=int, choices=(1, 2), default=S, help="1 = 1080p, 2 = 2160p (also PROMO_SCALE)")
     common.add_argument("--force", action="store_true", default=S, help="ignore stamps, redo the step")
     common.add_argument("-v", "--verbose", action="store_true", default=S)
+    common.add_argument("--debug", action="store_true", default=S, help="debug overlays (e.g. livestream keep-clear boxes); never for delivery")
     ap = argparse.ArgumentParser(prog="promo", description="Declarative product promo-video pipeline", parents=[common])
     sub = ap.add_subparsers(dest="cmd", required=True)
 
@@ -353,6 +355,14 @@ def dispatch(spec, args):
         else:
             print(*contact.mpeek(spec, args.out, args.specs))
         return None, None, 0
+    if c in ("sfx", "vo", "music", "mix", "build", "events", "shot", "assemble", "contact"):
+        from .lock import heavy_lock
+        with heavy_lock(f"promo {c}"):          # shared with Commission-ai cargo test gates: never overlap a render and a test gate
+            return _dispatch_heavy(spec, args, c)
+    return None, None, 0
+
+
+def _dispatch_heavy(spec, args, c):
     if c in ("sfx", "vo", "music", "mix", "build", "events", "shot"):
         A.gate(spec)          # licence gate: music/vo_model/sfx must carry licence + source_url
     if c == "shot":
@@ -378,6 +388,8 @@ def main(argv=None):
     args.scale = getattr(args, "scale", None)
     args.force = getattr(args, "force", False)
     args.verbose = getattr(args, "verbose", False)
+    if getattr(args, "debug", False):
+        os.environ["PROMO_DEBUG"] = "1"
     as_json = getattr(args, "json", False)
     real_out = sys.stdout
     try:

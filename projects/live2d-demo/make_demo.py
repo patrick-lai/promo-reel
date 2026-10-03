@@ -1,11 +1,13 @@
 """Build the 10 s Live2D talk-show demo end to end (prototype; no music/VO pipeline needed).
 
-    python projects/live2d-demo/make_demo.py [--out-dir /workspace/promo-reel-evals]
+    nice -n 10 python projects/live2d-demo/make_demo.py [--out-dir /workspace/promo-reel-evals] [--name live2d-demo-v2]
 
-1. `promo shot 01 02` (renders both Live2D host layers once, niced + locked, then composites the livestream shots)
-2. concat the segments + mix the two host WAVs -> <out-dir>/live2d-demo.mp4
-3. 6-frame contact sheet -> <out-dir>/live2d-demo-contact.png
-4. lip-lag + render-speed report -> <out-dir>/live2d-demo-report.json
+The whole run holds the shared heavy-work lock (/tmp/commission-ai-cargo.lock, see promo/lock.py), so it never
+overlaps a Commission-ai cargo test gate or another render; it blocks (and logs) while the lock is busy.
+1. `promo shot 01 02 03` (renders both Live2D host layers once, then the livestream shots + the credits end card)
+2. concat the segments + mix the two host WAVs -> <out-dir>/<name>.mp4
+3. 6-frame contact sheet -> <out-dir>/<name>-contact.png
+4. lip-lag + render-speed report -> <out-dir>/<name>-report.json
 """
 import argparse
 import json
@@ -23,12 +25,16 @@ from PIL import Image, ImageDraw, ImageFont  # noqa: E402
 from promo import live2d as L2  # noqa: E402
 from promo.cache import Stamps  # noqa: E402
 from promo.cli import main as promo_main  # noqa: E402
+from promo.lock import heavy_lock  # noqa: E402
 from promo.spec import load_spec  # noqa: E402
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--out-dir", default="/workspace/promo-reel-evals")
+ap.add_argument("--name", default="live2d-demo-v2")
 ap.add_argument("--force", action="store_true")
 a = ap.parse_args()
+_lock = heavy_lock("live2d demo (shots + mux + contact)")
+_lock.__enter__()
 spec_path = os.path.join(HERE, "promo.yaml")
 spec = load_spec(spec_path)
 os.makedirs(a.out_dir, exist_ok=True)
@@ -46,7 +52,7 @@ with open(lst, "w") as f:
         f.write(f"file '{spec.seg_path(s.id)}'\n")
 hosts = spec.raw["livestream"]["hosts"]
 wavs = [spec.resolve(h["wav"]) for h in hosts]
-mp4 = os.path.join(a.out_dir, "live2d-demo.mp4")
+mp4 = os.path.join(a.out_dir, f"{a.name}.mp4")
 cmd = ["nice", "-n", "10", "ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", lst]
 for w in wavs:
     cmd += ["-i", w]
@@ -55,7 +61,7 @@ cmd += ["-filter_complex", "".join(f"[{i + 1}:a]" for i in range(len(wavs))) + f
 subprocess.run(cmd, check=True)
 
 # 6-frame contact sheet
-times = [1.2, 3.9, 5.5, 6.4, 7.2, 8.6]
+times = [1.2, 3.6, 5.0, 6.2, 7.0, 9.0]
 tiles = []
 for t in times:
     tmp = os.path.join(spec.build, "peek", f"demo-{t:.2f}.png")
@@ -67,11 +73,11 @@ for t in times:
     d.text((528, 340), f"t = {t:.2f} s", fill=(255, 230, 90), font=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 15))
     tiles.append(im)
 sheet = Image.new("RGB", (3 * 640 + 4 * 8, 2 * 360 + 3 * 8 + 36), (20, 20, 24))
-ImageDraw.Draw(sheet).text((10, 8), "Live2D talk-show prototype: Hiyori (left) + Mao, livestream layout, one slide at 6.0 s (hosts pass behind the screen)",
+ImageDraw.Draw(sheet).text((10, 8), "Live2D talk-show prototype: Hiyori + Mao (left, stacked 16 px apart), host-aside chat, EP 1 tag; credits end card 7.5-10 s",
                            fill=(230, 230, 230), font=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 17))
 for i, im in enumerate(tiles):
     sheet.paste(im, (8 + (i % 3) * 648, 44 + (i // 3) * 368))
-png = os.path.join(a.out_dir, "live2d-demo-contact.png")
+png = os.path.join(a.out_dir, f"{a.name}-contact.png")
 sheet.save(png)
 
 # report: per-host render speed + lip lag (planned track, and values read back from the Cubism model per rendered frame)
@@ -83,6 +89,8 @@ for i, h in enumerate(hosts):
 from promo import check as CK  # noqa: E402
 from promo import livestream as LS  # noqa: E402
 rep["livestream_gates"] = LS.check(spec)
-with open(os.path.join(a.out_dir, "live2d-demo-report.json"), "w") as f:
+rep["total_wall_s"] = round(time.time() - t0, 1)
+with open(os.path.join(a.out_dir, f"{a.name}-report.json"), "w") as f:
     json.dump(rep, f, indent=1)
+_lock.__exit__(None, None, None)
 print(json.dumps(rep, indent=1))

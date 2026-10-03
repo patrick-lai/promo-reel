@@ -40,7 +40,9 @@ What to ask for, per shot:
 - `music` (asset, bpm, track grid, edit segments on bar lines), `vo` (engine, voice, lines with shot + `at`), `sfx` library, `mix` (bus levels, ducking, masters), `qa` thresholds.
 Talk-show layouts with Live2D hosts use the `livestream` shot type plus a show-level `livestream:` block. See
 `projects/live2d-demo/promo.yaml`, `live2d/README.md` and **`docs/live2d-licences.md`**. Only Live2D Original
-Characters are allowed, and the copyright notice must go in the description. **HUMAN:** confirm that the publisher
+Characters are allowed; the copyright notice goes on the `live2d_credits` end card (gated) and in the description.
+Never fake an audience: chat lines are the hosts' own asides (or the strip carries a visible `scripted_label`), no
+LIVE badge, no viewer counts. **HUMAN:** confirm that the publisher
 is a General User or Small-Scale Enterprise (sales below JPY 10M) or holds Live2D's written approval.
 Use `promo peek <src> <t>` / `promo mpeek` (normalised grid overlays) to read coordinates for camera boxes and anchors off real frames. Bespoke shot types go in the project's `shots.py` (see the example's composer / rail_labels / tilt_card / float_window / tiles).
 
@@ -81,6 +83,7 @@ Hand over: `out/<name>-1080.mp4` (web, -14 LUFS), `out/<name>-1080-social.mp4` (
 
 ## Operational notes for agents on the shared box
 - Use the project venv (`/workspace/videos/commission-ai-promo/.venv` on Patrick's box has every dependency; `pip install -e .[vo,asr]` elsewhere).
-- Render one shot at a time (ffmpeg `-threads 2`); never run two renders at once. A full 1080 build takes ~15-25 min on 8 cores.
+- Render one shot at a time (ffmpeg `-threads 2`); never run two renders at once. Heavy renders hold
+  `flock /tmp/commission-ai-cargo.lock` (shared with Commission-ai's cargo test gates; `promo` takes it itself). A full 1080 build takes ~15-25 min on 8 cores.
 - Do not commit media, builds or the music file; `.gitignore` covers `media/`, `build/`, `out/`, `*.mov`, `*.mp4`, `*.wav`, `*.mp3`, models.
 - Do not git push or publish unless the human asked for that specific action.

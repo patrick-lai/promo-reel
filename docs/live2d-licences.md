@@ -30,8 +30,10 @@ these terms:
 - **Where long text is hard or impossible** (X/Twitter, Facebook, Instagram, TikTok, ...):
   > This content uses sample data owned and copyrighted by Live2D Inc.
 
-The `livestream` shot draws the short notice in the header of the host column on every frame. A human must still
-put the long notice in the description when the video is published.
+In the video, the `live2d_credits` shot type renders an end card with the **long** notice plus each model's credit
+(from `live2d/assets.yaml`) at body-text size (default 30 px, at least 28 px at 1080p), held at full opacity for at
+least 2 s. `promo check` (`livestream-licence`) fails without it. There is no micro-text notice in the header. A
+human must still put the long notice in the description when the video is published.
 Model ReadMe credits (from each archive's `ReadMe.txt`): Hiyori: "Illustration：Kani Biimu / Modeling：Live2D".
 Mao: "Illustration: Live2D Inc. / Modeling: Live2D Inc.".
 
@@ -100,7 +102,7 @@ agreement."). It is fetched from `https://cubism.live2d.com/sdk-web/cubismcore/l
 ## 5. Publish checklist (HUMAN)
 1. The publishing entity is a General User or Small-Scale Enterprise (sales below JPY 10 million, not controlled by
    a larger company), or it has written Live2D approval (Simple License Plan or Publication License).
-2. The long copyright notice is in the description, and the in-frame short notice is visible.
+2. The long copyright notice is in the description, and the end-card credit (notice + model credits) is readable.
 3. No Collaboration or external characters. No bundled voice data. No edits to the models' design.
 4. The content is not unsuitable under the sample terms (no erotic, violent or grotesque content, nothing that
    misrepresents the character).

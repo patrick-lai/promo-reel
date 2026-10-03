@@ -100,6 +100,13 @@ def test_livestream_demo_passes():
     assert all(st == "PASS" for st, _ in g.values()), g
 
 
+MOVE = {"beat": 9, "dur": 0.9}                              # the 01 -> 02 cut (4.5 s); the demo itself has no move
+
+
+def _with_move(r):
+    r["livestream"]["move"] = dict(MOVE)
+
+
 def test_livestream_gates_fail():
     cases = {
         "livestream-screen": lambda r: r["livestream"].__setitem__("screen", {"w": 1280}),             # 44 % of the frame
@@ -107,55 +114,171 @@ def test_livestream_gates_fail():
     }
     for gate, mut in cases.items():
         assert _gates(_spec(mut))[gate][0] == "FAIL", gate
+    assert _gates(_spec(_with_move))["livestream-side"][0] == "PASS"
 
     def instant(r):
-        r["livestream"]["move"]["dur"] = 0.0
+        r["livestream"]["move"] = dict(MOVE, dur=0.0)
     assert "instant flip" in _gates(_spec(instant))["livestream-side"][1]
 
     def second(r):
-        r["livestream"]["moves"] = [{"beat": 12, "dur": 0.6}]
+        _with_move(r)
+        r["livestream"]["moves"] = [{"beat": 15, "dur": 0.6}]
     assert "at most one" in _gates(_spec(second))["livestream-side"][1]
 
     def off_beat_change(r):
-        r["livestream"]["move"]["beat"] = 5               # not a shot boundary
+        r["livestream"]["move"] = dict(MOVE, beat=5)      # not a shot boundary
     assert _gates(_spec(off_beat_change))["livestream-side"][0] == "FAIL"
 
     def shot_flip(r):
-        del r["livestream"]["move"]
         r["shots"][1]["hosts_side"] = "right"              # per-shot switch = instant flip
     assert "flips the hosts instantly" in _gates(_spec(shot_flip))["livestream-side"][1]
 
     def ok_right(r):
-        del r["livestream"]["move"]
         r["livestream"]["hosts_side"] = "right"
     assert _gates(_spec(ok_right))["livestream-side"][0] == "PASS"
 
 
-def test_keep_clear_overlap_fails():
-    def corner_pill(r):
-        r["shots"][0]["overlays"] = [{"type": "pill", "text": "NEW", "cx": 1760, "cy": 60, "t": [0, 3]}]
-    g = _gates(_spec(corner_pill))["livestream-keep-clear"]
-    assert g[0] == "FAIL" and "pill" in g[1], g
+def test_chat_truth():
+    def viewers(r):                                         # invented audience handles
+        r["livestream"]["chat"]["lines"] += [{"t": 2.0, "user": "devon", "text": "just got here"}]
+    g = _gates(_spec(viewers))["livestream-chat-truth"]
+    assert g[0] == "FAIL" and "devon" in g[1], g
 
-    def wide_hosts(r):                                      # keep-clear on the screen's left edge, next to the hosts
-        r["livestream"]["keep_clear"] = [{"name": "left-edge", "box": [0.0, 0.3, 0.05, 0.9]}]
-        r["livestream"]["screen"] = {"w": 1500}
-    g = _gates(_spec(wide_hosts))["livestream-keep-clear"]
-    assert g[0] == "FAIL" and "host" in g[1], g
+    def labelled(r):
+        viewers(r)
+        r["livestream"]["chat"]["scripted_label"] = "scripted chat"
+    assert _gates(_spec(labelled))["livestream-chat-truth"][0] == "PASS"
+
+    def by_id(r):                                           # host id or name (any case) counts as a host aside
+        r["livestream"]["chat"]["lines"] = [{"t": 1, "user": "a", "text": "x"}, {"t": 2, "user": "MAO", "text": "y"}]
+    assert _gates(_spec(by_id))["livestream-chat-truth"][0] == "PASS"
+    users = {ln["user"] for ln in _spec().raw["livestream"]["chat"]["lines"]}
+    assert users <= {"Hiyori", "Mao"}, users
 
 
-def test_layout_geometry():
+def test_lint_live_and_viewer_counts():
+    bad = {
+        "tag LIVE": lambda r: r["livestream"].__setitem__("tag", "LIVE"),
+        "title live": lambda r: r["livestream"].__setitem__("title", "We're live: ep. 1"),
+        "viewer count": lambda r: r["livestream"].__setitem__("title", "1.2k watching"),
+        "chat count": lambda r: r["livestream"]["chat"]["lines"].append({"t": 3, "user": "Mao", "text": "3,400 viewers!"}),
+        "overlay": lambda r: r["shots"][0].__setitem__("overlays", [{"type": "pill", "text": "LIVE NOW", "cx": 900, "cy": 900, "t": [0, 3]}]),
+    }
+    for name, mut in bad.items():
+        assert _gates(_spec(mut))["livestream-lint"][0] == "FAIL", name
+    ok = lambda r: r["livestream"].__setitem__("title", "Live2D hosts, episode 1 (4 screens)")   # 'Live2D' is not 'LIVE'
+    assert _gates(_spec(ok))["livestream-lint"][0] == "PASS"
+    assert _spec().raw["livestream"]["tag"] == "EP 1"
+
+
+def test_credit_gate():
+    def no_card(r):
+        r["shots"] = r["shots"][:2]
+    g = _gates(_spec(no_card))["livestream-licence"]
+    assert g[0] == "FAIL" and "end-card credit" in g[1], g
+
+    def short(r):                                           # 1.5 s card - 0.25 s fade = 1.25 s at full opacity
+        r["shots"][1]["beats"] = [9, 17]
+        r["shots"][2]["beats"] = [17, 20]
+    assert _gates(_spec(short))["livestream-licence"][0] == "FAIL"
+
+    def tiny(r):
+        r["shots"][2]["size"] = 14
+    assert _gates(_spec(tiny))["livestream-licence"][0] == "FAIL"
     s = _spec()
+    c = LS.credit_shots(s)[0]
+    assert LS.credit_hold(c) >= 2.0 and float(c.get("size", 30)) >= 28
+    from promo.shots.livestream import credit_lines
+    notice, models = credit_lines(s)
+    assert notice == L2.registry()["notice"]["long"] and [m for m, _ in models] == ["Hiyori Momose (PRO)", "Niziiro Mao (PRO)"]
+    assert all(cr for _, cr in models)
+
+
+def test_slot_gap():
+    s = _spec()
+    hs = LS.layout_at(s, 0.0)["hosts"]
+    assert hs[1][1] - hs[0][3] >= 12 and hs[1][1] - hs[0][3] == 16, hs    # default 16 px, no overlap
+    assert hs[1][3] == 1080 and LS.host_size(LS.cfg(s))[1] == hs[0][3] - hs[0][1]
+    wide = _spec(lambda r: r["livestream"].__setitem__("slot_gap", 40))
+    hw = LS.layout_at(wide, 0.0)["hosts"]
+    assert round(hw[1][1] - hw[0][3]) == 40 and _gates(wide)["livestream-side"][0] == "PASS"
+    assert _gates(_spec(lambda r: r["livestream"].__setitem__("slot_gap", 4)))["livestream-side"][0] == "FAIL"
+
+
+def test_layout_geometry_and_off_edge_move():
+    s = _spec()
+    assert not LS.moves(LS.cfg(s))                          # no slide by default
     L = LS.layout_at(s, 0.0)
     sc = L["screen"]
     assert (sc[2] - sc[0]) * (sc[3] - sc[1]) >= 0.55 * 1920 * 1080
     for h in L["hosts"]:
         assert h[2] <= sc[0], (h, sc)                       # hosts left of the screen
-    R_ = LS.layout_at(s, s.duration - 0.01)
+    assert LS.layout_at(s, s.duration - 0.01)["hosts"] == L["hosts"]
+    m = _spec(_with_move)
+    t0, d = m.timeline.t(MOVE["beat"]), MOVE["dur"]
+    R_ = LS.layout_at(m, m.duration - 0.01)
     for h in R_["hosts"]:
         assert h[0] >= R_["screen"][2], (h, R_["screen"])  # after the single move: right of the screen
-    mid = LS.layout_at(s, s.timeline.t(12) + 0.4)
-    assert mid["hosts_z"] == "below"                       # sliding hosts pass behind the screen
+    for f in range(int(d * 30) + 1):                        # every frame of the move: hosts never overlap the screen
+        Lm = LS.layout_at(m, t0 + f / 30)
+        for h in Lm["hosts"] + [Lm["header"]]:
+            assert not LS.overlap(h, Lm["screen"]), (f, h, Lm["screen"])
+    mid = LS.layout_at(m, t0 + d / 2)                       # screen crossing: hosts fully off the frame edge
+    assert all(h[2] <= 0 or h[0] >= 1920 for h in mid["hosts"]), mid["hosts"]
+
+
+def test_keep_clear_outline_debug_only():
+    from promo.render import RenderContext
+    from promo.shots import livestream as SL
+    s = _spec()
+    src = open(SL.__file__).read()
+    assert 'os.environ.get("PROMO_DEBUG") == "1"' in src and "show_keep_clear" not in src
+    assert "show_keep_clear" not in s.raw["livestream"]
+    from promo.cli import shot_digest  # noqa: F401  (digest includes the debug flag, so debug segments never get reused)
+    old = os.environ.pop("PROMO_DEBUG", None)
+    try:
+        d0 = shot_digest(s, s.shots[0])
+        os.environ["PROMO_DEBUG"] = "1"
+        assert shot_digest(s, s.shots[0]) != d0
+    finally:
+        os.environ.pop("PROMO_DEBUG", None)
+        if old is not None:
+            os.environ["PROMO_DEBUG"] = old
+
+
+def test_heavy_lock_reentrant_and_exclusive():
+    import fcntl
+    from promo import lock as LK
+    d = tempfile.mkdtemp()
+    path = os.path.join(d, "cargo.lock")
+    os.environ["PROMO_HEAVY_LOCK"] = path
+    try:
+        assert LK.lock_path() == path
+        with LK.heavy_lock("outer", log=lambda *a: None):
+            with LK.heavy_lock("inner", log=lambda *a: None):     # nested: must not deadlock
+                assert LK.held()
+            fd = os.open(path, os.O_RDWR)
+            try:                                                 # another open file description cannot take it
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                raise AssertionError("lock not held")
+            except BlockingIOError:
+                pass
+            finally:
+                os.close(fd)
+        assert not LK.held()
+        # a holder in another process makes us wait (and log) until it releases
+        p = subprocess.Popen(["flock", path, "sleep", "1.5"])
+        import time
+        time.sleep(0.3)
+        logs, t = [], time.time()
+        with LK.heavy_lock("waiter", log=logs.append):
+            waited = time.time() - t
+        p.wait()
+        assert waited >= 0.8 and any("waiting for" in m for m in logs) and any("acquired" in m for m in logs), (waited, logs)
+    finally:
+        os.environ.pop("PROMO_HEAVY_LOCK", None)
+        shutil.rmtree(d)
+    assert LK.DEFAULT == "/tmp/commission-ai-cargo.lock" and not hasattr(L2, "LOCK")   # old live2d-only lock is gone
 
 
 def _render_ready():

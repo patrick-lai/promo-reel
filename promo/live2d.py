@@ -9,7 +9,7 @@ Pipeline (one host = one layer):
 
 Models and the Cubism Core come from `live2d/assets.yaml` and are fetched from live2d.com (sha256-pinned) into
 `live2d/media/` (gitignored, never redistributed). Only Live2D Original Characters are accepted. Renders take a
-box-wide lock so only one Live2D render runs at a time (shared box).
+the box-wide heavy-work lock (/tmp/commission-ai-cargo.lock, shared with Commission-ai's cargo test gates).
 
 The lip envelope follows /workspace/ai-interview-host/src/audio/vowel.ts (LipSync: level vs a decaying peak,
 smoothstep, attack/release) and viseme-timeline.ts (10 ms steps, centred look-ahead window, 20 ms close ease);
@@ -17,8 +17,6 @@ smoothstep, attack/release) and viseme-timeline.ts (10 ms steps, centred look-ah
 """
 from __future__ import annotations
 
-import contextlib
-import fcntl
 import hashlib
 import json
 import os
@@ -35,7 +33,6 @@ import yaml
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 L2D_DIR = os.path.join(ROOT, "live2d")
 REGISTRY = os.path.join(L2D_DIR, "assets.yaml")
-LOCK = os.environ.get("PROMO_LIVE2D_LOCK", "/tmp/promo-live2d-render.lock")
 STEP_S = 0.01                # envelope step (viseme-timeline STEP_S)
 WINDOW_S = 0.043             # centred analysis window (viseme-timeline WINDOW_S)
 ATTACK_S = 0.012             # fast attack
@@ -380,20 +377,10 @@ def host_tracks(model, n, fps, seed, wav=None, partner_wav=None, gaze=0.0, sr=No
 
 
 # ---------------------------------------------------------------- render
-@contextlib.contextmanager
 def render_lock(log=print):
-    """Box-wide lock: one Live2D render at a time (other agents' capture jobs share this machine)."""
-    fd = os.open(LOCK, os.O_CREAT | os.O_RDWR, 0o666)
-    try:
-        try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            log(f"waiting for another Live2D render ({LOCK}) ...")
-            fcntl.flock(fd, fcntl.LOCK_EX)
-        yield
-    finally:
-        fcntl.flock(fd, fcntl.LOCK_UN)
-        os.close(fd)
+    """The shared heavy-work lock (/tmp/commission-ai-cargo.lock, see promo.lock); replaces the old live2d-only lock."""
+    from .lock import heavy_lock
+    return heavy_lock("live2d host render", log=lambda *a: log(*a))
 
 
 def ffmpeg_out(out, W, H, fps, fmt=None, bg=None):
