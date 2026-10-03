@@ -1,0 +1,29 @@
+# Licence manifest for the commission-ai anime opening. Audio and fonts are never committed; they live on the box.
+assets:
+  - id: music-324102-edit-v1
+    kind: music
+    path: "${COMMISSION_AI_PROMO:-/workspace/videos/commission-ai-promo}/anime/music/edit-v1-master.wav"
+    sha256: 60269db3ddfa8db45f591cc51380290910dc1f971b0382cde5bbcb76956aebea
+    licence: "Pixabay Content License (commercial use OK, no attribution required, no standalone redistribution)"
+    source_url: https://pixabay.com/music/rock-j-rock-anime-opening-joyful-324102/
+    redistributable: false
+    attribution: "Music by JustSushi from Pixabay (optional credit)"
+    notes: >-
+      'J-rock anime opening (joyful)' by JustSushi, Pixabay 324102 (source mp3 sha256 c43d67a8...ecb45, 241.4 s).
+      edit-v1-master.wav = team edit on the 177 BPM grid (edit-v1.json: 221 beats, 56 bars, 8-bar phrases), 76.19 s,
+      -14.0 LUFS / -2.26 dBTP. Licence, Content ID (not registered) and AI flag (no) checked 2026-10-04:
+      see anime/music/324102/LICENSE.md and anime/music/SHORTLIST.md. Do not commit the wav/mp3.
+  - id: font-barlow-condensed
+    kind: font
+    path: "/usr/share/fonts/truetype/sand-box/google/Barlow Condensed/BarlowCondensed-BlackItalic.ttf"
+    licence: "SIL Open Font License 1.1 (name table: 'Copyright 2017 The Barlow Project Authors', licence URL scripts.sil.org/OFL)"
+    source_url: https://github.com/jpt/barlow
+    redistributable: true
+    notes: card titles (BlackItalic), subtitles (SemiBoldItalic), tags (BoldItalic); same family/licence for all three files
+  - id: font-inter
+    kind: font
+    path: "/usr/share/fonts/truetype/sand-box/google/Inter/Inter-VariableFont_opsz,wght.ttf"
+    licence: "SIL Open Font License 1.1 (name table: 'Copyright 2016 The Inter Project Authors')"
+    source_url: https://github.com/rsms/inter
+    redistributable: true
+    notes: placeholder slate text only

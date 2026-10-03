@@ -1,0 +1,94 @@
+# Footage manifest (authoritative, machine-readable). Raw media is NOT in git: it lives at `path` on the box.
+# Maintained with `promo footage add`; see manifest.md for human notes.
+clips:
+- id: shot-01-dusk
+  shots:
+  - '01'
+  - '19'
+  path: /workspace/videos/commission-ai-promo/footage/v1-1080/shot-01-dusk.mov
+  sha256: 16c31f37503b084966af154a00f062b46120cdc8e26833907ac862397d5f63fd
+  app_commit: 4a427fc05f829d7b2e4ed7ea642d77340554f7f8
+  capture: ?demo=promo&view=workshop&workshop=fast&workshopHour=19:30 (Playwright clock stepped 1/60 s)
+  framing: full 1920x1080 CSS DPR1, locked 10 s; header bar at top (crop it)
+  resolution: 1920x1080
+  dpr: 1
+  fps: 60.0
+  captured_at: '2026-10-04'
+  notes: 'v1-1080 shot 1 + 17 (dusk). Frames 0-7 brightness dip: start at >= frame 8.'
+  demo: true
+- id: shot-03-night
+  shots:
+  - '02'
+  path: /workspace/videos/commission-ai-promo/footage/v1-1080/shot-03-night.mov
+  sha256: 423c80eb72b76866cef3f2e8421f6cda9d555e032b451048ac607e02cdd87b9e
+  app_commit: 4a427fc05f829d7b2e4ed7ea642d77340554f7f8
+  capture: ?demo=promo&view=workshop&workshop=fast&workshopHour=22:00
+  framing: full 1920x1080 CSS DPR1, locked 9 s
+  resolution: 1920x1080
+  dpr: 1
+  fps: 60.0
+  captured_at: '2026-10-04'
+  notes: 'v1-1080 shot 3 = night Workshop (NOT the composer). Lamp lit from frame 7; Zen: start at frame 8 or later.'
+  demo: true
+- id: shot-08
+  shots:
+  - 08
+  - 09
+  - '10'
+  - '11'
+  path: /workspace/videos/commission-ai-promo/footage/v1-1080/shot-08.mov
+  sha256: 38129f55432c82e32785956debfbcdf44306e493de2d6534027439926e8699a8
+  app_commit: 4a427fc05f829d7b2e4ed7ea642d77340554f7f8
+  capture: ?demo=promo (PAY-104 node clicked at 9.0 s)
+  framing: clip x960 y0 960x540 CSS at DPR2 -> 1920x1080 (2x pre-framed, native density)
+  resolution: 1920x1080
+  dpr: 2
+  fps: 60.0
+  captured_at: '2026-10-04'
+  notes: 'Coding 0-2.0 s, Checks 2.0-4.9 s, Pushed 4.9-7.8 s, PR raised #432 7.8-9.3 s. Agent shown: Codex.'
+  demo: true
+- id: shot-10-dpr2
+  shots:
+  - '05'
+  - '06'
+  - '07'
+  - '12'
+  path: /workspace/videos/commission-ai-promo/footage/v1-1080/shot-10-dpr2.mov
+  sha256: 70a27882fdc5ee2bc4d614a3913f85a7e8485c2ed52219ec5e52b961e1600186
+  app_commit: 4a427fc05f829d7b2e4ed7ea642d77340554f7f8
+  capture: ?demo=promo
+  framing: clip x290 y88 1280x720 CSS at DPR2 -> 1920x1080 (1.5x pre-framed, native density)
+  resolution: 1920x1080
+  dpr: 2
+  fps: 60.0
+  captured_at: '2026-10-04'
+  notes: 'Needs you flip 1.25 s, Allow once click 3.95 s, Running 4.25 s. Logos: PAY-103 Claude Code, PAY-104 Codex, PAY-106 Cursor.'
+  demo: true
+- id: shot-12
+  shots:
+  - '13'
+  path: /workspace/videos/commission-ai-promo/footage/v1-1080/shot-12.mov
+  sha256: 157a7f970ea317a5e6aa54120228fb0c3337fc9e18e4c80d128625b3f9fa2363
+  app_commit: 4a427fc05f829d7b2e4ed7ea642d77340554f7f8
+  capture: ?demo=promo (PAY-104 node clicked at 24.0 s; Review thread at 26.7 s)
+  framing: full 1920x1080 CSS DPR1
+  resolution: 1920x1080
+  dpr: 1
+  fps: 60.0
+  captured_at: '2026-10-04'
+  notes: '1x take (DPR2 retake pending). Reviewer (Cursor): Approved. Cart summary uses the pricing engine matches the plan ...'
+  demo: true
+- id: shot-15-morning
+  shots:
+  - '18'
+  path: /workspace/videos/commission-ai-promo/footage/v1-1080/shot-15-morning.mov
+  sha256: eafa1cfefcd0067546001ae85856aeee31866fa95384658a24f364f2f0525cc7
+  app_commit: 4a427fc05f829d7b2e4ed7ea642d77340554f7f8
+  capture: ?demo=promo&view=workshop&workshop=fast&workshopHour=07:00
+  framing: full 1920x1080 CSS DPR1, locked 9 s
+  resolution: 1920x1080
+  dpr: 1
+  fps: 60.0
+  captured_at: '2026-10-04'
+  notes: v1-1080 shot 15 = morning Workshop (NOT the PR merge).
+  demo: true

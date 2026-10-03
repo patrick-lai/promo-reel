@@ -1,0 +1,308 @@
+# commission-ai anime opening (Direction 2, Marketing final text map). Style preset: anime-opening.
+# Source of truth for words: /workspace/promo/marketing/scripts-3-directions-v1.md, Direction 2 + the final text map in
+# docs/anime-v2.md. Real footage only (footage/manifest.yaml, v1-1080 takes); missing shots are labelled placeholder
+# slates: swapping one in is a config change (replace `placeholder:` with `source:` + `cam:`). No URL on the end card.
+# Heavy steps hold flock /tmp/commission-ai-cargo.lock (promo/lock.py) and run niced with ffmpeg -threads 2.
+project: {name: commission-ai-anime, title: "commission-ai anime opening (Direction 2)"}
+output: {name: anime-v2, resolution: 1080, fps: 30, duration: 76.26667}   # 225 beats @ 177 BPM = 2288 frames
+paths: {build: build, out: out}
+assets: assets.yaml
+footage: footage/manifest.yaml
+
+style:
+  preset: anime-opening        # bar-snapped cuts, 1-bar UI holds, cards >= 1 bar in ONE fixed lower-third band, fx at cuts only
+
+# edit-v1.json: 177 BPM, 221 beats (0..220), 56 bars, 8-bar phrase flags, markers. 1 bar = 4 beats = 1.3559 s.
+# Timeline runs 225 beats (76.27 s) so the master's reverb tail (to 76.19 s) is not cut; the last 0.08 s is silence.
+timeline: {grid: "${COMMISSION_AI_PROMO:-/workspace/videos/commission-ai-promo}/anime/music/edit-v1.json", beats: 225}
+
+music:
+  asset: music-324102-edit-v1   # already cut + mastered on the grid: one segment from beat 0
+  track_beat: 0.3389830508474576
+  track_offset: 0.0
+  edit: {segments: [[0, 0, 225]], crossfade: 0.0, gains: []}
+
+# Truth gate for the peak card: text is picked from what shot 11's manifest.md entry says is legible. Until shot 11 is
+# captured and Commission-ai writes its legible counts, both are null and the card shows the number-free fallback.
+claims:
+  legible:
+    shot11_legible: {cards: null, logos: null}     # FILL from footage manifest.md "### Shot 11" (legible cards / logos)
+  tables:
+    merged_count:              # reusable selector: the hero caption uses the same table
+      selector: shot11_legible
+      evidence: {manifest: "${COMMISSION_AI_PROMO:-/workspace/videos/commission-ai-promo}/footage/v1-1080/manifest.md", section: "Shot 11"}
+      rows:
+        - {cards: 8, logos: 3, text: "8 TASKS · 3 AGENTS · ALL MERGED"}
+        - {logos: 3, text: "3 AGENTS · ALL MERGED"}
+        - {cards: 8, text: "8 TASKS · ALL MERGED"}
+        - {text: "ALL MERGED."}
+
+shots:
+  # ---- pickup bar (0-1.36 s): dusk Workshop, text-free
+  - id: "01"
+    beats: [0, 4]
+    type: anime
+    ui: false
+    source: shot-01-dusk
+    label: "shot-01 dusk Workshop (19:30), after the first-frame brightness dip"
+    t_in: 0.25                 # frames 0-7 are the brightness dip; steady from frame 8 (0.133 s)
+    cam: [[0, 0.50, 0.56, 0.90], [end, 0.50, 0.57, 0.84]]      # header bar (Workshop/Live/HD/progress) cropped out
+    contact_at: 0.8
+    notes: "Header bar text cropped by the camera (box top y >= 0.10). Pet cat 'zzz' bubble is real app art."
+
+  # ---- 1.36 s intro hit: logo slam (4 bars)
+  - id: "02"
+    beats: [4, 20]
+    type: anime
+    ui: false
+    source: shot-03-night
+    label: "shot-03 night Workshop (22:00), lamp lit"
+    t_in: 0.20                 # Zen: start at frame 8 or later (lamp lit from frame 7); 0.20 s = frame 12
+    cam: [[0, 0.50, 0.58, 0.80], [end, 0.50, 0.56, 0.90]]       # punch in on the hit, ease out; header cropped
+    cards:
+      - {row: title, text: "commission-ai", bars: [0, 4]}
+      - {row: sub, text: "Your AI dev crew", bars: [0, 4]}
+    fx_in: [{kind: flash, frames: 3}, {kind: speed_lines, frames: 6}]
+    contact_at: 2.0
+    notes: "Script asks for a robot's light flicking on: not verified in this take (lamp is already lit at frame 7)."
+
+  # ---- 6.78 s: the ask (4 bars) -- composer take not in v1-1080
+  - id: "03"
+    beats: [20, 36]
+    type: anime
+    ui: true
+    placeholder:
+      id: S3 composer
+      label: "Composer typing 'Ship the checkout revamp tonight.' + smash-zoom on Send"
+      expects: "No composer take in v1-1080 (v1-1080 shot-03 is the night Workshop).\nReal sent ask exists in shot-10-dpr2 (Commander thread, top-left) as a fallback."
+    cards:
+      - {row: title, text: "ONE ASK.", bars: [0, 2]}
+      - {row: title, text: "TONIGHT.", bars: [2, 4]}
+    fx_in: {kind: flash, frames: 3}
+    contact_at: 1.0
+
+  # ---- 12.20 s: plan (4 bars) -- board / talk-dag not captured
+  - id: "04"
+    beats: [36, 52]
+    type: anime
+    ui: true
+    placeholder:
+      id: S4 board / talk-dag
+      label: "Board planning, nodes popping on the beat (S4 tight or talk-dag)"
+      expects: "Not captured yet (talk-dag, shot 4)."
+    cards:
+      - row: title
+        text: "8 TASKS."
+        bars: [0, 4]
+        evidence: "shot-10-dpr2 (real take): Commander says 'Here's the plan: eight checkout tickets in three waves.' and the run card reads '0 / 8 tasks done'. Re-check against the board take when captured."
+    contact_at: 1.0
+
+  # ---- 17.63 s lift: roll call, 2 bars each (real board-card logos, frozen frame of shot-10-dpr2 before Needs you)
+  - id: "05"
+    beats: [52, 60]
+    type: anime
+    ui: true
+    source: shot-10-dpr2
+    freeze: 0.20
+    label: "shot-10-dpr2 frozen at 0.20 s: PAY-103 card with the Claude Code logo"
+    cam: [[0, 0.60, 0.205, 0.44], [end, 0.60, 0.205, 0.38]]
+    cards:
+      - {row: title, text: "CLAUDE CODE", bars: [0, 2]}
+      - {row: sub, text: "on the job", bars: [0, 2]}
+    fx_in: [{kind: flash, frames: 3}, {kind: speed_lines, frames: 6}]
+    contact_at: 1.4
+    notes: "Name from the capture manifest (shot 10: 'PAY-103 Claude Code logo'); the card shows the logo, not the word."
+  - id: "06"
+    beats: [60, 68]
+    type: anime
+    ui: true
+    source: shot-10-dpr2
+    freeze: 0.20
+    label: "shot-10-dpr2 frozen at 0.20 s: PAY-104 card with the Codex logo"
+    cam: [[0, 0.60, 0.42, 0.44], [end, 0.60, 0.42, 0.38]]
+    cards:
+      - {row: title, text: "CODEX", bars: [0, 2]}
+      - {row: sub, text: "on the job", bars: [0, 2]}
+    fx_in: [{kind: flash, frames: 3}, {kind: speed_lines, frames: 6}]
+    contact_at: 1.4
+    notes: "Logo per capture manifest; shot-08 spells 'Codex · Board run' for PAY-104."
+  - id: "07"
+    beats: [68, 76]
+    type: anime
+    ui: true
+    source: shot-10-dpr2
+    freeze: 0.20
+    label: "shot-10-dpr2 frozen at 0.20 s: PAY-106 card with the Cursor logo"
+    cam: [[0, 0.60, 0.855, 0.44], [end, 0.60, 0.855, 0.38]]
+    cards:
+      - {row: title, text: "CURSOR", bars: [0, 2]}
+      - {row: sub, text: "on the job", bars: [0, 2]}
+    fx_in: [{kind: flash, frames: 3}, {kind: speed_lines, frames: 6}]
+    contact_at: 1.4
+    notes: "Logo per capture manifest (shot 10: 'PAY-106 Cursor logo', Commander card says 'Answer Cursor')."
+
+  # ---- 25.76 s: montage A, the exact chip words, 2 bars each (shot-08 PAY-104 drawer, Codex)
+  - id: "08"
+    beats: [76, 84]
+    type: anime
+    ui: true
+    source: shot-08
+    label: "shot-08 PAY-104 drawer: Running / Coding chip"
+    segs: [{t_in: 0.0, t_out: 1.95, dur: 2.7118644}]
+    cam: [[0, 0.57, 0.35, 0.80], [end, 0.57, 0.36, 0.76]]
+    cards: [{row: title, text: "CODING.", bars: [0, 2]}]
+    fx_in: {kind: flash, frames: 3}
+    contact_at: 1.4
+  - id: "09"
+    beats: [84, 92]
+    type: anime
+    ui: true
+    source: shot-08
+    label: "shot-08 PAY-104 drawer: Verifying / Checks chip"
+    segs: [{t_in: 2.0, t_out: 4.85, dur: 2.7118644}]
+    cam: [[0, 0.57, 0.35, 0.80], [end, 0.57, 0.36, 0.76]]
+    cards: [{row: title, text: "CHECKS.", bars: [0, 2]}]
+    fx_in: {kind: flash, frames: 3}
+    contact_at: 1.4
+  - id: "10"
+    beats: [92, 100]
+    type: anime
+    ui: true
+    source: shot-08
+    label: "shot-08 PAY-104 drawer: In review / Pushed chip"
+    segs: [{t_in: 4.95, t_out: 7.75, dur: 2.7118644}]
+    cam: [[0, 0.57, 0.35, 0.80], [end, 0.57, 0.36, 0.76]]
+    cards: [{row: title, text: "PUSHED.", bars: [0, 2]}]
+    fx_in: {kind: flash, frames: 3}
+    contact_at: 1.4
+  - id: "11"
+    beats: [100, 108]
+    type: anime
+    ui: true
+    source: shot-08
+    label: "shot-08 PAY-104 drawer: PR raised #432 chip"
+    segs: [{t_in: 7.85, t_out: 9.20, dur: 2.7118644}]
+    cam: [[0, 0.57, 0.35, 0.80], [end, 0.57, 0.36, 0.76]]
+    cards: [{row: title, text: "PR RAISED.", bars: [0, 2]}]
+    fx_in: {kind: flash, frames: 3}
+    contact_at: 1.4
+
+  # ---- 36.60 s: needs you (6 bars), slow push on PAY-106
+  - id: "12"
+    beats: [108, 132]
+    type: anime
+    ui: true
+    source: shot-10-dpr2
+    label: "shot-10-dpr2: PAY-106 Running -> Needs you -> Allow once -> Running"
+    segs: [{t_in: 0.20, t_out: 6.15, dur: 8.1355932}]       # flip at out 1.42 s, click 5.09 s, Running 5.50 s
+    cam: [[0, 0.50, 0.70, 0.75], [end, 0.56, 0.82, 0.58]]
+    cards: [{row: title, text: "...ONLY WHEN IT NEEDS YOU.", bars: [2, 6]}]
+    contact_at: 4.5
+    notes: "Card appears 1.3 s after 'Needs you' is on screen; no $ figure in this DPR2 frame."
+
+  # ---- 44.75 s peak: hero UI montage (16 bars) ----
+  - id: "13"
+    beats: [132, 148]
+    type: anime
+    ui: true
+    fit: contain               # keep Zen's 16:9 box: top-left ~1.2x, right edge in the gap before the 'Later' column
+    source: shot-12
+    label: "shot-12 (1x; DPR2 retake pending): reviewer thread 'Approved. ...' for PR #432"
+    segs: [{t_in: 1.70, t_out: 6.25, dur: 5.4237288}]
+    cam: [[0, 0.41667, 0.41667, 0.83333]]
+    ui_text:
+      - [0.150, 0.210, 0.385, 0.280]     # reviewer's 'Approved. Cart summary uses the pricing engine matches the plan ...'
+    cards: [{row: title, text: "REVIEWED, WITH THE REASON WHY.", bars: [0, 4]}]
+    fx_in: {kind: flash, frames: 3}
+    contact_at: 2.5
+    notes: "Zen crop: 1.2x top-left (x 0-0.833, y 0-0.833) down past the 10:40 PM divider; no panel sliver at the right edge. Board reflow ghosts at src 3-4 s are real. Demo persona 'Maya's' visible in the sidebar."
+  - id: "14"
+    beats: [148, 160]
+    type: anime
+    ui: true
+    placeholder:
+      id: shot-16
+      label: "PR #432 Open -> Merged (tight)"
+      expects: "Not captured yet (shot 16)."
+    cards: [{row: title, text: "MERGED.", bars: [1, 3]}]
+    fx_in: {kind: flash, frames: 3}
+    contact_at: 2.0
+  - id: "15"
+    beats: [160, 180]
+    type: anime
+    ui: true
+    placeholder:
+      id: shot-11
+      label: "Board: all tasks Landed (tight)"
+      expects: "Not captured yet. Card text comes from claims.merged_count (shot11_legible),\nwhich must match the legible counts Commission-ai writes in manifest.md for shot 11."
+    cards: [{row: title, text_from: claims.merged_count, bars: [1, 5]}]
+    fx_in: {kind: flash, frames: 3}
+    contact_at: 3.0
+  - id: "16"
+    beats: [180, 196]
+    type: anime
+    ui: true
+    placeholder:
+      id: shot-14b
+      label: "Outside -> Street glide with the real 'Your workshop is now a Street' notice (top-right)"
+      expects: "Not captured yet as specified: the 08:02 take's notice is stacked under an achievements toast (not legible).\nNo card on this shot; the notice area stays clear."
+    ui_text:
+      - [0.70, 0.00, 1.00, 0.18]         # Street notice, top-right: never under a card
+    contact_at: 2.0
+
+  # ---- 66.44 s stop-time (drumless outro): freeze on the Street frame, then morning
+  - id: "17"
+    beats: [196, 200]
+    type: anime
+    ui: true
+    placeholder:
+      id: shot-14b freeze
+      label: "Freeze on the last Street frame (stop-time)"
+      expects: "Freeze of shot 14b once captured (freeze: <source s>)."
+    ui_text:
+      - [0.70, 0.00, 1.00, 0.18]
+    contact_at: 0.6
+  - id: "18"
+    beats: [200, 212]
+    type: anime
+    ui: false
+    source: shot-15-morning
+    label: "shot-15 morning Workshop (07:00)"
+    t_in: 0.25
+    cam: [[0, 0.50, 0.57, 0.86], [end, 0.50, 0.56, 0.90]]
+    cards: [{row: title, text: "GOOD MORNING.", bars: [0, 3]}]
+    contact_at: 2.0
+    notes: "Soft cut (no flash) in the drumless outro. Header bar cropped."
+
+  # ---- 71.86 s final hit: end card (no web address)
+  - id: "19"
+    beats: [212, 225]
+    type: anime
+    ui: false
+    source: shot-01-dusk
+    freeze: 6.0
+    label: "end card on the dusk Workshop (shot-01 also covers 17)"
+    cam: [[0, 0.50, 0.56, 0.90], [end, 0.50, 0.56, 0.86]]
+    bg: {blur: 6, dim: 0.55}
+    cards:
+      - {row: title, text: "commission-ai", bars: [0, end]}
+      - {row: sub, text: "Your AI dev crew, on your Mac.", bars: [0, end]}
+      - {row: tag, text: "macOS alpha", bars: [0, end]}
+    fx_in: {kind: flash, frames: 3}
+    contact_at: 2.0
+    notes: "URL off (Marketing: no web address until Patrick picks)."
+
+sfx: {library: {}}
+
+mix:
+  sr: 48000
+  bus_db: {music: 0.0, sfx: -8.0, vo: 0.0}
+  vo_line_lufs: -16.0
+  duck: {db: 0.0, attack: 0.12, release: 0.35, pre: 0.12, post: 0.1}
+  fade_out: 0.05
+  masters:
+    - {name: web, suffix: "", lufs: -14.0, ceiling: -1.5, max_true_peak: -1.0}
+
+qa:
+  lufs_tolerance: 0.5
+  cut_markers: [intro_hit, lift, peak_start, seam_A_to_B_outro, final_hit]
