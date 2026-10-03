@@ -146,6 +146,46 @@ def test_timeline_may_end_off_grid_but_cuts_may_not():
     assert "off the beat grid" in rows["beat-grid"]["msg"]
 
 
+def test_pillar_fill_brand_backdrop():
+    from promo.render import RenderContext
+    from promo.shots.anime import pillar_backdrop
+    p, _ = still_project(tempfile.mkdtemp())
+    raw = yaml.safe_load(open(p))
+    raw["shots"][1].update(fit="contain", aspect=1.6, pillar_fill="brand")
+    yaml.safe_dump(raw, open(p, "w"), sort_keys=False)
+    s = load_spec(p)
+    ctx = RenderContext.from_spec(s).with_scale(1)
+    VX, VW, VH = 320, 1280, 800
+    brand = np.asarray(pillar_backdrop(ctx, s, s.shots[1], VX, VW, VH).convert("RGB")).astype(int)
+    flat = np.asarray(pillar_backdrop(ctx, s, s.shots[0], VX, VW, VH).convert("RGB")).astype(int)
+    assert (flat == flat[0, 0]).all()                                   # default: flat band colour
+    assert brand[400, 100, 2] > brand[1060, 100, 2] and brand[400, 100, 2] > 60   # night-sky gradient, bluer up top
+    assert brand[:, VX + 20:VX + VW - 20].max() < 200                   # no stars behind the panel
+    raw["shots"][1]["pillar_fill"] = "checker"
+    yaml.safe_dump(raw, open(p, "w"), sort_keys=False)
+    s = load_spec(p)
+    try:
+        pillar_backdrop(ctx, s, s.shots[1], VX, VW, VH)
+        raise AssertionError("unknown pillar_fill accepted")
+    except ValueError:
+        pass
+
+
+def test_plan_count_claim_with_confirm_flag():
+    from promo import claims as C
+    raw = dict(claims=dict(legible=dict(shot11_legible=dict(cards=None, logos=None)), tables=dict(plan_count=dict(
+        selector="shot11_legible", rows=[dict(cards=8, text="8 TASKS."), dict(text="THE PLAN.", confirm="Marketing")]))))
+    assert C.text_of(raw, dict(text_from="claims.plan_count")) == "THE PLAN."
+    res = C.audit(raw)
+    assert any(st == "WARN" and "provisional copy: Marketing to confirm" in m for st, m in res), res
+    assert not any(st == "FAIL" for st, m in res), res
+    for cards, want in ((8, "8 TASKS."), (7, "THE PLAN.")):
+        raw["claims"]["legible"]["shot11_legible"]["cards"] = cards
+        assert C.text_of(raw, dict(text_from="claims.plan_count")) == want
+    raw["claims"]["legible"]["shot11_legible"]["cards"] = 8
+    assert not any("provisional" in m for _, m in C.audit(raw))
+
+
 # ---------------------------------------------------------------- critique pack
 def test_kind_and_default_sources():
     p, _ = still_project(tempfile.mkdtemp())

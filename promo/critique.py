@@ -122,6 +122,12 @@ def text_elements(spec, ctx1, shot, t_shot):
                 size = ov.get("size") or ctx1.caption["size"]
                 el.update(font=os.path.basename(ctx1.font_path), font_px=size, cap_px=cap_height(ctx1.font(size)))
             el["method"] = "glyph bbox of 'H' at the rendered font size (vector text drawn at output resolution)"
+            if shot.type == "anime" and c.get("text_from"):
+                from . import claims as C
+                _, info = C.resolve(spec.raw, c["text_from"])
+                el["claim"] = dict(table=info["table"], legible=info["legible"])
+                if info["row"].get("confirm"):
+                    el["confirm"] = info["row"]["confirm"]
         except Exception as e:  # noqa: BLE001
             el.update(cap_px=None, method=f"not measured: {e}")
         out.append(el)
@@ -397,7 +403,8 @@ def text_lines_md(index):
             k += 1
             named = "; ".join(f"{n['name']}: {n.get('cap_px', '-')} px @ x{n.get('effective_scale', '-')}" + ("" if n.get("meets_min", False) else " (UNDER 18 / not measurable)")
                               for n in side["elements"] if n.get("kind") == "named") or "-"
-            rows.append(f"| {k} | {side['shot']} | {side['shot_span'][0] + e['t0']:.2f}-{side['shot_span'][0] + e['t1']:.2f} | {e['text']} | "
+            line = e["text"] + (f" **(provisional copy: {e['confirm']} to confirm)**" if e.get("confirm") else "")
+            rows.append(f"| {k} | {side['shot']} | {side['shot_span'][0] + e['t0']:.2f}-{side['shot_span'][0] + e['t1']:.2f} | {line} | "
                         f"{e.get('cap_px', '-')} | {side['still']} | {named} |")
     return "\n".join(rows) + "\n"
 

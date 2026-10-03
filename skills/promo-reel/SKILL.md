@@ -21,10 +21,12 @@ If the brief says "anime", "opening", "kinetic titles", "J-rock", "speed lines" 
 - Words go in `cards: [{row: title|sub|tag, text: ..., bars: [a, b]}]`: held >= 1 bar, start on a bar line, all in ONE fixed lower-third band (no per-card positions). Full-bleed UI shots must list `ui_text` rects (source coords) and no card may cover them.
 - Flashes / speed lines: `fx_in` / `fx_out` (`kind: flash|speed_lines`, <= 6 frames) only, i.e. at a cut. On UI shots they draw in the band only; <= 3 flashes per second.
 - Numbers on cards come from `claims` tables (`text_from: claims.<table>`), selected by what the footage manifest says is legible; a literal number needs `evidence:`.
+  A softened fallback row that is not signed-off copy carries `confirm: Marketing`: check WARNs and the critique pack flags it.
 - App text a card names (a chip label, a reviewer line) goes in the shot's `named: [{name, box: [x0, y0, x1, y1]}]` (source px).
   Gate `named` FAILs under 18 px cap height at 1080p (measured at the shot head, middle and last frame); `named-upscale` WARNs
   when the effective scale is > 1.0 (push-in on a 1x take: swap in the DPR 2 take). Same contract as the talk show.
-  `fit: contain` + `aspect: 1.6` frames one panel without a neighbour sliver.
+  `fit: contain` + `aspect: 1.6` frames one panel without a neighbour sliver; `pillar_fill: brand` fills the pillarbox with the
+  opening's night-sky brand background so a narrow crop reads as a deliberate panel.
 - A shot that is not captured yet is `placeholder: {id, label, expects}` (a labelled slate). Swapping in the real take = replace it with `source:` + `cam:`.
 Need something the preset can't do? Extend the preset or the `anime` shot type in `promo/` (with a test), not a one-off renderer in the project.
 

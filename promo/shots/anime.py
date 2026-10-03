@@ -18,6 +18,7 @@ Spec keys (per shot):
     fx_in / fx_out: {kind: flash|speed_lines, frames: N} (or a list)   at the head / tail of the shot, i.e. at a cut only
     blur: N                     shutter blur (frames averaged)
     fit: contain [+ aspect: w/h]   band layout only: pillarbox the footage above the band at 16:9 (or `aspect`)
+    pillar_fill: band|brand     what fills the pillarbox: flat band colour (default) or the opening's brand background
     named: [{name, box: [x0, y0, x1, y1], src_px, t | at, min_px, thr}]   app text a card names (QA only, not rendered):
                                 gate `named` FAILs under min_px (default 18 px cap height at 1080p), `named-upscale` WARNs
                                 when its effective scale is > 1.0 (see promo/named.py; same contract as the talk show)
@@ -26,6 +27,7 @@ from __future__ import annotations
 
 import math
 
+import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 from .. import claims as C
@@ -225,6 +227,41 @@ def slate(spec, shot, size):
     return im
 
 
+PILLAR_FILLS = ("band", "brand")
+
+
+def pillar_backdrop(ctx, spec, shot, VX, VW, VH):
+    """Canvas behind the footage viewport. `pillar_fill: band` (default) = flat band colour; `brand` = the opening's
+    night-sky brand background (vertical gradient + soft accent glow + a few fixed stars) so a pillarboxed crop reads as a
+    deliberate panel. Graphic frame only: it never touches the footage pixels."""
+    st = style_of(spec)
+    kind = shot.get("pillar_fill", "band")
+    if kind not in PILLAR_FILLS:
+        raise ValueError(f"shot {shot.id}: pillar_fill {kind!r} not in {PILLAR_FILLS}")
+    if kind == "band":
+        return Image.new("RGBA", (ctx.OW, ctx.OH), tuple(st["band"]["fill"]) + (255,))
+    bg = st["band"].get("brand_bg") or dict(top=[10, 8, 44], mid=[16, 24, 80], bottom=[14, 12, 34], stars=70, glow=0.18)
+    top, mid, bot = (np.array(bg[k], float) for k in ("top", "mid", "bottom"))
+    y = np.linspace(0, 1, ctx.OH)[:, None]
+    col = np.where(y < 0.55, top + (mid - top) * (y / 0.55), mid + (bot - mid) * ((y - 0.55) / 0.45))
+    arr = np.repeat(col[:, None, :], ctx.OW, axis=1)
+    xs = np.linspace(-1, 1, ctx.OW)[None, :]
+    glow = np.exp(-(xs ** 2) / 0.35) * np.exp(-((y - 0.45) ** 2) / 0.08)        # soft accent2 glow behind the panel
+    arr = arr + float(bg.get("glow", 0.18)) * glow[:, :, None] * np.array(st["band"]["accent2"], float)[None, None, :] * 0.35
+    im = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8), "RGB").convert("RGBA")
+    d = ImageDraw.Draw(im)
+    K = ctx.K
+    for i in range(int(bg.get("stars", 70))):                # fixed pseudo-random stars, only in the pillars
+        sx = (i * 7919) % 1920 * K
+        sy = (i * 104729) % int(st["band"]["y0"] - 20) * K
+        if VX - 12 * K <= sx <= VX + VW + 12 * K:
+            continue
+        a = 70 + (i * 37) % 120
+        r = K * (1 if i % 5 else 2)
+        d.ellipse([sx - r, sy - r, sx + r, sy + r], fill=(220, 225, 255, a))
+    return im
+
+
 def band_layer(ctx, spec, shot):
     st = style_of(spec)
     b = st["band"]
@@ -379,7 +416,7 @@ class Anime(ShotType):
             lay, g = card_layer(ctx, spec, c.get("row", "title"), text)
             t0, t1 = card_times(spec, shot, c)
             cards.append((lay, g, t0, t1, c, text))
-        backdrop = Image.new("RGBA", (ctx.OW, ctx.OH), tuple(st["band"]["fill"]) + (255,))
+        backdrop = pillar_backdrop(ctx, spec, shot, VX, VW, VH)
         if VX > 0:               # pillarbox sides: band colour + accent rules (graphic frame, not footage)
             dd = ImageDraw.Draw(backdrop)
             for x in (VX - 10 * K, VX + VW + 4 * K):

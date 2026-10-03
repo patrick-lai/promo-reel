@@ -55,7 +55,10 @@ PRESETS = {
         # ABOVE the band (layout: band) so a card can never sit on app UI text; text-free shots may run full-bleed.
         band=dict(x0=96, x1=1824, y0=800, y1=1040, fill=[14, 12, 34], alpha=235, accent=[255, 64, 129], accent2=[64, 220, 255],
                   rows=dict(title=dict(cy=868, size=104, max_w=1680), sub=dict(cy=952, size=42, max_w=1500),
-                            tag=dict(cy=1004, size=28, max_w=600))),
+                            tag=dict(cy=1004, size=28, max_w=600)),
+                  # `pillar_fill: brand` on a fit: contain shot: the opening's night-sky brand background (sampled from the
+                  # shot-03 night plate) fills the pillarbox, so a narrow crop reads as a deliberate panel
+                  brand_bg=dict(top=[10, 8, 44], mid=[16, 24, 80], bottom=[14, 12, 34], stars=70, glow=0.18)),
         typography=dict(title_font=f"{BARLOW}/BarlowCondensed-BlackItalic.ttf", sub_font=f"{BARLOW}/BarlowCondensed-SemiBoldItalic.ttf",
                         tag_font=f"{BARLOW}/BarlowCondensed-BoldItalic.ttf", uppercase_titles=True, stroke=6,
                         slam=dict(dur=0.12, scale=1.22), fade_out=0.08),

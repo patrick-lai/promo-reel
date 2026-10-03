@@ -15,7 +15,14 @@ Team rule: no number on screen that the frame does not show. A claim table picks
             - {logos: 3, text: "3 AGENTS · ALL MERGED"}
             - {cards: 8, text: "8 TASKS · ALL MERGED"}
             - {text: "ALL MERGED."}
+        plan_count:
+          selector: shot11_legible
+          rows:
+            - {cards: 8, text: "8 TASKS."}
+            - {text: "THE PLAN.", confirm: "Marketing"}   # softened fallback, NOT final copy: flagged until confirmed
 
+A row's `confirm: <who>` marks provisional copy: while that row is selected, the claims gate WARNs that <who> must confirm
+the line (and critique packs flag it). Remove `confirm` once the line is signed off.
 A card/caption uses `text_from: claims.merged_count` instead of literal text. `promo check` (gate `claims`) fails if a
 selected line has a digit that is not one of the legible counts it was selected on, if a table has no number-free
 fallback row, or if the manifest section names counts that disagree with the legibility record.
@@ -29,6 +36,9 @@ COUNT_WORDS = {"cards": r"(\d+)\s+(?:task\s+|ticket\s+)?cards?", "logos": r"(\d+
                "tasks": r"(\d+)\s+tasks?", "agents": r"(\d+)\s+agents?"}
 
 
+META = ("text", "note", "confirm")       # row keys that are not count conditions
+
+
 class ClaimError(Exception):
     pass
 
@@ -38,7 +48,7 @@ def select(rows, legible):
     `legible` values of None (unknown) never match a count, so an uncaptured shot falls through to the number-free row."""
     legible = legible or {}
     for r in rows:
-        conds = {k: v for k, v in r.items() if k not in ("text", "note")}
+        conds = {k: v for k, v in r.items() if k not in META}
         if all(legible.get(k) is not None and int(legible[k]) == int(v) for k, v in conds.items()):
             return r
     raise ClaimError("no claim row matches and there is no number-free fallback row")
@@ -97,11 +107,11 @@ def audit(raw, resolve_path=lambda p: p):
     cl = raw.get("claims") or {}
     for name, t in (cl.get("tables") or {}).items():
         rows = t.get("rows") or []
-        if not rows or any(set(r) - {"text", "note"} for r in rows[-1:]) or re.search(r"\d", rows[-1].get("text", "")):
+        if not rows or any(set(r) - set(META) for r in rows[-1:]) or re.search(r"\d", rows[-1].get("text", "")):
             res.append(("FAIL", f"claim table {name}: last row must be a number-free fallback with no count conditions"))
         for r in rows:
             nums = {int(x) for x in re.findall(r"\d+", r.get("text", ""))}
-            conds = {int(v) for k, v in r.items() if k not in ("text", "note")}
+            conds = {int(v) for k, v in r.items() if k not in META}
             if nums - conds:
                 res.append(("FAIL", f"claim table {name}: row {r.get('text')!r} shows {sorted(nums - conds)} without a matching legible-count condition"))
         leg = legible_for(raw, t) or {}
@@ -124,5 +134,7 @@ def audit(raw, resolve_path=lambda p: p):
                 res.append(("WARN", f"claim table {name}: manifest {ev.get('section')} lists {missing} but {t.get('selector')} is still null"))
         elif ev.get("manifest"):
             res.append(("WARN", f"claim table {name}: no '{ev.get('section')}' legibility entry in {ev['manifest']} yet"))
+        if row.get("confirm"):
+            res.append(("WARN", f"claim table {name}: {row['text']!r} is provisional copy: {row['confirm']} to confirm"))
         res.append(("INFO", f"claim table {name}: {t.get('selector')}={leg} -> {row['text']!r}"))
     return res
