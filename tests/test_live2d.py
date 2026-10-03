@@ -454,6 +454,135 @@ def test_text_size_gate_needs_footage_and_size():
     assert LS.text_size_rows(_spec(), LS.cfg(_spec())) == []            # no text_check -> no gate row
 
 
+def _no_chat(r):
+    r["livestream"].pop("chat", None)
+
+
+def test_no_chat_layout_full_height_screen():
+    """No chat lines -> no chat strip: the app screen takes the full height (minus margins); gates allow 0 lines."""
+    sp = _spec(_no_chat)
+    c = LS.cfg(sp)
+    assert not LS.has_chat(c)
+    w, h = LS.screen_size(c)
+    assert h == LS.FRAME_H - 2 * float(c.get("margin", 24)) and w == float((c.get("screen") or {}).get("w", 1440))
+    L = LS.layout_at(sp, 1.0)
+    assert L["chat"] is None and L["screen"][3] - L["screen"][1] == h
+    g = _gates(sp)
+    assert g["livestream-chat"][0] == "PASS" and "no chat strip" in g["livestream-chat"][1]
+    assert all(st == "PASS" for st, _ in g.values()), g
+    assert LS.screen_size(LS.cfg(_spec()))[1] == LS.screen_size(LS.cfg(_spec()))[0] * 9 / 16   # with chat: 16:9
+
+
+def test_element_px_scale_and_crop():
+    """Named-element size = ink rows inside its box x effective scale (output px / source px); `inside` needs the
+    whole box in the cam crop; a crop taller than the source shrinks to full height (as render.frame_cam)."""
+    g = np.zeros((1080, 1920), int)
+    g[500:518, 800:900] = 220                                    # an 18-px 'label'
+    fr = (g, 1920, 1080)
+    m = LS.element_px(None, 0, (0.5, 0.5, 0.75), (1440, 1032), [790, 495, 910, 525], 1080, frame=fr)
+    assert m["src"] == 18 and abs(m["scale"] - 1.0) < 1e-9 and m["inside"] and m["px"] == 18
+    m = LS.element_px(None, 0, (0.5, 0.5, 0.5), (1440, 1032), [790, 495, 910, 525], 1080, frame=fr)
+    assert abs(m["scale"] - 1.5) < 1e-9 and m["px"] == 27            # 1.5x on 1080 footage = upscale
+    m = LS.element_px(None, 0, (0.1, 0.5, 0.3), (1440, 1032), [790, 495, 910, 525], 1080, frame=fr)
+    assert m is None or not m["inside"]                              # element outside the crop
+    m = LS.element_px(None, 0, (0.5, 0.5, 0.25), (1440, 1032), [395, 247, 455, 262], 540, frame=fr)
+    assert m["src"] == 18                                            # box given at src_px 540 scales x2
+    x0, y0, bw, bh = LS.cam_crop((0.5, 0.5, 1.0), 1920, 1080, (1440, 1032))
+    assert bh == 1080 and abs(bw - 1080 * 1440 / 1032) < 1e-6
+
+
+def test_named_gate_fail_and_upscale_warn():
+    import promo.livestream as LSM
+    tmp = tempfile.NamedTemporaryFile(suffix=".mov", delete=False)
+    tmp.close()
+    g = np.zeros((1080, 1920), int)
+    g[500:516, 800:900] = 220                                    # 16 src px
+    orig = LSM._gray_frame
+    LSM._gray_frame = lambda path, t: (g, 1920, 1080)
+
+    def mut(cam, min_px=18):
+        def f(r):
+            _no_chat(r)
+            r["shots"][0]["screen"] = {"source": "x", "cam": cam}
+            r["shots"][0]["named"] = [{"name": "label", "box": [790, 495, 910, 525], "src_px": 1080, "min_px": min_px}]
+        return f
+    try:
+        rows = {}
+        for cam, want, up in [((0.5, 0.5, 0.75), "FAIL", "PASS"), ((0.5, 0.5, 0.6), "PASS", "WARN")]:
+            sp = _spec(mut(cam))
+            sp.footage_path = lambda cid: tmp.name
+            rows = {k: (st, msg) for k, st, msg in LS.named_rows(sp, LS.cfg(sp))}
+            assert rows["livestream-named"][0] == want, rows
+            assert rows["named-upscale"][0] == up, rows
+        assert "x1.25" in rows["named-upscale"][1] and "20.0 px" in rows["livestream-named"][1]
+        sp = _spec(mut((0.5, 0.5, 0.75)))                         # footage missing -> FAIL
+        rows = {k: (st, msg) for k, st, msg in LS.named_rows(sp, LS.cfg(sp))}
+        assert rows["livestream-named"][0] == "FAIL"
+    finally:
+        LSM._gray_frame = orig
+        os.unlink(tmp.name)
+
+
+def test_credit_gate_accepts_split_cards():
+    """Credits split over two cards (part 1 notice + licence line, part 2 models): both needed, each >= 2 s / 28 px."""
+    def split(r, second=True):
+        r["timeline"]["beats"] = 25
+        r["shots"][2]["part"] = 1
+        if second:
+            r["shots"].append({"id": "04", "beats": [20, 25], "type": "live2d_credits", "size": 30, "part": 2})
+        else:
+            r["shots"][2]["beats"] = [15, 25]
+    g = _gates(_spec(split))["livestream-licence"]
+    assert g[0] == "PASS" and "03" in g[1] and "04" in g[1], g
+    g = _gates(_spec(lambda r: split(r, False)))["livestream-licence"]
+    assert g[0] == "FAIL" and "part 2 missing" in g[1], g
+    from promo.render import RenderContext
+    from promo.shots import livestream as SL
+    ctx = RenderContext.from_spec(_spec())
+    notice, models = SL.credit_lines(ctx.spec)
+    ims = [np.asarray(SL.credits_card(ctx, notice, models, part=p))[..., :3].astype(int) for p in (None, 1, 2)]
+    ink = [int((im.max(2) > 150).sum()) for im in ims]
+    assert ink[1] < ink[0] and ink[2] < ink[0] and ink[1] > 0 and ink[2] > 0
+
+
+def test_talkshow_time_of_day_dissolve_source():
+    """09b dissolve: on only when the take changes time of day; the manifest field wins over the plan profile."""
+    import importlib.util
+    mp = os.path.join(ROOT, "projects", "commission-ai-talkshow", "make_spec.py")
+    if not os.path.exists(mp):
+        return
+    spec_ = importlib.util.spec_from_file_location("talk_make_spec_tod", mp)
+    MS = importlib.util.module_from_spec(spec_)
+    spec_.loader.exec_module(MS)
+    orig, orig_md = MS.manifest_entry, MS.manifest_md_tod
+    try:
+        MS.manifest_md_tod = lambda cid: None
+        MS.manifest_entry = lambda cid: {}
+        assert MS.tod_change("c", {"time_of_day": {"from": "dusk", "to": "day", "at": 5.5}})[:3] == (5.5, "dusk", "day")
+        assert MS.tod_change("c", {}) is None
+        MS.manifest_entry = lambda cid: {"time_of_day": "dusk"}                  # dusk retake: constant -> no dissolve
+        assert MS.tod_change("c", {"time_of_day": {"from": "dusk", "to": "day", "at": 5.5}}) is None
+        MS.manifest_entry = lambda cid: {"time_of_day": "dusk -> night @ 3.25"}
+        assert MS.tod_change("c", {})[:4] == (3.25, "dusk", "night", "manifest")
+        MS.manifest_entry = lambda cid: {}
+        MS.manifest_md_tod = lambda cid: "dusk"                                  # recorded in manifest.md only
+        assert MS.tod_change("c", {"time_of_day": {"from": "dusk", "to": "day", "at": 5.5}}) is None
+    finally:
+        MS.manifest_entry, MS.manifest_md_tod = orig, orig_md
+    d = tempfile.mkdtemp()
+    try:                                                                         # manifest.md parsing (row + section)
+        open(os.path.join(d, "manifest.yaml"), "w").write("clips: []\n")
+        open(os.path.join(d, "manifest.md"), "w").write("| shot-x | 1 | time of day: dusk -> day @ 5.50 |\n\n## shot-y retake\n"
+                                                        "Notes. Time of day: dusk\n")
+        old = MS.FOOTAGE
+        MS.FOOTAGE = os.path.join(d, "manifest.yaml")
+        assert MS.manifest_md_tod("shot-x") == "dusk -> day @ 5.50" and MS.manifest_md_tod("shot-y") == "dusk"
+        assert MS.manifest_md_tod("shot-z") is None
+        MS.FOOTAGE = old
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def test_host_track_from_vo_lines():
     import soundfile as sf
     from promo.shots import livestream as SL
@@ -516,7 +645,14 @@ def test_talkshow_spec_gates():
     c = LS.cfg(sp)
     assert c["hosts_side"] == "left" and not c.get("move") and c["tag"] == "EP 1"
     assert sp.shots[-1].type == "live2d_credits"
-    assert all(ln["user"] in ("Hiyori", "Mao") for ln in c["chat"]["lines"])
+    assert not LS.has_chat(c) and LS.screen_size(c) == (1440.0, 1032.0)   # asides cut: no strip, full-height screen
+    assert [s.get("part") for s in LS.credit_shots(sp)] == [1, 2]         # two credit cards
+    named = [s for s in sp.shots if s.cfg.get("named")]
+    assert {s.id for s in named} >= {"02", "04", "05", "06a", "06b", "07"}
+    if "livestream-named" in g:                                           # only the beat-4 Cursor badge may miss 18 px
+        bad = [m for m in g["livestream-named"][1].split("; ") if "NOT fully" in m or
+               (float(m.split("= ")[1].split(" px")[0]) < float(m.split("(min ")[1].split(")")[0]))]
+        assert all("badge" in m for m in bad), bad
     srcs = [(s.cfg.get("screen") or {}).get("source") for s in sp.shots]
     assert all(not x or "/" not in x for x in srcs)              # clip ids, never paths
 
@@ -560,13 +696,13 @@ def test_talkshow_auto_take_follows_text_height():
     spec_.loader.exec_module(MS)
     plan = yaml.safe_load(open(os.path.join(os.path.dirname(mp), "plan.yaml")))
     seg = next(sg for sg in plan["segments"] if sg.get("fallback_trim"))
-    if not MS.clip_path(seg["clip"]):
+    if not MS.clip_path(plan["takes"][seg["take"]]):
         return
     d = MS.build(copy.deepcopy(plan))
     t = d["takes"][0]
     assert t["measured_px"] >= 24 and t["take"] == "full"
     hard = copy.deepcopy(plan)
-    next(sg for sg in hard["segments"] if sg.get("fallback_trim"))["text_check"]["min_px"] = 99
+    hard["profiles"][hard["takes"][seg["take"]]]["text_check"]["min_px"] = 99
     d2 = MS.build(hard)
     assert d2["takes"][0]["take"] == "trimmed"
     ln = next(l for l in d2["vo_lines"] if l["id"] == t["line"])
@@ -583,6 +719,70 @@ def test_talkshow_auto_take_follows_text_height():
         VO.line_file = orig
     assert len(x) == int(round(ln["trim"]["end"] * sr)) and x[-1] == 0.0      # trimmed, faded to zero
     assert np.abs(full[len(x) - int(0.05 * sr): len(x)]).max() < 0.05          # the cut lands in a silence
+
+
+def _load_make_spec():
+    import importlib.util
+    mp = os.path.join(ROOT, "projects", "commission-ai-talkshow", "make_spec.py")
+    sp = importlib.util.spec_from_file_location("talk_make_spec2", mp)
+    MS = importlib.util.module_from_spec(sp)
+    sp.loader.exec_module(MS)
+    return MS, os.path.dirname(mp)
+
+
+def test_talkshow_vo_placeholder_and_superseded_fallback():
+    """A line whose re-voiced take has not landed uses the old take (vo/ or vo/superseded/<stem>.v1.wav) as a labelled
+    placeholder with the SCRIPT text; the files engine finds a pinned take even after it moves to superseded/."""
+    import json as _json
+
+    import soundfile as sf
+    MS, here = _load_make_spec()
+    d = tempfile.mkdtemp()
+    try:
+        os.makedirs(os.path.join(d, "vo", "superseded"))
+        script = os.path.join(d, "script.md")
+        open(script, "w").write("## Direction 3: test\n\n| # | Time | Screen | Dialogue |\n|---|---|---|---|\n"
+                                "| 1 | 0:00 | x | **HIYORI:** New words here! **MAO:** Same words. |\n"
+                                "| 8 | 1:26 | x | **HIYORI:** Merged! **MAO:** All eight tasks, three agents, all merged. (Pick by shot 11: "
+                                "neither = \"Every one of them, merged.\") |\n\n## Next\n")
+        y, sr = _speechy(dur=1.0)
+        sf.write(os.path.join(d, "vo", "superseded", "b1l1.v1.wav"), y, sr)        # old take moved aside, new not landed
+        sf.write(os.path.join(d, "vo", "b1l2.wav"), y[: sr // 2], sr)
+        sf.write(os.path.join(d, "vo", "b8l1.wav"), y, sr)
+        sf.write(os.path.join(d, "vo", "b8l2.wav"), y, sr)                          # only the existing beat 8 take
+        lines = [dict(beat=1, line=1, host="HIYORI", text="Old words here!", id="beat01_line01", file="vo/b1l1.wav"),
+                 dict(beat=1, line=2, host="MAO", text="Same words.", id="beat01_line02", file="vo/b1l2.wav"),
+                 dict(beat=8, line=1, host="HIYORI", text="Merged!", id="beat08_line01", file="vo/b8l1.wav"),
+                 dict(beat=8, line=2, host="MAO", text="All eight tasks, three agents, all merged.", id="beat08_line02", file="vo/b8l2.wav")]
+        _json.dump({"lines": lines}, open(os.path.join(d, "lines.json"), "w"))
+        plan = yaml.safe_load(open(os.path.join(here, "plan.yaml")))
+        plan["script"] = script
+        out, notes, var = MS.resolve_lines(plan, d)
+        by = {l["id"]: l for l in out}
+        assert var == "all"
+        a = by["beat01_line01"]
+        assert a["placeholder"] and a["file"] == "vo/superseded/b1l1.v1.wav" and a["text"] == "New words here!"
+        assert not by["beat01_line02"]["placeholder"] and abs(by["beat01_line02"]["duration"] - 0.5) < 0.01
+        b = by["beat08_line02"]
+        assert b["text"] == "Every one of them, merged." and b["placeholder"] and b["file"] == "vo/b8l2.wav"
+        plan["shot11_legible"] = {"cards": True, "logos": True}
+        assert MS.beat8_variant(plan) == "full"
+        plan["shot11_legible"] = {"cards": False, "logos": True}
+        assert MS.beat8_variant(plan) == "agents"
+        # files engine: pinned take found after a move to superseded/
+        from promo import vo as VO
+        h = hashlib.sha256(open(os.path.join(d, "vo", "b1l2.wav"), "rb").read()).hexdigest()
+        os.rename(os.path.join(d, "vo", "b1l2.wav"), os.path.join(d, "vo", "superseded", "b1l2.v1.wav"))
+        sf.write(os.path.join(d, "vo", "b1l2.wav"), y, sr)                          # a new take lands under the old name
+        orig = VO.files_dir
+        VO.files_dir = lambda spec, man=None: d
+        try:
+            p = VO.line_file(None, {"file": "vo/b1l2.wav", "sha256": h})
+        finally:
+            VO.files_dir = orig
+        assert p.endswith("superseded/b1l2.v1.wav")
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
 
 
 if __name__ == "__main__":

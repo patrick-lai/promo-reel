@@ -35,8 +35,48 @@ def files_dir(spec, man=None):
     return asset_path(spec, spec.raw["vo"]["asset"], man)
 
 
+_SHA = {}
+
+
+def _sha(p):
+    st = os.stat(p)
+    k = (p, st.st_size, st.st_mtime_ns)
+    if k not in _SHA:
+        from .assets import sha256_file
+        _SHA[k] = sha256_file(p)
+    return _SHA[k]
+
+
+def line_candidates(spec, line, man=None):
+    """Where a line's WAV may be: `file`, any `alt_files`, then `superseded/<name>` or `superseded/<stem>.vN.wav` next
+    to it (old takes are moved aside as re-voiced ones land)."""
+    d = files_dir(spec, man)
+    rels = [line["file"]] + list(line.get("alt_files") or [])
+    sup = os.path.join(d, os.path.dirname(line["file"]), "superseded")
+    stem = os.path.splitext(os.path.basename(line["file"]))[0]
+    out = []
+    for r in rels:
+        p = os.path.join(d, r)
+        if p not in out:
+            out.append(p)
+    if os.path.isdir(sup):                 # superseded/<name> or versioned superseded/<stem>.v1.wav, newest first
+        for f in sorted(os.listdir(sup), reverse=True):
+            if f == stem + ".wav" or (f.startswith(stem + ".") and f.endswith(".wav")):
+                p = os.path.join(sup, f)
+                if p not in out:
+                    out.append(p)
+    return out
+
+
 def line_file(spec, line, man=None):
-    return os.path.join(files_dir(spec, man), line["file"])
+    """The line's WAV: the first candidate whose sha256 matches the pin (so a take moved to superseded/ mid-build is
+    still found, and a new take landing under the same name is never used unpinned); without a pin, the first that exists."""
+    cands = [p for p in line_candidates(spec, line, man) if os.path.exists(p)]
+    if line.get("sha256"):
+        for p in cands:
+            if _sha(p) == line["sha256"]:
+                return p
+    return cands[0] if cands else line_candidates(spec, line, man)[0]
 
 
 def line_audio(spec, line, man=None):

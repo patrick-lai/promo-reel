@@ -1,7 +1,8 @@
 """Assets manifest (assets.yaml): validation (licence gate) + fetch.
 
-Each asset: id, kind (music|vo_model|vo|sfx|footage|font|still), path (relative to the spec dir, env expansion ok), licence,
-source_url, optional fetch_url / sha256 / redistributable / attribution / notes.
+Each asset: id, kind (music|vo_model|vo|sfx|footage|font|still|live2d_model|live2d_runtime), path (relative to the spec dir, env expansion ok), licence,
+source_url, optional fetch_url / sha256 / redistributable / attribution / notes / status (`draft` = licence terms
+still being confirmed: `promo check` WARNs on it, `promo publish` must not go out until it is cleared).
 Hard gate: every manifest entry needs a non-empty licence; music/vo_model/sfx also need source_url; every asset id
 referenced by the spec must exist in the manifest.
 """
@@ -15,8 +16,8 @@ import yaml
 
 from .spec import SpecError, expand_env
 
-KINDS = {"music", "vo_model", "vo", "sfx", "footage", "font", "still"}
-GATED = {"music", "vo_model", "vo", "sfx"}            # vo = pre-rendered voice-over files (a directory)          # these also need source_url
+KINDS = {"music", "vo_model", "vo", "sfx", "footage", "font", "still", "live2d_model", "live2d_runtime"}
+GATED = {"music", "vo_model", "vo", "sfx", "live2d_model", "live2d_runtime"}            # vo = pre-rendered voice-over files (a directory)          # these also need source_url
 GENERATED = {"sfx"}                           # produced by `promo sfx`, never fetched
 
 
@@ -85,6 +86,11 @@ def validate(spec, manifest=None):
         if rid not in manifest:
             problems.append(f"{rid}: referenced by the spec but not in the assets manifest")
     return problems
+
+
+def drafts(manifest):
+    """Ids whose licence entry is still `status: draft` (terms pending confirmation)."""
+    return [aid for aid, a in manifest.items() if str(a.get("status") or "").lower() == "draft"]
 
 
 def asset_path(spec, aid, manifest=None):

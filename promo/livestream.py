@@ -44,6 +44,7 @@ MAX_CHAT_LINES = 4
 MIN_MOVE_S = 0.5
 MIN_SLOT_GAP = 12
 HOST_W = 420                      # host layer width (canvas px); height follows the slot (head-and-shoulders framing)
+CHROME_FONT_PX = 28               # EP tag + host name tags: font size giving >=20 px cap height at 1080p
 HOSTS_TOP = 168                   # below the header
 HOSTS_BOTTOM = FRAME_H - 14       # host panels end 14 px above the frame edge (same margin as the chat strip)
 CREDIT_MIN_PX = 28
@@ -65,8 +66,20 @@ def moves(c):
     return m
 
 
+def has_chat(c):
+    """A chat strip exists only if the spec declares chat lines (no asides = no strip at all)."""
+    return bool(((c.get("chat") or {}).get("lines")))
+
+
 def screen_size(c):
-    w = float((c.get("screen") or {}).get("w", 1440))
+    """(w, h) of the app screen. 16:9 above a chat strip; with no chat strip it takes the full frame height
+    (minus margins) unless `screen.h` is given. Clips are framed into it with an aspect-matched cam crop."""
+    sc = c.get("screen") or {}
+    w = float(sc.get("w", 1440))
+    if sc.get("h"):
+        return w, float(sc["h"])
+    if not has_chat(c):
+        return w, FRAME_H - 2 * float(c.get("margin", 24))
     return w, w * 9 / 16
 
 
@@ -165,7 +178,7 @@ def _side_pos(c, side):
         if side == "right":
             x0 = FRAME_W - x0 - hw                      # mirror into the right-hand column
         hb.append([x0, y0, x0 + hw, y0 + hh])
-    chat = [screen[0], screen[3] + 14, screen[2], FRAME_H - 14]
+    chat = [screen[0], screen[3] + 14, screen[2], FRAME_H - 14] if has_chat(c) else None
     hdr_x0 = col0 + 18 if side == "left" else col0 + 6
     header = [hdr_x0, margin, hdr_x0 + col_w - 24, margin + 120]
     return dict(screen=screen, hosts=hb, chat=chat, header=header)
@@ -218,7 +231,7 @@ def layout_at(spec, t):
     elif ph == 1:
         S, hosts, hdr = A, [_shift(b, out_dx * u) for b in A["hosts"]], _shift(A["header"], out_dx * u)
     elif ph == 2:
-        S = dict(screen=_lerp_box(A["screen"], B["screen"], u), chat=_lerp_box(A["chat"], B["chat"], u))
+        S = dict(screen=_lerp_box(A["screen"], B["screen"], u), chat=_lerp_box(A["chat"], B["chat"], u) if A["chat"] else None)
         hosts, hdr = [_shift(b, out_dx) for b in A["hosts"]], _shift(A["header"], out_dx)
     elif ph == 3:
         S, hosts, hdr = B, [_shift(b, in_dx * (1 - u)) for b in B["hosts"]], _shift(B["header"], in_dx * (1 - u))
@@ -313,15 +326,21 @@ def check(spec, ctx=None):
         except L2.Live2DError as e:
             lic.append(str(e))
     cs = credit_shots(spec)
-    good = [s for s in cs if credit_hold(s) >= CREDIT_MIN_HOLD - 1e-9 and float(s.get("size", 30)) >= CREDIT_MIN_PX]
+    ok = lambda s: credit_hold(s) >= CREDIT_MIN_HOLD - 1e-9 and float(s.get("size", 30)) >= CREDIT_MIN_PX
+    desc = lambda s: f"{s.id}: {float(s.get('size', 30)):.0f} px, {credit_hold(s):.2f} s at full opacity"
+    whole = [s for s in cs if s.get("part") is None and ok(s)]
+    parts = {p: [s for s in cs if s.get("part") == p and ok(s)] for p in (1, 2)}   # a split credit: part 1 notice + part 2 models
+    good = whole[:1] or (parts[1][:1] + parts[2][:1] if parts[1] and parts[2] else [])
     if not cs:
         lic.append("no end-card credit: add a `live2d_credits` shot (full Live2D notice + model credits)")
     elif not good:
-        lic.append("; ".join(f"credit shot {s.id}: text {float(s.get('size', 30)):.0f} px (min {CREDIT_MIN_PX}), fully visible "
-                             f"{credit_hold(s):.2f} s (min {CREDIT_MIN_HOLD} s)" for s in cs))
+        miss = [f"part {p} missing" for p in (1, 2) if not parts[p]] if any(s.get("part") for s in cs) else []
+        lic.append("; ".join(miss + [f"credit shot {s.id}{' part ' + str(s.get('part')) if s.get('part') else ''}: text "
+                                     f"{float(s.get('size', 30)):.0f} px (min {CREDIT_MIN_PX}), fully visible "
+                                     f"{credit_hold(s):.2f} s (min {CREDIT_MIN_HOLD} s)" for s in cs]))
     rows.append(("livestream-licence", "FAIL" if lic else "PASS",
-                 "; ".join(lic) if lic else f"{len(c.get('hosts') or [])} Live2D Original Character host(s); end-card credit shot "
-                 f"{good[0].id}: {float(good[0].get('size', 30)):.0f} px, {credit_hold(good[0]):.2f} s at full opacity"))
+                 "; ".join(lic) if lic else f"{len(c.get('hosts') or [])} Live2D Original Character host(s); end-card credit shot"
+                 f"{'s' if len(good) > 1 else ''} " + " + ".join(desc(s) for s in good)))
     # 0b. framing: every host cropped by the same anchor rule (same head height + scale, panel bottom at mid-chest);
     # the full silhouette (anchor `top`, e.g. a hat) is never clipped at the top and its break-out above the panel
     # never covers the header, another host, the screen, the chat strip or a keep-clear rectangle.
@@ -348,7 +367,7 @@ def check(spec, ctx=None):
             probs.append(f"host {h.get('id')}: mid-chest at {f['chest_px']:.0f} px of a {hh} px panel (want 0.85-1.08)")
         bo = L0["breakouts"][i]
         if bo:
-            others = [("header", L0["header"]), ("app screen", L0["screen"]), ("chat strip", L0["chat"])]
+            others = [("header", L0["header"]), ("app screen", L0["screen"])] + ([("chat strip", L0["chat"])] if L0["chat"] else [])
             others += [(f"host {o.get('id')} panel", L0["hosts"][j]) for j, o in enumerate(c.get("hosts") or []) if j != i]
             others += [(f"host {o.get('id')} break-out", L0["breakouts"][j]) for j, o in enumerate(c.get("hosts") or []) if j != i and L0["breakouts"][j]]
             others += [(f"keep-clear '{k['name']}'", k["box"]) for k in L0["keep_clear"]]
@@ -374,7 +393,10 @@ def check(spec, ctx=None):
     # 2. chat strip lines + truthfulness
     ch = c.get("chat") or {}
     ml = int(ch.get("max_lines", MAX_CHAT_LINES))
-    rows.append(("livestream-chat", "FAIL" if ml > MAX_CHAT_LINES else "PASS", f"chat strip max_lines={ml} (max {MAX_CHAT_LINES})"))
+    if not has_chat(c):
+        rows.append(("livestream-chat", "PASS", "no chat asides: no chat strip (0 lines allowed); the app screen takes the band"))
+    else:
+        rows.append(("livestream-chat", "FAIL" if ml > MAX_CHAT_LINES else "PASS", f"chat strip max_lines={ml} (max {MAX_CHAT_LINES})"))
     hosts = host_names(c)
     strangers = sorted({str(ln.get("user", "")) for ln in ch.get("lines") or [] if str(ln.get("user", "")).strip().lower() not in hosts})
     label = str(ch.get("scripted_label") or "").strip()
@@ -434,7 +456,7 @@ def check(spec, ctx=None):
             for f in range(s.n):
                 t = s.t0 + f / spec.fps
                 L = layout_at(spec, t)
-                items = [("chat strip", L["chat"]), ("header", L["header"])]
+                items = ([("chat strip", L["chat"])] if L["chat"] else []) + [("header", L["header"])]
                 items += [(f"host {h.get('id', i)}", b) for i, (h, b) in enumerate(zip(c.get("hosts") or [], L["hosts"]))]
                 items += [(f"host {h.get('id', i)} break-out", b) for i, (h, b) in enumerate(zip(c.get("hosts") or [], L["breakouts"])) if b]
                 items += [(nm, b) for (nm, b, t0, t1) in over if t0 <= t < t1]
@@ -448,6 +470,8 @@ def check(spec, ctx=None):
     else:
         rows.append(("livestream-keep-clear", "PASS", f"{len(kc)} keep-clear rect(s) uncovered on every frame" if kc else "no keep-clear rectangles declared"))
     rows += text_size_rows(spec, c)
+    rows += named_rows(spec, c)
+    rows += cam_rows(spec, c)
     return rows
 
 
@@ -466,29 +490,126 @@ def measure_text_rows(gray, x0, x1, y0, y1, win=2, thr=110):
     return a + int(rows[0]), a + int(heavy[-1])
 
 
-def text_height(path, t, cam, screen_w, box, src_px=None):
-    """Rendered height (output px) of one text line of clip `path` at source time `t` seen through `cam` on a screen
-    `screen_w` px wide (16:9). `box` = [top, base] rows of the line in a `src_px`-tall frame (scaled to the clip).
-    Returns dict(px, top, base, scale, inside) or None if no text ink is found there."""
+def _gray_frame(path, t):
     import subprocess
 
     from . import render as R
     W, H = R.probe(path)[:2]
     raw = subprocess.check_output(["ffmpeg", "-v", "error", "-threads", "2", "-ss", f"{t:.3f}", "-i", path, "-frames:v", "1",
                                    "-f", "rawvideo", "-pix_fmt", "gray", "-"])
-    g = np.frombuffer(raw, np.uint8).reshape(H, W).astype(int)
+    return np.frombuffer(raw, np.uint8).reshape(H, W).astype(int), W, H
+
+
+def cam_crop(cam, W, H, screen):
+    """Source crop (x0, y0, bw, bh) of cam (cx, cy, w) for a screen (w, h) (a bare number = 16:9), as render.frame_cam."""
+    sw, sh = (screen, screen * 9 / 16) if isinstance(screen, (int, float)) else screen
     cx, cy, cw = cam
     bw = cw * W
-    bh = bw * 9 / 16
-    bx0 = min(max(cx * W - bw / 2, 0), W - bw)
-    by0 = min(max(cy * H - bh / 2, 0), H - bh)
+    bh = bw * sh / sw
+    if bh > H:                      # as render.frame_cam: shrink to the full image height
+        bh, bw = H, H * sw / sh
+    return min(max(cx * W - bw / 2, 0), W - bw), min(max(cy * H - bh / 2, 0), H - bh), bw, bh
+
+
+def element_px(path, t, cam, screen, box, src_px=None, frame=None, thr=110):
+    """Rendered size of a named on-screen element of clip `path` at source time `t`, seen through `cam` on `screen`
+    ((w, h) px, or a width = 16:9). `box` = [x0, y0, x1, y1] (or [top, base] = full crop width) in a frame `src_px`
+    tall (scaled to the clip). Height = ascender-top -> baseline of the ink inside the box (cap height for text, glyph
+    height for an icon; `thr` = ink luminance, raise it to measure a white glyph on a coloured badge). Returns dict(px, src, top, base, scale, inside) or None if there is no ink there.
+    `scale` = output px per source px (the effective scale: > 1.0 means the element is upscaled = soft)."""
+    g, W, H = frame if frame is not None else _gray_frame(path, t)
+    bx0, by0, bw, bh = cam_crop(cam, W, H, screen)
     k = H / float(src_px or H)
-    m = measure_text_rows(g, int(bx0), int(bx0 + bw), int(round(box[0] * k)), int(round(box[1] * k)))
+    if len(box) == 4:
+        x0, y0, x1, y1 = [v * k for v in box]
+    else:
+        x0, x1, y0, y1 = bx0, bx0 + bw, box[0] * k, box[1] * k
+    m = measure_text_rows(g, int(max(x0, bx0)), int(min(x1, bx0 + bw)) or 1, int(round(y0)), int(round(y1)), thr=thr)
     if m is None:
         return None
     top, base = m
-    scale = screen_w / bw
-    return dict(px=(base - top + 1) * scale, top=top, base=base, scale=scale, inside=by0 <= top and base <= by0 + bh)
+    scale = (screen if isinstance(screen, (int, float)) else screen[0]) / bw
+    inside = by0 <= top and base <= by0 + bh and (len(box) == 2 or (bx0 <= x0 and x1 <= bx0 + bw and by0 <= y0 and y1 <= by0 + bh))
+    return dict(px=(base - top + 1) * scale, src=base - top + 1, top=top, base=base, scale=scale, inside=inside)
+
+
+def text_height(path, t, cam, screen, box, src_px=None):
+    """Rendered height (output px) of one text line: `box` = [top, base] rows (or [x0, y0, x1, y1]) in a `src_px`-tall
+    frame. `screen` = (w, h) or a width (16:9). See element_px."""
+    return element_px(path, t, cam, screen, box, src_px)
+
+
+def cam_rows(spec, c):
+    """Gate livestream-cam: a screen cam crop (cx, cy, w at the screen's aspect) must fit inside its source frame
+    (a crop taller than the clip would be stretched/padded). With the full-height screen, 16:9 sources need w <= ~0.785."""
+    from . import render as R
+    bad, n = [], 0
+    for s in [s for s in spec.shots if s.type == "livestream"]:
+        sc = s.cfg.get("screen") or {}
+        if not sc.get("source") or not sc.get("cam"):
+            continue
+        try:
+            path = spec.footage_path(sc["source"])
+        except Exception:  # noqa: BLE001
+            continue
+        if not path or not os.path.exists(path):
+            continue
+        W, H = R.probe(path)[:2]
+        sw, sh = screen_size(c)
+        bw = sc["cam"][2] * W
+        n += 1
+        if bw > W + 0.5 or bw * sh / sw > H + 0.5:
+            bad.append(f"shot {s.id}: cam w={sc['cam'][2]} needs a {bw:.0f}x{bw * sh / sw:.0f} crop of a {W}x{H} clip "
+                       f"(max w {min(1.0, H * sw / sh / W):.3f})")
+    if not n:
+        return []
+    return [("livestream-cam", "FAIL" if bad else "PASS", "; ".join(bad) if bad else f"{n} screen cams fit their sources")]
+
+
+MIN_NAMED_PX = 18     # named-element cap height at 1080p (UX review T1/T4)
+
+
+def named_rows(spec, c):
+    """Gates for elements a VO line names (`named: [{name, box: [x0, y0, x1, y1], src_px, at, min_px}]` on a livestream
+    shot; `at` = source time, default the shot's first displayed frame):
+      livestream-named  FAIL if an element renders under min_px (default 18; 0 = a container that only has to be fully
+                        in frame, e.g. the whole card) or is not fully inside the screen crop;
+      named-upscale     WARN if an element's effective scale (output px / source px) is above 1.0 = upscaled, soft text
+                        (prefer a DPR 2 / 4K take)."""
+    out, up = [], []
+    for s in [s for s in spec.shots if s.type == "livestream" and s.cfg.get("named")]:
+        sc = s.cfg.get("screen") or {}
+        src = sc.get("source")
+        try:
+            path = spec.footage_path(src) if src else None
+        except Exception as e:  # noqa: BLE001
+            out.append(f"!shot {s.id}: cannot measure ({e})"); continue
+        if not path or not os.path.exists(path):
+            out.append(f"!shot {s.id}: cannot measure, footage {src!r} missing"); continue
+        cam = sc.get("cam", (0.5, 0.5, 1.0))
+        frames = {}
+        for el in s.cfg["named"]:
+            t = float(el.get("at", float(sc.get("t_in", 0.0)) + 0.05))
+            if t not in frames:
+                frames[t] = _gray_frame(path, t)
+            m = element_px(path, t, cam, screen_size(c), el["box"], el.get("src_px"), frame=frames[t], thr=el.get("thr", 110))
+            nm = el.get("name", "?")
+            if m is None:
+                out.append(f"!shot {s.id} {nm!r}: no ink in its box at {t:.2f} s"); continue
+            need = el.get("min_px", MIN_NAMED_PX)
+            ok = m["px"] >= need and m["inside"]
+            out.append(("" if ok else "!") + f"shot {s.id} {nm!r}: {m['src']} src px x{m['scale']:.2f} = {m['px']:.1f} px (min {need})"
+                       + ("" if m["inside"] else ", NOT fully in the screen crop"))
+            if m["scale"] > 1.0 + 1e-6:
+                up.append(f"shot {s.id} {nm!r} x{m['scale']:.2f} ({src})")
+    rows = []
+    if out:
+        bad = [m for m in out if m.startswith("!")]
+        rows.append(("livestream-named", "FAIL" if bad else "PASS", "; ".join(m.lstrip("!") for m in out)))
+        rows.append(("named-upscale", "WARN" if up else "PASS",
+                     ("upscaled (effective scale > 1.0, soft text; prefer a DPR 2 / 4K take): " + "; ".join(up)) if up
+                     else "every named element at effective scale <= 1.0"))
+    return rows
 
 
 def text_size_rows(spec, c):
@@ -507,7 +628,7 @@ def text_size_rows(spec, c):
             out.append(f"!shot {s.id}: cannot measure ({e})"); continue
         if not path or not os.path.exists(path):
             out.append(f"!shot {s.id}: cannot measure, footage {src!r} missing"); continue
-        m = text_height(path, float(sc.get("t_in", 0.0)) + 0.05, sc.get("cam", (0.5, 0.5, 1.0)), screen_size(c)[0], tc["box"], tc.get("src_px"))
+        m = text_height(path, float(sc.get("t_in", 0.0)) + 0.05, sc.get("cam", (0.5, 0.5, 1.0)), screen_size(c), tc["box"], tc.get("src_px"))
         if m is None:
             out.append(f"!shot {s.id}: no text ink near rows {tc['box']} of {src}"); continue
         need = tc.get("min_px", 24)

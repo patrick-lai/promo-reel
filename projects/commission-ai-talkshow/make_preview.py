@@ -7,7 +7,7 @@ Everything else (VO, host layers, real clips, chat, credits) is identical and sh
 from the cache). Output: preview/out/ -> copied to $PREVIEW_DIR (default /workspace/promo-reel-evals) as
 talkshow-preview.mp4 + talkshow-preview-contact.png.
 
-    nice -n 10 python projects/commission-ai-talkshow/make_preview.py
+    nice -n 10 python projects/commission-ai-talkshow/make_preview.py [--name=talkshow-preview-v2]
 """
 import os
 import shutil
@@ -68,10 +68,11 @@ def main():
     png, _ = contact.contact_paths(ps)
     dst = os.environ.get("PREVIEW_DIR", "/workspace/promo-reel-evals")
     os.makedirs(dst, exist_ok=True)
-    shutil.copy2(mp4, os.path.join(dst, "talkshow-preview.mp4"))
-    shutil.copy2(png, os.path.join(dst, "talkshow-preview-contact.png"))
-    print("preview:", os.path.join(dst, "talkshow-preview.mp4"))
-    print("contact:", os.path.join(dst, "talkshow-preview-contact.png"))
+    name = next((a.split("=", 1)[1] for a in sys.argv[1:] if a.startswith("--name=")), "talkshow-preview")
+    shutil.copy2(mp4, os.path.join(dst, f"{name}.mp4"))
+    shutil.copy2(png, os.path.join(dst, f"{name}-contact.png"))
+    print("preview:", os.path.join(dst, f"{name}.mp4"))
+    print("contact:", os.path.join(dst, f"{name}-contact.png"))
 
 
 if __name__ == "__main__":

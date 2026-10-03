@@ -91,11 +91,15 @@ def cam_at(keys, t):
 
 
 def frame_cam(ctx, img, cx, cy, w, out=(None, None)):
-    """Crop a 16:9 box centred (cx, cy) of normalised width w from img and resample to out size (float box)."""
+    """Crop a box of the output's aspect centred (cx, cy) of normalised width w from img and resample to out size
+    (float box). A crop that would be taller than the image shrinks to the full image height (`promo check`
+    livestream-cam flags explicit cams that do this)."""
     ow, oh = out[0] or ctx.OW, out[1] or ctx.OH
     SW, SH = img.size
     bw = w * SW
     bh = bw * oh / ow
+    if bh > SH:                     # output taller than 16:9 (e.g. the full-height livestream screen): widest crop that fits
+        bh, bw = SH, SH * ow / oh
     x0 = cx * SW - bw / 2
     y0 = cy * SH - bh / 2
     x0 = min(max(x0, 0), SW - bw)

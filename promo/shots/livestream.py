@@ -259,7 +259,7 @@ def header_panel(ctx, box, title, tag="EP 1"):
     d = ImageDraw.Draw(im)
     y = 6 * K
     if tag:
-        tp = pill(ctx, tag, 20)
+        tp = pill(ctx, tag, LS.CHROME_FONT_PX)  # ~20 px cap height (UX review T6: was 14 px)
         im.alpha_composite(tp, (0, int(y)))
         y += tp.height + 14 * K
     if title:
@@ -271,14 +271,14 @@ def header_panel(ctx, box, title, tag="EP 1"):
 
 
 def name_tag(ctx, text):
-    f = ctx.font(20, "SemiBold")
+    f = ctx.font(LS.CHROME_FONT_PX, "SemiBold")  # ~20 px cap height (UX review T6: was 14 px)
     d = ImageDraw.Draw(Image.new("RGBA", (4, 4)))
     tw = d.textlength(text, font=f)
-    w, h = int(tw + 28 * ctx.K), int(34 * ctx.K)
+    w, h = int(tw + 28 * ctx.K), int((LS.CHROME_FONT_PX + 16) * ctx.K)
     im = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     dd = ImageDraw.Draw(im)
     dd.rounded_rectangle([0, 0, w - 1, h - 1], radius=h // 2, fill=(16, 17, 24, 215))
-    dd.text((14 * ctx.K, 5 * ctx.K), text, font=f, fill=(255, 255, 255, 255))
+    dd.text((14 * ctx.K, 6 * ctx.K), text, font=f, fill=(255, 255, 255, 255))
     return im
 
 
@@ -357,6 +357,12 @@ class Livestream(ShotType):
             still = framed(ctx, screen_card(ctx, SW, SH, sc["card"]))
         else:
             still = framed(ctx, placeholder_screen(ctx, SW, SH, sc.get("placeholder", "APP FOOTAGE")))
+        # dissolves over a hard cut INSIDE the take (e.g. a time-of-day snap: dusk -> day, UX review T5): around source
+        # time `at`, blend the last frame before the cut (held) into the frames from the cut on (2nd reader, held first)
+        diss = []
+        for dv in (sc.get("dissolve") or []) if src is not None else []:
+            at, dd = float(dv["at"]), float(dv.get("dur", 0.4))
+            diss.append((at, dd, R.Source(spec.footage_path(sc["source"]), at, at + dd / 2 + 0.2)))
         hdr_cache = {}
         overlays = build_overlays(ctx, cfg.get("overlays"))
         show_kc = os.environ.get("PROMO_DEBUG") == "1"        # keep-clear outlines: `promo --debug` only, never in normal output
@@ -383,7 +389,7 @@ class Livestream(ShotType):
                         comp(out, fr, lb[0] * K, lb[1] * K)
                 for k, (tg_, b) in enumerate(zip(tags, L["hosts"])):
                     x = int(round(((b[0] + b[2]) / 2) * K - tg_.width / 2))
-                    comp(out, tg_, x, (b[3] - 44) * K)
+                    comp(out, tg_, x, (b[3] - LS.CHROME_FONT_PX - 26) * K)
             hb = L["header"]
             key = tuple(round(v, 1) for v in hb)
             if key not in hdr_cache:
@@ -393,7 +399,16 @@ class Livestream(ShotType):
             def draw_header():
                 comp(out, hdr_cache[key], hb[0] * K, hb[1] * K)
             if src is not None:
-                im = src.frame(sc.get("t_in", 0.0) + max(0.0, t - hold_in) * sc.get("speed", 1.0))
+                st = sc.get("t_in", 0.0) + max(0.0, t - hold_in) * sc.get("speed", 1.0)
+                im = None
+                for at, dd, bsrc in diss:
+                    if at - dd / 2 <= st < at + dd / 2:
+                        a = (st - (at - dd / 2)) / dd
+                        A, B = src.frame(min(st, at - 1.0 / src.fps)), bsrc.frame(max(st, at))
+                        im = Image.blend(A, B, a) if A is not None and B is not None else (B or A)
+                        break
+                if im is None:
+                    im = src.frame(st)
                 cam = sc.get("cam", (0.5, 0.5, 1.0))
                 lay, pad = framed(ctx, R.frame_cam(ctx, im, *cam, out=(SW, SH)))
             else:
@@ -407,7 +422,8 @@ class Livestream(ShotType):
             draw_header()          # hosts/header never overlap the screen (a move slides them off the frame edge)
             draw_hosts()
             ch = L["chat"]
-            comp(out, chat_panel(ctx, ch, LS.chat_lines_at(c, tg), tg, label), ch[0] * K, ch[1] * K)
+            if ch is not None:     # no asides -> no chat strip at all (UX review T2/T3)
+                comp(out, chat_panel(ctx, ch, LS.chat_lines_at(c, tg), tg, label), ch[0] * K, ch[1] * K)
             return apply_overlays(overlays, out, t)
 
         try:
@@ -417,6 +433,8 @@ class Livestream(ShotType):
                 r.close()
             if src is not None:
                 src.close()
+            for _, _, bsrc in diss:
+                bsrc.close()
         return dict(src=sc.get("source") or ("generated card" if sc.get("card") else "placeholder screen"), inout=f"global frames {shot.f0}-{shot.f0 + shot.n - 1}",
                     move=f"livestream layout, hosts {c.get('hosts_side', 'left')}" + (", one slide" if LS.moves(c) else ""),
                     caption=" / ".join(f"'{o.cfg['text']}'" for o in overlays if o.role == "caption") or "none",
@@ -440,9 +458,10 @@ def credit_lines(spec):
 LICENCE_LINE = "Live2D sample models used under the Live2D Free Material License Agreement (Original Characters)."
 
 
-def credits_card(ctx, notice, models, size=30, title="Credits"):
+def credits_card(ctx, notice, models, size=30, title="Credits", part=None):
     """Centred credit block (horizontally + vertically, centred lines): title, the official notice, the licence line
-    on its own line under it (same size/weight/colour), then one line per model credit."""
+    on its own line under it (same size/weight/colour), then one line per model credit. `part` splits it over two
+    cards (UX review T6: ~55 words in 3 s can't be read): 1 = title + notice + licence line, 2 = the model credits."""
     K = ctx.K
     out = stream_bg(ctx)
     d = ImageDraw.Draw(Image.new("RGBA", (4, 4)))
@@ -467,8 +486,10 @@ def credits_card(ctx, notice, models, size=30, title="Credits"):
     blocks = []
     if title:
         blocks.append(wrap(title, fh, (255, 255, 255, 255), size * 2.4 * K))
-    blocks.append(wrap(notice, fb, body, lh) + wrap(LICENCE_LINE, fb, body, lh))      # licence line right under the notice
-    blocks.append([r for name, cr in models for r in wrap(f"{name}: {cr}" if cr else name, fb, body, lh)])
+    if part in (None, 1):
+        blocks.append(wrap(notice, fb, body, lh) + wrap(LICENCE_LINE, fb, body, lh))  # licence line right under the notice
+    if part in (None, 2):
+        blocks.append([r for name, cr in models for r in wrap(f"{name}: {cr}" if cr else name, fb, body, lh)])
     gap = 28 * K
     layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     dl = ImageDraw.Draw(layer)
@@ -491,7 +512,9 @@ class Live2DCredits(ShotType):
     def render(self, ctx, shot):
         notice, models = credit_lines(ctx.spec)
         size = float(shot.get("size", 30))
-        card = credits_card(ctx, notice, models, size=size, title=shot.get("title", "Credits"))
+        part = shot.get("part")
+        card = credits_card(ctx, notice, models, size=size, title=shot.get("title", "Credits" if part in (None, 1) else "Models"),
+                            part=part)
         bg = stream_bg(ctx)
         fin = float(shot.get("fade_in", 0.25))
         overlays = build_overlays(ctx, shot.cfg.get("overlays"))
@@ -501,5 +524,5 @@ class Live2DCredits(ShotType):
             return apply_overlays(overlays, Image.blend(bg, card, a) if a < 1 else card.copy(), t)
         R.run_shot(ctx, shot, f)
         return dict(src="generated end card", inout="-", move="none", caption="none",
-                    notes=f"Live2D notice + credits for {', '.join(n for n, _ in models)} at {size:.0f} px, "
+                    notes=f"Live2D {dict([(1, 'notice + licence line'), (2, 'model credits')]).get(part, 'notice + credits')} for {', '.join(n for n, _ in models)} at {size:.0f} px, "
                           f"{shot.dur - fin:.2f} s at full opacity")
