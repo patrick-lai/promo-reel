@@ -1,0 +1,19 @@
+# Footage manifest (authoritative, machine-readable). Raw media is NOT in git: it lives at `path` on the box.
+# Fill in with `promo footage add /abs/path/clip.mov --id my-clip --shots 01 02 --commit <full sha> --capture '<url+params>' --dpr 2`
+# (computes sha256, probes resolution/fps). Shots reference clips by `id`. Fields:
+#   id, shots, path (ABSOLUTE; ${VAR:-default} ok), sha256, app_commit (full SHA), capture (URL / params / clock+seed notes),
+#   framing (viewport, in-app zoom, crop notes), resolution, dpr (1 or 2), fps, captured_at (ISO), notes, demo (bool).
+clips:
+- id: my-clip
+  shots: ['01', '02']
+  path: ${MY_PROMO_FOOTAGE:-/path/on/the/box}/my-clip.mov
+  sha256: FILL-ME-IN
+  app_commit: unknown
+  capture: unknown
+  framing: unknown
+  resolution: unknown
+  dpr: unknown
+  fps: unknown
+  captured_at: unknown
+  notes: placeholder; replace via `promo footage add`
+  demo: false

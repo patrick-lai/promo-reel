@@ -1,0 +1,18 @@
+media/
+build/
+out/
+*.mp4
+*.mov
+*.wav
+*.mp3
+*.onnx
+*.bin
+__pycache__/
+.venv/
+*.egg-info/
+# raw captures never go in git (no LFS); only the manifests
+projects/*/footage/*
+!projects/*/footage/manifest.yaml
+!projects/*/footage/manifest.md
+*.png
+!docs/**/*.png

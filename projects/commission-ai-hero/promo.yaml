@@ -1,0 +1,293 @@
+# commission-ai 60 s hero v1: full port of the legacy pipeline (timeline.py + sources.json + build_hero.py + make_events.py
+# + build_mix.py + music_edit.py + make_vo.py). Paths are relative to this file; ${VAR:-default} env expansion everywhere.
+project: {name: commission-ai-hero, title: "commission-ai hero v1"}
+output: {name: hero-v1, resolution: 1080, fps: 30, duration: 60.0}     # resolution 1080 or 2160; CLI --scale / PROMO_SCALE override
+paths: {build: build, out: out}
+assets: assets.yaml                       # music / vo models / sfx / font (licence gate)
+footage: footage/manifest.yaml            # raw clips by id: absolute path + sha256 + provenance (footage never in git)
+plugins: [shots.py]                       # project-specific shot types: composer, rail_labels, tilt_card, float_window, tiles
+
+style:
+  font:
+    path: "${PROMO_FONT:-/usr/share/fonts/truetype/sand-box/google/Inter/Inter-VariableFont_opsz,wght.ttf}"
+    fallbacks: ["/usr/share/fonts/truetype/inter/Inter-VariableFont_opsz,wght.ttf"]
+  # caption pills live in a fixed safe zone: centred column that survives a 9:16 crop. Units: 1920x1080 canvas px.
+  caption: {cx: 960, cy: 905, size: 32, max_w: 608, zone: {x0: 656, x1: 1264, y0: 860, y1: 950}}
+
+music:
+  asset: music-491119
+  bpm: 98
+  track_beat: 0.61225          # seconds per beat in the source mp3
+  track_offset: 0.0455         # track beat 0 position in the mp3
+  edit:                        # [edit_beat, track_beat_from, track_beat_to]
+    segments: [[0, 0, 56], [56, 8, 16], [64, 16, 32], [80, 80, 97.6]]
+    crossfade: 0.030
+    gains:                     # multiplied into one gain curve, in order
+      - {beats: [72, 97], db: 1.0, ramp: 0.3}     # gentle lift for the biggest last section
+      - {beats: [0, 16], db: 3.0}                 # lift the filtered intro so it reads as a breakdown
+      - {beats: [56, 64], db: 6.0}                # ... and the breather
+    silence_from_beat: 97.6
+
+timeline: {bpm: 98, beats: 98}      # 98 beats = 60.000 s; frames(b0,b1) = round(t(b1)*fps) - round(t(b0)*fps)
+
+# plates: none captured -> dark_plate fallback. To add one:  plates: {night: {source: plate-night-clip-id, cam: [0.5, 0.5, 1.0], dim: 0.6, blur: 8}}
+
+shots:
+  - id: "01"
+    beats: [0, 4]
+    type: clip
+    source: shot-01-v1
+    label: "footage/shot-01-v1.mov (OLD, 0a3c3acd)"
+    t_in: 1.0
+    cam: [[0, 0.5, 0.565, 0.80], [end, 0.5, 0.575, 0.68]]
+    overlays:
+      - {type: scrim}
+      - {type: text, text: commission-ai, cy: 500, size: 132, t: [0.15, 99], fade_in: 0.35}
+      - {type: caption, text: "Your AI dev crew", style: light, size: 38, t: [0.40, 99], fade_in: 0.25}
+    notes: "Raw footage (no bubble paint-out: reshoot instead, team rule). Soft dark scrim behind the wordmark."
+
+  - id: "02"
+    beats: [4, 8]
+    type: clip
+    source: shot-02
+    label: "footage/shot-02.mov (OLD, 0a3c3acd)"
+    t_in: 0.9
+    speed: 2.0
+    blur: 3
+    cam: [[0, 0.5, 0.48, 0.74], [end, 0.5, 0.50, 0.64]]
+    sfx:
+      - {sfx: whoosh_long, at: 0.15, db: -3}
+    notes: "In-app view toggle City -> Town -> Street glide, 2x with 3-frame shutter blend; crop excludes the robots pill and room HUD."
+
+  - id: "03"
+    beats: [8, 16]
+    type: composer
+    source: shot-03
+    label: "footage/shot-03.mov (OLD, 0a3c3acd) over a dark-gradient plate"
+    src_range: [0.7, 9.9]
+    box: [0.151, 0.8875, 0.3792, 0.9824]
+    tmap: {src0: 1.1, span: 8.25, dur: 3.9, end_src: 9.6}   # type src 1.1..9.35 s in 3.9 s, then hold on the finished ask
+    width: 1380
+    scale_up: 0.05
+    plate: night
+    sfx:                                                     # typing patter: 6 chars/s from 1.0 s; line 2 from 6.57 s
+      - sfx: typing
+        src_runs: [{start: 1.0, step: "1/6", count: 33}, {start: 6.57, step: "1/6", count: 17}]
+        db: -4
+
+  - id: "04"
+    beats: [16, 25]
+    type: clip
+    source: shot-04-v1
+    label: "footage/shot-04-v1.mov (OLD, ops-toolkit board)"
+    t_in: 12.5
+    speed: 1.2704174228675136
+    cam: [[0, 0.62, 0.56, 0.64], [5.51, 0.62, 0.575, 0.60]]
+    overlays:
+      - {type: caption, text: "Split into 8 tasks.", t: [2.0, 99]}
+    sfx:                                                     # ticks as task nodes pop in (alternating tick / tick2)
+      - {sfx: tick,  src: 13.5,  db: -6}
+      - {sfx: tick2, src: 14.6,  db: -6}
+      - {sfx: tick,  src: 15.72, db: -6}
+      - {sfx: tick2, src: 16.82, db: -6}
+      - {sfx: tick,  src: 17.92, db: -6}
+
+  - id: "05"
+    beats: [25, 33]
+    type: rail_labels
+    source: shot-05-v1
+    label: "footage/shot-05-v1.mov (OLD promo take, bc10d245)"
+    t_in: 0.6
+    cam: [[0, 0.18, 0.28, 0.37], [4.9, 0.175, 0.275, 0.345]]
+    label_size: 30
+    label_hold: 1.9
+    rows:                                                    # x,y: normalised source point at the row's end; t: pop time (output s)
+      - {name: Claude Code, x: 0.1345, y: 0.2435, t: 0.4}
+      - {name: Codex,       x: 0.1345, y: 0.2875, t: 1.4}
+      - {name: Cursor,      x: 0.1345, y: 0.331,  t: 2.4}
+    sfx:                                                     # rail rows light up
+      - {sfx: tick,  src: 1.1, db: -4}
+      - {sfx: tick2, src: 2.1, db: -4}
+      - {sfx: tick,  src: 3.1, db: -4}
+
+  - id: "06"
+    beats: [33, 38]
+    type: tilt_card
+    node: shot-06-still-node
+    board: shot-06-still-board
+    label: "shot-06-still-node.png over blurred shot-06-still-board.png (OLD, 0a3c3acd)"
+    scale: [1.4, 1.58]
+    tilt: [16, -2]
+    overlays:
+      - {type: caption, text: "Each task gets its own worktree.", t: [0.25, 99]}
+    sfx:
+      - {sfx: whoosh_short, at: 0.0, offset: -0.12, db: -8}   # card lifts out
+    notes: "PAY-105 TaskNode (worktree slot 'S2')."
+
+  - id: "08"
+    beats: [38, 42]
+    type: clip
+    source: shot-08-v1
+    label: "footage/shot-08-v1.mov (OLD, 0a3c3acd, PAY-104 drawer)"
+    t_in: 2.95
+    speed: 1.4087382605144958
+    cam: [[0, 0.8, 0.2, 0.27], [2.45, 0.8, 0.205, 0.25]]
+    overlays:
+      - {type: caption, text: "Running checks", t: [0.15, 99]}
+    sfx:
+      - {sfx: tick, src: 3.0, db: -3}                         # chip change
+
+  - id: "09"
+    beats: [42, 45]
+    type: clip
+    source: shot-09-v1
+    label: "footage/shot-09-v1.mov (OLD, 0a3c3acd, PAY-105 drawer)"
+    t_in: 0.5
+    speed: 1.0
+    cam: [[0, 0.79, 0.2, 0.4], [1.84, 0.785, 0.205, 0.37]]
+    notes: "No caption (the UI line says it)."
+
+  - id: "10"
+    beats: [45, 54]
+    type: clip
+    source: shot-10-v1080
+    label: "footage/v1-1080/shot-10.mov (NEW, main 4a427fc0, ?demo=promo, 1920x1080)"
+    t_in: 0.55
+    speed: 1.0
+    cam: [[0, 0.585, 0.535, 0.38], [1.2, 0.585, 0.535, 0.36], [5.51, 0.59, 0.54, 0.33]]
+    overlays:
+      - {type: caption, text: "Only pings you when it matters.", t: [0.9, 99]}
+    sfx:
+      - {sfx: chime, src: 1.25, db: -6}                       # Needs you -> the ONLY chime
+      - {sfx: tick,  src: 3.95, db: -2}                       # real click on 'Allow once'
+      - {sfx: tick2, src: 4.25, db: -6}                       # back to Running
+    notes: "Source is 1080p, so the ~2.8x push is an upscale (soft)."
+
+  - id: "12"
+    beats: [54, 64]
+    type: clip
+    source: shot-12-v1
+    label: "footage/shot-12-v1.mov (OLD, ops-toolkit PR #121, 3840x2160)"
+    segs:
+      - {t_in: 4.2,  t_out: 5.55, dur: 1.6}
+      - {t_in: 5.55, t_out: 6.64, dur: 4.5224}
+    cam: [[0, 0.68, 0.41, 0.43], [6.122448979591837, 0.68, 0.405, 0.41]]
+    overlays:
+      - {type: caption, text: "Every change explained.", t: [1.4, 99]}
+    sfx:
+      - {sfx: tick2, src: 5.37, db: -8}                       # review pane change
+
+  - id: "15"
+    beats: [64, 70]
+    type: float_window
+    source: shot-15
+    label: "footage/shot-15.mov (OLD promo take, bc10d245) over a dark-gradient plate"
+    t_in: 5.9
+    window: [1300, 731]
+    y: 470
+    plate: morning
+    camA: [[0, 0.895, 0.226, 0.16], [1.9, 0.895, 0.222, 0.15]]
+    camB: [[1.6, 0.7, 0.418, 0.205], [3.67, 0.7, 0.418, 0.195]]
+    dissolve: [1.6, 1.95]
+    overlays:
+      - {type: caption, text: "Wake up to merged PRs.", t: [0.3, 99]}
+    sfx:
+      - {sfx: swell, src: 7.0, offset: -0.9, db: -10}        # Merged chip: tick + subtle swell (no chime)
+      - {sfx: tick,  src: 7.0, db: -3}
+      - {sfx: tick2, src: 8.2, db: -5}                        # PR badge flips to Merged
+
+  - id: "11"
+    beats: [70, 75]
+    type: clip
+    source: shot-11-v1
+    label: "footage/shot-11-v1.mov (OLD promo take, bc10d245)"
+    t_in: 10.8
+    speed: 1.0
+    cam: [[0, 0.46, 0.36, 0.4], [0.25, 0.46, 0.36, 0.4], [1.75, 0.6, 0.55, 0.8], [3.06, 0.6, 0.55, 0.78]]
+    overlays:
+      - {type: caption, text: "8 tasks · 3 agents · all merged", t: [1.00, 99]}
+
+  - id: "16"
+    beats: [75, 80]
+    type: tiles
+    tiles:
+      - {source: shot-16a, t: 2.0,  box: [0.375, 0.145, 0.505, 0.5],  label: "16a @2.0 s Landed column (OLD promo)"}
+      - {source: shot-14b, t: 12.0, box: [0.3, 0.12, 0.62, 0.78],     label: "14b @12.0 s Street (OLD demo)"}
+      - {source: shot-15,  t: 9.5,  box: [0.565, 0.31, 0.78, 0.56],   label: "15 @9.5 s PR #438 Merged (OLD promo)"}
+    sfx:
+      - {sfx: whoosh_short, at: 0.0, offset: -0.1, db: -7}    # tiles slide in
+
+  - id: "14b"
+    beats: [80, 90]
+    type: clip
+    source: shot-14b
+    label: "footage/shot-14b.mov (OLD demo take, 0a3c3acd)"
+    t_in: 7.4
+    cam: [[0, 0.5, 0.5, 0.74], [6.12, 0.46, 0.44, 0.6]]
+    overlays:
+      - {type: caption, text: "Every token builds something.", style: light, t: [0.35, 99]}
+
+  - id: "17"
+    beats: [90, 98]
+    type: card
+    bg: {source: shot-17-v1, t: 3.5}
+    label: "footage/shot-17-v1.mov (= shot 01, OLD) frame"
+    cam: [0.5, 0.57, 0.7]
+    blur: 14
+    brightness: 0.30
+    plate_blend: 0.35
+    push: 0.03
+    overlays:
+      - {type: text, text: commission-ai, cy: 470, size: 132, t: [0.0, 99], fade_in: 0.25}
+      - {type: text, text: "Your AI dev crew, on your Mac.", cy: 590, size: 50, weight: Medium, t: [0.25, 99], fade_in: 0.3}
+      - {type: pill, text: "macOS alpha", style: light, cy: 690, size: 32, t: [0.5, 99], fade_in: 0.3}
+    notes: "Music hard-stops at beat 96; the last 1.2 s holds on the card."
+
+vo:
+  engine: kokoro
+  model_asset: kokoro-model
+  voices_asset: kokoro-voices
+  voice: bf_emma
+  lang: en-gb
+  speed: 0.95
+  lines:                       # `at` = shot-local seconds; `text` = script (what the QA gate compares), `tts` = what Kokoro is told to say
+    - {shot: "03", at: 0.35, text: "Tell it what you want built."}
+    - {shot: "04", at: 0.35, text: "The Commander plans the work…", tts: "The Commander plans the work,"}
+    - {shot: "05", at: 0.30, text: "…and a crew of agents picks it up.", tts: "and a crew of agents picks it up."}
+    - {shot: "06", at: 0.20, text: "Each in its own worktree.", asr_aliases: {"work tree": worktree}}
+    - {shot: "08", at: 0.25, text: "They code, run the checks and push.", tts: "They code, run the checks, and push."}
+    - {shot: "10", at: 0.95, text: "It only asks when it needs you."}
+    - {shot: "12", at: 0.50, text: "Every change comes explained."}
+    - {shot: "15", at: 0.30, text: "Go to bed. Wake up to merged PRs.", tts: "Go to bed. Wake up to merged P R's."}
+    - {shot: "14b", at: 0.45, text: "And while they work, your workshop grows."}
+    - {shot: "17", at: 0.45, text: "commission-ai. Your AI dev crew, on your Mac.", tts: "Commission AI. Your AI dev crew, on your Mac."}
+
+sfx:
+  library:
+    tick: {asset: sfx-tick}
+    tick2: {asset: sfx-tick2}
+    chime: {asset: sfx-chime, duck_music: {db: 3, dur: 1.2}}
+    whoosh_long: {asset: sfx-whoosh_long}
+    whoosh_short: {asset: sfx-whoosh_short}
+    swell: {asset: sfx-swell}
+    key0: {asset: sfx-key0}
+    key1: {asset: sfx-key1}
+    key2: {asset: sfx-key2}
+    key3: {asset: sfx-key3}
+    key4: {asset: sfx-key4}
+    key5: {asset: sfx-key5}
+    typing: {variants: [key0, key1, key2, key3, key4, key5], gain_jitter: [-2.5, 1.0], pan_jitter: 0.15, seed: 3}
+
+mix:
+  sr: 48000
+  bus_db: {music: -5.0, sfx: -8.0, vo: 1.5}
+  vo_line_lufs: -16.0
+  duck: {db: 7.0, attack: 0.12, release: 0.35, pre: 0.12, post: 0.1}
+  fade_out: 0.03
+  masters:
+    - {name: web,    suffix: "",        lufs: -14.0, ceiling: -1.2, max_true_peak: -1.0}
+    # social: hotter master, -1.8 dBTP WAV ceiling. ffmpeg's native AAC at full bandwidth overshot to -0.9 dBTP in legacy v1 (over the
+    # -1 gate; lowering the ceiling made it worse); an 18 kHz encoder cutoff keeps the encoded file under -1 dBTP.
+    - {name: social, suffix: "-social", lufs: -9.0,  ceiling: -1.8, max_true_peak: -1.0, aac_cutoff: 18000}
+
+qa: {min_caption_hold: 2.0, lufs_tolerance: 0.5, beat_subdivision: 1, vo_max_wer: 0.0, asr_model: small.en}

@@ -1,0 +1,70 @@
+# New promo project. Everything project-specific lives here; paths are relative to this file, ${VAR:-default} expansion works.
+# Run:  promo timeline | promo assets | promo build | promo check
+project: {name: my-promo, title: "My promo"}
+output: {name: my-promo, resolution: 1080, fps: 30, duration: 10.0}    # resolution 1080 or 2160 (--scale 2 / PROMO_SCALE override)
+paths: {build: build, out: out}
+assets: assets.yaml                # music / vo models / sfx / font (licence gate)
+footage: footage/manifest.yaml     # raw clips by id (absolute path + sha256 + provenance); never in git
+# plugins: [shots.py]        # project-specific shot types registered with @shot_type("name")
+
+style:
+  font:
+    path: "${PROMO_FONT:-/usr/share/fonts/truetype/sand-box/google/Inter/Inter-VariableFont_opsz,wght.ttf}"
+  caption: {cx: 960, cy: 905, size: 32, max_w: 608, zone: {x0: 656, x1: 1264, y0: 860, y1: 950}}   # 9:16-safe centre column
+
+music:
+  asset: music-track
+  bpm: 120
+  track_beat: 0.5              # seconds per beat in the mp3 (measure it!)
+  track_offset: 0.0            # position of track beat 0 in the mp3
+  edit:
+    segments: [[0, 0, 20]]     # [edit_beat, track_beat_from, track_beat_to]
+    crossfade: 0.030
+    gains: []                  # [{beats: [0, 8], db: 3.0, ramp: 0.3?}]
+    silence_from_beat: 20
+
+timeline: {bpm: 120, beats: 20}   # 20 beats at 120 BPM = 10.000 s
+
+shots:
+  - id: "01"
+    beats: [0, 10]
+    type: clip
+    source: my-clip                 # footage clip id (footage/manifest.yaml)
+    t_in: 0.0
+    speed: 1.0
+    cam: [[0, 0.5, 0.5, 0.8], [end, 0.5, 0.5, 0.6]]       # [t, cx, cy, box width / source width]; "end" = shot duration
+    overlays:
+      - {type: caption, text: "Say it in four words.", t: [0.5, 99]}
+    sfx:
+      - {sfx: tick, at: 1.0, db: -6}
+  - id: "02"
+    beats: [10, 20]
+    type: card
+    bg: {source: my-clip, t: 2.0}
+    overlays:
+      - {type: text, text: "My product", cy: 500, size: 132, t: [0, 99], fade_in: 0.25}
+
+# vo:   # optional Kokoro voice-over (needs kokoro-model / kokoro-voices assets and `pip install 'promo-reel[vo]'`)
+#   engine: kokoro
+#   model_asset: kokoro-model
+#   voices_asset: kokoro-voices
+#   voice: bf_emma
+#   lang: en-gb
+#   speed: 0.95
+#   lines: [{shot: "01", at: 0.35, text: "Say it in four words."}]
+
+sfx:
+  library:
+    tick: {asset: sfx-tick}
+
+mix:
+  sr: 48000
+  bus_db: {music: -5.0, sfx: -8.0, vo: 1.5}
+  vo_line_lufs: -16.0
+  duck: {db: 7.0, attack: 0.12, release: 0.35, pre: 0.12, post: 0.1}
+  fade_out: 0.03
+  masters:
+    - {name: web, suffix: "", lufs: -14.0, ceiling: -1.2, max_true_peak: -1.0}
+    - {name: social, suffix: "-social", lufs: -9.0, ceiling: -1.8, max_true_peak: -1.0, aac_cutoff: 18000}   # aac_cutoff keeps AAC under -1 dBTP
+
+qa: {min_caption_hold: 2.0, lufs_tolerance: 0.5, beat_subdivision: 1, vo_max_wer: 0.0, asr_model: small.en}

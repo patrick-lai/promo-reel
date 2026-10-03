@@ -1,0 +1,229 @@
+# Footage manifest (authoritative, machine-readable). Raw media is NOT in git: it lives at `path` on the box.
+# Maintained with `promo footage add`; see manifest.md for human notes.
+clips:
+- id: shot-01-v1
+  shots:
+  - '01'
+  path: /workspace/videos/commission-ai-promo/footage/shot-01-v1.mov
+  sha256: b1822b211b74944d55e8cc1a2254a21d55cca3d747bfb8d53c9d5dc51d279539
+  app_commit: 0a3c3acdb5871f22808fe95168962fb98d46a450
+  capture: ?demo=1&view=workshop&workshop=fast
+  framing: Full frame, locked; 1920x1080 CSS px at DPR 2 (3840x2160); Dark theme; toasts hidden unless noted (footage/manifest.md)
+  resolution: 3840x2160
+  dpr: 2
+  fps: 60.0
+  captured_at: '2026-10-01T03:10:28.804Z'
+  notes: standalone workshop preview, locked, 13:00 sky, HD quality Capture log entry 'shot-01' (the '-v1' file suffix is not explained in the log; file re-exported 2026-10-02).
+  demo: true
+- id: shot-02
+  shots:
+  - '02'
+  path: /workspace/videos/commission-ai-promo/footage/shot-02.mov
+  sha256: 05dec9e2be130201db654bf25b643b4fc8216b5151ccb5b50fdb8d5842336169
+  app_commit: 0a3c3acdb5871f22808fe95168962fb98d46a450
+  capture: ?demo=1&still=1&town=city
+  framing: Full frame, locked; 1920x1080 CSS px at DPR 2 (3840x2160); Dark theme; toasts hidden unless noted (footage/manifest.md)
+  resolution: 3840x2160
+  dpr: 2
+  fps: 60.0
+  captured_at: '2026-10-01T04:14:11.605Z'
+  notes: in-app Workshop full screen, real Room view toggle City(0s)->Town(1s)->Street(3.5s)->Outside(6s); wallet + mora hidden by capture CSS
+  demo: true
+- id: shot-03
+  shots:
+  - '03'
+  path: /workspace/videos/commission-ai-promo/footage/shot-03.mov
+  sha256: cefa7fee93b8a611562032229f0718c494f79230a5fc1bd803ab96c1246837fb
+  app_commit: 0a3c3acdb5871f22808fe95168962fb98d46a450
+  capture: ?demo=1&still=1
+  framing: Full frame, locked; 1920x1080 CSS px at DPR 2 (3840x2160); Dark theme; toasts hidden unless noted (footage/manifest.md)
+  resolution: 3840x2160
+  dpr: 2
+  fps: 60.0
+  captured_at: '2026-10-01T02:54:08.697Z'
+  notes: Checkout Revamp Commander composer, typed at 6 chars/s, not sent
+  demo: true
+- id: shot-04-v1
+  shots:
+  - '04'
+  path: /workspace/videos/commission-ai-promo/footage/shot-04-v1.mov
+  sha256: 1270898facdba49031a8238acccdb1d823beabbca1ca63aaab03c425ce52869a
+  app_commit: 0a3c3acdb5871f22808fe95168962fb98d46a450
+  capture: ?demo=1&still=1
+  framing: Full frame, locked; 1920x1080 CSS px at DPR 2 (3840x2160); Dark theme; toasts hidden unless noted (footage/manifest.md)
+  resolution: 3840x2160
+  dpr: 2
+  fps: 60.0
+  captured_at: '2026-10-01T03:59:58.441Z'
+  notes: 'ops-toolkit (empty board), Plan with Commander, answers: Something new / Plan it, then build it / ''checkout revamp'' Capture log entry ''shot-04'' (the ''-v1'' file suffix is not explained in the log; file re-exported 2026-10-02).'
+  demo: true
+- id: shot-05-v1
+  shots:
+  - '05'
+  path: /workspace/videos/commission-ai-promo/footage/shot-05-v1.mov
+  sha256: 93c1566a4154c1b738877eae7860fdd6e2f41c9495e2d0619b1b4b73cee202d1
+  app_commit: bc10d245349b5c545af54057e55dade8e431c64f
+  capture: '?demo=promo (branch promo/demo-scenario, PR #86)'
+  framing: Full frame, locked; 1920x1080 CSS px at DPR 2 (3840x2160); Dark theme; toasts hidden unless noted (footage/manifest.md)
+  resolution: 3840x2160
+  dpr: 2
+  fps: 60.0
+  captured_at: '2026-10-01T05:58:26.546Z'
+  notes: 'S 5.6-17.6 s: rail lights up PAY-103 (Claude Code) 6.7 s, PAY-104 (Codex) 7.7 s, PAY-106 (Cursor) 8.7 s, Checks from 12.6 s Capture log entry ''shot-05'' (the ''-v1'' file suffix is not explained in the log; file re-exported 2026-10-02).'
+  demo: true
+- id: shot-06-still-node
+  shots:
+  - '06'
+  path: /workspace/videos/commission-ai-promo/footage/shot-06-still-node.png
+  sha256: cbfbe5c1a329e7e8f85a0c87d70f8ec822f066db9e1338362941f7e79c5efff7
+  app_commit: 0a3c3acdb5871f22808fe95168962fb98d46a450
+  capture: ?demo=1&still=1
+  framing: Full frame, locked; 1920x1080 CSS px at DPR 2 (3840x2160); Dark theme; toasts hidden unless noted (footage/manifest.md)
+  resolution: 872x476
+  dpr: 2
+  fps: null
+  captured_at: '2026-10-01T05:23:50.224Z'
+  notes: Checkout Revamp board, PAY-105 node shows worktree slot S2; stills zoomed via in-app ctrl+wheel Still image. 872x476 crop of the app at in-app zoom (stills zoomed via in-app ctrl+wheel).
+  demo: true
+- id: shot-06-still-board
+  shots:
+  - '06'
+  path: /workspace/videos/commission-ai-promo/footage/shot-06-still-board.png
+  sha256: a76d777a47bc0a985b1ed174901bbbb508c332ffcde06d53eaedecd6e5f90132
+  app_commit: 0a3c3acdb5871f22808fe95168962fb98d46a450
+  capture: ?demo=1&still=1
+  framing: Full frame, locked; 1920x1080 CSS px at DPR 2 (3840x2160); Dark theme; toasts hidden unless noted (footage/manifest.md)
+  resolution: 3840x2160
+  dpr: 2
+  fps: null
+  captured_at: '2026-10-01T05:23:50.224Z'
+  notes: Checkout Revamp board, PAY-105 node shows worktree slot S2; stills zoomed via in-app ctrl+wheel Still image.
+  demo: true
+- id: shot-08-v1
+  shots:
+  - 08
+  path: /workspace/videos/commission-ai-promo/footage/shot-08-v1.mov
+  sha256: 203d42d67b6131aa0602377939d98c41bfaf984ff0b620a391383bd845b8f7e0
+  app_commit: 0a3c3acdb5871f22808fe95168962fb98d46a450
+  capture: ?demo=1#/w/ws-pay/t/th-pay-commander/task/PAY-104
+  framing: Full frame, locked; 1920x1080 CSS px at DPR 2 (3840x2160); Dark theme; toasts hidden unless noted (footage/manifest.md)
+  resolution: 3840x2160
+  dpr: 2
+  fps: 60.0
+  captured_at: '2026-10-01T03:27:09.592Z'
+  notes: live demo (no still); toasts hidden Capture log entry 'shot-08' (the '-v1' file suffix is not explained in the log; file re-exported 2026-10-02).
+  demo: true
+- id: shot-09-v1
+  shots:
+  - 09
+  path: /workspace/videos/commission-ai-promo/footage/shot-09-v1.mov
+  sha256: b619aaff35d1de6c471dfc276f46b994afa6b94701eabfe3a645bbce39baf30c
+  app_commit: 0a3c3acdb5871f22808fe95168962fb98d46a450
+  capture: ?demo=1&still=1#/w/ws-pay/t/th-pay-commander/task/PAY-105
+  framing: Full frame, locked; 1920x1080 CSS px at DPR 2 (3840x2160); Dark theme; toasts hidden unless noted (footage/manifest.md)
+  resolution: 3840x2160
+  dpr: 2
+  fps: 60.0
+  captured_at: '2026-10-01T02:31:16.776Z'
+  notes: PAY-105 drawer, locked, still=1 Capture log entry 'shot-09' (the '-v1' file suffix is not explained in the log; file re-exported 2026-10-02).
+  demo: true
+- id: shot-11-v1
+  shots:
+  - '11'
+  path: /workspace/videos/commission-ai-promo/footage/shot-11-v1.mov
+  sha256: da09d04e58df6846f795c9d29c1517cd11c51ffa2da7ad3a8b4b22e65019221a
+  app_commit: bc10d245349b5c545af54057e55dade8e431c64f
+  capture: '?demo=promo (branch promo/demo-scenario, PR #86)'
+  framing: Full frame, locked; 1920x1080 CSS px at DPR 2 (3840x2160); Dark theme; toasts hidden unless noted (footage/manifest.md)
+  resolution: 3840x2160
+  dpr: 2
+  fps: 60.0
+  captured_at: '2026-10-01T06:34:55.996Z'
+  notes: Full window, Show done, Fit; PAY-109 merges 60.3 s, PAY-108 65.5 s, PAY-110 67.5 s, run complete 72.3 s startMs=59600. Capture log entry 'shot-11' (the '-v1' file suffix is not explained in the log; file re-exported 2026-10-02).
+  demo: true
+- id: shot-12-v1
+  shots:
+  - '12'
+  path: /workspace/videos/commission-ai-promo/footage/shot-12-v1.mov
+  sha256: e03e205ea69a8ae12be049c24c3630554d53ad5ca5b5db11c97417544395543c
+  app_commit: 0a3c3acdb5871f22808fe95168962fb98d46a450
+  capture: ?demo=1&still=1
+  framing: Full frame, locked; 1920x1080 CSS px at DPR 2 (3840x2160); Dark theme; toasts hidden unless noted (footage/manifest.md)
+  resolution: 3840x2160
+  dpr: 2
+  fps: 60.0
+  captured_at: '2026-10-01T04:28:22.516Z'
+  notes: 'ops-toolkit (Bitbucket) review queue, PR #121; Deep review button visible in header but not used Capture log entry ''shot-12'' (the ''-v1'' file suffix is not explained in the log; file re-exported 2026-10-02).'
+  demo: true
+- id: shot-14b
+  shots:
+  - 14b
+  - '16'
+  path: /workspace/videos/commission-ai-promo/footage/shot-14b.mov
+  sha256: a7cdb4fdfd6ed4c374f851988a0ae5d3798da7980893a71a41cc1e39ffdb1b2e
+  app_commit: 0a3c3acdb5871f22808fe95168962fb98d46a450
+  capture: ?demo=1&still=1
+  framing: Full frame, locked; 1920x1080 CSS px at DPR 2 (3840x2160); Dark theme; toasts hidden unless noted (footage/manifest.md)
+  resolution: 3840x2160
+  dpr: 2
+  fps: 60.0
+  captured_at: '2026-10-01T05:11:51.505Z'
+  notes: 'DEMO. in-app Workshop full screen, Outside view (Shop tier). 1.0s: Workshop settings opened, 1.7s Demo controls > Finish 5 rooms, 1.8s closed; notice toast; 5.5s Room view > Street. Wallet + mora hidden by capture CSS'
+  demo: true
+- id: shot-15
+  shots:
+  - '15'
+  - '16'
+  path: /workspace/videos/commission-ai-promo/footage/shot-15.mov
+  sha256: 7fdddfc2b4d0532ce9f5909119fbc66909abdfbc69f0ed2547b88718e26c36fd
+  app_commit: bc10d245349b5c545af54057e55dade8e431c64f
+  capture: '?demo=promo (branch promo/demo-scenario, PR #86)'
+  framing: Full frame, locked; 1920x1080 CSS px at DPR 2 (3840x2160); Dark theme; toasts hidden unless noted (footage/manifest.md)
+  resolution: 3840x2160
+  dpr: 2
+  fps: 60.0
+  captured_at: '2026-10-01T06:13:44.669Z'
+  notes: 'PAY-110 drawer: Checks 62.3 s, Pushed 63.1 s, PR raised 63.9 s, Merged 67.5 s (last ticket, board all Done) startMs=60500.'
+  demo: true
+- id: shot-16a
+  shots:
+  - '16'
+  path: /workspace/videos/commission-ai-promo/footage/shot-16a.mov
+  sha256: 649cf39a91f281c4cc1faf21328791c5ef6d4aef648c5632b0d8881b668d4d61
+  app_commit: bc10d245349b5c545af54057e55dade8e431c64f
+  capture: '?demo=promo (branch promo/demo-scenario, PR #86)'
+  framing: Full frame, locked; 1920x1080 CSS px at DPR 2 (3840x2160); Dark theme; toasts hidden unless noted (footage/manifest.md)
+  resolution: 3840x2160
+  dpr: 2
+  fps: 60.0
+  captured_at: '2026-10-01T06:41:28.209Z'
+  notes: all 8 Done and merged, run complete; locked hold startMs=74000.
+  demo: true
+- id: shot-17-v1
+  shots:
+  - '17'
+  path: /workspace/videos/commission-ai-promo/footage/shot-17-v1.mov
+  sha256: b1822b211b74944d55e8cc1a2254a21d55cca3d747bfb8d53c9d5dc51d279539
+  app_commit: 0a3c3acdb5871f22808fe95168962fb98d46a450
+  capture: ?demo=1&view=workshop&workshop=fast
+  framing: Full frame, locked; 1920x1080 CSS px at DPR 2 (3840x2160); Dark theme; toasts hidden unless noted (footage/manifest.md)
+  resolution: 3840x2160
+  dpr: 2
+  fps: 60.0
+  captured_at: '2026-10-01T03:10:28.804Z'
+  notes: standalone workshop preview, locked, 13:00 sky, HD quality (identical file copy of shot-01 per footage/manifest.md.) Capture log entry 'shot-01' (the '-v1' file suffix is not explained in the log; file re-exported 2026-10-02).
+  demo: true
+- id: shot-10-v1080
+  shots:
+  - '10'
+  path: /workspace/videos/commission-ai-promo/footage/v1-1080/shot-10.mov
+  sha256: f449790233c33ecdc3dfe9c2ad5a46c04308fc84ecec687d6ab11249589630a2
+  app_commit: 4a427fc05f829d7b2e4ed7ea642d77340554f7f8
+  capture: ?demo=promo (main 4a427fc0)
+  framing: Full 1920x1080 CSS at DPR 1 (1920x1080 output), 60 fps; board zoomed 2 in-app steps (165%) on PAY-106; crop below the $1.84 Commander header; capture-overlay cursor
+  resolution: 1920x1080
+  dpr: 1
+  fps: 60.0
+  captured_at: '2026-10-03T16:58:43.932Z'
+  notes: Board zoomed 2 in-app steps on PAY-106. PAY-106 Running -> Needs you live at 21.25 s (bell, rail 'Needs you', '2 need you' header pill, Commander Needs you card). Capture-overlay cursor hovers the card, real click on the card's 'Allow once'; card resolves, scenario timeout at 24.25 s returns PAY-106 to Running. startMs=20000, clickMs=23950. Clip 20.0-26.2 s of the scenario. Source is 1080p so the ~3x push is an upscale (soft); recapture at DPR 2 before publishing.
+  demo: true
