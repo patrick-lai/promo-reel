@@ -1,0 +1,5 @@
+# Licence manifest. This prototype has no music / VO model / SFX of its own.
+# The Live2D runtime + models are in live2d/assets.yaml (fetched by `promo live2d fetch`, never committed);
+# licences and the required copyright notice: docs/live2d-licences.md.
+# Test dialogue WAVs: Kokoro-82M (Apache-2.0) via make_test_wavs.py, test only.
+assets: []

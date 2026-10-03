@@ -16,3 +16,8 @@ projects/*/footage/*
 !projects/*/footage/manifest.md
 *.png
 !docs/**/*.png
+# Live2D: Cubism Core + sample models are fetched (sha256-pinned), never committed (no redistribution)
+live2d/media/
+live2d/node_modules/
+*.moc3
+*.zip

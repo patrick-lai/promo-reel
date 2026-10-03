@@ -45,7 +45,16 @@ promo -p projects/<name>/promo.yaml <cmd>
   compare <ref.mp4> [--json]             per-shot PSNR + audio diff against a reference render
   peek <clip> <t> [box] | segpeek <shot> [t..] | mpeek out.png clip:t[:box] ...   framing helpers (build/peek/)
   --scale 2                              3840x2160 from the same spec (needs DPR2 sources to be sharp)
+promo live2d fetch | models | render --model hiyori --wav a.wav --out a.mov | lag    Live2D hosts (prototype, live2d/README.md)
 ```
+
+### Live2D talk-show hosts (prototype)
+Shot type `livestream` puts the app screen (at least 55 % of the frame) next to one or two Live2D hosts, which are
+lip-synced offline from a WAV per host, plus a chat strip of up to 4 lines. Hosts stay on one side for the whole show
+(`livestream.hosts_side: left|right`), with at most one slide of 0.5 s or more on a beat change. `keep_clear`
+rectangles on the app screen may not be covered by anything. `promo check` gates all of this. The Cubism Core and
+the sample models are fetched from live2d.com and never committed. Licences and the required notice are in
+[`docs/live2d-licences.md`](docs/live2d-licences.md). Example: `projects/live2d-demo/`.
 With `--json`, only JSON goes to stdout and it always has `ok`; logs go to stderr. This keeps the CLI ready to wrap as an MCP server later.
 
 Builds are **idempotent**. Each step stamps a hash of its inputs (spec subtree, input files, code, scale) and is skipped when nothing has changed. Editing one shot re-renders only that shot, then re-runs events, mix and assemble only if their inputs changed.
@@ -64,6 +73,7 @@ Builds are **idempotent**. Each step stamps a hash of its inputs (spec subtree, 
 | contact sheet | the contact sheet is missing, or doesn't have one tile per shot |
 | VO vs script | the whisper read-back of a VO line doesn't match the script word for word (normalised, with per-line aliases). WARN and skip if whisper isn't installed |
 | freshness | WARN if an output is stale against its inputs |
+| livestream-* | (livestream specs only) a host is not a Live2D Original Character; the screen is under 55 % of the frame; chat `max_lines` > 4; `hosts_side` is not left/right, there is more than one move, a move is shorter than 0.5 s or off a beat change, or a per-shot side flip; anything drawn above the screen (hosts, header, chat strip, overlays) covers a `keep_clear` rectangle on any frame |
 
 ## Licences
 Music is **never committed**: for example, the Pixabay Content License forbids redistributing the file standalone. `assets.yaml` holds the track page, licence, `fetch_url` and `sha256`; run `promo fetch`. The Kokoro VO model is Apache-2.0 and fetched the same way. SFX are synthesised by `promo sfx` (no samples). Raw footage stays on the box and is tracked by sha256 in the footage manifest. It never goes in git, including Git LFS.

@@ -36,4 +36,4 @@ class ShotType:
         return caption_boxes(ctx, shot)
 
 
-from . import clip, card  # noqa: E402,F401  (register built-in types)
+from . import clip, card, livestream  # noqa: E402,F401  (register built-in types)

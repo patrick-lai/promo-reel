@@ -18,7 +18,7 @@ from . import footage as FT
 from .cache import PKG, Stamps, code_hash, digest, file_sig
 from .spec import SpecError, load_spec
 
-SHOT_CODE = ["render", "overlays", "spec", "footage", "shots/__init__", "shots/clip", "shots/card"]
+SHOT_CODE = ["render", "overlays", "spec", "footage", "shots/__init__", "shots/clip", "shots/card", "shots/livestream", "livestream", "live2d"]
 
 
 def log(args, *a):
@@ -313,6 +313,7 @@ def build_parser():
     mp = add("mpeek", "grid of frames: out.png clip-id:t[:x0,y0,x1,y1] ...")
     mp.add_argument("out")
     mp.add_argument("specs", nargs="+")
+    sub.add_parser("live2d", help="Live2D host renderer: fetch | models | render | lag (see `promo live2d -h`)")
     return ap
 
 
@@ -368,6 +369,10 @@ def dispatch(spec, args):
 
 
 def main(argv=None):
+    argv = sys.argv[1:] if argv is None else list(argv)
+    if argv[:1] == ["live2d"]:          # `promo live2d ...` does not need a promo.yaml
+        from . import live2d
+        return live2d.main(argv[1:])
     args = build_parser().parse_args(argv)
     args.project = getattr(args, "project", "promo.yaml")
     args.scale = getattr(args, "scale", None)

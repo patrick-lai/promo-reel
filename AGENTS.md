@@ -38,6 +38,10 @@ What to ask for, per shot:
 - `output` (name, resolution 1080|2160, fps, duration), `timeline` (bpm, beats), `style` (font, caption zone).
 - `shots`: id, `beats: [start, end]`, `type` (`clip`, `card`, or a project plugin type from `shots.py`), `source: <clip id from footage/manifest.yaml>` + `t_in`/`speed` or `segs`, camera keys `cam: [[t, cx, cy, w], ...]` (normalised: centre x/y and box width as a fraction of the source width; smaller w = tighter), overlays (`caption`, `text`, `pill`, `scrim`), `sfx` events, `contact_at`.
 - `music` (asset, bpm, track grid, edit segments on bar lines), `vo` (engine, voice, lines with shot + `at`), `sfx` library, `mix` (bus levels, ducking, masters), `qa` thresholds.
+Talk-show layouts with Live2D hosts use the `livestream` shot type plus a show-level `livestream:` block. See
+`projects/live2d-demo/promo.yaml`, `live2d/README.md` and **`docs/live2d-licences.md`**. Only Live2D Original
+Characters are allowed, and the copyright notice must go in the description. **HUMAN:** confirm that the publisher
+is a General User or Small-Scale Enterprise (sales below JPY 10M) or holds Live2D's written approval.
 Use `promo peek <src> <t>` / `promo mpeek` (normalised grid overlays) to read coordinates for camera boxes and anchors off real frames. Bespoke shot types go in the project's `shots.py` (see the example's composer / rail_labels / tilt_card / float_window / tiles).
 
 ## 5. Build

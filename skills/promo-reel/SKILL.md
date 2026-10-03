@@ -25,6 +25,8 @@ Everything lives in `projects/<name>/` (promo.yaml, assets.yaml, footage/manifes
 - `promo build [--shots 05 06] [--force] [--scale 2]`; `promo shot <id...>`; `promo sfx|vo|music|events|mix|assemble|contact`
 - `promo check [--json]`; `promo compare <ref.mp4> [--json]` (per-shot PSNR + audio diff vs a reference)
 - `promo peek <clip-id> <t> [x0 y0 x1 y1]`, `promo segpeek <shot> [t...]`, `promo mpeek out.png clip:t[:box] ...` (output in build/peek/)
+- `promo live2d fetch|render|lag`: offline Live2D hosts for the `livestream` shot type (hosts on one side, screen >= 55 %,
+  chat <= 4 lines, keep-clear rects). Only Live2D Original Characters; notice + licence rules in `docs/live2d-licences.md`.
 - `--json` prints only JSON on stdout (always has `ok`), logs go to stderr. `promo fetch` downloads licensed assets (sha256 checked).
 
 ## Team rules

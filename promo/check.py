@@ -171,6 +171,11 @@ def run(spec):
     rep.add("caption-hold", "FAIL" if hf else ("WARN" if hw else "PASS"), "; ".join(hf + hw) if (hf or hw) else f"all captions >= {hold_min}s")
     rep.add("caption-zone", "FAIL" if zones else "PASS", "; ".join(zones) if zones else "all caption pills inside the safe zone")
 
+    # 7b. livestream layout: screen share, chat lines, single side move, keep-clear rectangles
+    from . import livestream as LS
+    for gate, status, msg in LS.check(spec, ctx):
+        rep.add(gate, status, msg)
+
     # 8. contact sheet
     from . import contact
     try:
