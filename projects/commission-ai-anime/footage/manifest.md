@@ -18,4 +18,5 @@ record the full app commit + URL params).
 | shot-10-dpr2 | 05 06 07 12 | 1920x1080 | 2 | 60.0 | `4a427fc0` | 2026-10-04 | yes | ?demo=promo |
 | shot-12 | 13 | 1920x1080 | 1 | 60.0 | `4a427fc0` | 2026-10-04 | yes | ?demo=promo (PAY-104 node clicked at 24.0 s; Review thread at 26.7 s) |
 | shot-15-morning | 18 | 1920x1080 | 1 | 60.0 | `4a427fc0` | 2026-10-04 | yes | ?demo=promo&view=workshop&workshop=fast&workshopHour=07:00 |
+| shot-15-prcard | 14 | 1920x1080 | 2 | 60.0 | `4a427fc0` | 2026-10-04 | yes | ?demo=promo (scenario clock), PAY-110 node clicked at 59 s to open its drawer; clip = scenario 61.0-70.5 s |
 <!-- promo:footage-table END -->

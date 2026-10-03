@@ -4,7 +4,7 @@
 # slates: swapping one in is a config change (replace `placeholder:` with `source:` + `cam:`). No URL on the end card.
 # Heavy steps hold flock /tmp/commission-ai-cargo.lock (promo/lock.py) and run niced with ffmpeg -threads 2.
 project: {name: commission-ai-anime, title: "commission-ai anime opening (Direction 2)"}
-output: {name: anime-v3, resolution: 1080, fps: 30, duration: 76.192188}  # ends where the music master ends (76.192 s = 224.767 beats); 2286 frames, no tail pad
+output: {name: anime-v4, resolution: 1080, fps: 30, duration: 76.192188}  # ends where the music master ends (76.192 s = 224.767 beats); 2286 frames, no tail pad
 paths: {build: build, out: out}
 assets: assets.yaml
 footage: footage/manifest.yaml
@@ -37,6 +37,12 @@ claims:
         - {logos: 3, text: "3 AGENTS · ALL MERGED"}
         - {cards: 8, text: "8 TASKS · ALL MERGED"}
         - {text: "ALL MERGED."}
+    plan_count:                # the 12.20 s plan card: '8 TASKS.' only when the shot-11 full board legibly shows 8 cards
+      selector: shot11_legible
+      evidence: {manifest: "${COMMISSION_AI_PROMO:-/workspace/videos/commission-ai-promo}/footage/v1-1080/manifest.md", section: "Shot 11"}
+      rows:
+        - {cards: 8, text: "8 TASKS."}
+        - {text: "THE PLAN.", confirm: "Marketing"}     # softened fallback, not final copy: Marketing to confirm
 
 shots:
   # ---- pickup bar (0-1.36 s): dusk Workshop, text-free, held
@@ -97,20 +103,18 @@ shots:
     fx_in: {kind: flash, frames: 3}
     contact_at: 1.0
 
-  # ---- 12.20 s: plan (4 bars) -- board / talk-dag not captured
+  # ---- 12.20 s: plan (4 bars) -- shot-11 full board (DPR 2) not captured. NOT talk-dag-tight: it shows only 3 cards
+  # from a different demo board. The card text comes from claims.plan_count: '8 TASKS.' only if shot11_legible.cards == 8.
   - id: "04"
     beats: [36, 52]
     type: anime
     ui: true
     placeholder:
-      id: S4 board / talk-dag
-      label: "Board planning, nodes popping on the beat (S4 tight or talk-dag)"
-      expects: "Not captured yet (talk-dag, shot 4)."
+      id: shot-11 full board
+      label: "Board: all 8 checkout tasks on the full board (DPR 2)"
+      expects: "Not captured yet. Commission-ai writes the legible card count for shot 11 in manifest.md;\nthe card reads '8 TASKS.' only if shot11_legible.cards == 8 (else the flagged fallback). talk-dag-tight is not used (3 cards, other board)."
     cards:
-      - row: title
-        text: "8 TASKS."
-        bars: [0, 4]
-        evidence: "shot-10-dpr2 (real take): Commander says 'Here's the plan: eight checkout tickets in three waves.' and the run card reads '0 / 8 tasks done'. Re-check against the board take when captured."
+      - {row: title, text_from: claims.plan_count, bars: [0, 4]}
     contact_at: 1.0
 
   # ---- 17.63 s lift: roll call, 2 bars each (real board-card logos, frozen frame of shot-10-dpr2 before Needs you)
@@ -233,6 +237,8 @@ shots:
     ui: true
     fit: contain               # pillarboxed above the band at the panel's own aspect (no board sliver at the right edge)
     aspect: 1.6
+    pillar_fill: brand         # the opening's night-sky brand background in the pillars: reads as a deliberate panel
+    # when 12-dpr2 lands -> full width:  {source: shot-12-dpr2, fit: null, aspect: null, pillar_fill: null, cam: [[0, 0.5, 0.5, 1.0]], named: [<re-measure the 'Approved.' line box>]}
     source: shot-12            # 1x take in use; when the DPR 2 retake is approved swap to shot-12-dpr2 (+ its own cam/named box)
     label: "shot-12 (1x): reviewer thread 'Approved. ...' for PR #432, top-left crop to the 10:40 PM divider"
     segs: [{t_in: 1.70, t_out: 6.25, dur: 5.4237288}]
@@ -249,13 +255,20 @@ shots:
     beats: [148, 160]
     type: anime
     ui: true
-    placeholder:
-      id: shot-16
-      label: "PR #432 Open -> Merged (tight)"
-      expects: "Not captured yet (shot 16)."
-    cards: [{row: title, text: "MERGED.", bars: [1, 3]}]
+    source: shot-15-prcard     # v1-1080 'Shot 16 (PR-card payoff)', DPR 2: PAY-110 PR card, badge Open -> Merged at src 7.70 s
+    label: "shot-15-prcard (DPR 2): PAY-110 pull request card, Open -> Merged"
+    # flip (src 7.70 s) lands at shot 1.20 s = 5 frames before the 'MERGED.' card (bar 1 = 1.356 s). Real time up to just
+    # after the flip, then the static Merged hold plays at 0.6x (nothing moves after the flip) to fill the 3 bars.
+    segs: [{t_in: 6.50, t_out: 7.75, dur: 1.25}, {t_in: 7.75, t_out: 9.44, dur: 2.8166667}]
+    # push-in 1.0x -> 1.2x (the cap) that lands with the flip, then holds while the card is up: stepper + PR card in frame
+    cam: [[0, 0.62, 0.40, 1.0], [1.25, 0.66, 0.395, 0.8333], [end, 0.66, 0.395, 0.8333]]
+    named:                     # measured while 'MERGED.' is up
+      - {name: "PR card title (PAY-110 Remove legacy pricing module)", box: [780, 505, 1185, 538], t: 2.0}
+      - {name: "PR badge 'Merged' (the flip)", box: [845, 466, 940, 500], t: 2.0}   # 12 src px: 14.4 px at the 1.2x cap -> named FAILs
+    cards: [{row: title, text: "MERGED.", bars: [1, 3]}]     # no PR number on any card
     fx_in: {kind: flash, frames: 3}
     contact_at: 2.0
+    notes: "PR number #438 is visible in the app frame (real UI), never in a card."
   - id: "15"
     beats: [160, 180]
     type: anime

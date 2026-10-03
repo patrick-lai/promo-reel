@@ -1,5 +1,21 @@
 # commission-ai anime opening — v2 → v3 (Direction 2, style preset `anime-opening`)
 
+## v4 (2026-10-04)
+Output `out/anime-v4-1080.mp4`.
+1. **Peak crop (13):** same narrow shot-12 crop; the pillars now use `pillar_fill: brand` (the opening's night-sky brand
+   background, sampled from the shot-03 night plate) instead of the flat band colour. A commented one-line swap in
+   promo.yaml switches to a full-width crop when shot-12-dpr2 is approved.
+2. **PR payoff (14, 'MERGED.'):** real take `shot-15-prcard` (v1-1080 "Shot 16 (PR-card payoff)", DPR 2, registered with
+   `promo footage add`, sha256 matches manifest.md). The PR badge flips Open -> Merged at src 7.70 s (frame 462); it lands
+   at shot 1.20 s, 5 frames before the card (bar 1). Real time to just after the flip, then the static Merged hold at 0.6x.
+   Push-in 1.0x -> 1.2x lands with the flip and holds. No PR number in any card (#438 is only in the app frame).
+   **Open issue:** the 'Merged' badge is 12 source px, so at the 1.2x cap it renders 14.4 px: the `named` gate FAILs
+   (min 18). The PR title reads 20.4 px. Fix options: allow ~1.5x on this DPR 2 take (badge ~18 px), or a tighter retake.
+3. **'8 TASKS.' (04):** stays a placeholder for the shot-11 full board (DPR 2). `talk-dag-tight` is not used (3 cards from
+   another demo board). The card text now comes from `claims.plan_count`: '8 TASKS.' only if `shot11_legible.cards == 8`,
+   else 'THE PLAN.', a softened fallback flagged `confirm: Marketing` (check WARNs, critique pack marks it provisional).
+   **Marketing to confirm 'THE PLAN.'** (not final copy).
+
 ## v3: director's notes on v2 (applied 2026-10-04)
 Output now `out/anime-v3-1080.mp4` (2286 frames). What changed:
 1. **Tail:** the timeline ends where the music master ends: 76.192188 s = 224.76695 beats; the end card (19) is trimmed,
@@ -38,12 +54,12 @@ every cut is on a bar line; intro_hit, lift, peak_start, seam_A_to_B_outro, fina
 | 01b | 4-8 | dusk Workshop, steady push-in from the intro hit; flash + speed lines at head | commission-ai / Your AI dev crew (slam) |
 | 02 | 8-20 | night Workshop (shot-03-night, frame 12+), push continues | commission-ai / Your AI dev crew (carried over) |
 | 03 | 20-36 | PLACEHOLDER S3 composer | ONE ASK. → TONIGHT. |
-| 04 | 36-52 | PLACEHOLDER S4 board / talk-dag | 8 TASKS. (evidence: shot-10-dpr2 "eight checkout tickets", "0 / 8 tasks done") |
+| 04 | 36-52 | PLACEHOLDER shot-11 full board (DPR 2) | `claims.plan_count` → '8 TASKS.' if 8 cards legible, else 'THE PLAN.' (Marketing to confirm) |
 | 05-07 | 52-76 | shot-10-dpr2 frozen, push on PAY-103/104/106 cards | CLAUDE CODE / CODEX / CURSOR + "on the job" |
 | 08-11 | 76-108 | shot-08 PR card, push-in on the active chip (Coding→PR raised) | CODING. / CHECKS. / PUSHED. / PR RAISED. |
 | 12 | 108-132 | shot-10-dpr2 needs-you card | …ONLY WHEN IT NEEDS YOU. |
-| 13 | 132-148 | shot-12 reviewer thread, top-left to the 10:40 PM divider (aspect 1.6) | REVIEWED, WITH THE REASON WHY. |
-| 14 | 148-160 | PLACEHOLDER shot-16 PR Open→Merged | MERGED. |
+| 13 | 132-148 | shot-12 reviewer thread, top-left to the 10:40 PM divider (aspect 1.6, brand pillars) | REVIEWED, WITH THE REASON WHY. |
+| 14 | 148-160 | shot-15-prcard (DPR 2): PAY-110 PR card Open→Merged, push ≤ 1.2x | MERGED. |
 | 15 | 160-180 | PLACEHOLDER shot-11 board all landed | `claims.merged_count` → currently ALL MERGED. |
 | 16-17 | 180-200 | PLACEHOLDER 14b dusk retake: Street glide + stop-time freeze | — |
 | 18 | 200-212 | morning Workshop (shot-15-morning) | GOOD MORNING. |
@@ -56,9 +72,9 @@ Selected by `shot11_legible: {cards: N, logos: N}` (fill in from v1-1080 `manife
 and FAILs if the selected row claims more than the manifest entry says. Same selector is reusable (`promo/claims.py`) for the hero caption.
 
 ## Placeholders waiting on footage
-S3 composer (03); S4 board / talk-dag (04); shot-16 PR Open→Merged (14); shot-11 board all landed (15, + fill `shot11_legible`);
+S3 composer (03); shot-11 full board DPR 2 (04 and 15, + fill `shot11_legible` from its manifest.md count);
 shot-14b dusk retake: Street glide (16) and freeze (17). Also pending: 08-dpr2 take (shot-08 in use) and the shot-12 DPR 2 swap (1x in use).
-Newly registered in v1-1080 since v2 but not yet wired in (not in the director's notes): `shot-15-prcard` ("Shot 16 (PR-card payoff)") and `talk-dag-tight`.
+v4 wired in `shot-15-prcard` (14). `talk-dag-tight` is deliberately not used (3 cards, different demo board).
 
 ## Script vs footage mismatches
 - v1-1080 numbering ≠ script S-numbers: shot-03 is the night Workshop (no composer take; the sent ask is visible in shot-10-dpr2); shot-15 is the morning Workshop, not the merge (that is shot-16, uncaptured).

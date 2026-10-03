@@ -92,3 +92,17 @@ clips:
   captured_at: '2026-10-04'
   notes: v1-1080 shot 15 = morning Workshop (NOT the PR merge).
   demo: true
+- id: shot-15-prcard
+  shots:
+  - '14'
+  path: /workspace/videos/commission-ai-promo/footage/v1-1080/shot-15-prcard.mov
+  sha256: 03c62c874269dcbcbb2bda786f35e3767a64707c2e0e63aa4d19fd55bfe1a6d7
+  app_commit: 4a427fc05f829d7b2e4ed7ea642d77340554f7f8
+  capture: ?demo=promo (scenario clock), PAY-110 node clicked at 59 s to open its drawer; clip = scenario 61.0-70.5 s
+  framing: pre-framed DPR2 clip x720 y122 1200x675 CSS (1.6x) -> 1920x1080; header status pill out of frame
+  resolution: 1920x1080
+  dpr: 2
+  fps: 60.0
+  captured_at: '2026-10-04'
+  notes: 'v1-1080 ''Shot 16 (PR-card payoff)''. PR #438 (PAY-110) badge flips Open -> Merged at 7.70 s (frame 462, hard flip); stepper already Done/Merged; drawer settles by 2.1 s. Push-in <= 1.2x.'
+  demo: true
