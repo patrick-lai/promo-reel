@@ -31,6 +31,7 @@ what is checked is what is drawn. All boxes are [x0, y0, x1, y1] in 1920x1080 ca
 """
 from __future__ import annotations
 
+import os
 import re
 
 import numpy as np
@@ -286,6 +287,11 @@ def visible_texts(spec):
                 out.append((f"shot {s.id} {k}", v))
             elif isinstance(v, dict) and isinstance(v.get("placeholder"), str):
                 out.append((f"shot {s.id} screen.placeholder", v["placeholder"]))
+            if isinstance(v, dict) and isinstance(v.get("card"), dict):
+                cd = v["card"]
+                for t in [cd.get("title"), cd.get("subtitle")] + list(cd.get("lines") or []):
+                    if t:
+                        out.append((f"shot {s.id} screen.card", str(t)))
     return out
 
 
@@ -441,7 +447,77 @@ def check(spec, ctx=None):
         rows.append(("livestream-keep-clear", "FAIL", msg))
     else:
         rows.append(("livestream-keep-clear", "PASS", f"{len(kc)} keep-clear rect(s) uncovered on every frame" if kc else "no keep-clear rectangles declared"))
+    rows += text_size_rows(spec, c)
     return rows
+
+
+def measure_text_rows(gray, x0, x1, y0, y1, win=2, thr=110):
+    """Ascender-top -> baseline height (px) of one text line in a grey frame: rows [y0, y1] are the declared line;
+    ink = pixels brighter than `thr` between columns x0..x1. Top = first row with >= 5 % of the peak ink in the window, baseline = last row
+    carrying >= 40 % of the peak row ink (descenders are thin). Returns (top, base) in source rows, or None."""
+    import numpy as np
+    H = gray.shape[0]
+    a, b = max(0, y0 - win), min(H, y1 + win + 1)
+    ink = (gray[a:b, x0:x1] > thr).sum(1)
+    if ink.max() <= 0:
+        return None
+    rows = np.nonzero(ink >= max(2, 0.05 * ink.max()))[0]      # ignore 1-px rules / carets
+    heavy = np.nonzero(ink >= 0.4 * ink.max())[0]
+    return a + int(rows[0]), a + int(heavy[-1])
+
+
+def text_height(path, t, cam, screen_w, box, src_px=None):
+    """Rendered height (output px) of one text line of clip `path` at source time `t` seen through `cam` on a screen
+    `screen_w` px wide (16:9). `box` = [top, base] rows of the line in a `src_px`-tall frame (scaled to the clip).
+    Returns dict(px, top, base, scale, inside) or None if no text ink is found there."""
+    import subprocess
+
+    from . import render as R
+    W, H = R.probe(path)[:2]
+    raw = subprocess.check_output(["ffmpeg", "-v", "error", "-threads", "2", "-ss", f"{t:.3f}", "-i", path, "-frames:v", "1",
+                                   "-f", "rawvideo", "-pix_fmt", "gray", "-"])
+    g = np.frombuffer(raw, np.uint8).reshape(H, W).astype(int)
+    cx, cy, cw = cam
+    bw = cw * W
+    bh = bw * 9 / 16
+    bx0 = min(max(cx * W - bw / 2, 0), W - bw)
+    by0 = min(max(cy * H - bh / 2, 0), H - bh)
+    k = H / float(src_px or H)
+    m = measure_text_rows(g, int(bx0), int(bx0 + bw), int(round(box[0] * k)), int(round(box[1] * k)))
+    if m is None:
+        return None
+    top, base = m
+    scale = screen_w / bw
+    return dict(px=(base - top + 1) * scale, top=top, base=base, scale=scale, inside=by0 <= top and base <= by0 + bh)
+
+
+def text_size_rows(spec, c):
+    """Gate livestream-text-size: shots with `text_check: {box: [top, base], src_px: H, min_px: N}` (the key text line's
+    ascender-top / baseline rows in an H-px-tall source frame) must render that line >= N px tall inside the screen.
+    Measured on the real source frame at the shot's first displayed time, through the shot's cam and screen size."""
+    out = []
+    for s in [s for s in spec.shots if s.type == "livestream" and s.cfg.get("text_check")]:
+        tc, sc = s.cfg["text_check"], s.cfg.get("screen") or {}
+        src = sc.get("source")
+        if not src:
+            out.append(f"!shot {s.id}: text_check without a screen source"); continue
+        try:
+            path = spec.footage_path(src)
+        except Exception as e:  # noqa: BLE001
+            out.append(f"!shot {s.id}: cannot measure ({e})"); continue
+        if not path or not os.path.exists(path):
+            out.append(f"!shot {s.id}: cannot measure, footage {src!r} missing"); continue
+        m = text_height(path, float(sc.get("t_in", 0.0)) + 0.05, sc.get("cam", (0.5, 0.5, 1.0)), screen_size(c)[0], tc["box"], tc.get("src_px"))
+        if m is None:
+            out.append(f"!shot {s.id}: no text ink near rows {tc['box']} of {src}"); continue
+        need = tc.get("min_px", 24)
+        ok = m["px"] >= need and m["inside"]
+        out.append(("" if ok else "!") + f"shot {s.id}: text line rows {m['top']}-{m['base']} of {src} ({m['base'] - m['top'] + 1} px) "
+                   f"x{m['scale']:.2f} = {m['px']:.1f} px (min {need})" + ("" if m["inside"] else ", OUTSIDE the screen crop"))
+    if not out:
+        return []
+    bad = [m for m in out if m.startswith("!")]
+    return [("livestream-text-size", "FAIL" if bad else "PASS", "; ".join(m.lstrip("!") for m in out))]
 
 
 def _overlay_boxes(spec, ctx):

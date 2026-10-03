@@ -205,10 +205,10 @@ def run(spec):
         if not have:
             rep.add("vo-script", "WARN", "skipped: faster-whisper not installed")
         else:
-            meta = {str(x["shot"]): x for x in json.load(open(vj))["lines"]}
+            meta = {str(x.get("id", x["shot"])): x for x in json.load(open(vj))["lines"]}
             bad, maxw_ = [], qa.get("vo_max_wer", 0.0)
             for ln in lines:
-                sid = str(ln["shot"])
+                sid = str(ln.get("id", ln["shot"]))
                 if sid not in meta:
                     bad.append(f"{sid}: no stem")
                     continue
@@ -223,7 +223,7 @@ def run(spec):
                     stamps.write(key, h + qa.get("asr_model", "small.en"), text=txt)
                 ref_s = ln["text"]
                 hyp_s = txt
-                for k, v in (ln.get("asr_aliases") or {}).items():       # alias: heard-as -> script word
+                for k, v in {**(qa.get("asr_aliases") or {}), **(ln.get("asr_aliases") or {})}.items():   # alias: heard-as -> script word
                     hyp_s = re.sub(re.escape(k), v, hyp_s, flags=re.I)
                 w = wer(norm_words(ref_s), norm_words(hyp_s))
                 if w > maxw_:

@@ -432,6 +432,159 @@ def test_render_deterministic():
     shutil.rmtree(d)
 
 
+TALK = os.path.join(ROOT, "projects", "commission-ai-talkshow", "promo.yaml")
+
+
+def test_measure_text_rows():
+    g = np.zeros((100, 200), int)
+    g[40:43, 20:30] = 200                        # ascender stub (thin)
+    g[43:51, 10:180] = 200                       # x-height body (heavy) -> baseline row 50
+    g[51:54, 50:60] = 200                        # descender (thin)
+    g[38, :] = 0
+    g[:, 5] = 255                                # a 1-px vertical rule must not count as ink
+    assert LS.measure_text_rows(g, 0, 200, 41, 50) == (40, 50)
+
+
+def test_text_size_gate_needs_footage_and_size():
+    def mut(r):
+        r["shots"][0]["text_check"] = {"box": [237, 247], "src_px": 1080, "min_px": 24}
+        r["shots"][0]["screen"] = {"source": "no-such-clip"}
+    rows = LS.text_size_rows(_spec(mut), LS.cfg(_spec(mut)))
+    assert rows and rows[0][0] == "livestream-text-size" and rows[0][1] == "FAIL", rows
+    assert LS.text_size_rows(_spec(), LS.cfg(_spec())) == []            # no text_check -> no gate row
+
+
+def test_host_track_from_vo_lines():
+    import soundfile as sf
+    from promo.shots import livestream as SL
+    d = tempfile.mkdtemp()
+    try:
+        y, sr = _speechy(dur=1.0)
+        sf.write(os.path.join(d, "a.wav"), y, sr)
+        def mut(r):
+            r["paths"]["build"] = d
+            r["vo"] = {"engine": "files", "lines": [
+                {"id": "l1", "shot": "01", "at": 2.0, "host": "HIYORI", "text": "x", "file": os.path.join(d, "a.wav")},
+                {"id": "l2", "shot": "02", "at": 0.5, "host": "Mao", "text": "y", "file": os.path.join(d, "a.wav")}]}
+        sp = _spec(mut)
+        import promo.vo as VO
+        orig = VO.line_file
+        VO.line_file = lambda spec, line, man=None: line["file"]
+        try:
+            hiy = SL.host_track(sp, {"id": "a", "name": "Hiyori", "model": "hiyori"})
+            mao = SL.host_track(sp, {"id": "b", "name": "Mao", "model": "mao"})
+            none = SL.host_track(sp, {"id": "c", "name": "Nobody", "model": "x"})
+        finally:
+            VO.line_file = orig
+        assert none is None
+        a, r = sf.read(hiy)
+        b, _ = sf.read(mao)
+        assert r == sr and len(a) == int(round(sp.duration * sr)) + 1
+        assert np.abs(a[: int(1.9 * sr)]).max() == 0 and np.abs(a[int(2.0 * sr): int(3.0 * sr)]).max() > 0.1
+        t_mao = sp.g("02", 0.5)
+        assert np.abs(b[: int((t_mao - 0.05) * sr)]).max() == 0 and np.abs(b[int(t_mao * sr): int((t_mao + 1) * sr)]).max() > 0.1
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def test_screen_card_texts_are_linted():
+    def mut(r):
+        r["shots"][0]["screen"] = {"card": {"title": "Building in Public", "subtitle": "LIVE now"}}
+    g = _gates(_spec(mut))
+    assert g["livestream-lint"][0] == "FAIL", g["livestream-lint"]
+    from promo.render import RenderContext
+    from promo.shots import livestream as SL
+    ctx = RenderContext.from_spec(_spec())
+    im = SL.screen_card(ctx, 720, 405, {"title": "T", "subtitle": "S", "lines": ["a", "b"]})
+    assert im.size == (720, 405) and np.asarray(im)[..., :3].max() > 200
+
+
+def test_talkshow_spec_gates():
+    if not os.path.exists(TALK):
+        return
+    from promo.spec import load_spec
+    try:
+        sp = load_spec(TALK)
+    except Exception as e:  # noqa: BLE001  (VO folder not on this machine)
+        print("skip talkshow:", e)
+        return
+    g = _gates(sp)
+    for k in ("livestream-lint", "livestream-chat-truth", "livestream-licence", "livestream-framing", "livestream-keep-clear", "livestream-screen",
+              "livestream-side", "livestream-chat", "livestream-text-size"):
+        if k in g:
+            assert g[k][0] == "PASS", (k, g[k])
+    c = LS.cfg(sp)
+    assert c["hosts_side"] == "left" and not c.get("move") and c["tag"] == "EP 1"
+    assert sp.shots[-1].type == "live2d_credits"
+    assert all(ln["user"] in ("Hiyori", "Mao") for ln in c["chat"]["lines"])
+    srcs = [(s.cfg.get("screen") or {}).get("source") for s in sp.shots]
+    assert all(not x or "/" not in x for x in srcs)              # clip ids, never paths
+
+
+def test_vo_files_engine_pins_sha():
+    """Talk-show VO is pre-rendered: the files engine checks every WAV's sha256 and writes vo.json (skips off-box)."""
+    if not os.path.exists(TALK):
+        return
+    from promo import vo as VO
+    raw = expand_env(yaml.safe_load(open(TALK)))
+    p0 = os.path.join(expand_env("${TALKSHOW_VO_DIR:-/workspace/videos/commission-ai-promo/talkshow}"), raw["vo"]["lines"][0]["file"])
+    if not os.path.exists(p0):
+        return
+    d = tempfile.mkdtemp()
+    try:
+        raw["paths"]["build"] = d
+        sp = Spec(TALK, copy.deepcopy(raw))
+        meta = VO.run_files(sp)
+        assert len(meta) == len(raw["vo"]["lines"]) and all(os.path.isabs(m["file"]) and m["dur"] > 0.5 for m in meta)
+        raw["vo"]["lines"][0]["sha256"] = "0" * 64
+        try:
+            VO.run_files(Spec(TALK, raw))
+        except RuntimeError as e:
+            assert "sha256 changed" in str(e)
+        else:
+            raise AssertionError("sha mismatch accepted")
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def test_talkshow_auto_take_follows_text_height():
+    """Beat 7: full MAO line when shot 12's 'Approved...' line measures >= min_px, else trimmed at the silence after
+    '...tells you why it passes.' (prefix text, short fade). Skips off-box (VO / footage absent)."""
+    import importlib.util
+    mp = os.path.join(ROOT, "projects", "commission-ai-talkshow", "make_spec.py")
+    vo_dir = expand_env("${TALKSHOW_VO_DIR:-/workspace/videos/commission-ai-promo/talkshow}")
+    if not (os.path.exists(mp) and os.path.exists(os.path.join(vo_dir, "lines.json"))):
+        return
+    spec_ = importlib.util.spec_from_file_location("talk_make_spec", mp)
+    MS = importlib.util.module_from_spec(spec_)
+    spec_.loader.exec_module(MS)
+    plan = yaml.safe_load(open(os.path.join(os.path.dirname(mp), "plan.yaml")))
+    seg = next(sg for sg in plan["segments"] if sg.get("fallback_trim"))
+    if not MS.clip_path(seg["clip"]):
+        return
+    d = MS.build(copy.deepcopy(plan))
+    t = d["takes"][0]
+    assert t["measured_px"] >= 24 and t["take"] == "full"
+    hard = copy.deepcopy(plan)
+    next(sg for sg in hard["segments"] if sg.get("fallback_trim"))["text_check"]["min_px"] = 99
+    d2 = MS.build(hard)
+    assert d2["takes"][0]["take"] == "trimmed"
+    ln = next(l for l in d2["vo_lines"] if l["id"] == t["line"])
+    assert ln["text"].endswith("tells you why it passes.") and "See?" in ln["script_text"]
+    assert 2.5 < ln["trim"]["end"] < 3.5 and d2["total_f"] < d["total_f"]
+    import soundfile as sf
+    from promo import vo as VO
+    full, sr = sf.read(os.path.join(vo_dir, ln["file"]), dtype="float32")
+    orig = VO.line_file
+    VO.line_file = lambda spec, line, man=None: os.path.join(vo_dir, line["file"])
+    try:
+        x, _ = VO.line_audio(None, ln)
+    finally:
+        VO.line_file = orig
+    assert len(x) == int(round(ln["trim"]["end"] * sr)) and x[-1] == 0.0      # trimmed, faded to zero
+    assert np.abs(full[len(x) - int(0.05 * sr): len(x)]).max() < 0.05          # the cut lands in a silence
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_") and callable(fn):

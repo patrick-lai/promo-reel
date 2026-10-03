@@ -1,6 +1,6 @@
 """Assets manifest (assets.yaml): validation (licence gate) + fetch.
 
-Each asset: id, kind (music|vo_model|sfx|footage|font|still), path (relative to the spec dir, env expansion ok), licence,
+Each asset: id, kind (music|vo_model|vo|sfx|footage|font|still), path (relative to the spec dir, env expansion ok), licence,
 source_url, optional fetch_url / sha256 / redistributable / attribution / notes.
 Hard gate: every manifest entry needs a non-empty licence; music/vo_model/sfx also need source_url; every asset id
 referenced by the spec must exist in the manifest.
@@ -15,8 +15,8 @@ import yaml
 
 from .spec import SpecError, expand_env
 
-KINDS = {"music", "vo_model", "sfx", "footage", "font", "still"}
-GATED = {"music", "vo_model", "sfx"}          # these also need source_url
+KINDS = {"music", "vo_model", "vo", "sfx", "footage", "font", "still"}
+GATED = {"music", "vo_model", "vo", "sfx"}            # vo = pre-rendered voice-over files (a directory)          # these also need source_url
 GENERATED = {"sfx"}                           # produced by `promo sfx`, never fetched
 
 
@@ -55,7 +55,7 @@ def referenced_ids(spec):
     if m.get("asset"):
         ids.append(m["asset"])
     vo = spec.raw.get("vo", {})
-    for k in ("model_asset", "voices_asset"):
+    for k in ("model_asset", "voices_asset", "asset"):
         if vo.get(k):
             ids.append(vo[k])
     for name, e in (spec.raw.get("sfx", {}).get("library") or {}).items():

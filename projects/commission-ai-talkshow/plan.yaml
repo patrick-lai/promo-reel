@@ -1,0 +1,54 @@
+# Hand-edited plan for the Direction 3 talk show ("Building in Public, episode one").
+# make_spec.py reads this + the VO's lines.json (exact durations) and writes promo.yaml. Edit THIS file, not promo.yaml.
+# Script: /workspace/promo/marketing/scripts-3-directions-v1.md, Direction 3 (10 beats, locked). Wording is never changed
+# here: the dialogue text comes from lines.json (the VO director's copy of the script); mismatches are flagged in SHOTLIST.md.
+# Footage is referenced by manifest clip id only (hero footage manifest), never by path.
+vo_dir: "${TALKSHOW_VO_DIR:-/workspace/videos/commission-ai-promo/talkshow}"   # holds lines.json + vo/*.wav
+fps: 30
+lead_in: 1.5          # intro sting (screen card + swell) before HIYORI's first line
+gap_line: 0.20        # silence between lines inside a beat
+cut_lead: 0.15        # a beat's screen cuts this long before its first line
+hold: 1.5             # screen hold after each beat's last line (room: 1.5-2.5 s per beat, ~1:45 total, no time-stretch)
+holds: {1: 2.0}       # per-beat overrides (beat 1 may run long); beat 10's hold is the end card before the credits
+credits: 3.0
+
+# One entry per screen segment. `beat`: script beat. `from`: where the segment starts:
+#   beat           = the beat's cut (cut_lead before its first line)      [default]
+#   {line: N, plus: s} = line N of the beat (1-based) starts + s seconds
+# `sync`: align a source moment to a VO moment: {src: <clip s>, line: N, at: <s into that line>} -> sets hold_in / t_in.
+segments:
+  - {id: "01", beat: 1, from: start, screen: {card: {title: "Building in Public", subtitle: "episode one"}},
+     note: "Stream intro sting (generated card on the stream screen, swell SFX), then beat 1 dialogue"}
+  - {id: "02", beat: 2, clip: shot-03, cam: [0.27, 0.88, 0.24],
+     sync: {src: 6.0, line: 2, at: end},                      # composer finishes typing "Ship the checkout revamp tonight." as MAO says it
+     note: "Composer (S3). LEGACY 4K take at app 0a3c3ac demo=1 (no v1-1080 composer take exists)"}
+  - {id: "03", beat: 3, clip: talk-dag, note: "Board planning map (S4): the talk-dag take (not captured yet)"}
+  - {id: "04", beat: 4, clip: shot-05-v1, cam: [0.62, 0.55, 0.45],
+     sync: {src: 1.1, line: 2, at: 2.3},                      # PAY-103 (Claude Code) lights as MAO starts naming the agents
+     note: "Rail lighting (S5). LEGACY 4K take at bc10d245 (promo branch, PR #86)"}
+  - {id: "05", beat: 5, clip: shot-08-v1080,
+     sync: {src: 7.8, line: 2, at: 6.02},                     # 'PR raised' chip lands on MAO's "PR raised"
+     note: "Chips (S8): Coding -> Checks -> Pushed -> PR raised #432 (Codex)"}
+  - {id: 06a, beat: 6, clip: shot-10-dpr2-v1080, t_in: 1.20, until_src: 3.75,
+     note: "PAY-106 flips to Needs you (clip 1.25 s) just as HIYORI speaks; plays up to just before the click"}
+  - {id: 06b, beat: 6, clip: shot-10-dpr2-v1080, continue: true,
+     sync: {src: 3.95, line: 2, at: 4.70},                    # the 'Allow once' click lands on MAO's "Click Allow once"
+     note: "Same take, continues from 06a (held on that frame), click on cue, back to Running"}
+  - {id: "07", beat: 7, clip: shot-12-v1080, t_in: 2.0, end_src: 6.25, cam: [0.21771, 0.37222, 0.33333],
+     text_check: {box: [237, 247], src_px: 1080, min_px: 24},   # 'Approved.' ascender->baseline rows in the source frame
+     # automatic take: if the measured 'Approved...' line renders < min_px, MAO's line 2 is trimmed at the silence after
+     # this phrase (short fade), dropping "See? Approved, with the reason right there." Full line when it passes.
+     fallback_trim: {line: 2, after: "tells you why it passes."},
+     note: "Reviewer thread (S12), 1x take pushed in 2.25x on 'Approved...' + its reason; DPR2 retake after Z179 (PR #95): swap `clip` + cam/box here"}
+  - {id: "08", beat: 8, clip: shot-16-v1080, note: "PR Open -> Merged (S15) / board all Landed (S11): shot-16 (not captured yet)"}
+  - {id: 09a, beat: 9, clip: shot-01-dusk-v1080, t_in: 0.3, cam: [0.5, 0.546, 0.88],
+     note: "Workshop robots building (dusk take; header bar cropped; starts after the first-frame brightness dip)"}
+  - {id: 09b, beat: 9, clip: shot-14b-v1080, from: {line: 2, plus: 3.45},
+     sync: {src: 5.5, line: 2, at: 4.9},                      # Room view -> Street (clip 5.5 s) lands on MAO's "...a Street"
+     note: "Outside -> Street (S14b, v1-1080, captured 4 Oct). Starts after the settings popover (1.0-1.8 s); the 'now a Street' toast is stacked under an achievements toast (illegible, real app). Screen top-right kept clear"}
+  - {id: "10", beat: 10, screen: {card: {title: "commission-ai", subtitle: "Your AI dev crew", lines: ["Runs on your Mac", "Alpha for Apple Silicon"]}},
+     note: "End card on the stream screen (wording from the beat 10 dialogue only; no URL / price / dates)"}
+
+chat:   # script's chat-strip lines: HIYORI's own asides, on screen only (never voiced)
+  - {beat: 4, plus: 0.3, user: HIYORI, text: "which AIs is it using?"}
+  - {beat: 7, plus: 0.3, user: HIYORI, text: "do I have to read every diff?"}

@@ -2,6 +2,8 @@
 
 Shot keys (per shot; the show-level layout, hosts and chat live in the spec's `livestream:` block):
     screen: {source: <footage clip id>, t_in: 0, speed: 1, cam: [cx, cy, w]}   real app footage (never edited)
+    screen: {source: ..., hold_in: 0.8}                                        hold the clip's first frame 0.8 s, then play
+    screen: {card: {title: "...", subtitle: "...", lines: ["..."]}}            generated title/end card on the stream screen
     screen: {placeholder: "APP FOOTAGE"}                                       grey placeholder for drafts / demos
     overlays: [...]                                                            usual overlays (QA'd against keep-clear)
 
@@ -24,7 +26,7 @@ from PIL import Image, ImageDraw, ImageFilter
 
 from .. import livestream as LS
 from .. import render as R
-from ..cache import Stamps, code_hash, digest, file_sig
+from ..cache import Stamps, code_hash, digest
 from ..overlays import apply_overlays, build_overlays
 from . import ShotType, shot_type
 
@@ -44,6 +46,59 @@ def gaze_track(spec):
     return np.array([start * (1 - 2 * LS.side_at(c, spec, f / spec.fps)) for f in range(n)])
 
 
+def _host_match(line, h):
+    who = str(line.get("host") or "").strip().lower()
+    return bool(who) and who in {str(h.get("id", "")).lower(), str(h.get("name", "")).lower(), str(h.get("model", "")).lower()}
+
+
+def host_track(spec, h, log=print):
+    """Full-show mono track for host `h` built from the spec's VO lines (`vo.lines[].host` = host id/name/model),
+    each placed at its event time. Written to build/live2d/host-<id>-vo.wav (deterministic). None if no lines."""
+    import soundfile as sf
+    from .. import vo as VO
+    cfg = spec.raw.get("vo") or {}
+    lines = [ln for ln in cfg.get("lines") or [] if _host_match(ln, h)]
+    if not lines:
+        return None
+    sr = None
+    buf = None
+    for ln in lines:
+        if cfg.get("engine") == "files":
+            x, r = VO.line_audio(spec, ln)                 # same trim/fade as the mix
+        else:
+            x, r = sf.read(os.path.join(spec.vo_dir, ln["file"]), dtype="float32", always_2d=True)
+            x = x.mean(1)
+        if sr is None:
+            sr = r
+            buf = np.zeros(int(round(spec.duration * sr)) + 1, np.float32)
+        elif r != sr:
+            raise ValueError(f"VO line {ln.get('id')}: sample rate {r} != {sr}")
+        a = int(round(spec.g(ln["shot"], ln.get("at", 0.0)) * sr))
+        b = min(len(buf), a + len(x))
+        buf[a:b] += x[: b - a]
+    out = os.path.join(spec.build, "live2d", f"host-{h.get('id')}-vo.wav")
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    import io
+    bio = io.BytesIO()
+    sf.write(bio, buf, sr, format="WAV", subtype="PCM_16")
+    data = bio.getvalue()
+    old = open(out, "rb").read() if os.path.exists(out) else None
+    if old != data:                       # rewrite only on change: keeps the file (and every cache keyed on it) stable
+        with open(out + ".tmp", "wb") as f:
+            f.write(data)
+        os.replace(out + ".tmp", out)
+    return out
+
+
+def content_sig(path):
+    """sha256 of a file's bytes (host tracks are a few MB; a size+mtime signature would churn on every rewrite)."""
+    import hashlib
+    if not path or not os.path.exists(path):
+        return "missing"
+    with open(path, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+
 def ensure_host_layers(spec, log=print):
     """Render (or reuse) one alpha layer per host covering the whole show. Returns {host id: path}."""
     from .. import live2d as L2
@@ -59,11 +114,12 @@ def ensure_host_layers(spec, log=print):
         fr_ov, lh = hl["frames"][i], hh + hl["pads"][i]          # layer = panel + break-out headroom above it
         hid = str(h.get("id", i))
         p = host_layer_path(spec, hid)
-        wav = spec.resolve(h["wav"]) if h.get("wav") else None
-        partner = [spec.resolve(o["wav"]) for j, o in enumerate(hosts) if j != i and o.get("wav")]
+        wavs = [spec.resolve(o["wav"]) if o.get("wav") else host_track(spec, o, log) for o in hosts]
+        wav = wavs[i]
+        partner = [w for j, w in enumerate(wavs) if j != i and w]
         partner = partner[0] if partner else None
         gz = gaze_track(spec)
-        dig = digest(h, file_sig(wav) if wav else None, file_sig(partner) if partner else None, spec.duration, spec.fps, spec.scale,
+        dig = digest(h, content_sig(wav) if wav else None, content_sig(partner) if partner else None, spec.duration, spec.fps, spec.scale,
                      [round(float(g), 3) for g in gz], hw, lh, fr_ov, code_hash(*L2D_CODE, extra_files=extra))
         key = f"live2d_{hid}_{spec.OW}"
         if not st.is_fresh(key, dig, [p]):
@@ -101,11 +157,39 @@ def placeholder_screen(ctx, w, h, label):
         cx = int((22 + i * 22) * ctx.K)
         d.ellipse([cx - 6 * ctx.K, 12 * ctx.K, cx + 6 * ctx.K, 24 * ctx.K], fill=col)
     f = ctx.font(40, "SemiBold")
-    tw = d.textlength(label, font=f)
-    d.text(((w - tw) / 2, h / 2 - 24 * ctx.K), label, font=f, fill=(150, 154, 168, 255))
+    rows = label.split("\n")                  # multi-line labels: first row bold, centred block
+    y = h / 2 - 24 * ctx.K - (len(rows) - 1) * 54 * ctx.K
+    for k, row in enumerate(rows):
+        fk = f if k == 0 else ctx.font(34)
+        d.text(((w - d.textlength(row, font=fk)) / 2, y), row, font=fk, fill=(232, 200, 120, 255) if (k == 0 and len(rows) > 1) else (150, 154, 168, 255))
+        y += 54 * ctx.K
     f2 = ctx.font(22)
     sub = "placeholder: real app footage goes here"
-    d.text(((w - d.textlength(sub, font=f2)) / 2, h / 2 + 32 * ctx.K), sub, font=f2, fill=(110, 114, 128, 255))
+    d.text(((w - d.textlength(sub, font=f2)) / 2, y + 8 * ctx.K), sub, font=f2, fill=(110, 114, 128, 255))
+    return im
+
+
+def screen_card(ctx, w, h, card):
+    """Generated card on the stream screen (intro sting / end card): title, subtitle, small lines, centred."""
+    im = Image.new("RGBA", (w, h), (24, 25, 34, 255))
+    y_, x_ = np.mgrid[0:h, 0:w].astype(np.float32)
+    g = np.clip(1 - np.sqrt(((x_ - w * 0.5) / (w * 0.7)) ** 2 + ((y_ - h * 0.45) / (h * 0.8)) ** 2), 0, 1) ** 1.6
+    arr = np.array([24, 25, 34], np.float32) + (np.array([58, 50, 110], np.float32) - [24, 25, 34]) * g[..., None]
+    im = Image.fromarray(arr.astype(np.uint8)).convert("RGBA")
+    d = ImageDraw.Draw(im)
+    rows = []
+    if card.get("title"):
+        rows.append((card["title"], ctx.font(64, "Bold"), (255, 255, 255, 255), 86))
+    if card.get("subtitle"):
+        rows.append((card["subtitle"], ctx.font(36, "Medium"), (210, 212, 230, 255), 60))
+    for ln in card.get("lines") or []:
+        rows.append((ln, ctx.font(28, "Medium"), (170, 174, 196, 255), 42))
+    K = ctx.K
+    total = sum(r[3] for r in rows) * K
+    y = (h - total) / 2
+    for text, f, col, adv in rows:
+        d.text(((w - d.textlength(text, font=f)) / 2, y), text, font=f, fill=col)
+        y += adv * K
     return im
 
 
@@ -264,10 +348,13 @@ class Livestream(ShotType):
         sw, sh = LS.screen_size(c)
         SW, SH = int(round(sw * K)), int(round(sh * K))
         src = None
+        hold_in = float(sc.get("hold_in", 0.0))
         if sc.get("source"):
             total = shot.n / ctx.fps
             src = R.Source(spec.footage_path(sc["source"]), sc.get("t_in", 0.0), sc.get("t_in", 0.0) + total * sc.get("speed", 1.0) + 0.1)
             still = None
+        elif sc.get("card"):
+            still = framed(ctx, screen_card(ctx, SW, SH, sc["card"]))
         else:
             still = framed(ctx, placeholder_screen(ctx, SW, SH, sc.get("placeholder", "APP FOOTAGE")))
         hdr_cache = {}
@@ -306,7 +393,7 @@ class Livestream(ShotType):
             def draw_header():
                 comp(out, hdr_cache[key], hb[0] * K, hb[1] * K)
             if src is not None:
-                im = src.frame(sc.get("t_in", 0.0) + t * sc.get("speed", 1.0))
+                im = src.frame(sc.get("t_in", 0.0) + max(0.0, t - hold_in) * sc.get("speed", 1.0))
                 cam = sc.get("cam", (0.5, 0.5, 1.0))
                 lay, pad = framed(ctx, R.frame_cam(ctx, im, *cam, out=(SW, SH)))
             else:
@@ -330,7 +417,7 @@ class Livestream(ShotType):
                 r.close()
             if src is not None:
                 src.close()
-        return dict(src=sc.get("source") or "placeholder screen", inout=f"global frames {shot.f0}-{shot.f0 + shot.n - 1}",
+        return dict(src=sc.get("source") or ("generated card" if sc.get("card") else "placeholder screen"), inout=f"global frames {shot.f0}-{shot.f0 + shot.n - 1}",
                     move=f"livestream layout, hosts {c.get('hosts_side', 'left')}" + (", one slide" if LS.moves(c) else ""),
                     caption=" / ".join(f"'{o.cfg['text']}'" for o in overlays if o.role == "caption") or "none",
                     notes=f"Live2D hosts: {', '.join(h['model'] for h in hosts)}; credit on the live2d_credits end card")

@@ -56,13 +56,17 @@ def plan(spec):
     if spec.raw.get("vo"):
         def vo_dig():
             cfg, man = spec.raw["vo"], A.load_manifest(spec)
+            if cfg.get("engine") == "files":
+                return digest([[vo.line_id(l), l["shot"], l["text"], l.get("sha256"), file_sig(vo.line_file(spec, l, man))] for l in cfg["lines"]],
+                              code_hash("vo"))
             # only what changes the audio: engine/voice/lang/speed + each line's shot/text/tts (not `at` / `asr_aliases`)
             cfg = dict({k: v for k, v in cfg.items() if k != "lines"}, lines=[[l["shot"], l["text"], l.get("tts")] for l in cfg["lines"]])
             models = {k: file_sig(A.asset_path(spec, cfg[k], man)) for k in ("model_asset", "voices_asset")}
             return digest(cfg, models, code_hash("vo"))
         add("vo", "vo", vo_dig, [vo.vo_json_path(spec)], lambda a: vo.run(spec))
-    add("music", "music", lambda: digest(spec.raw["music"], spec.raw.get("timeline"), file_sig(A.asset_path(spec, spec.raw["music"]["asset"])), code_hash("music")),
-        [music_path(spec)], lambda a: music.run(spec))
+    if spec.raw.get("music"):                       # optional (a talk show may run without a music bed)
+        add("music", "music", lambda: digest(spec.raw["music"], spec.raw.get("timeline"), file_sig(A.asset_path(spec, spec.raw["music"]["asset"])), code_hash("music")),
+            [music_path(spec)], lambda a: music.run(spec))
 
     def shot_run(shot):
         def go(a):
@@ -84,10 +88,11 @@ def plan(spec):
         sfx_sigs = {n: file_sig(A.asset_path(spec, e["asset"], man)) for n, e in lib.items() if e.get("asset")}
         vj = os.path.join(spec.vo_dir, "vo.json")
         vo_sigs = {l["file"]: file_sig(os.path.join(spec.vo_dir, l["file"])) for l in json.load(open(vj))["lines"]} if os.path.exists(vj) else {}
-        return digest(spec.raw.get("mix"), spec.raw.get("sfx"), spec.duration, file_sig(events_path(spec)), file_sig(music_path(spec)),
+        return digest(spec.raw.get("mix"), spec.raw.get("sfx"), spec.duration, file_sig(events_path(spec)),
+                      file_sig(music_path(spec)) if spec.raw.get("music") else None,
                       file_sig(vj), vo_sigs, sfx_sigs, code_hash("mix"))
     add("mix", "mix", mix_dig, [mix.master_path(spec, m["name"]) for m in spec.masters], lambda a: mix.run(spec),
-        deps=["sfx", "vo", "music", "events"])
+        deps=["sfx", "vo", "events"] + (["music"] if spec.raw.get("music") else []))
     outs = [spec.output_path(m.get("suffix", "")) for m in spec.masters]
     add("assemble", f"assemble_{spec.OW}",
         lambda: digest({s.id: file_sig(spec.seg_path(s.id)) for s in spec.shots}, {m["name"]: file_sig(mix.master_path(spec, m["name"])) for m in spec.masters},
