@@ -20,12 +20,12 @@ credits: [3.0, 3.0]   # two credit cards (UX review T6): notice + licence line, 
 # (add a profile line if it needs a push-in or a sync point).
 takes:
   composer:  shot-03              # beat 2   legacy 4K take (3840 wide, DPR 2): native for the push-in; a new take must be DPR 2
-  dag:       talk-dag             # beat 3   (missing)
+  dag:       talk-dag-tight-v1080 # beat 3   DPR 2: PAY-101 fanning into PAY-104 / PAY-105 (3 cards, no wave headings)
   rail:      shot-05-v1           # beat 4   legacy 4K take (3840 wide, DPR 2): native for the push-in; a new take must be DPR 2
   chips:     shot-08-v1080        # beat 5   -> Commission-ai's DPR 2 take (push-in upscales 1.12x until then)
   needs_you: shot-10-dpr2-v1080   # beat 6
   review:    shot-12-v1080        # beat 7   1x until the Z179 DPR 2 retake lands (PR #95)
-  merged:    shot-16-v1080        # beat 8a  PR Open -> Merged (missing)
+  merged:    shot-16-prcard-v1080 # beat 8a  DPR 2 (file shot-15-prcard.mov): PAY-110 PR raised -> Merged at 6.50 s
   landed:    shot-11-v1080        # beat 8b  board all Landed (missing)
   workshop:  shot-01-dusk-v1080   # beat 1b + 9a
   street:    shot-14b-v1080       # beat 9b  -> retake with the achievements pop-up closed
@@ -92,6 +92,23 @@ profiles:
     text_check: {box: [237, 247], src_px: 1080, min_px: 24}                              # 'Approved...' + reason, 2.25x
     named:
       - {name: "Approved line", box: [237, 247], src_px: 1080, at: 2.05}
+  talk-dag-tight-v1080:                                                                  # S03, DPR 2 still: widest crop (1.27x), scale 0.96
+    cam: [0.4133, 0.5, 0.7846]                                                           # PAY-101 card whole + the fan; PAY-104 title clipped at the right edge
+    named:
+      - {name: "PAY-101 id", box: [115, 246, 286, 285], src_px: 1080, at: 3.0}
+      - {name: "PAY-104 id", box: [1094, 541, 1264, 580], src_px: 1080, at: 3.0}
+      - {name: "dependency fan", box: [850, 56, 1070, 694], src_px: 1080, at: 3.0, min_px: 0}
+  shot-16-prcard-v1080:                                                                  # S08a, DPR 2 (1.6x pre-framed)
+    # 1.2x push on the full-height fit (cam w 0.7846 -> 0.654; the room's <= 1.2x cap), scale 1.15. Flip (drawer Done +
+    # stepper Merged) measured at 6.50 s (frame diff); the PR card pill turns 'Merged' at 7.70 s. Synced to MAO's
+    # "merged" (whisper word onset 0.76-0.84 s into "Every one of them, merged."). 08a runs to ~8.1 s so the pill shows.
+    cam: [0.666, 0.417, 0.654]
+    sync: {src: 6.5, line: 2, at: 0.80}
+    named:
+      - {name: "Done heading", box: [800, 5, 900, 45], src_px: 1080, at: 7.9}
+      - {name: "Merged step label", box: [1712, 164, 1791, 192], src_px: 1080, at: 7.9}
+      - {name: "Merged PR pill", box: [855, 472, 927, 498], src_px: 1080, at: 7.9}
+      - {name: "PR card", box: [690, 445, 1865, 650], src_px: 1080, at: 7.9, min_px: 0}
   shot-14b-v1080:                                                                        # Outside -> Street on "...a Street"
     sync: {src: 5.5, line: 2, at: 4.9}
     # Fallback until the footage manifest records `time_of_day` for this take: the Outside (dusk) view cuts to the
@@ -105,15 +122,15 @@ segments:
   - {id: 01b, beat: 1, from: title_card, take: workshop, t_in: 0.3, cam: [0.5, 0.553, 0.70],
      note: "Dusk Workshop, wide (header bar cropped; 0.70 = widest crop that still hides it at the 1440x1032 aspect), from 0.3 s (after the first-frame brightness dip); beat 1 dialogue"}
   - {id: "02", beat: 2, take: composer, note: "Composer (S3)"}
-  - {id: "03", beat: 3, take: dag, note: "Board planning map (S4): talk-dag"}
+  - {id: "03", beat: 3, take: dag, note: "Dependency map (talk-dag-tight): PAY-101 fanning into PAY-104 / PAY-105. FLAG: MAO's beat 3 line claims 'eight tasks' and 'waves'; this frame shows 3 cards and no wave headings"}
   - {id: "04", beat: 4, take: rail, note: "Rail lighting (S5)"}
   - {id: "05", beat: 5, take: chips, note: "Chips (S8): Coding -> Checks -> Pushed -> PR raised (Codex)"}
   - {id: 06a, beat: 6, take: needs_you, part: a, note: "PAY-106 flips to Needs you as HIYORI asks about the pill"}
   - {id: 06b, beat: 6, take: needs_you, part: b, note: "Same take, held, then the Allow once click on cue"}
   - {id: "07", beat: 7, take: review, fallback_trim: {line: 2, after: "tells you why it passes."},
      note: "Reviewer thread (S12). Auto take: full MAO line if 'Approved...' measures >= min_px, else trimmed after '...why it passes.'"}
-  - {id: 08a, beat: 8, take: merged, note: "PR Open -> Merged (S15/S16); no PR number in dialogue or card text"}
-  - {id: 08b, beat: 8, take: landed, from: {line: 2, plus: -0.15}, note: "Board all Landed (S11) under MAO's line"}
+  - {id: 08a, beat: 8, take: merged, note: "PR raised -> Merged (PR card take), flip on MAO's 'merged'; no PR number in dialogue or card text (the app's own PR card shows it)"}
+  - {id: 08b, beat: 8, take: landed, from: {line: 2, plus: 2.4}, note: "Board all Landed (S11), last 0.6 s of the beat: 08a holds until the PR card's pill reads Merged (7.70 s)"}
   - {id: 09a, beat: 9, take: workshop, t_in: 5.0, cam: [0.52, 0.56, 0.55],
      note: "Workshop robots building: tighter 1.27x push-in on the room vs 01b, later section (from 5.0 s) so it doesn't repeat 01b"}
   - {id: 09b, beat: 9, take: street, from: {line: 2, plus: 3.45}, note: "Outside -> Street (S14b); screen top-right kept clear"}

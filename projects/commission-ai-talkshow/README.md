@@ -51,11 +51,13 @@ Each take's `profiles` entry lists the elements its lines name (`named`: box in 
 
 | Shot | Take (source) | Cam w (push) | Element: measured px (effective scale) |
 |---|---|---|---|
+| 03 | talk-dag-tight-v1080 (1920x1080, DPR 2, still) | 0.785 (1.27x, widest) | PAY-101 / PAY-104 ids 27.7 px (0.96); the whole fan in frame |
 | 02 | shot-03 (3840x2160, DPR 2) | 0.375 (2.67x) | composer text 20 px (1.00); whole composer in frame |
 | 04 | shot-05-v1 (3840x2160, DPR 2) | 0.375 (2.67x) | card titles 19 px; Claude Code / Codex badge tiles 28 px; **Cursor badge 13 px** (dark tile, only the cube glyph reads) (1.00); whole PAY-106 card in frame |
 | 05 | shot-08-v1080 (1920x1080) | 0.667 (1.50x) | Coding / Checks / Pushed / PR raised 19.1 px (**1.12**, upscaled) |
 | 06a/b | shot-10-dpr2-v1080 (1920x1080, DPR 2, 1.5x pre-framed) | 0.60 (1.67x) | Needs you 20 px, Allow once 20 px (**1.25**); whole PAY-106 card in frame |
 | 07 | shot-12-v1080 (1920x1080, DPR 1) | 0.333 (3.00x) | Approved line 24.8 px (**2.25**) |
+| 08a | shot-16-prcard-v1080 (1920x1080, DPR 2, 1.6x pre-framed) | 0.654 (1.2x on the full-height fit, the room's cap) | Done 24.1 px; **Merged step label 16.1 px, Merged PR pill 13.8 px** (**1.15**); PR card in frame |
 
 S05's DPR 2 take (Commission-ai) is the one-line `takes: chips:` swap: the profile is keyed by role, and its boxes are in
 a `src_px`-tall frame, so the same framing at 2x pixels needs no other change (a differently pre-framed take needs new
@@ -75,13 +77,13 @@ no dissolve; `dusk -> day @ 5.50` or `{from, to, at}` = a change); with no field
 | 01 | 1 | n/a | Title card "Building in Public / episode one" + swell, 0-4.0 s | ok |
 | 01b | 1 | workshop | `shot-01-dusk-v1080`, wide (header bar cropped), from 0.3 s (after the brightness dip) | ok |
 | 02 | 2 | composer | `shot-03` (legacy 4K), 2.67x push-in on the composer | legacy take |
-| 03 | 3 | dag | `talk-dag` | **missing** |
+| 03 | 3 | dag | `talk-dag-tight-v1080`: PAY-101 fanning into PAY-104 / PAY-105 | ok (MAO's "eight tasks ... waves" not shown: flag) |
 | 04 | 4 | rail | `shot-05-v1` (legacy 4K), 2.67x on the Wave 1 cards | legacy take; Cursor badge < 18 px |
 | 05 | 5 | chips | `shot-08-v1080`, 1.5x on the stepper | ok (upscaled 1.12x; DPR 2 take queued) |
 | 06a/06b | 6 | needs_you | `shot-10-dpr2-v1080`, 1.67x on the PAY-106 card | ok |
 | 07 | 7 | review | `shot-12-v1080`, 2.25x push-in, auto take | ok (1x; DPR2 retake queued) |
-| 08a | 8 | merged | `shot-16-v1080` | **missing** |
-| 08b | 8 | landed | `shot-11-v1080` (under MAO's line) | **missing** |
+| 08a | 8 | merged | `shot-16-prcard-v1080`, 1.2x; Merged flip (6.50 s) on MAO's "merged" | ok (the app's PR card shows #438) |
+| 08b | 8 | landed | `shot-11-v1080`, last 0.6 s of the beat (08a holds until the PR pill reads Merged at 7.70 s) | **missing** |
 | 09a | 9 | workshop | `shot-01-dusk-v1080`, tighter 1.27x push-in on the room vs 01b, later section (from 5.0 s) | ok |
 | 09b | 9 | street | `shot-14b-v1080`, 0.4 s dissolve over the dusk-to-day cut, tail trimmed | ok (achievements pop-up covers the notice) |
 | 10 | 10 | n/a | End card (no URL / price / dates / PR numbers) | ok |
@@ -104,8 +106,8 @@ If the selected WAV is missing, the existing take is used as a labelled placehol
 
 Each item: register the take with `promo footage add`, then set the role to its clip id.
 
-- [ ] **`talk-dag`** -> `takes.dag` (already set; registering it is enough). Add a `profiles` line if it needs a push-in.
-- [ ] **shot 16** (PR Open -> Merged) -> `takes.merged` (expects `shot-16-v1080`). No PR number may appear in dialogue or card text.
+- [x] **`talk-dag-tight-v1080`** -> `takes.dag` (beat 3).
+- [x] **`shot-16-prcard-v1080`** (file `shot-15-prcard.mov`) -> `takes.merged` (beat 8a). No PR number in dialogue or card text.
 - [ ] **shot 4** (board planning, S4): not used by Direction 3, which uses `talk-dag` for beat 3. It's the fallback for `takes.dag`.
 - [ ] **shot 11** (board all Landed) -> `takes.landed` (expects `shot-11-v1080`). Then fill in `shot11_legible` from its `manifest.md` entry; the beat 8 line follows.
 - [ ] **14b retake with the achievements pop-up closed** -> `takes.street`. Copy the `shot-14b-v1080` profile line under the new id if the Street switch is still at 5.5 s.
@@ -121,6 +123,12 @@ Each item: register the take with `promo footage add`, then set the role to its 
   push-in that keeps the Wave 1 column and the whole PAY-106 card in frame without upscaling (2.67x on the 4K take),
   the Claude Code and Codex badge tiles are 28 px, but Cursor's dark tile doesn't read and its glyph is 13 px
   (`livestream-named` FAIL). Marketing to change the line.
+- Beat 3: MAO's line ("splits the ask into eight tasks ... runs the independent ones in waves") claims a task count
+  and waves; the talk-dag-tight frame shows 3 cards and no wave headings. Marketing to change the line (or use the
+  wider talk-dag take).
+- Beat 8a: the app's own PR card shows "#438" (real UI, not our text). At the room's <= 1.2x cap the "Merged" step
+  label (16.1 px) and the PR card's "Merged" pill (13.8 px) are under 18 px (`livestream-named` FAIL); "Done" reads at
+  24 px. They'd need ~1.35x / ~1.57x.
 - HIYORI's chat asides ("which AIs is it using?", "do I have to read every diff?") are cut (UX review T2/T3); the spoken lines are unchanged.
 - Beat 7: the take shows only the reviewer's "Approved..." line plus its reason. The new MAO line (Marketing) fits. HIYORI's line and chat aside make no panel claims. The old line's "About this change" / findings / "ask the reviewer" claims are gone.
 - The ~2:00 / timecodes in the script table no longer apply (the room's call: real VO plus holds, 1:46).

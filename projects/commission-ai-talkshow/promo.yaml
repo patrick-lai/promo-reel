@@ -167,8 +167,8 @@ vo:
     file: vo/beat08_line01_hiyori.wav
     sha256: 43556b165788a65d40a6ee765e452339a63b2213143056f584cceed5416850c7
   - id: beat08_line02
-    shot: 08b
-    at: 0.164
+    shot: 08a
+    at: 1.997
     host: Mao
     text: Every one of them, merged.
     file: vo/beat08_line02_mao_all.wav
@@ -284,9 +284,40 @@ shots:
   type: livestream
   beat: 3
   screen:
-    source: talk-dag
+    source: talk-dag-tight-v1080
     t_in: 0.0
-  note: 'Board planning map (S4): talk-dag'
+    cam:
+    - 0.4133
+    - 0.5
+    - 0.7846
+  named:
+  - name: PAY-101 id
+    box:
+    - 115
+    - 246
+    - 286
+    - 285
+    src_px: 1080
+    at: 3.0
+  - name: PAY-104 id
+    box:
+    - 1094
+    - 541
+    - 1264
+    - 580
+    src_px: 1080
+    at: 3.0
+  - name: dependency fan
+    box:
+    - 850
+    - 56
+    - 1070
+    - 694
+    src_px: 1080
+    at: 3.0
+    min_px: 0
+  note: 'Dependency map (talk-dag-tight): PAY-101 fanning into PAY-104 / PAY-105. FLAG: MAO''s beat 3 line claims ''eight tasks'' and ''waves''; this frame shows
+    3 cards and no wave headings'
 - id: '04'
   beats:
   - 1103
@@ -519,23 +550,61 @@ shots:
 - id: 08a
   beats:
   - 2330
-  - 2385
+  - 2462
   type: livestream
   beat: 8
   screen:
-    source: shot-16-v1080
-    t_in: 0.0
-  note: PR Open -> Merged (S15/S16); no PR number in dialogue or card text
+    source: shot-16-prcard-v1080
+    t_in: 3.703
+    cam:
+    - 0.666
+    - 0.417
+    - 0.654
+  named:
+  - name: Done heading
+    box:
+    - 800
+    - 5
+    - 900
+    - 45
+    src_px: 1080
+    at: 7.9
+  - name: Merged step label
+    box:
+    - 1712
+    - 164
+    - 1791
+    - 192
+    src_px: 1080
+    at: 7.9
+  - name: Merged PR pill
+    box:
+    - 855
+    - 472
+    - 927
+    - 498
+    src_px: 1080
+    at: 7.9
+  - name: PR card
+    box:
+    - 690
+    - 445
+    - 1865
+    - 650
+    src_px: 1080
+    at: 7.9
+    min_px: 0
+  note: PR raised -> Merged (PR card take), flip on MAO's 'merged'; no PR number in dialogue or card text (the app's own PR card shows it)
 - id: 08b
   beats:
-  - 2385
+  - 2462
   - 2480
   type: livestream
   beat: 8
   screen:
     source: shot-11-v1080
     t_in: 0.0
-  note: Board all Landed (S11) under MAO's line
+  note: 'Board all Landed (S11), last 0.6 s of the beat: 08a holds until the PR card''s pill reads Merged (7.70 s)'
 - id: 09a
   beats:
   - 2480
