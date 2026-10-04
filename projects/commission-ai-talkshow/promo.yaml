@@ -581,43 +581,40 @@ shots:
   type: livestream
   beat: 8
   screen:
-    source: shot-16-prcard-tight-v1080
+    source: shot-16-prcard-tighter-v1080
     tail:
       from: 7.7
       speed: 0.85
     t_in: 4.892
     cam:
-    - 0.34167
-    - 0.52269
-    - 0.65208
-    matte:
-      bottom: 64
+    - 0.33724
+    - 0.58398
+    - 0.65365
   named:
   - name: Merged PR pill
     box:
-    - 295
-    - 425
-    - 430
-    - 455
+    - 285
+    - 756
+    - 405
+    - 786
     src_px: 1080
     at: 8.5
   - name: PR title
     box:
-    - 200
-    - 476
-    - 860
-    - 512
+    - 175
+    - 813
+    - 865
+    - 855
     src_px: 1080
     at: 8.5
-  - name: PR card content
+  - name: Builds pass
     box:
-    - 55
-    - 385
-    - 1000
-    - 690
+    - 230
+    - 950
+    - 420
+    - 987
     src_px: 1080
     at: 8.5
-    min_px: 0
   note: PR raised -> Merged (PR card take), flip on MAO's 'merged'; no PR number in dialogue or card text (the app's own PR card shows it)
 - id: 08b
   beats:

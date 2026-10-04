@@ -29,7 +29,7 @@ takes:
   chips:     shot-08-dpr2-v1080   # beat 5   DPR 2 retake (11:14), same timeline as shot-08 (PR raised at 7.80 s); old: shot-08-v1080
   needs_you: shot-10-dpr2-v1080   # beat 6
   review:    shot-12-dpr2-z179-v1080 # beat 7   v4.1: DPR 2 Z179 retake (main 4ccfa5be; bold renders, no '**'); old: shot-12-v1080 (1x)
-  merged:    shot-16-prcard-tight-v1080 # beat 8a  DPR 2, PR card only: pill Open -> Merged at 7.70 s (wider alt: shot-16-prcard-v1080)
+  merged:    shot-16-prcard-tighter-v1080 # beat 8a  v6b: DPR 2 stepper + PR card (14:10), same timeline (reflow 6.50 s, pill Merged 7.70 s); v6: shot-16-prcard-tight-v1080
   landed:    shot-11-dpr2-v1080   # beat 8b  v5: DPR 2, Landed column right beside the counts (next: shot-11-dpr2-r2, ~20 px, drop-in); v4:  DPR 2 header hold: 'All done · Plan next' / '8 in this run · 8 landed' (shot-11-all8: text 9-11 px, not used)
   workshop:  shot-01-dusk-v1080   # beat 1b + 9a
   street:    shot-14b-dusk-r2-v1080 # beat 9b  v4: dusk retake 2 (preferred; 19:30, pop-up closed, full screen); alt: shot-14b-dusk-v1080, old: shot-14b-v1080
@@ -155,6 +155,21 @@ profiles:
       - {name: "Merged step label", box: [1712, 164, 1791, 192], src_px: 1080, at: 7.9}
       - {name: "Merged PR pill", box: [855, 472, 927, 498], src_px: 1080, at: 7.9}
       - {name: "PR card", box: [690, 445, 1865, 650], src_px: 1080, at: 7.9, min_px: 0}
+  shot-16-prcard-tighter-v1080:                                                          # S08a v6b, DPR 2 (2.553x), stepper + PR card, scale 1.147
+    # Same scenario beat as prcard-tight: stepper reflows to Done at 6.50 s, the PR pill flips Open -> Merged at 7.70 s
+    # (frame diff), so the sync / tail are unchanged. The card is 1862 px wide (x 28-1890) and the panel takes at most
+    # 1506 px at full height, so the card cannot be whole: crop x 20-1275 (left edge before 'Pull request' at x 26, right
+    # edge after the 'Pushed' label (ends ~1266), before 'PR raised' / 'Thread' / 'Open'), y 181-1080: below the
+    # pre-reflow 'Waiting for you to merge' line (ends y 180) and above nothing at the bottom; the pre-reflow chips row
+    # (y 1030-1060) and the post-reflow stepper checks (y 193+) are both inside. Out of frame: the card's right part
+    # ('Open' link), 'Thread' / 'Review thread', the PR raised / Merged steps. No matte.
+    cam: [0.33724, 0.58398, 0.65365]
+    sync: {src: 7.7, line: 2, at: 0.80}
+    tail_speed: 0.85
+    named:
+      - {name: "Merged PR pill", box: [285, 756, 405, 786], src_px: 1080, at: 8.5}
+      - {name: "PR title", box: [175, 813, 865, 855], src_px: 1080, at: 8.5}
+      - {name: "Builds pass", box: [230, 950, 420, 987], src_px: 1080, at: 8.5}
   shot-16-prcard-tight-v1080:                                                            # S08a v3, DPR 2 tight PR-card take
     # The card is 1810 px wide (x 55-1865), wider than any crop that keeps the 18 px 'Merged' pill >= 18 px on the 1440
     # screen, so frame its left part. Director asked for 1.0x (<= ~1.1x with the whole card): the whole card cannot fit at >= 0.8x, and

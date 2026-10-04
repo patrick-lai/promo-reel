@@ -70,6 +70,15 @@ a 0.4 s `dissolve` over it. It's driven by the take's `time_of_day` field in the
 no dissolve; `dusk -> day @ 5.50` or `{from, to, at}` = a change); with no field, the plan profile's `time_of_day`
 (the current take's fallback) applies. Commission-ai's dusk retake records `dusk` there and the dissolve goes away.
 
+## v6b (08a = shot-16-prcard-tighter)
+
+- **08a**: `shot-16-prcard-tighter` (DPR 2, 2.553x: Done stepper + PR card, Evidence / QA line out of frame). Same
+  scenario timeline as prcard-tight (stepper reflow 6.50 s, pill Open -> Merged 7.70 s), so sync and tail_speed are
+  unchanged and the flip lands at the same show time. Crop x 20-1275, y 181-1080, scale 1.147: Merged pill 22.9 px,
+  PR title 29.8 px, Builds pass 25.2 px. No matte (v6 needed a 64 px bottom matte).
+- **Not whole**: the card is 1862 px wide and the panel takes at most 1506 px at full height, so the card's right part
+  ('Open'), 'Thread' / 'Review thread' and the PR raised / Merged steps are out of frame (both edges in clean columns).
+
 ## v6 (Zen v5 4.14: trim the S02 tail)
 
 - **S02 tail**: the last keystroke ('No broken builds.') is at src ~9.05 s. Beat 2's hold 1.5 -> 1/3 s (`holds: {2: ...}`),
