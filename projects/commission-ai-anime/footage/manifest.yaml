@@ -106,3 +106,157 @@ clips:
   captured_at: '2026-10-04'
   notes: 'v1-1080 ''Shot 16 (PR-card payoff)''. PR #438 (PAY-110) badge flips Open -> Merged at 7.70 s (frame 462, hard flip); stepper already Done/Merged; drawer settles by 2.1 s. Push-in <= 1.2x.'
   demo: true
+- id: shot-16-prcard-tight
+  shots: []
+  path: /workspace/videos/commission-ai-promo/footage/v1-1080/shot-16-prcard-tight.mov
+  sha256: fbf04306c307a88c49ab907392cc83abaca62931b661d1e2dc609cc539e41d1a
+  app_commit: 4a427fc05f829d7b2e4ed7ea642d77340554f7f8
+  capture: ?demo=promo (scenario clock), PAY-110 node clicked at 59 s; record 61.0-70.5 s
+  framing: clip x1130 y246 776x436.5 CSS at DPR2 -> 1920x1080 (2.474x pre-framed); card at output x 55-1865, y ~385-690
+  resolution: 1920x1080
+  dpr: 2
+  fps: 60.0
+  captured_at: '2026-10-04'
+  notes: 'Same beat as shot-15-prcard: PAY-110 PR card Open -> Merged. Manifest: Merged cap 18 px at 9.0 s, title 24 px, Builds pass 22 px. Not used since v7 (shot-16-prcard-tighter).'
+  demo: true
+- id: shot-08-dpr2
+  shots:
+  - 08
+  - 09
+  - '10'
+  - '11'
+  path: /workspace/videos/commission-ai-promo/footage/v1-1080/shot-08-dpr2.mov
+  sha256: 8b6b2e3bdc72764f849a96562bf1008c356ac93e8878e95fad544eadb7bce352
+  app_commit: 4a427fc05f829d7b2e4ed7ea642d77340554f7f8
+  capture: ?demo=promo (PAY-104 node clicked at 9.0 s); record 11.1-20.4 s
+  framing: clip x1000 y10 900x506.25 CSS at DPR2 -> 1920x1080 (2.13x pre-framed); whole stepper in frame
+  resolution: 1920x1080
+  dpr: 2
+  fps: 60.0
+  captured_at: '2026-10-04'
+  notes: 'Coding 0-2.0 s, Checks 2.0-4.9 s, Pushed 4.9-7.8 s, PR raised #432 7.8-9.3 s. Agent: Codex.'
+  demo: true
+- id: shot-12-dpr2-z179
+  shots:
+  - '13'
+  path: /workspace/videos/commission-ai-promo/footage/v1-1080/shot-12-dpr2-z179.mov
+  sha256: c5c20554b03a321d6a432857d60956aa8d86d706c0d391e1c6632af89298f5cb
+  app_commit: 4ccfa5be580eb3dbbaf8cb1138b0e4f55f544636
+  capture: ?demo=promo + conversationWidth=940; Review thread click 26.6 s (main 4ccfa5be, Z179 bold fix)
+  framing: clip x290 y0 960x540 CSS at DPR2 -> 1920x1080 (2.0x pre-framed)
+  resolution: 1920x1080
+  dpr: 2
+  fps: 60.0
+  captured_at: '2026-10-04'
+  notes: 'Replaces shot-12-dpr2 (no raw ''**''). Reviewer Cursor: ''Approved. Cart summary uses the pricing engine matches the plan ...'''
+  demo: true
+- id: shot-14b-dusk-r2
+  shots:
+  - '16'
+  - '17'
+  path: /workspace/videos/commission-ai-promo/footage/v1-1080/shot-14b-dusk-r2.mov
+  sha256: 91cd3b337c1fa9b16ed037f65749591c37e8a61a1822200059762b55fb5eef5e
+  app_commit: 4a427fc05f829d7b2e4ed7ea642d77340554f7f8
+  capture: ?demo=promo&pause=1&workshopHour=19:30 + prefs stage ws-pay=workshop
+  framing: full 1920x1080 CSS DPR1, locked
+  resolution: 1920x1080
+  dpr: 1
+  fps: 60.0
+  captured_at: '2026-10-04'
+  notes: Use only 0-2.5 s and 3.6-7.5 s (2.7-3.5 s collapse/re-expand flicker). Street notice alone + legible 3.6-4.6 s; Street glide 4.6-7.5 s.
+  demo: true
+- id: shot-11
+  shots: []
+  path: /workspace/videos/commission-ai-promo/footage/v1-1080/shot-11.mov
+  sha256: 740e9e3e2054667c7fdfa3b8cde16227104401d10b369ce8af61c572d3e87acc
+  app_commit: 4a427fc05f829d7b2e4ed7ea642d77340554f7f8
+  capture: ?demo=promo (scenario clock to 72.6 s, run complete)
+  framing: clip x10 y45 960x540 CSS at DPR2 -> 1920x1080 (2.0x pre-framed)
+  resolution: 1920x1080
+  dpr: 2
+  fps: 60.0
+  captured_at: '2026-10-04'
+  notes: 'Header ''All done · Plan next'' + ''8 in this run · 8 landed''; top of the Landed column. Claim source for shot11_legible.cards. v7: 15 only (header-only crop); not used since v8 (15 = shot-11-dpr2-r2).'
+  demo: true
+- id: shot-11-all8
+  shots: []
+  path: /workspace/videos/commission-ai-promo/footage/v1-1080/shot-11-all8.mov
+  sha256: b2ecbd2d6c349f04b74a6198a6a0880d3732ea8088a4fe53e2c0e85a62cae55d
+  app_commit: 4a427fc05f829d7b2e4ed7ea642d77340554f7f8
+  capture: ?demo=promo (scenario clock to 72.6 s, run complete)
+  framing: clip x106.9 y204.8 1483.4x834.4 CSS at DPR2 -> 1920x1080 (1.29x)
+  resolution: 1920x1080
+  dpr: 2
+  fps: 60.0
+  captured_at: '2026-10-04'
+  notes: 'Not used since v6 (Zen A3: ~12 px titles). Small text (~9-11 px cap), NOT a claim source.'
+  demo: true
+- id: shot-16-prcard-tighter
+  shots:
+  - '14'
+  path: /workspace/videos/commission-ai-promo/footage/v1-1080/shot-16-prcard-tighter.mov
+  sha256: ffc3b750c28fb4423247008eff4b68725fa6aaad26f4dc992b5ec0ff5ab27867
+  app_commit: 4a427fc05f829d7b2e4ed7ea642d77340554f7f8
+  capture: ?demo=promo (scenario clock), PAY-110 node clicked at 59 s; record 61.0-70.5 s
+  framing: clip x1142 y122 752x423 CSS at DPR2 -> 1920x1080 (2.553x); final card output x 25-1894, ends y 1032
+  resolution: 1920x1080
+  dpr: 2
+  fps: 60.0
+  captured_at: '2026-10-04'
+  notes: 'Done stepper + PR card only; Evidence out of frame in the Merged state. Card sits lower (bottom row clipped) during PR raised. Measured v7 (full-res 1920 frames): Done reflow (card moves up, whole) at 6.500 s (frame 390); badge text Open -> Merged at 7.700 s (frame 462, hard flip). Merged hold: card x 25-1893, y 715-1031; Merged cap (M) 20 src px (rows 761-780); #438 25 px line; Builds pass B 22 px.'
+  demo: true
+- id: shot-11-dpr2
+  shots: []
+  path: /workspace/videos/commission-ai-promo/footage/v1-1080/shot-11-dpr2.mov
+  sha256: d523056eca26216adbf7981f8593691506acae1a0d66ab300d50ae5c4ec70579
+  app_commit: 4a427fc05f829d7b2e4ed7ea642d77340554f7f8
+  capture: ?demo=promo (scenario clock to 72.6 s, run complete), canvas panned with real wheel scroll
+  framing: clip x10 y40 900x506.25 CSS at DPR2 -> 1920x1080 (2.133x)
+  resolution: 1920x1080
+  dpr: 2
+  fps: 60.0
+  captured_at: '2026-10-04'
+  notes: 'Header ''All done · Plan next'' + ''8 in this run · 8 landed'' + Landed column (PAY-103..106). Manifest: header cap 18 px, IDs 14, titles 17. v7 eval for 15: header text x 605-1174 sits between the search box (to x 540) + a caret streak (x 558-560) and the Landed heading (from x 1354), so a clean header-only window is <= 780 px wide (>= 2.46x): edge width 3.44 px vs 2.91 px for the v6 shot-11 crop at 2.02x (softer). Not swapped; waiting on shot-11-dpr2-r2.'
+  demo: true
+- id: shot-04-dpr2-promo
+  shots:
+  - '04'
+  path: /workspace/videos/commission-ai-promo/footage/v1-1080/shot-04-dpr2-promo.mov
+  sha256: 367b0be6793a496cbaa8e86b710d33c7e1c2ae8776585a501ed69c4dc9f66055
+  app_commit: 4a427fc05f829d7b2e4ed7ea642d77340554f7f8
+  capture: ?demo=promo (scenario clock 5.9-11.9 s)
+  framing: clip x779 y316 1006x566 CSS at DPR2 -> 1920x1080 (1.909x); 8 cards + Wave 1/2/3 headings
+  resolution: 1920x1080
+  dpr: 2
+  fps: 60.0
+  captured_at: '2026-10-04'
+  notes: 'Plan of 8 as a DAG; Wave 1 Ready at 0 s, PAY-103 Running ~0.8 s; Wave 2/3 Blocked padlock. IDs 16, titles 18, headings 20 px. Measured v7: layout settles by 0.43 s (cards animate in 0-0.40 s, PAY-104/105 overlap); PAY-103 Running 0.733 s; PAY-104 Running 1.733 s; PAY-106 Running 2.733 s. 8 cards span src x 67-1516, y 141-1043.'
+  demo: true
+- id: shot-11-dpr2-r2
+  shots:
+  - '15'
+  path: /workspace/videos/commission-ai-promo/footage/v1-1080/shot-11-dpr2-r2.mov
+  sha256: 90ff6b72e1c1243711287593390061328c0b9f2987e9fe39b9fa4ed89d921689
+  app_commit: 4a427fc05f829d7b2e4ed7ea642d77340554f7f8
+  capture: ?demo=promo (scenario clock to 72.6 s, run complete), canvas wheel-panned, Landed column at x~617 CSS
+  framing: clip x8 y44 800x450 CSS at DPR2 -> 1920x1080 (2.4x)
+  resolution: 1920x1080
+  dpr: 2
+  fps: 60.0
+  captured_at: '2026-10-04'
+  notes: 'Header ''8 in this run · 8 landed'' (cap 21 px) + ''Landed · Merged and closed'' + PAY-103..105 whole. v8 shot 15: crop src x 1014-1898, y 50-473 (2.17x): count + Landed heading + PAY-103 whole.'
+  demo: true
+- id: shot-03-composer-dpr2
+  shots:
+  - '03'
+  path: /workspace/videos/commission-ai-promo/footage/v1-1080/shot-03-composer-dpr2.mov
+  sha256: e45a22dd567561be393993425eedbd32a1841c43b218cd52263629680ef1fcda
+  app_commit: 4a427fc05f829d7b2e4ed7ea642d77340554f7f8
+  capture: ?demo=promo&pause=1 (empty board), Access switched to Edits via the real Access menu; real keystrokes, not sent
+  framing: clip x150 y675 720x405 CSS at DPR2 -> 1920x1080 (2.667x)
+  resolution: 1920x1080
+  dpr: 2
+  fps: 60.0
+  captured_at: '2026-10-04'
+  notes: 'Measured v8: placeholder until 0.333 s; line 1 keystrokes 0.333-3.333 s (6 frames/char = 10 chars/s), Shift+Enter 3.833 s (box grows up 773 -> 714), line 2 4.25-5.85 s; take ends 6.35 s, send button blue (ready), not sent. Text cap ~27 px.'
+  demo: true

@@ -116,13 +116,17 @@ def anime_gates(spec, st, checks):
             if row not in band["rows"]:
                 bad.append(f"shot {s.id} card {text!r}: unknown row {row!r} (have {sorted(band['rows'])})")
                 continue
-            b = card_geometry(spec, row, text)["box"]
+            g = card_geometry(spec, row, text)
+            b = g["box"]
+            cap = g["font"].getbbox("H")[3] - g["font"].getbbox("H")[1]
+            if cap < band.get("min_cap_px", 18):
+                bad.append(f"shot {s.id} card {text!r} ({row}) cap height {cap} px < {band.get('min_cap_px', 18)} px")
             if not (b[0] >= band["x0"] - 1e-6 and b[2] <= band["x1"] + 1e-6 and b[1] >= band["y0"] - 1e-6 and b[3] <= band["y1"] + 1e-6):
                 bad.append(f"shot {s.id} card {text!r} box {[round(x) for x in b]} leaves the band {[band['x0'], band['y0'], band['x1'], band['y1']]}")
         for s in shots:
             if s.get("band") or s.get("overlays"):
                 bad.append(f"shot {s.id}: per-shot band / free overlays not allowed in anime-opening (use cards)")
-        out.append(("card-band", "FAIL" if bad else "PASS", "; ".join(bad) or f"all cards in the fixed band y {band['y0']}-{band['y1']}"))
+        out.append(("card-band", "FAIL" if bad else "PASS", "; ".join(bad) or f"all cards in the fixed band y {band['y0']}-{band['y1']} ({1080 - band['y0']} px = {(1080 - band['y0']) / 10.8:.0f}% of the frame), cap height >= {band.get('min_cap_px', 18)} px"))
 
     # card-ui-clear: a card never covers app UI text
     if "card-ui-clear" in checks:
@@ -240,7 +244,7 @@ def named_gates(spec):
             else:                    # no time given: the smallest it gets on screen (head, middle, last frame)
                 ms = [measure_named(spec, s, el, t=t) for t in (0.0, s.dur / 2, s.dur - 1.0 / spec.fps)]
             errs = [x for x in ms if x.get("error")]
-            m = errs[0] if errs else min(ms, key=lambda x: x["px"] if x["inside"] else -1)
+            m = errs[0] if errs else min(ms, key=lambda x: x["px"] if (x["inside"] and not x.get("under_band")) else -1)
             nm = m["name"]
             if m.get("error"):
                 if s.get("placeholder"):
@@ -248,7 +252,8 @@ def named_gates(spec):
                 res.append(f"!shot {s.id} {nm!r}: cannot measure ({m['error']})")
                 continue
             res.append(("" if m["ok"] else "!") + f"shot {s.id} {nm!r} @ {m['t']:.2f}s: {m['src']} src px x{m['scale']:.2f} = {m['px']:.1f} px (min {m['min_px']})"
-                       + ("" if m["inside"] else ", NOT fully in frame"))
+                       + (", hidden by the caption band" if m.get("under_band") else "")
+                       + ("" if m["inside"] or m.get("under_band") else ", NOT fully in frame"))
             if m["scale"] > 1.0 + 1e-6:
                 up.append(f"shot {s.id} {nm!r} x{m['scale']:.2f} ({s.get('source') or s.get('still')})")
     if not res:

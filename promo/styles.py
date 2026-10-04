@@ -5,7 +5,7 @@ pacing (what the cut grid is and how long shots/text must hold), a caption/card 
 transitions, and the `promo check` gates that enforce them. Values in the spec win over the preset (deep merge), so
 a project only writes what it changes.
 
-    style: {preset: anime-opening}             # + any overrides, e.g. band: {y0: 780}
+    style: {preset: anime-opening}             # + any overrides, e.g. band: {frac: 0.18} (or an absolute y0)
     timeline: {grid: music/edit-v1.json, beats: 225}   # beat grid from a music JSON (tempo, bars, markers)
 
 Presets:
@@ -53,9 +53,15 @@ PRESETS = {
         ),
         # ONE fixed band for every card in the whole opening (1920x1080 canvas units). On UI shots the footage is framed
         # ABOVE the band (layout: band) so a card can never sit on app UI text; text-free shots may run full-bleed.
-        band=dict(x0=96, x1=1824, y0=800, y1=1040, fill=[14, 12, 34], alpha=235, accent=[255, 64, 129], accent2=[64, 220, 255],
-                  rows=dict(title=dict(cy=868, size=104, max_w=1680), sub=dict(cy=952, size=42, max_w=1500),
-                            tag=dict(cy=1004, size=28, max_w=600)),
+        # The band is a preset parameter: `frac` = band height as a fraction of the frame (bottom-anchored; y0 = H*(1-frac)),
+        # rows are placed relative to it (rel_cy / rel_cx within the band, rel_size = font px / band height), so one
+        # number re-flows the whole layout. Explicit y0 / y1 / row cy / size (project overrides) still win.
+        # v6: 15% (162 px at 1080p) instead of the 26% (280 px) the v1-v5 band took.
+        band=dict(frac=0.15, pad=4, x0=96, x1=1824, min_cap_px=18,
+                  fill=[14, 12, 34], alpha=235, accent=[255, 64, 129], accent2=[64, 220, 255],
+                  rows=dict(title=dict(rel_cy=0.33, rel_size=0.44, max_w=1680),
+                            sub=dict(rel_cy=0.74, rel_size=0.21, max_w=1100),
+                            tag=dict(rel_cy=0.74, rel_cx=0.93, rel_size=0.175, max_w=300)),
                   # `pillar_fill: brand` on a fit: contain shot: the opening's night-sky brand background (sampled from the
                   # shot-03 night plate) fills the pillarbox, so a narrow crop reads as a deliberate panel
                   brand_bg=dict(top=[10, 8, 44], mid=[16, 24, 80], bottom=[14, 12, 34], stars=70, glow=0.18)),
@@ -110,7 +116,29 @@ def resolve(raw):
     over = {k: v for k, v in st.items() if k != "preset"}
     res = deep_merge(PRESETS[name], over)
     res["preset"] = name
+    if isinstance(res.get("band"), dict):
+        res["band"] = layout_band(res["band"])
     return res
+
+
+def layout_band(band, H=1080):
+    """Absolute band geometry (y0, y1, rows' cx / cy / size in 1920x1080 canvas units) from the relative band parameters.
+    y0 = H * (1 - frac) unless given; y1 = H - pad unless given; a row's rel_cy / rel_cx / rel_size place it inside the
+    band (explicit cy / cx / size win). Idempotent."""
+    b = copy.deepcopy(band)
+    if b.get("y0") is None:
+        b["y0"] = int(round(H * (1.0 - float(b.get("frac", 0.15)))))
+    if b.get("y1") is None:
+        b["y1"] = H - int(b.get("pad", 4))
+    bh = H - b["y0"]
+    for r in (b.get("rows") or {}).values():
+        if r.get("cy") is None and r.get("rel_cy") is not None:
+            r["cy"] = round(b["y0"] + float(r["rel_cy"]) * bh, 1)
+        if r.get("size") is None and r.get("rel_size") is not None:
+            r["size"] = int(round(float(r["rel_size"]) * bh))
+        if r.get("cx") is None and r.get("rel_cx") is not None:
+            r["cx"] = round(b["x0"] + float(r["rel_cx"]) * (b["x1"] - b["x0"]), 1)
+    return b
 
 
 def qa(raw):

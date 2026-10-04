@@ -44,6 +44,9 @@ def style_of(spec):
     if st.get("preset") != "anime-opening" and "band" not in st:
         from ..styles import PRESETS, deep_merge
         st = deep_merge(PRESETS["anime-opening"], st)
+    if "band" in st and st["band"].get("y0") is None:
+        from ..styles import layout_band
+        st = dict(st, band=layout_band(st["band"]))
     return st
 
 
@@ -94,7 +97,7 @@ def card_geometry(spec, row, text, K=1):
         size -= 2
     h = y1 - y0
     padx, pady = (18 * K, 8 * K) if row == "tag" else (28 * K, 6 * K)     # accent plate / pill padding
-    cx = (band["x0"] + band["x1"]) / 2 * K
+    cx = r.get("cx", (band["x0"] + band["x1"]) / 2) * K
     cy = r["cy"] * K
     bx0, by0 = cx - w / 2 - padx, cy - h / 2 - pady
     bx1, by1 = cx + w / 2 + padx, cy + h / 2 + pady
@@ -194,8 +197,14 @@ def measure_named(spec, shot, el, t=None):
         return dict(name=name, t=round(t, 3), src_t=round(src_t, 3), min_px=need, ok=False, error="no ink in its box")
     ob = m.pop("out_box")
     box_out = [round(ob[0] + vp[0], 1), round(ob[1] + vp[1], 1), round(ob[2] + vp[0], 1), round(ob[3] + vp[1], 1)]
-    return dict(name=name, t=round(t, 3), src_t=round(src_t, 3), box_out=box_out, min_px=need,
-                ok=bool(m["px"] >= need and m["inside"]), **m)
+    under = False
+    if shot.type == "anime":
+        # the caption band covers canvas y >= band.y0: on band layout the viewport stops there (box would be cut off the
+        # bottom of the crop); on full layout the band/gradient draws over the footage, so the element would sit under it
+        y0b = style_of(spec)["band"]["y0"]
+        under = bool(box_out[3] > y0b + 0.5)
+    return dict(name=name, t=round(t, 3), src_t=round(src_t, 3), box_out=box_out, min_px=need, under_band=under,
+                ok=bool(m["px"] >= need and m["inside"] and not under), **m)
 
 
 # ---------------------------------------------------------------- drawing

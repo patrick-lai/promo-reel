@@ -55,11 +55,11 @@ GOOD = [ph("01", [0, 4], ui=False, cards=[dict(row="title", text="commission-ai"
         ph("02", [4, 10], ui=True, cards=[dict(row="title", text="ONE ASK.", bars=[0, 1])], fx_in=dict(kind="flash", frames=3)),
         ph("03", [10, 12], ui=False),                       # text-free half-bar shot: cuts at 10 (half bar) next to it are fine
         ph("04", [12, 16], ui=True, cards=[dict(row="title", text="MERGED.", bars=[0, 1])]),
-        ph("05", [16, 24], ui=True, cards=[dict(row="title", text_from="claims.merged", bars=[0, 2])], fx_in=dict(kind="flash", frames=3))]
-CLAIMS = dict(legible=dict(shot11_legible=dict(cards=None, logos=None)),
-              tables=dict(merged=dict(selector="shot11_legible", rows=[
-                  dict(cards=8, logos=3, text="8 TASKS · 3 AGENTS · ALL MERGED"), dict(logos=3, text="3 AGENTS · ALL MERGED"),
-                  dict(cards=8, text="8 TASKS · ALL MERGED"), dict(text="ALL MERGED.")])))
+        ph("05", [16, 24], ui=True, cards=[dict(row="title", text_from="claims.landed", bars=[0, 2])], fx_in=dict(kind="flash", frames=3))]
+CLAIMS = dict(legible=dict(shot11_legible=dict(cards=None, landed=None, logos=None)),
+              tables=dict(landed=dict(selector="shot11_legible", rows=[       # Marketing 4 Oct: matches '8 in this run · 8 landed'
+                  dict(cards=8, landed=8, text="8 TASKS · ALL LANDED"), dict(landed=8, text="ALL LANDED."),
+                  dict(text="LANDED.", confirm="Marketing")])))
 
 
 def gates(p):
@@ -84,7 +84,8 @@ def test_presets_have_rules():
 
 def test_resolve_merges_overrides_and_rejects_unknown():
     st = styles.resolve(dict(style=dict(preset="anime-opening", band=dict(y0=780))))
-    assert st["band"]["y0"] == 780 and st["band"]["y1"] == 1040 and st["preset"] == "anime-opening"
+    assert st["band"]["y0"] == 780 and st["band"]["y1"] == 1076 and st["preset"] == "anime-opening"
+    assert st["band"]["rows"]["title"]["size"] == round(0.44 * 300)          # rows re-flow with an explicit y0 too
     assert styles.resolve(dict(style=dict(font=dict(path="x"))))["preset"] is None      # legacy specs untouched
     raw = yaml.safe_load(open(EXAMPLE))
     raw["style"]["preset"] = "vaporwave"
@@ -186,6 +187,48 @@ def test_one_fixed_band():
     assert status(_variant(overlay), "card-band") == "FAIL"
 
 
+def test_band_is_a_preset_parameter():
+    """A4: the caption band is one preset parameter (frac of the frame height, rows placed relative to it). The default
+    anime band is 15% (162 px at 1080p); every card stays inside it and its cap height stays >= band.min_cap_px."""
+    st = styles.resolve(dict(style=dict(preset="anime-opening")))
+    b = st["band"]
+    assert b["y0"] == 918 and 1080 - b["y0"] == 162 and b["y1"] <= 1080
+    assert b["y0"] < b["rows"]["title"]["cy"] < b["rows"]["sub"]["cy"] < b["y1"]
+    g = gates(_variant(lambda s: None))
+    assert g["card-band"][0] == "PASS" and "162 px = 15%" in g["card-band"][1], g["card-band"]
+    p = anime_project(copy.deepcopy(GOOD), claims=CLAIMS, style=dict(band=dict(frac=0.2)))
+    assert load_spec(p).style["band"]["y0"] == 864 and status(p, "card-band") == "PASS"
+    tiny = anime_project(copy.deepcopy(GOOD), claims=CLAIMS, style=dict(band=dict(frac=0.04)))     # 43 px band
+    g = gates(tiny)
+    assert g["card-band"][0] == "FAIL" and "cap height" in g["card-band"][1], g["card-band"]
+    from promo.shots.anime import card_geometry
+    sp = load_spec(_variant(lambda s: None))
+    for row, text in (("title", "REVIEWED, WITH THE REASON WHY."), ("sub", "Your AI dev crew, on your Mac."), ("tag", "macOS alpha")):
+        f = card_geometry(sp, row, text)["font"]
+        assert f.getbbox("H")[3] - f.getbbox("H")[1] >= 18, row
+
+
+def test_move_cut_retimes_one_slot_and_keeps_comments():
+    """03-slot swap helper: `promo move-cut <beat> <new>` moves one cut, edits only the two beats lines, refuses unsafe moves."""
+    from promo import retime
+    p = _variant(lambda s: None)
+    txt = open(p).read().replace("- id: '02'", "# keep me\n- id: '02'")
+    open(p, "w").write(txt)
+    raw = yaml.safe_load(open(p))
+    r = retime.move_cut(p, raw, 10, 8)
+    assert r["ok"] and r["shots"] == {"02": [4, 8], "03": [8, 12]}, r
+    raw2 = yaml.safe_load(open(p))
+    assert [s_["beats"] for s_ in raw2["shots"]][:3] == [[0, 4], [4, 8], [8, 12]]
+    assert "# keep me" in open(p).read()
+    assert status(p, "bar-cuts") == "PASS"
+    for bad in ((8, 6), (8, 30), (9, 8)):                 # card would outrun a half-bar shot / outside / no cut at 9
+        try:
+            retime.move_cut(p, yaml.safe_load(open(p)), *bad)
+            raise AssertionError(f"move {bad} should be refused")
+        except retime.RetimeError:
+            pass
+
+
 def test_card_never_covers_ui_text():
     def full_ui(s):                 # full-bleed UI shot with a card and no ui_text rects
         s[1]["layout"] = "full"
@@ -193,7 +236,7 @@ def test_card_never_covers_ui_text():
 
     def full_ui_rect(s):            # text in the lower third of the frame -> under the band card
         s[1]["layout"] = "full"
-        s[1]["ui_text"] = [[0.30, 0.76, 0.70, 0.84]]
+        s[1]["ui_text"] = [[0.30, 0.88, 0.70, 0.95]]
     g = gates(_variant(full_ui_rect))
     assert g["card-ui-clear"][0] == "FAIL" and "covers ui_text" in g["card-ui-clear"][1]
 
@@ -243,36 +286,75 @@ def test_literal_numbers_need_evidence():
 
 # ---------------------------------------------------------------- claims
 def test_claim_selector_marketing_fallbacks():
-    rows = CLAIMS["tables"]["merged"]["rows"]
-    assert C.select(rows, dict(cards=8, logos=3))["text"] == "8 TASKS · 3 AGENTS · ALL MERGED"
-    assert C.select(rows, dict(cards=6, logos=3))["text"] == "3 AGENTS · ALL MERGED"
-    assert C.select(rows, dict(cards=8, logos=1))["text"] == "8 TASKS · ALL MERGED"
-    assert C.select(rows, dict(cards=5, logos=0))["text"] == "ALL MERGED."
-    assert C.select(rows, dict(cards=None, logos=None))["text"] == "ALL MERGED."     # not captured: no number at all
+    rows = CLAIMS["tables"]["landed"]["rows"]
+    assert C.select(rows, dict(cards=8, landed=8, logos=None))["text"] == "8 TASKS · ALL LANDED"
+    assert C.select(rows, dict(cards=8, landed=8, logos=3))["text"] == "8 TASKS · ALL LANDED"   # logos never add '3 AGENTS'
+    assert C.select(rows, dict(cards=None, landed=8))["text"] == "ALL LANDED."
+    assert C.select(rows, dict(cards=8, landed=7))["text"] == "LANDED."        # not all landed: no 'ALL', no number
+    assert C.select(rows, dict(cards=None, landed=None, logos=None))["text"] == "LANDED."   # not captured: no number at all
     raw = dict(claims=copy.deepcopy(CLAIMS))
-    raw["claims"]["legible"]["shot11_legible"] = dict(cards=8, logos=3)
-    assert C.text_of(raw, dict(text_from="claims.merged")) == "8 TASKS · 3 AGENTS · ALL MERGED"
+    raw["claims"]["legible"]["shot11_legible"] = dict(cards=8, landed=8, logos=None)
+    assert C.text_of(raw, dict(text_from="claims.landed")) == "8 TASKS · ALL LANDED"
 
 
 def test_claim_audit():
     bad = copy.deepcopy(CLAIMS)
-    bad["tables"]["merged"]["rows"][1] = dict(logos=3, text="9 TASKS · 3 AGENTS")          # 9 not backed by a condition
+    bad["tables"]["landed"]["rows"][1] = dict(landed=8, text="9 TASKS · ALL LANDED")          # 9 not backed by a condition
     assert any(s == "FAIL" for s, _ in C.audit(dict(claims=bad)))
     nofb = copy.deepcopy(CLAIMS)
-    nofb["tables"]["merged"]["rows"] = nofb["tables"]["merged"]["rows"][:-1]
+    nofb["tables"]["landed"]["rows"] = nofb["tables"]["landed"]["rows"][:-1]
     assert any(s == "FAIL" for s, _ in C.audit(dict(claims=nofb)))
     d = tempfile.mkdtemp()
     md = os.path.join(d, "manifest.md")
-    open(md, "w").write("### Shot 10\nfoo\n\n### Shot 11 (board landed)\n- **Legible:** 8 task cards, 3 agent logos\n")
+    open(md, "w").write("### Shot 10\nfoo\n\n### Shot 11 (board landed)\n- **Legible:** 8 task cards, 8 landed, 3 agent logos\n")
     mc = C.manifest_counts(md, "Shot 11")
-    assert mc["cards"] == 8 and mc["logos"] == 3, mc
+    assert mc["cards"] == 8 and mc["landed"] == 8 and mc["logos"] == 3, mc
     assert C.manifest_counts(md, "Shot 12") is None
     cl = copy.deepcopy(CLAIMS)
-    cl["tables"]["merged"]["evidence"] = dict(manifest=md, section="Shot 11")
-    cl["legible"]["shot11_legible"] = dict(cards=7, logos=3)
+    cl["tables"]["landed"]["evidence"] = dict(manifest=md, section="Shot 11")
+    cl["legible"]["shot11_legible"] = dict(cards=7, landed=8, logos=None)
     assert any(s == "FAIL" and "disagrees" in m for s, m in C.audit(dict(claims=cl)))
-    cl["legible"]["shot11_legible"] = dict(cards=8, logos=3)
+    cl["legible"]["shot11_legible"] = dict(cards=8, landed=8, logos=None)
     assert not any(s == "FAIL" for s, _ in C.audit(dict(claims=cl)))
+
+
+def test_claim_all_landed_and_agents_need_their_counts():
+    """Marketing 4 Oct: the shot-15 card reads '8 TASKS · ALL LANDED' (word for word with the header '8 landed'), and
+    '3 AGENTS' stays off a crop that shows no logos. 'ALL LANDED' needs a `landed` condition equal to `cards`; a digit
+    such as the 3 of '3 AGENTS' needs its own legible-count condition."""
+    def fails(rows):
+        cl = copy.deepcopy(CLAIMS)
+        cl["tables"]["landed"]["rows"] = rows + [dict(text="LANDED.")]
+        return [m for s, m in C.audit(dict(claims=cl)) if s == "FAIL"]
+    assert not fails([dict(cards=8, landed=8, text="8 TASKS · ALL LANDED")])
+    assert any("claims all landed" in m for m in fails([dict(cards=8, text="8 TASKS · ALL LANDED")]))
+    assert any("not all landed" in m for m in fails([dict(cards=8, landed=7, text="8 TASKS · ALL LANDED")]))
+    assert any("[3]" in m for m in fails([dict(cards=8, landed=8, text="8 TASKS · 3 AGENTS · ALL LANDED")]))
+    assert not fails([dict(cards=8, landed=8, logos=3, text="8 TASKS · 3 AGENTS · ALL LANDED")])
+    raw = dict(claims=copy.deepcopy(CLAIMS))
+    raw["claims"]["tables"]["landed"]["rows"].insert(0, dict(cards=8, landed=8, logos=3, text="8 TASKS · 3 AGENTS · ALL LANDED"))
+    raw["claims"]["legible"]["shot11_legible"] = dict(cards=8, landed=8, logos=None)       # crop shows no logo count
+    assert C.text_of(raw, dict(text_from="claims.landed")) == "8 TASKS · ALL LANDED"
+
+
+def test_claim_evidence_full_heading_and_board_header_count():
+    """Several takes of one shot: a full heading picks the right section (and its ')' ends the name), and a board header
+    count ('8 in this run · 8 landed') is read as the card + landed counts, so a small-text take is never the evidence by accident."""
+    d = tempfile.mkdtemp()
+    md = os.path.join(d, "manifest.md")
+    open(md, "w").write("### Shot 11 (all 8 cards)\n- all 8 cards, 3 agent logos (tiny)\n\n"
+                        "### Shot 11 (header counts)\n- Header reads '8 in this run · 8 landed'\n\n### Shot 110\n- 9 cards\n")
+    assert C.manifest_counts(md, "Shot 11 (header counts)") == {"cards": 8, "landed": 8}
+    assert C.manifest_counts(md, "Shot 11 (all 8 cards)")["logos"] == 3
+    assert C.manifest_counts(md, "Shot 11")["logos"] == 3            # bare name = first matching heading
+    assert C.manifest_counts(md, "Shot 110") == {"cards": 9}
+    assert C.manifest_counts(md, "Shot 1") is None                   # 'Shot 1' never matches 'Shot 11' / 'Shot 110'
+    cl = copy.deepcopy(CLAIMS)
+    cl["tables"]["landed"]["evidence"] = dict(manifest=md, section="Shot 11 (header counts)")
+    cl["legible"]["shot11_legible"] = dict(cards=8, landed=8, logos=None)
+    au = C.audit(dict(claims=cl))
+    assert not any(s in ("FAIL", "WARN") for s, _ in au), au
+    assert C.text_of(dict(claims=cl), dict(text_from="claims.landed")) == "8 TASKS · ALL LANDED"
 
 
 # ---------------------------------------------------------------- renderer: cards in the band, fx never over UI

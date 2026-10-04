@@ -134,6 +134,22 @@ def test_named_gate_fails_when_out_of_frame():
     assert r["named"][0] == "FAIL", r["named"]
 
 
+def test_named_gate_flags_element_hidden_by_caption_band():
+    """A4: a named element under the caption band (canvas y >= band.y0) FAILs 'hidden by the caption band'. Full layout:
+    the band draws over the footage. Band layout: the viewport ends at y0, so the camera must frame the element above it."""
+    p, cap = still_project(tempfile.mkdtemp(), size=24, cam_w=1.0, text_xy=(400, 1000))
+    raw = yaml.safe_load(open(p))
+    raw["shots"][1].update(layout="full", cam=[[0, 0.5, 0.5, 1.0]], ui_text=[[0.0, 0.0, 0.01, 0.01]])
+    yaml.safe_dump(raw, open(p, "w"), sort_keys=False)
+    r = _gates(p)
+    assert r["named"][0] == "FAIL" and "hidden by the caption band" in r["named"][1], r["named"]
+    raw["shots"][1].update(layout="band", cam=[[0, 0.5, 0.9, 1.0]])    # band layout, camera clamps to the bottom: above it
+    raw["shots"][1].pop("ui_text")
+    yaml.safe_dump(raw, open(p, "w"), sort_keys=False)
+    r = _gates(p)
+    assert r["named"][0] == "PASS", r["named"]
+
+
 def test_named_keys_do_not_change_shot_digest():
     from promo import cli
     p, _ = still_project(tempfile.mkdtemp(), named=True)
@@ -153,7 +169,8 @@ def test_contain_aspect_viewport():
     yaml.safe_dump(raw, open(p, "w"), sort_keys=False)
     s = load_spec(p)
     vp = viewport(s, s.shots[1])
-    assert abs((vp[2] - vp[0]) - 800 * 1.6) < 1e-6 and vp[3] == 800
+    y0 = s.style["band"]["y0"]
+    assert abs((vp[2] - vp[0]) - y0 * 1.6) < 1e-6 and vp[3] == y0
 
 
 def test_timeline_may_end_off_grid_but_cuts_may_not():
