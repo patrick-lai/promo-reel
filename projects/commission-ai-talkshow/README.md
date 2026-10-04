@@ -70,6 +70,17 @@ a 0.4 s `dissolve` over it. It's driven by the take's `time_of_day` field in the
 no dissolve; `dusk -> day @ 5.50` or `{from, to, at}` = a change); with no field, the plan profile's `time_of_day`
 (the current take's fallback) applies. Commission-ai's dusk retake records `dusk` there and the dissolve goes away.
 
+## v5 (Zen X1 / X2)
+
+- **03 (X1)**: `talk-dag-wide-r2` (DPR 2, 1.667x, same `?demo=1` board as the earlier talk-dag takes). Source x 217-1723 at
+  full height, scale 0.96: PAY-102 / PAY-101 / PAY-104 / PAY-105 whole, every title whole; the right edge sits in clean
+  canvas before the wave-2 cards. IDs 23.9 px, titles 27.7 px. No matte; `livestream-edges` PASS.
+- **08b (X2)**: `shot-11-dpr2` (DPR 2, Landed column right beside the counts). Source x 574-1752, y 28-872, scale 1.22:
+  header 22.0 px (was 18.3), PAY-104 title 19.6 px, PAY-103/104/105 cards whole. Card ids are ~17 px (not named). The
+  lower left stays empty dotted canvas (app layout). Next: `shot-11-dpr2-r2` (~20 px header cap, 800 CSS wide) should
+  drop in as `landed:` with a new profile.
+- **08a** unchanged (`shot-16-prcard-tight`; `prcard-tighter` not landed).
+
 ## v4.1 (Zen v4 4.00)
 
 - **07**: `shot-12-dpr2-z179` (DPR 2, Z179 bold fix, no '**'). The reply is one line on this wide pane; crop x 0-1318,

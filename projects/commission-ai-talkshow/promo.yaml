@@ -290,56 +290,64 @@ shots:
   type: livestream
   beat: 3
   screen:
-    source: talk-dag-wide-v1080
+    source: talk-dag-wide-r2-v1080
     speed: 0.7
     t_in: 0.0
     cam:
-    - 0.44219
+    - 0.50521
     - 0.5
     - 0.7846
   named:
   - name: PAY-101 id
     box:
-    - 140
-    - 405
-    - 330
+    - 255
+    - 435
+    - 400
     - 465
     src_px: 1080
     at: 3.0
   - name: PAY-105 id
     box:
-    - 1085
-    - 90
-    - 1275
-    - 145
+    - 1070
+    - 160
+    - 1215
+    - 190
     src_px: 1080
     at: 3.0
   - name: PAY-104 id
     box:
-    - 1085
-    - 690
-    - 1275
-    - 750
+    - 1070
+    - 683
+    - 1215
+    - 713
     src_px: 1080
     at: 3.0
   - name: PAY-104 title
     box:
-    - 1085
-    - 770
-    - 1590
-    - 830
+    - 1070
+    - 735
+    - 1650
+    - 780
+    src_px: 1080
+    at: 3.0
+  - name: PAY-105 title
+    box:
+    - 1070
+    - 215
+    - 1500
+    - 260
     src_px: 1080
     at: 3.0
   - name: PAY-101 title
     box:
-    - 140
-    - 480
-    - 760
-    - 535
+    - 255
+    - 495
+    - 780
+    - 540
     src_px: 1080
     at: 3.0
-  note: 'Dependency map (talk-dag-wide; v3: talk-dag-tight): PAY-101 fanning into PAY-104 / PAY-105. FLAG: MAO''s beat 3 line claims ''eight tasks'' and ''waves'';
-    this frame shows 3 cards and no wave headings'
+  note: 'Dependency map (v5: talk-dag-wide-r2; v4: talk-dag-wide; v3: talk-dag-tight): PAY-101 fanning into PAY-104 / PAY-105. FLAG: MAO''s beat 3 line claims ''eight
+    tasks'' and ''waves''; this frame shows 3 cards and no wave headings'
 - id: '04'
   beats:
   - 1029
@@ -618,27 +626,35 @@ shots:
   type: livestream
   beat: 8
   screen:
-    source: shot-11-header-v1080
+    source: shot-11-dpr2-v1080
     t_in: 0.5
     cam:
-    - 0.62813
-    - 0.44491
-    - 0.69792
+    - 0.60573
+    - 0.41667
+    - 0.61354
   named:
   - name: All done · Plan next
     box:
-    - 546
-    - 38
-    - 830
-    - 86
+    - 590
+    - 55
+    - 870
+    - 100
     src_px: 1080
     at: 1.0
   - name: 8 in this run · 8 landed
     box:
-    - 848
-    - 45
-    - 1106
-    - 79
+    - 900
+    - 60
+    - 1180
+    - 95
+    src_px: 1080
+    at: 1.0
+  - name: PAY-104 title
+    box:
+    - 1365
+    - 515
+    - 1715
+    - 545
     src_px: 1080
     at: 1.0
   note: 'Board all Landed (S11), the last 1.1 s of the beat: 08a holds ~1 s on the PR card after its pill reads Merged (7.70 s)'
