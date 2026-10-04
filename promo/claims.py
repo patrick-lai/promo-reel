@@ -32,8 +32,8 @@ from __future__ import annotations
 import os
 import re
 
-COUNT_WORDS = {"cards": r"(\d+)\s+(?:task\s+|ticket\s+)?cards?", "logos": r"(\d+)\s+(?:agent\s+)?logos?",
-               "tasks": r"(\d+)\s+tasks?", "agents": r"(\d+)\s+agents?"}
+COUNT_WORDS = {"cards": r"(\d+)\s+(?:task\s+|ticket\s+)?cards?|(\d+)\s+in\s+this\s+run\b",   # board header '8 in this run'
+               "logos": r"(\d+)\s+(?:agent\s+)?logos?", "tasks": r"(\d+)\s+tasks?", "agents": r"(\d+)\s+agents?"}
 
 
 META = ("text", "note", "confirm")       # row keys that are not count conditions
@@ -83,11 +83,12 @@ def text_of(raw, cfg):
 
 
 def manifest_counts(path, section):
-    """Counts written in a footage manifest.md section ('### Shot 11 ...' up to the next '### '): {key: int}. None if absent."""
+    """Counts written in a footage manifest.md section ('### Shot 11 ...' up to the next '### '): {key: int}. None if absent.
+    `section` may name a full heading such as 'Shot 11 (header counts)' to pick one of several takes of a shot."""
     if not path or not os.path.exists(path):
         return None
     txt = open(path).read()
-    m = re.search(rf"^###\s+{re.escape(section)}\b.*?$(.*?)(?=^###\s|\Z)", txt, flags=re.M | re.S)
+    m = re.search(rf"^###\s+{re.escape(section)}(?!\w).*?$(.*?)(?=^###\s|\Z)", txt, flags=re.M | re.S)
     if not m:
         return None
     body = m.group(1)
@@ -97,7 +98,7 @@ def manifest_counts(path, section):
     for k, rx in COUNT_WORDS.items():
         mm = re.search(rx, scope, flags=re.I)
         if mm:
-            out[k] = int(mm.group(1))
+            out[k] = int(next(g for g in mm.groups() if g is not None))
     return out
 
 

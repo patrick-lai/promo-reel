@@ -275,6 +275,26 @@ def test_claim_audit():
     assert not any(s == "FAIL" for s, _ in C.audit(dict(claims=cl)))
 
 
+def test_claim_evidence_full_heading_and_board_header_count():
+    """Several takes of one shot: a full heading picks the right section (and its ')' ends the name), and a board header
+    count ('8 in this run') is read as the card count, so a small-text take is never the evidence by accident."""
+    d = tempfile.mkdtemp()
+    md = os.path.join(d, "manifest.md")
+    open(md, "w").write("### Shot 11 (all 8 cards)\n- all 8 cards, 3 agent logos (tiny)\n\n"
+                        "### Shot 11 (header counts)\n- Header reads '8 in this run · 8 landed'\n\n### Shot 110\n- 9 cards\n")
+    assert C.manifest_counts(md, "Shot 11 (header counts)") == {"cards": 8}
+    assert C.manifest_counts(md, "Shot 11 (all 8 cards)")["logos"] == 3
+    assert C.manifest_counts(md, "Shot 11")["logos"] == 3            # bare name = first matching heading
+    assert C.manifest_counts(md, "Shot 110") == {"cards": 9}
+    assert C.manifest_counts(md, "Shot 1") is None                   # 'Shot 1' never matches 'Shot 11' / 'Shot 110'
+    cl = copy.deepcopy(CLAIMS)
+    cl["tables"]["merged"]["evidence"] = dict(manifest=md, section="Shot 11 (header counts)")
+    cl["legible"]["shot11_legible"] = dict(cards=8, logos=None)
+    au = C.audit(dict(claims=cl))
+    assert not any(s in ("FAIL", "WARN") for s, _ in au), au
+    assert C.text_of(dict(claims=cl), dict(text_from="claims.merged")) == "8 TASKS · ALL MERGED"
+
+
 # ---------------------------------------------------------------- renderer: cards in the band, fx never over UI
 def _frames(p, sid, idx):
     from promo import render as R

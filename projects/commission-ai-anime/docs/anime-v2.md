@@ -1,5 +1,28 @@
 # commission-ai anime opening — v2 → v3 (Direction 2, style preset `anime-opening`)
 
+## v5 (2026-10-04)
+New v1-1080 takes registered with `promo footage add` (sha256 match manifest.md): shot-16-prcard-tight, shot-08-dpr2,
+shot-12-dpr2-z179, shot-14b-dusk-r2, shot-11, shot-11-all8. Output `anime-v5`.
+1. **PR payoff (14):** `shot-16-prcard-tight` (776x436.5 CSS clip, DPR 2, 2.474x). Flip verified on the frames: 'Open' at
+   src frame 461, 'Merged' at frame 462 = **7.700 s** (same as the older take); the PR card first lays out at frame 390
+   (6.50 s), so the shot starts at 6.52. Flip lands at shot 1.17 s (output frame 1540), 6 frames (0.2 s) before 'MERGED.' (bar 1, frame 1546). Push 1.0x -> **1.05x**
+   landing on the flip: 1.05x is the most that keeps the whole card in frame (outline src x 56-1866 = 1811 of 1920 px;
+   1.1x would cut ~47 src px per side). Badge 18 src px -> **18.9 px** (clears the named FAIL; the 20 px target would
+   need ~1.11x and cut the card). Title 27.3 px, 'Builds pass · 1 approval' 24.1 px.
+2. **Chips (08-11):** `shot-08-dpr2` (2.13x clip, whole stepper). Boxes re-found per state (the stepper sits lower while
+   Running): Coding 32.3, Checks 30.6, Pushed 29.0, PR raised 29.0 px at the 1.61x start of the push.
+3. **Peak (13):** `shot-12-dpr2-z179` full width (no pillars/brand fill); crop x 0-1856 drops the next pane's sliver
+   (1.034x). 'Approved. ...' line 22 src px -> 22.8 px.
+4. **Street (16) + stop-time (17):** `shot-14b-dusk-r2`, only 3.60-7.45 s (0.71x) for 16 (notice alone on dusk Outside, then
+   Street glide); 17 freezes on 7.45 s (16's last frame). Full frame (no cards), tab bar cropped, notice in frame.
+   0-2.5 s is allowed but unused (settings popover 1.0-1.8 s, toast stack 2.0-2.5 s).
+5. **Plan (04):** `shot-11` header take, slow push 1.19x -> 1.28x. Header digits ('8 in this run · 8 landed') 17 src px ->
+   **20.2-21.8 px**, so `shot11_legible: {cards: 8, logos: null}` and the card reads **'8 TASKS.'**; the shot 04 `named`
+   entries keep that >= 18 px. Evidence section is now `Shot 11 (header counts)` (claims.py: a full heading selects one
+   take's section; '8 in this run' counts as the card count). shot-11-all8 is never the claim source.
+   **15 (peak claim):** `shot-11-all8` (visual only), 1.2x tilt down the Landed column; card = `8 TASKS · ALL MERGED`.
+6. **Placeholders left:** 03 only (S3 composer: no composer take in v1-1080).
+
 ## v4 (2026-10-04)
 Output `out/anime-v4-1080.mp4`.
 1. **Peak crop (13):** same narrow shot-12 crop; the pillars now use `pillar_fill: brand` (the opening's night-sky brand
@@ -59,34 +82,33 @@ every cut is on a bar line; intro_hit, lift, peak_start, seam_A_to_B_outro, fina
 | 01b | 4-8 | dusk Workshop, steady push-in from the intro hit; flash + speed lines at head | commission-ai / Your AI dev crew (slam) |
 | 02 | 8-20 | night Workshop (shot-03-night, frame 12+), push continues | commission-ai / Your AI dev crew (carried over) |
 | 03 | 20-36 | PLACEHOLDER S3 composer | ONE ASK. → TONIGHT. |
-| 04 | 36-52 | PLACEHOLDER shot-11 full board (DPR 2) | `claims.plan_count` → '8 TASKS.' if 8 cards legible, else 'THE PLAN.' (Marketing to confirm) |
+| 04 | 36-52 | shot-11 header take (DPR 2): 'All done · Plan next · 8 in this run · 8 landed', push 1.19→1.28x | `claims.plan_count` → 8 TASKS. |
 | 05-07 | 52-76 | shot-10-dpr2 frozen, push on PAY-103/104/106 cards | CLAUDE CODE / CODEX / CURSOR + "on the job" |
-| 08-11 | 76-108 | shot-08 PR card, push-in on the active chip (Coding→PR raised) | CODING. / CHECKS. / PUSHED. / PR RAISED. |
+| 08-11 | 76-108 | shot-08-dpr2 PAY-104 drawer stepper, push-in on the active chip (Coding→PR raised) | CODING. / CHECKS. / PUSHED. / PR RAISED. |
 | 12 | 108-132 | shot-10-dpr2 needs-you card | …ONLY WHEN IT NEEDS YOU. |
-| 13 | 132-148 | shot-12 reviewer thread, top-left to the 10:40 PM divider (aspect 1.6, brand pillars) | REVIEWED, WITH THE REASON WHY. |
-| 14 | 148-160 | shot-15-prcard (DPR 2): PAY-110 PR card Open→Merged, push ≤ 1.2x | MERGED. |
-| 15 | 160-180 | PLACEHOLDER shot-11 board all landed | `claims.merged_count` → currently ALL MERGED. |
-| 16-17 | 180-200 | PLACEHOLDER 14b dusk retake: Street glide + stop-time freeze | — |
+| 13 | 132-148 | shot-12-dpr2-z179 reviewer thread, full width (x 0-1856, 1.03x) | REVIEWED, WITH THE REASON WHY. |
+| 14 | 148-160 | shot-16-prcard-tight (DPR 2): PAY-110 PR card Open→Merged (7.70 s), push 1.0→1.05x, whole card in | MERGED. |
+| 15 | 160-180 | shot-11-all8: Landed column, all 8 Done, 1.2x tilt down | `claims.merged_count` → 8 TASKS · ALL MERGED |
+| 16-17 | 180-200 | shot-14b-dusk-r2 3.60-7.45 s: Street notice → Street glide; 17 freezes on 7.45 s | — |
 | 18 | 200-212 | morning Workshop (shot-15-morning) | GOOD MORNING. |
 | 19 | 212-224.767 | dusk freeze, blur/dim (ends with the music, 76.192 s) | commission-ai / Your AI dev crew, on your Mac. / macOS alpha (no URL) |
 
 ## Shot-11 claim (config table, `claims.merged_count`)
-Selected by `shot11_legible: {cards: N, logos: N}` (fill in from v1-1080 `manifest.md` "### Shot 11" once captured):
+Selected by `shot11_legible: {cards: N, logos: N}` (v5: `{cards: 8, logos: null}` from "### Shot 11 (header counts)"):
 8 cards + 3 logos → `8 TASKS · 3 AGENTS · ALL MERGED`; 3 logos only → `3 AGENTS · ALL MERGED`;
-8 cards only → `8 TASKS · ALL MERGED`; neither / unknown → `ALL MERGED.` (current). `promo check` WARNs until filled
+8 cards only → `8 TASKS · ALL MERGED`; neither / unknown → `ALL MERGED.`; v5 selects `8 TASKS · ALL MERGED`. `promo check` WARNs until filled
 and FAILs if the selected row claims more than the manifest entry says. Same selector is reusable (`promo/claims.py`) for the hero caption.
 
 ## Placeholders waiting on footage
-S3 composer (03); shot-11 full board DPR 2 (04 and 15, + fill `shot11_legible` from its manifest.md count);
-shot-14b dusk retake: Street glide (16) and freeze (17). Also pending: 08-dpr2 take (shot-08 in use) and the shot-12 DPR 2 swap (1x in use).
-v4 wired in `shot-15-prcard` (14). `talk-dag-tight` is deliberately not used (3 cards, different demo board).
+S3 composer (03) only. v5 wired in shot-11 (04), shot-08-dpr2 (08-11), shot-12-dpr2-z179 (13), shot-16-prcard-tight (14),
+shot-11-all8 (15), shot-14b-dusk-r2 (16, 17). `talk-dag-tight` is deliberately not used (3 cards, different demo board).
 
 ## Script vs footage mismatches
 - v1-1080 numbering ≠ script S-numbers: shot-03 is the night Workshop (no composer take; the sent ask is visible in shot-10-dpr2); shot-15 is the morning Workshop, not the merge (that is shot-16, uncaptured).
 - "Robot's light flicks on" in the night Workshop is not verified in shot-03 (lamp lights by frame 12; shot starts after it).
 - Marketing's final map drops "THE COMMANDER PLANS." — dropped.
 - Roll call wants rail rows lighting; footage only has board-card logos. Agent per card confirmed from demoPromo.ts (see Roll call source); shot-08 spells "Codex".
-- 14b take (08:02) exists but its Street notice sits under an achievements toast — not used; waiting for the 14b dusk retake.
+- 14b take (08:02) exists but its Street notice sits under an achievements toast — not used; v5 uses shot-14b-dusk-r2. The Street view still renders bright at 19:30 (real app).
 - shot-12 shows demo persona "Maya's" in the sidebar; board reflow ghosts at source 3-4 s (avoided).
 - v3: timeline trimmed to the music master (76.192 s); the v2 0.08 s tail silence is gone.
 - Direction 2 "on the job" subtitles kept although the Marketing final map doesn't list them.

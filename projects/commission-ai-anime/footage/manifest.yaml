@@ -106,3 +106,91 @@ clips:
   captured_at: '2026-10-04'
   notes: 'v1-1080 ''Shot 16 (PR-card payoff)''. PR #438 (PAY-110) badge flips Open -> Merged at 7.70 s (frame 462, hard flip); stepper already Done/Merged; drawer settles by 2.1 s. Push-in <= 1.2x.'
   demo: true
+- id: shot-16-prcard-tight
+  shots:
+  - '14'
+  path: /workspace/videos/commission-ai-promo/footage/v1-1080/shot-16-prcard-tight.mov
+  sha256: fbf04306c307a88c49ab907392cc83abaca62931b661d1e2dc609cc539e41d1a
+  app_commit: 4a427fc05f829d7b2e4ed7ea642d77340554f7f8
+  capture: ?demo=promo (scenario clock), PAY-110 node clicked at 59 s; record 61.0-70.5 s
+  framing: clip x1130 y246 776x436.5 CSS at DPR2 -> 1920x1080 (2.474x pre-framed); card at output x 55-1865, y ~385-690
+  resolution: 1920x1080
+  dpr: 2
+  fps: 60.0
+  captured_at: '2026-10-04'
+  notes: 'Same beat as shot-15-prcard: PAY-110 PR card Open -> Merged. Manifest: Merged cap 18 px at 9.0 s, title 24 px, Builds pass 22 px.'
+  demo: true
+- id: shot-08-dpr2
+  shots:
+  - 08
+  - 09
+  - '10'
+  - '11'
+  path: /workspace/videos/commission-ai-promo/footage/v1-1080/shot-08-dpr2.mov
+  sha256: 8b6b2e3bdc72764f849a96562bf1008c356ac93e8878e95fad544eadb7bce352
+  app_commit: 4a427fc05f829d7b2e4ed7ea642d77340554f7f8
+  capture: ?demo=promo (PAY-104 node clicked at 9.0 s); record 11.1-20.4 s
+  framing: clip x1000 y10 900x506.25 CSS at DPR2 -> 1920x1080 (2.13x pre-framed); whole stepper in frame
+  resolution: 1920x1080
+  dpr: 2
+  fps: 60.0
+  captured_at: '2026-10-04'
+  notes: 'Coding 0-2.0 s, Checks 2.0-4.9 s, Pushed 4.9-7.8 s, PR raised #432 7.8-9.3 s. Agent: Codex.'
+  demo: true
+- id: shot-12-dpr2-z179
+  shots:
+  - '13'
+  path: /workspace/videos/commission-ai-promo/footage/v1-1080/shot-12-dpr2-z179.mov
+  sha256: c5c20554b03a321d6a432857d60956aa8d86d706c0d391e1c6632af89298f5cb
+  app_commit: 4ccfa5be580eb3dbbaf8cb1138b0e4f55f544636
+  capture: ?demo=promo + conversationWidth=940; Review thread click 26.6 s (main 4ccfa5be, Z179 bold fix)
+  framing: clip x290 y0 960x540 CSS at DPR2 -> 1920x1080 (2.0x pre-framed)
+  resolution: 1920x1080
+  dpr: 2
+  fps: 60.0
+  captured_at: '2026-10-04'
+  notes: 'Replaces shot-12-dpr2 (no raw ''**''). Reviewer Cursor: ''Approved. Cart summary uses the pricing engine matches the plan ...'''
+  demo: true
+- id: shot-14b-dusk-r2
+  shots:
+  - '16'
+  - '17'
+  path: /workspace/videos/commission-ai-promo/footage/v1-1080/shot-14b-dusk-r2.mov
+  sha256: 91cd3b337c1fa9b16ed037f65749591c37e8a61a1822200059762b55fb5eef5e
+  app_commit: 4a427fc05f829d7b2e4ed7ea642d77340554f7f8
+  capture: ?demo=promo&pause=1&workshopHour=19:30 + prefs stage ws-pay=workshop
+  framing: full 1920x1080 CSS DPR1, locked
+  resolution: 1920x1080
+  dpr: 1
+  fps: 60.0
+  captured_at: '2026-10-04'
+  notes: Use only 0-2.5 s and 3.6-7.5 s (2.7-3.5 s collapse/re-expand flicker). Street notice alone + legible 3.6-4.6 s; Street glide 4.6-7.5 s.
+  demo: true
+- id: shot-11
+  shots:
+  - '04'
+  path: /workspace/videos/commission-ai-promo/footage/v1-1080/shot-11.mov
+  sha256: 740e9e3e2054667c7fdfa3b8cde16227104401d10b369ce8af61c572d3e87acc
+  app_commit: 4a427fc05f829d7b2e4ed7ea642d77340554f7f8
+  capture: ?demo=promo (scenario clock to 72.6 s, run complete)
+  framing: clip x10 y45 960x540 CSS at DPR2 -> 1920x1080 (2.0x pre-framed)
+  resolution: 1920x1080
+  dpr: 2
+  fps: 60.0
+  captured_at: '2026-10-04'
+  notes: Header 'All done · Plan next' + '8 in this run · 8 landed'; top of the Landed column. Claim source for shot11_legible.cards.
+  demo: true
+- id: shot-11-all8
+  shots:
+  - '15'
+  path: /workspace/videos/commission-ai-promo/footage/v1-1080/shot-11-all8.mov
+  sha256: b2ecbd2d6c349f04b74a6198a6a0880d3732ea8088a4fe53e2c0e85a62cae55d
+  app_commit: 4a427fc05f829d7b2e4ed7ea642d77340554f7f8
+  capture: ?demo=promo (scenario clock to 72.6 s, run complete)
+  framing: clip x106.9 y204.8 1483.4x834.4 CSS at DPR2 -> 1920x1080 (1.29x)
+  resolution: 1920x1080
+  dpr: 2
+  fps: 60.0
+  captured_at: '2026-10-04'
+  notes: 'All 8 cards Done in Landed. Visual only: small text (~9-11 px cap), NOT a claim source.'
+  demo: true

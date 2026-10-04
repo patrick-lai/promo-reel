@@ -4,7 +4,7 @@
 # slates: swapping one in is a config change (replace `placeholder:` with `source:` + `cam:`). No URL on the end card.
 # Heavy steps hold flock /tmp/commission-ai-cargo.lock (promo/lock.py) and run niced with ffmpeg -threads 2.
 project: {name: commission-ai-anime, title: "commission-ai anime opening (Direction 2)"}
-output: {name: anime-v4, resolution: 1080, fps: 30, duration: 76.192188}  # ends where the music master ends (76.192 s = 224.767 beats); 2286 frames, no tail pad
+output: {name: anime-v5, resolution: 1080, fps: 30, duration: 76.192188}  # ends where the music master ends (76.192 s = 224.767 beats); 2286 frames, no tail pad
 paths: {build: build, out: out}
 assets: assets.yaml
 footage: footage/manifest.yaml
@@ -23,15 +23,17 @@ music:
   track_offset: 0.0
   edit: {segments: [[0, 0, 224.76695]], crossfade: 0.0, gains: []}
 
-# Truth gate for the peak card: text is picked from what shot 11's manifest.md entry says is legible. Until shot 11 is
-# captured and Commission-ai writes its legible counts, both are null and the card shows the number-free fallback.
+# Truth gate for the plan + peak cards: text is picked from what the shot-11 header take legibly shows. Evidence is the
+# '### Shot 11 (header counts)' entry of manifest.md ('8 in this run · 8 landed'), NOT shot-11-all8 (its card text is
+# ~9-11 px). cards: 8 is recorded because the header digits measure 17 src px x1.19-1.28 = 20.2-21.8 px in shot 04's crop
+# (named gate on shot 04 keeps that >= 18 px). logos stays null: no legible logo count in the header take.
 claims:
   legible:
-    shot11_legible: {cards: null, logos: null}     # FILL from footage manifest.md "### Shot 11" (legible cards / logos)
+    shot11_legible: {cards: 8, logos: null}        # shot-11 header '8 in this run · 8 landed' (>= 18 px in shot 04's crop)
   tables:
     merged_count:              # reusable selector: the hero caption uses the same table
       selector: shot11_legible
-      evidence: {manifest: "${COMMISSION_AI_PROMO:-/workspace/videos/commission-ai-promo}/footage/v1-1080/manifest.md", section: "Shot 11"}
+      evidence: {manifest: "${COMMISSION_AI_PROMO:-/workspace/videos/commission-ai-promo}/footage/v1-1080/manifest.md", section: "Shot 11 (header counts)"}
       rows:
         - {cards: 8, logos: 3, text: "8 TASKS · 3 AGENTS · ALL MERGED"}
         - {logos: 3, text: "3 AGENTS · ALL MERGED"}
@@ -39,7 +41,7 @@ claims:
         - {text: "ALL MERGED."}
     plan_count:                # the 12.20 s plan card: '8 TASKS.' only when the shot-11 full board legibly shows 8 cards
       selector: shot11_legible
-      evidence: {manifest: "${COMMISSION_AI_PROMO:-/workspace/videos/commission-ai-promo}/footage/v1-1080/manifest.md", section: "Shot 11"}
+      evidence: {manifest: "${COMMISSION_AI_PROMO:-/workspace/videos/commission-ai-promo}/footage/v1-1080/manifest.md", section: "Shot 11 (header counts)"}
       rows:
         - {cards: 8, text: "8 TASKS."}
         - {text: "THE PLAN.", confirm: "Marketing"}     # softened fallback, not final copy: Marketing to confirm
@@ -103,19 +105,23 @@ shots:
     fx_in: {kind: flash, frames: 3}
     contact_at: 1.0
 
-  # ---- 12.20 s: plan (4 bars) -- shot-11 full board (DPR 2) not captured. NOT talk-dag-tight: it shows only 3 cards
-  # from a different demo board. The card text comes from claims.plan_count: '8 TASKS.' only if shot11_legible.cards == 8.
+  # ---- 12.20 s: plan (4 bars) on the shot-11 header take (DPR 2): 'All done · Plan next' / '8 in this run · 8 landed' +
+  # the top of the Landed column. Static 3.0 s hold played at 0.55x under a slow push; header digits 17 src px.
   - id: "04"
     beats: [36, 52]
     type: anime
     ui: true
-    placeholder:
-      id: shot-11 full board
-      label: "Board: all 8 checkout tasks on the full board (DPR 2)"
-      expects: "Not captured yet. Commission-ai writes the legible card count for shot 11 in manifest.md;\nthe card reads '8 TASKS.' only if shot11_legible.cards == 8 (else the flagged fallback). talk-dag-tight is not used (3 cards, other board)."
+    source: shot-11
+    label: "shot-11 (DPR 2): board header 'All done · Plan next · 8 in this run · 8 landed' + Landed column"
+    segs: [{t_in: 0.10, t_out: 2.95, dur: 5.4237288}]
+    cam: [[0, 0.60, 0.25, 0.84], [end, 0.60, 0.25, 0.78]]     # crop src x ~346-1920 -> 403-1901, y 0-; search box cropped
+    named:                     # the count the '8 TASKS.' card rests on (claims.plan_count): must read >= 18 px
+      - {name: "header count '8 in this run · 8 landed'", box: [845, 45, 1110, 95]}
+      - {name: "header pill 'All done · Plan next'", box: [560, 45, 815, 95]}
     cards:
       - {row: title, text_from: claims.plan_count, bars: [0, 4]}
     contact_at: 1.0
+    notes: "The card's 8 is the header's '8 in this run · 8 landed' (claims.plan_count via shot11_legible.cards)."
 
   # ---- 17.63 s lift: roll call, 2 bars each (real board-card logos, frozen frame of shot-10-dpr2 before Needs you)
   - id: "05"
@@ -161,19 +167,18 @@ shots:
     contact_at: 1.4
     notes: "Logo per capture manifest (shot 10: 'PAY-106 Cursor logo', Commander card says 'Answer Cursor')."
 
-  # ---- 25.76 s: montage A, the exact chip words, 2 bars each (shot-08 PAY-104 drawer, Codex). Push in on the active
-  # stepper chip. shot-08 is the take in use; when the 08-dpr2 take lands, swap `source: shot-08` -> `source: shot-08-dpr2`
-  # on 08-11 (one line each; re-check the named boxes with `promo check`).
+  # ---- 25.76 s: montage A, the exact chip words, 2 bars each (shot-08-dpr2 PAY-104 drawer, Codex; 2.13x pre-framed,
+  # whole stepper in frame). Push in on the active stepper chip. Same scenario timings as shot-08.
   - id: "08"
     beats: [76, 84]
     type: anime
     ui: true
-    source: shot-08
-    label: "shot-08 PAY-104 drawer: Running / Coding chip"
+    source: shot-08-dpr2
+    label: "shot-08-dpr2 PAY-104 drawer: Running / Coding chip"
     segs: [{t_in: 0.0, t_out: 1.95, dur: 2.7118644}]
-    cam: [[0, 0.40, 0.4167, 0.62, linear], [end, 0.40, 0.4167, 0.54, linear]]   # steady push on the active 'Coding' chip
+    cam: [[0, 0.383, 0.4167, 0.62, linear], [end, 0.383, 0.4167, 0.54, linear]]   # steady push on the active 'Coding' chip
     named:                     # the chip label the card names: >= 18 px cap height (gate `named`; upscale WARNs)
-      - {name: "Coding chip label", box: [720, 538, 820, 572]}
+      - {name: "Coding chip label", box: [680, 555, 792, 592]}
     cards: [{row: title, text: "CODING.", bars: [0, 2]}]
     fx_in: {kind: flash, frames: 3}
     contact_at: 1.4
@@ -181,12 +186,12 @@ shots:
     beats: [84, 92]
     type: anime
     ui: true
-    source: shot-08
-    label: "shot-08 PAY-104 drawer: Verifying / Checks chip"
+    source: shot-08-dpr2
+    label: "shot-08-dpr2 PAY-104 drawer: Verifying / Checks chip"
     segs: [{t_in: 2.0, t_out: 4.85, dur: 2.7118644}]
-    cam: [[0, 0.52, 0.4167, 0.62, linear], [end, 0.52, 0.4167, 0.54, linear]]   # steady push on the active 'Checks' chip
+    cam: [[0, 0.511, 0.4167, 0.62, linear], [end, 0.511, 0.4167, 0.54, linear]]   # steady push on the active 'Checks' chip
     named:                     # the chip label the card names: >= 18 px cap height (gate `named`; upscale WARNs)
-      - {name: "Checks chip label", box: [950, 498, 1050, 534]}
+      - {name: "Checks chip label", box: [925, 518, 1040, 550]}
     cards: [{row: title, text: "CHECKS.", bars: [0, 2]}]
     fx_in: {kind: flash, frames: 3}
     contact_at: 1.4
@@ -194,12 +199,12 @@ shots:
     beats: [92, 100]
     type: anime
     ui: true
-    source: shot-08
-    label: "shot-08 PAY-104 drawer: In review / Pushed chip"
+    source: shot-08-dpr2
+    label: "shot-08-dpr2 PAY-104 drawer: In review / Pushed chip"
     segs: [{t_in: 4.95, t_out: 7.75, dur: 2.7118644}]
-    cam: [[0, 0.64, 0.4167, 0.62, linear], [end, 0.64, 0.4167, 0.54, linear]]   # steady push on the active 'Pushed' chip
+    cam: [[0, 0.640, 0.4167, 0.62, linear], [end, 0.640, 0.4167, 0.54, linear]]   # steady push on the active 'Pushed' chip
     named:                     # the chip label the card names: >= 18 px cap height (gate `named`; upscale WARNs)
-      - {name: "Pushed chip label", box: [1180, 502, 1285, 538]}
+      - {name: "Pushed chip label", box: [1170, 522, 1285, 552]}
     cards: [{row: title, text: "PUSHED.", bars: [0, 2]}]
     fx_in: {kind: flash, frames: 3}
     contact_at: 1.4
@@ -207,12 +212,12 @@ shots:
     beats: [100, 108]
     type: anime
     ui: true
-    source: shot-08
-    label: "shot-08 PAY-104 drawer: PR raised #432 chip"
+    source: shot-08-dpr2
+    label: "shot-08-dpr2 PAY-104 drawer: PR raised #432 chip"
     segs: [{t_in: 7.85, t_out: 9.20, dur: 2.7118644}]
-    cam: [[0, 0.76, 0.4167, 0.62, linear], [end, 0.76, 0.4167, 0.54, linear]]   # steady push on the active 'PR raised' chip
+    cam: [[0, 0.768, 0.4167, 0.62, linear], [end, 0.768, 0.4167, 0.54, linear]]   # steady push on the active 'PR raised' chip
     named:                     # the chip label the card names: >= 18 px cap height (gate `named`; upscale WARNs)
-      - {name: "PR raised chip label", box: [1400, 502, 1525, 538]}
+      - {name: "PR raised chip label", box: [1405, 521, 1545, 552]}
     cards: [{row: title, text: "PR RAISED.", bars: [0, 2]}]
     fx_in: {kind: flash, frames: 3}
     contact_at: 1.4
@@ -235,40 +240,37 @@ shots:
     beats: [132, 148]
     type: anime
     ui: true
-    fit: contain               # pillarboxed above the band at the panel's own aspect (no board sliver at the right edge)
-    aspect: 1.6
-    pillar_fill: brand         # the opening's night-sky brand background in the pillars: reads as a deliberate panel
-    # when 12-dpr2 lands -> full width:  {source: shot-12-dpr2, fit: null, aspect: null, pillar_fill: null, cam: [[0, 0.5, 0.5, 1.0]], named: [<re-measure the 'Approved.' line box>]}
-    source: shot-12            # 1x take in use; when the DPR 2 retake is approved swap to shot-12-dpr2 (+ its own cam/named box)
-    label: "shot-12 (1x): reviewer thread 'Approved. ...' for PR #432, top-left crop to the 10:40 PM divider"
-    segs: [{t_in: 1.70, t_out: 6.25, dur: 5.4237288}]
-    cam: [[0, 0.19401, 0.21556, 0.38802]]   # src x 0-745 (sidebar + conversation pane), y 0-466 (down to the 10:40 PM divider)
+    source: shot-12-dpr2-z179  # DPR 2 retake, no raw '**' (main 4ccfa5be); full width above the band (no pillars)
+    label: "shot-12-dpr2-z179 (DPR 2): reviewer thread 'Approved. ...' for PR #432, full width"
+    segs: [{t_in: 0.80, t_out: 5.45, dur: 5.4237288}]
+    # src x 0-1856 (drops the 3 px border + sliver of the next pane at x >= 1858), y ~35-808 (Cursor tab -> 10:40 PM divider)
+    cam: [[0, 0.48333, 0.3904, 0.96667]]
     ui_text:
-      - [0.150, 0.210, 0.385, 0.280]     # reviewer's 'Approved. Cart summary uses the pricing engine matches the plan ...'
+      - [0.010, 0.435, 0.885, 0.466]     # reviewer's 'Approved. Cart summary uses the pricing engine matches the plan ...'
     named:
-      - {name: "reviewer 'Approved.' line", box: [300, 233, 712, 252]}
+      - {name: "reviewer 'Approved.' line", box: [15, 468, 1700, 505]}
     cards: [{row: title, text: "REVIEWED, WITH THE REASON WHY.", bars: [0, 4]}]
     fx_in: {kind: flash, frames: 3}
     contact_at: 2.5
-    notes: "Director v2 note 4: top-left crop down to the 10:40 PM divider so 'Approved. ...' and its reason read. Card in the band, never over the line. Demo persona 'Maya's' sits below the crop."
+    notes: "Director v2 note 4: 'Approved. ...' and its reason read; card in the band, never over the line."
   - id: "14"
     beats: [148, 160]
     type: anime
     ui: true
-    source: shot-15-prcard     # v1-1080 'Shot 16 (PR-card payoff)', DPR 2: PAY-110 PR card, badge Open -> Merged at src 7.70 s
-    label: "shot-15-prcard (DPR 2): PAY-110 pull request card, Open -> Merged"
-    # flip (src 7.70 s) lands at shot 1.20 s = 5 frames before the 'MERGED.' card (bar 1 = 1.356 s). Real time up to just
-    # after the flip, then the static Merged hold plays at 0.6x (nothing moves after the flip) to fill the 3 bars.
-    segs: [{t_in: 6.50, t_out: 7.75, dur: 1.25}, {t_in: 7.75, t_out: 9.44, dur: 2.8166667}]
-    # push-in 1.0x -> 1.3x (w 0.7692, crop src x 443-1920, y ~100-931) landing on the flip (shot 1.20 s), then holds.
-    # Cap is 1.3x (steering): whole PR card (src x 694-1862, y 450-647, incl. 'Builds pass · 1 approval') stays in frame.
-    # Badge cap height is 12 src px (font ~19 px, cap ~0.63 em), so 1.3x gives 15.6 px: named FAILs on it (needs >= 1.5x
-    # or a closer/DPR-3 retake). Not overridden on purpose.
-    cam: [[0, 0.62, 0.40, 1.0], [1.20, 0.6154, 0.477, 0.7692], [end, 0.6154, 0.477, 0.7692]]
+    source: shot-16-prcard-tight   # DPR 2, 776x436.5 CSS clip (2.474x): PAY-110 PR card, badge Open -> Merged
+    label: "shot-16-prcard-tight (DPR 2): PAY-110 pull request card, Open -> Merged"
+    # Flip verified on the frames: Open at src frame 461, Merged at frame 462 = 7.700 s (the card itself only lays out
+    # at frame 390 = 6.500 s, so start at 6.52). Flip lands at shot 1.17 s (out frame 1540), 6 frames before the 'MERGED.' card (bar 1 =
+    # 1.356 s); real time to just after the flip, then the static Merged hold at 0.6x fills the 3 bars.
+    segs: [{t_in: 6.52, t_out: 7.75, dur: 1.23}, {t_in: 7.75, t_out: 9.44, dur: 2.8366667}]
+    # Gentle push 1.0x -> 1.05x landing on the flip, then hold. 1.05x is the most that keeps the WHOLE card in frame:
+    # card outline src x 56-1866 (1811 px of 1920), y 386-692; crop at hold = src x 47-1876, y 158-920 (~9 px margins).
+    # 1.1x would cut ~47 src px off each side of the card.
+    cam: [[0, 0.5005, 0.50, 1.0], [1.18, 0.5005, 0.499, 0.95238], [end, 0.5005, 0.499, 0.95238]]
     named:                     # measured while 'MERGED.' is up
-      - {name: "PR card title (PAY-110 Remove legacy pricing module)", box: [780, 505, 1185, 538], t: 2.0}
-      - {name: "PR badge 'Merged' (the flip)", box: [845, 466, 940, 500], t: 2.0}
-      - {name: "PR card 'Builds pass · 1 approval' line", box: [780, 586, 1262, 628], t: 2.0}
+      - {name: "PR card title (PAY-110 Remove legacy pricing module)", box: [200, 480, 900, 530], t: 2.0}
+      - {name: "PR badge 'Merged' (the flip)", box: [300, 415, 430, 470], t: 2.0}
+      - {name: "PR card 'Builds pass · 1 approval' line", box: [200, 600, 1000, 660], t: 2.0}
     cards: [{row: title, text: "MERGED.", bars: [1, 3]}]     # no PR number on any card
     fx_in: {kind: flash, frames: 3}
     contact_at: 2.0
@@ -277,36 +279,41 @@ shots:
     beats: [160, 180]
     type: anime
     ui: true
-    placeholder:
-      id: shot-11
-      label: "Board: all tasks Landed (tight)"
-      expects: "Not captured yet. Card text comes from claims.merged_count (shot11_legible),\nwhich must match the legible counts Commission-ai writes in manifest.md for shot 11."
+    source: shot-11-all8       # visual only: all 8 cards Done in Landed. NOT the claim source (card text ~9-11 px)
+    label: "shot-11-all8 (DPR 2): Landed column, all 8 cards Done, tilt down at 1.2x"
+    segs: [{t_in: 0.10, t_out: 4.95, dur: 6.7796610}]
+    cam: [[0, 0.5755, 0.309, 0.8333], [end, 0.5755, 0.691, 0.8333]]   # crop src x 305-1905; tilt y 0-667 -> 413-1080
     cards: [{row: title, text_from: claims.merged_count, bars: [1, 5]}]
     fx_in: {kind: flash, frames: 3}
     contact_at: 3.0
+    notes: "Card text from claims.merged_count (shot11_legible = the shot-11 header take), never from this take's small text."
   - id: "16"
     beats: [180, 196]
     type: anime
     ui: true
-    placeholder:
-      id: shot-14b dusk retake
-      label: "Outside -> Street glide (dusk) with the real 'Your workshop is now a Street' notice (top-right)"
-      expects: "Waiting for the 14b dusk retake. The old 14b (08:02) is NOT used: its notice is stacked under an achievements toast.\nNo card on this shot; the notice area stays clear."
+    layout: full               # no card on this shot: full frame, no band
+    source: shot-14b-dusk-r2
+    label: "shot-14b-dusk-r2: dusk Outside with the 'Your workshop is now a Street' notice -> Street glide"
+    # usable: 0-2.5 s and 3.6-7.5 s only (2.7-3.5 s collapse/re-expand flicker; 1.0-1.8 s settings popover). 3.6-7.45 s at
+    # 0.71x: the notice reads alone on the dusk Outside, then Room view > Street (4.6 s) and the glide.
+    segs: [{t_in: 3.60, t_out: 7.45, dur: 5.4237288}]
+    cam: [[0, 0.5247, 0.516, 0.94]]      # header tab bar cropped (src y >= 50); notice (src x 1668-1898, y 108-186) in
     ui_text:
-      - [0.70, 0.00, 1.00, 0.18]         # Street notice, top-right: never under a card
-    contact_at: 2.0
+      - [0.865, 0.095, 0.992, 0.178]     # Street notice, top-right: never under a card
+    contact_at: 1.0
 
-  # ---- 66.44 s stop-time (drumless outro): freeze on the Street frame, then morning
+  # ---- 66.44 s stop-time (drumless outro): freeze on the last Street frame, then morning
   - id: "17"
     beats: [196, 200]
     type: anime
     ui: true
-    placeholder:
-      id: shot-14b dusk freeze
-      label: "Stop-time: freeze on the last Street frame of the 14b dusk retake"
-      expects: "Stays a placeholder until the 14b dusk retake lands (freeze: <source s>); the old 14b is not used.\nThen the morning Workshop under 'GOOD MORNING.' and the dusk end card bookend."
+    layout: full
+    source: shot-14b-dusk-r2
+    freeze: 7.45               # = shot 16's last source frame
+    label: "Stop-time: freeze on the last Street frame of shot-14b-dusk-r2"
+    cam: [[0, 0.5247, 0.516, 0.94]]
     ui_text:
-      - [0.70, 0.00, 1.00, 0.18]
+      - [0.865, 0.095, 0.992, 0.178]
     contact_at: 0.6
   - id: "18"
     beats: [200, 212]

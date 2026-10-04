@@ -19,4 +19,10 @@ record the full app commit + URL params).
 | shot-12 | 13 | 1920x1080 | 1 | 60.0 | `4a427fc0` | 2026-10-04 | yes | ?demo=promo (PAY-104 node clicked at 24.0 s; Review thread at 26.7 s) |
 | shot-15-morning | 18 | 1920x1080 | 1 | 60.0 | `4a427fc0` | 2026-10-04 | yes | ?demo=promo&view=workshop&workshop=fast&workshopHour=07:00 |
 | shot-15-prcard | 14 | 1920x1080 | 2 | 60.0 | `4a427fc0` | 2026-10-04 | yes | ?demo=promo (scenario clock), PAY-110 node clicked at 59 s to open its drawer; clip = scenario 61.0-70.5 s |
+| shot-16-prcard-tight | 14 | 1920x1080 | 2 | 60.0 | `4a427fc0` | 2026-10-04 | yes | ?demo=promo (scenario clock), PAY-110 node clicked at 59 s; record 61.0-70.5 s |
+| shot-08-dpr2 | 08 09 10 11 | 1920x1080 | 2 | 60.0 | `4a427fc0` | 2026-10-04 | yes | ?demo=promo (PAY-104 node clicked at 9.0 s); record 11.1-20.4 s |
+| shot-12-dpr2-z179 | 13 | 1920x1080 | 2 | 60.0 | `4ccfa5be` | 2026-10-04 | yes | ?demo=promo + conversationWidth=940; Review thread click 26.6 s (main 4ccfa5be, Z179 bold fix) |
+| shot-14b-dusk-r2 | 16 17 | 1920x1080 | 1 | 60.0 | `4a427fc0` | 2026-10-04 | yes | ?demo=promo&pause=1&workshopHour=19:30 + prefs stage ws-pay=workshop |
+| shot-11 | 04 | 1920x1080 | 2 | 60.0 | `4a427fc0` | 2026-10-04 | yes | ?demo=promo (scenario clock to 72.6 s, run complete) |
+| shot-11-all8 | 15 | 1920x1080 | 2 | 60.0 | `4a427fc0` | 2026-10-04 | yes | ?demo=promo (scenario clock to 72.6 s, run complete) |
 <!-- promo:footage-table END -->
