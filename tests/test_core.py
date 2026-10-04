@@ -31,7 +31,10 @@ def test_timeline_frames_sum_to_1800():
 def test_events_match_legacy():
     if not os.path.exists(LEGACY_EVENTS):
         return
-    ev = compute_events(load_spec(EXAMPLE))
+    spec = load_spec(EXAMPLE)
+    if spec.raw["output"]["name"] != "hero-v1":      # the legacy events.json is the v1 cut; later cuts re-time the edit
+        return
+    ev = compute_events(spec)
     assert ev == json.load(open(LEGACY_EVENTS))
 
 
@@ -97,7 +100,7 @@ def test_caption_geometry_inside_zone():
                 b = c["box"]
                 n += 1
                 assert b[0] >= z["x0"] and b[2] <= z["x1"] and b[1] >= z["y0"] and b[3] <= z["y1"], (s.id, b)
-    assert n == 9
+    assert n == 6, n          # hero v5: 01, 04, 06, 12, 11, 14b (v1 had 9)
 
 
 def test_examples_symlink_still_works():
@@ -110,8 +113,7 @@ def test_footage_manifest_covers_spec_and_verifies():
     from promo import footage as FT
     spec = load_spec(EXAMPLE)
     refs = FT.referenced(spec)
-    assert {"shot-10-v1080", "shot-06-still-node", "shot-17-v1", "shot-14b"} <= set(refs)
-    assert set(refs["shot-14b"]) == {"14b", "16"}
+    assert {"shot-10-dpr2-v1080", "shot-06-still-node", "shot-11-dpr2-r2-v1080", "shot-14b-dusk-r2-v1080"} <= set(refs)   # hero v5
     res = FT.verify(spec)
     assert res and all(r["ok"] for r in res), [r["error"] for r in res if not r["ok"]]
 
@@ -147,9 +149,9 @@ def test_footage_missing_file_and_unknown_id_fail():
     else:
         raise AssertionError("missing file accepted")
     spec = load_spec(EXAMPLE, plugins=False)
-    spec.shot("09").cfg["source"] = "no-such-clip"
+    spec.shot("08").cfg["source"] = "no-such-clip"          # hero v5 folded shot 09 into 08
     try:
-        FT.gate(spec, {"09"})
+        FT.gate(spec, {"08"})
     except FT.FootageError as e:
         assert "no-such-clip" in str(e) and "not in the footage manifest" in str(e)
     else:
@@ -181,8 +183,14 @@ def test_dpr_and_demo_warnings():
     from promo import footage as FT
     spec = load_spec(EXAMPLE, plugins=False)
     dpr_w, demo = FT.qa_findings(spec)
-    assert any(w.startswith("shot 10:") for w in dpr_w) and not any(w.startswith("shot 09:") for w in dpr_w)
-    assert "shot-10-v1080" in demo
+    assert not dpr_w, dpr_w                       # hero v5: every pushed-in take is DPR 2
+    assert "shot-11-dpr2-r2-v1080" in demo
+    s10 = next(s for s in spec.shots if s.id == "10")   # in memory only: a 2x push-in on the DPR 1 take must WARN
+    s10.cfg = dict(s10.cfg, source="shot-10-v1080", cam=[[0, 0.5, 0.5, 0.5]])
+    s10.cfg.pop("segs", None)
+    dpr_w, _ = FT.qa_findings(spec)
+    assert any(w.startswith("shot 10:") and "shot-10-v1080" in w for w in dpr_w), dpr_w
+    assert not any(w.startswith("shot 09:") for w in dpr_w)
 
 
 def _cli_json(*argv):

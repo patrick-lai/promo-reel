@@ -16,6 +16,9 @@ import yaml
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
+# the talk show reads its clips from the hero manifest (`${HERO_FOOTAGE_MANIFEST:-/workspace/promo-reel/...}`); in a worktree,
+# default to this checkout's manifest so the gates see the same registrations as the code under test
+os.environ.setdefault("HERO_FOOTAGE_MANIFEST", os.path.join(ROOT, "projects", "commission-ai-hero", "footage", "manifest.yaml"))
 DEMO = os.path.join(ROOT, "projects", "live2d-demo", "promo.yaml")
 
 from promo import live2d as L2  # noqa: E402
