@@ -86,6 +86,10 @@ no dissolve; `dusk -> day @ 5.50` or `{from, to, at}` = a change); with no field
 - **09b**: `shot-14b-dusk-r2` (preferred; usable 0-2.5 / 3.6-7.5 s): 3.6-6.47 s at 0.7x, dusk -> day dissolve at
   4.60 s. manifest.md records a constant 'dusk', so the plan overrides it (`time_of_day: {..., override: true}`):
   the Street still renders bright (real app behaviour).
+- **03**: `talk-dag-wide` (landed 12:18) replaces talk-dag-tight. Source x 96-1602 at full height (scale 0.96):
+  PAY-101 / PAY-105 / PAY-104 ids 27.7 px, titles 30-32 px, PAY-105 card text whole. The right edge sits in the word
+  gap after PAY-104's 'Cart summary uses the' ('pricing' is out of frame: the cards need 1605 px, the panel takes
+  1506 at full height). `livestream-edges` now PASSes on all 9 app crops.
 - **Matte bands** can cover part of an edge: `matte: {right: {px: 12, from: 0, to: 0.38}}`.
 
 ## v3 (UX review 2026-10-04 talkshow-v2, Zen 3.43 FAIL)

@@ -289,41 +289,56 @@ shots:
   type: livestream
   beat: 3
   screen:
-    source: talk-dag-tight-v1080
+    source: talk-dag-wide-v1080
     speed: 0.7
     t_in: 0.0
     cam:
-    - 0.4133
+    - 0.44219
     - 0.5
     - 0.7846
   named:
   - name: PAY-101 id
     box:
-    - 115
-    - 246
-    - 286
-    - 285
+    - 140
+    - 405
+    - 330
+    - 465
+    src_px: 1080
+    at: 3.0
+  - name: PAY-105 id
+    box:
+    - 1085
+    - 90
+    - 1275
+    - 145
     src_px: 1080
     at: 3.0
   - name: PAY-104 id
     box:
-    - 1094
-    - 541
-    - 1264
-    - 580
+    - 1085
+    - 690
+    - 1275
+    - 750
     src_px: 1080
     at: 3.0
-  - name: dependency fan
+  - name: PAY-104 title
     box:
-    - 850
-    - 56
-    - 1070
-    - 694
+    - 1085
+    - 770
+    - 1590
+    - 830
     src_px: 1080
     at: 3.0
-    min_px: 0
-  note: 'Dependency map (talk-dag-tight): PAY-101 fanning into PAY-104 / PAY-105. FLAG: MAO''s beat 3 line claims ''eight tasks'' and ''waves''; this frame shows
-    3 cards and no wave headings'
+  - name: PAY-101 title
+    box:
+    - 140
+    - 480
+    - 760
+    - 535
+    src_px: 1080
+    at: 3.0
+  note: 'Dependency map (talk-dag-wide; v3: talk-dag-tight): PAY-101 fanning into PAY-104 / PAY-105. FLAG: MAO''s beat 3 line claims ''eight tasks'' and ''waves'';
+    this frame shows 3 cards and no wave headings'
 - id: '04'
   beats:
   - 1029
