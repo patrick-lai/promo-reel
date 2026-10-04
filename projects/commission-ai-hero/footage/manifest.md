@@ -34,8 +34,8 @@ then point the shot's `source:` at the new id.
 | shot-03 | 03 | 3840x2160 | 2 | 60.0 | `0a3c3acd` | 2026-10-01T02:54:08.697Z | yes | ?demo=1&still=1 |
 | shot-04-v1 | 04 | 3840x2160 | 2 | 60.0 | `0a3c3acd` | 2026-10-01T03:59:58.441Z | yes | ?demo=1&still=1 |
 | shot-05-v1 | 05 | 3840x2160 | 2 | 60.0 | `bc10d245` | 2026-10-01T05:58:26.546Z | yes | ?demo=promo (branch promo/demo-scenario, PR #86) |
-| shot-06-still-node | 06 | 872x476 | 2 | None | `0a3c3acd` | 2026-10-01T05:23:50.224Z | yes | ?demo=1&still=1 |
-| shot-06-still-board | 06 | 3840x2160 | 2 | None | `0a3c3acd` | 2026-10-01T05:23:50.224Z | yes | ?demo=1&still=1 |
+| shot-06-still-node | 06 | 872x476 | 2 | - | `0a3c3acd` | 2026-10-01T05:23:50.224Z | yes | ?demo=1&still=1 |
+| shot-06-still-board | 06 | 3840x2160 | 2 | - | `0a3c3acd` | 2026-10-01T05:23:50.224Z | yes | ?demo=1&still=1 |
 | shot-08-v1 | 08 | 3840x2160 | 2 | 60.0 | `0a3c3acd` | 2026-10-01T03:27:09.592Z | yes | ?demo=1#/w/ws-pay/t/th-pay-commander/task/PAY-104 |
 | shot-09-v1 | 09 | 3840x2160 | 2 | 60.0 | `0a3c3acd` | 2026-10-01T02:31:16.776Z | yes | ?demo=1&still=1#/w/ws-pay/t/th-pay-commander/task/PAY-105 |
 | shot-11-v1 | 11 | 3840x2160 | 2 | 60.0 | `bc10d245` | 2026-10-01T06:34:55.996Z | yes | ?demo=promo (branch promo/demo-scenario, PR #86) |
@@ -44,5 +44,24 @@ then point the shot's `source:` at the new id.
 | shot-15 | 15 16 | 3840x2160 | 2 | 60.0 | `bc10d245` | 2026-10-01T06:13:44.669Z | yes | ?demo=promo (branch promo/demo-scenario, PR #86) |
 | shot-16a | 16 | 3840x2160 | 2 | 60.0 | `bc10d245` | 2026-10-01T06:41:28.209Z | yes | ?demo=promo (branch promo/demo-scenario, PR #86) |
 | shot-17-v1 | 17 | 3840x2160 | 2 | 60.0 | `0a3c3acd` | 2026-10-01T03:10:28.804Z | yes | ?demo=1&view=workshop&workshop=fast |
-| shot-10-v1080 | 10 | 1920x1080 | 1 | 60.0 | `4a427fc0` | 2026-10-03T16:58:43.932Z | yes | ?demo=promo (main 4a427fc0) |
+| shot-10-v1080 | 10 | 1920x1080 | 1 | 60.0 | `4a427fc0` | 2026-10-03T16:58:43.932Z | yes | ?demo=promo |
+| shot-03-night-v1080 | 03 | 1920x1080 | 1 | 60.0 | `4a427fc0` | 2026-10-03T17:59:30.301Z | yes | ?demo=promo&view=workshop&workshop=fast&workshopHour=22:00 |
+| shot-15-morning-v1080 | 15 | 1920x1080 | 1 | 60.0 | `4a427fc0` | 2026-10-03T18:20:51.734Z | yes | ?demo=promo&view=workshop&workshop=fast&workshopHour=07:00 |
+| shot-08-v1080 | 08 09 | 1920x1080 | 2 | 60.0 | `4a427fc0` | 2026-10-03T18:38:03.980Z | yes | ?demo=promo` (PAY-104 node clicked at 9.0 s) |
+| shot-12-v1080 | 12 | 1920x1080 | 1 | 60.0 | `4a427fc0` | 2026-10-03T18:49:03.148Z | yes | ?demo=promo` (PAY-104 node clicked at 24.0 s) |
+| shot-10-dpr2-v1080 | 10 | 1920x1080 | 2 | 60.0 | `4a427fc0` | 2026-10-03T19:06:43.172Z | yes | ?demo=promo |
+| shot-12-dpr2-v1080 | 12 | 1920x1080 | 2 | 60.0 | `4a427fc0` | 2026-10-03T19:26:00.783Z | yes | ?demo=promo` + pref conversationWidth=940 (PAY-104 node clicked at 24.0 s; drawer 'Review thread' clicked at 26.6 s) |
+| shot-12-dpr2-pre-v1080 | 12 | 1920x1080 | 2 | 60.0 | `4a427fc0` | 2026-10-03T19:26:00.783Z | yes | ?demo=promo` + pref conversationWidth=940 |
+| shot-01-dusk-v1080 | 01 17 | 1920x1080 | 1 | 60.0 | `4a427fc0` | 2026-10-03T19:48:56.507Z | yes | ?demo=promo&view=workshop&workshop=fast&workshopHour=19:30 |
+| shot-14b-v1080 | 14 16 | 1920x1080 | 1 | 60.0 | `4a427fc0` | 2026-10-03T21:01:00.502Z | yes | ?demo=promo&pause=1&workshopHour=19:30` + prefs stage ws-pay=workshop |
+| shot-16-prcard-v1080 | 16 | 1920x1080 | 2 | 60.0 | `4a427fc0` | 2026-10-03T21:26:32.000Z | yes | ?demo=promo` (scenario clock), PAY-110 node clicked at 59 s to open its drawer |
+| talk-dag-tight-v1080 | talk-dag | 1920x1080 | 2 | 60.0 | `4a427fc0` | 2026-10-03T22:09:18.035Z | yes | ?demo=1&still=1` (Board graph, Full window, Show done, ctrl+wheel zoom to ~180%) |
+| talk-dag-v1080 | talk-dag | 1920x1080 | 2 | 60.0 | `4a427fc0` | 2026-10-03T22:21:59.910Z | yes | ?demo=1&still=1` (Board graph, Full window, Show done, ctrl+wheel zoom to ~180%) |
+| shot-04-v1080 | 4 | 1920x1080 | 2 | 60.0 | `4a427fc0` | 2026-10-03T22:46:18.244Z | yes | ?demo=promo` (scenario 0-8.4 s) |
+| shot-11-all8-v1080 | 11 16 | 1920x1080 | 2 | 60.0 | `4a427fc0` | 2026-10-03T23:25:15.804Z | yes | ?demo=promo` (scenario clock to 72.6 s, run complete) |
+| shot-11-header-v1080 | 11 | 1920x1080 | 2 | 60.0 | `4a427fc0` | 2026-10-03T23:28:16.124Z | yes | ?demo=promo` (scenario clock to 72.6 s, run complete) |
+| shot-11-list-v1080 | 11 | 1920x1080 | 2 | 60.0 | `4a427fc0` | 2026-10-03T23:28:53.175Z | yes | ?demo=promo` (run complete) -> real click on the board's 'List' toggle |
+| shot-16-prcard-tight-v1080 | 16 | 1920x1080 | 2 | 60.0 | `4a427fc0` | 2026-10-03T23:55:51.740Z | yes | ?demo=promo` (scenario clock), PAY-110 node clicked at 59 s to open its drawer; record 61.0-70.5 s |
+| shot-08-dpr2-v1080 | 8 9 | 1920x1080 | 2 | 60.0 | `4a427fc0` | 2026-10-04T00:14:05.905Z | yes | ?demo=promo` (scenario clock), PAY-104 node clicked at 9.0 s to open its drawer; record 11.1-20.4 s |
+| shot-14b-dusk-v1080 | 14b | 1920x1080 | 1 | 60.0 | `4a427fc0` | 2026-10-04T00:31:30.492Z | yes | ?demo=promo&pause=1&workshopHour=19:30 + prefs stage ws-pay=workshop |
 <!-- promo:footage-table END -->
