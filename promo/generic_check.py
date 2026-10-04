@@ -377,9 +377,7 @@ def caption_truth_gate(spec, ctx=None, rules=None):
 
 # ------------------------------------------------------------------ frame sampling
 def grab(path, t, W=1920, H=1080):
-    fr = frames
-    if fr is None:
-      raw = subprocess.check_output(["ffmpeg", "-v", "error", "-threads", "2", "-ss", f"{max(0.0, t):.3f}", "-i", path, "-frames:v", "1",
+    raw = subprocess.check_output(["ffmpeg", "-v", "error", "-threads", "2", "-ss", f"{max(0.0, t):.3f}", "-i", path, "-frames:v", "1",
                                    "-f", "rawvideo", "-pix_fmt", "gray", "-s", f"{W}x{H}", "-"])
     return np.frombuffer(raw, np.uint8).reshape(H, W).astype(np.float32)
 
