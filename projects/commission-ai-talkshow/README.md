@@ -70,6 +70,17 @@ a 0.4 s `dissolve` over it. It's driven by the take's `time_of_day` field in the
 no dissolve; `dusk -> day @ 5.50` or `{from, to, at}` = a change); with no field, the plan profile's `time_of_day`
 (the current take's fallback) applies. Commission-ai's dusk retake records `dusk` there and the dissolve goes away.
 
+## v7 (Zen v6b 4.14, Y1: shorter opener)
+
+- **01b**: 7.1 -> 4.4 s (4.0-8.4 s, src 0.3-4.7). Zen asked ~4.7 s (cut ~8.7 s), but MAO's beat 1 line 'I did. Tonight
+  we're shipping...' starts at 8.478 s and runs to 13.08 s, so the nearest clean cut is 8.4 s, in the 0.2 s gap after
+  HIYORI's first line. 09a uses src 5.0-9.95, so no opener frame repeats in 09a (0.3 s apart).
+- **Everything after moves earlier**: beat 1's hold 2.0 -> 0.2 s (HIYORI's 'Wait, then who's writing it?' now comes
+  0.35 s after MAO's line), so beat 2 onward (VO, lip-sync, cuts) moves exactly 54 frames (1.8 s) earlier.
+  Runtime 104.83 -> 103.03 s. First app UI 11.07 -> 8.4 s.
+- **Trade-off**: beat 1's last line cannot move (it follows HIYORI's first line), so beat 3 only moves 1.8 s while S02
+  starts 2.67 s earlier: the hold after 'No broken builds.' is ~1.8 s (v6: ~1.0 s). No freeze (src ends ~10.3 of 11.35).
+
 ## v6b (08a = shot-16-prcard-tighter)
 
 - **08a**: `shot-16-prcard-tighter` (DPR 2, 2.553x: Done stepper + PR card, Evidence / QA line out of frame). Same
