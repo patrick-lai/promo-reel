@@ -12,13 +12,16 @@ Folded in from the hero's per-project audits (projects/commission-ai-hero/tools/
 
 New WARN rules (never FAIL; thresholds per preset in WARN_RULES, project overrides in `qa: {warn_rules: {...}}`):
   text-edge      text or cards clipped by the output frame / crop edge: `named` boxes that cross the footage viewport
-                 edge, plus an edge-content heuristic on sampled output frames (glyph-sized ink runs touching the
-                 viewport edge).
-  empty-frame    a UI shot whose largest flat / empty canvas region exceeds max_frac of the footage viewport
-                 (blurred block flatness, so dotted canvas counts as empty).
+                 edge, plus an edge-content heuristic on UI shots' sampled output frames: glyph-sized ink touching the
+                 left / right viewport edge (frame corners ignored) at the same spot (+-12 px) on >= 2 of 3 samples;
+                 more than 3 such spots on one edge = a push-in cropping a whole pane (framing), not reported.
+  empty-frame    a UI shot whose largest flat canvas region (one background level; blurred blocks so dotted canvas
+                 counts; blocks next to content are not empty) exceeds max_frac (40 %) of the footage viewport.
   caption-truth  a caption / card count claim ('8 TASKS', 'ALL LANDED', '3 AGENTS') that disagrees with, or is not
                  backed by, the claim table it selects from or the footage manifest notes of the clip on screen.
-  long-hold      a static hold / freeze (footage viewport unchanged frame to frame) longer than max_s.
+  long-hold      a footage shot whose viewport does not change (no more than 0.05 % of pixels move > 10 levels at 384 px
+                 wide, so a typed word or badge flip counts as change) for longer than max_s. Cards, credits and
+                 blank screens are skipped.
 Frame sampling uses ffmpeg -threads 2 inside the caller's heavy lock (`promo check` holds it).
 """
 from __future__ import annotations
@@ -35,17 +38,17 @@ from . import claims as C
 WARN_RULES = {
     "_default": dict(
         text_edge=dict(on=True, samples=3, depth_px=2, band_px=48, contrast=48, min_run_px=7, max_run_px=44, min_glyph_runs=3,
-                       glyph_span_px=90, min_hits=1),
-        empty_frame=dict(on=True, max_frac=0.5, samples=3, block_px=24, blur_px=12, flat_std=2.0),
+                       glyph_span_px=90, corner_px=32, pos_tol_px=12, min_samples=2,
+                       edges=["left", "right"], max_per_edge=3),
+        empty_frame=dict(on=True, max_frac=0.40, samples=3, block_px=24, blur_px=12, flat_std=2.0, halo_blocks=1, lum_tol=4),
         caption_truth=dict(on=True, unsupported="WARN"),
-        long_hold=dict(on=True, max_s=3.5, diff=0.35, width=192),
+        long_hold=dict(on=True, max_s=3.5, pix_delta=10, max_changed=0.0005, width=384),
         # captures that show scenery, not app UI (the Workshop / Outside / Street views): not judged as UI shots by
         # empty-frame (a night sky is not empty canvas). Shots with an explicit `ui:` key use that instead.
         non_ui_capture=["view=workshop", "workshopHour=", "town="],
     ),
     "hero": {},
     "anime-opening": dict(
-        empty_frame=dict(max_frac=0.35),          # kinetic opening: the footage viewport (above the band) should read full
         long_hold=dict(max_s=2.8),                # ~2 bars at 177 BPM; holds longer than that read as a stall
     ),
     "livestream": dict(
@@ -62,7 +65,7 @@ def deep_merge(a, b):
 
 
 def rules_for(spec):
-    preset = (spec.style or {}).get("preset") or "hero"
+    preset = (spec.style or {}).get("preset") or ("livestream" if is_livestream(spec) else "hero")
     r = deep_merge(WARN_RULES["_default"], WARN_RULES.get(preset, {}))
     return deep_merge(r, (spec.qa or {}).get("warn_rules") or (spec.raw.get("qa") or {}).get("warn_rules") or {})
 
@@ -119,7 +122,9 @@ def is_ui_shot(spec, s, rules):
     except Exception:  # noqa: BLE001
         man = {}
     cid = clip_at(s, s.dur / 2)
-    if not cid or cid not in man:
+    if not cid:
+        return False                      # no footage on screen (a title / blank slide)
+    if cid not in man:
         return s.type != "card"
     cap = str(man[cid].get("capture") or "")
     return not any(m in cap for m in rules.get("non_ui_capture") or [])
@@ -372,7 +377,9 @@ def caption_truth_gate(spec, ctx=None, rules=None):
 
 # ------------------------------------------------------------------ frame sampling
 def grab(path, t, W=1920, H=1080):
-    raw = subprocess.check_output(["ffmpeg", "-v", "error", "-threads", "2", "-ss", f"{max(0.0, t):.3f}", "-i", path, "-frames:v", "1",
+    fr = frames
+    if fr is None:
+      raw = subprocess.check_output(["ffmpeg", "-v", "error", "-threads", "2", "-ss", f"{max(0.0, t):.3f}", "-i", path, "-frames:v", "1",
                                    "-f", "rawvideo", "-pix_fmt", "gray", "-s", f"{W}x{H}", "-"])
     return np.frombuffer(raw, np.uint8).reshape(H, W).astype(np.float32)
 
@@ -421,6 +428,7 @@ def edge_hits(gray, vp, cfg):
     bands = {"left": gray[y0:y1, x0:x0 + D], "right": gray[y0:y1, x1 - D:x1][:, ::-1],
              "top": gray[y0:y0 + D, x0:x1].T, "bottom": gray[y1 - D:y1, x0:x1][::-1, :].T}
     hits = []
+    cp = int(cfg.get("corner_px", 0))       # rounded screen-frame / window corners are not text
     for edge, band in bands.items():        # band: rows = positions along the edge, cols = depth from the edge (0 = edge)
         bg = np.median(band, axis=1, keepdims=True)
         ink = np.abs(band - bg) >= c
@@ -440,6 +448,8 @@ def edge_hits(gray, vp, cfg):
                     continue
                 if ink[a2:b2 + 1].all(1).mean() > 0.5:          # ink straight across the band on most rows = a bar / line
                     continue
+                if a2 < cp or b2 >= len(band) - cp:
+                    continue
                 hits.append((edge, int(base + (a2 + b2) // 2), f"{h}px glyph-height ink at the edge"))
         else:
             runs = [(a, b - a + 1) for a, b in _clusters(np.nonzero(at_edge)[0].tolist(), 1) if b - a + 1 <= 24]
@@ -448,12 +458,39 @@ def edge_hits(gray, vp, cfg):
                 j = i
                 while j + 1 < len(runs) and runs[j + 1][0] - runs[i][0] <= cfg["glyph_span_px"]:
                     j += 1
-                if j - i + 1 >= cfg["min_glyph_runs"]:
+                if j - i + 1 >= cfg["min_glyph_runs"] and cp <= runs[i][0] and runs[j][0] + runs[j][1] <= len(band) - cp:
                     hits.append((edge, int(base + runs[i][0]), f"{j - i + 1} glyph strokes at the edge"))
                     i = j + 1
                 else:
                     i += 1
     return hits
+
+
+def persistent_edges(hits_per_sample, cfg):
+    """hits_per_sample = [edge_hits(...) per sampled frame]. A real cut glyph stays put: keep (edge, pos, n_samples)
+    for hits on the same edge within pos_tol_px on >= min_samples of the sampled frames. Scrolling text, motion and
+    one-off noise do not persist."""
+    tol, need = int(cfg.get("pos_tol_px", 12)), int(cfg.get("min_samples", 2))
+    pts = [(e, pos, i) for i, hs in enumerate(hits_per_sample) for e, pos, _ in hs]
+    out, used = [], set()
+    for e, pos, i in sorted(pts):
+        if (e, pos) in used:
+            continue
+        group = [(e2, p2, j) for e2, p2, j in pts if e2 == e and abs(p2 - pos) <= tol]
+        n = len({j for _, _, j in group})
+        if n >= need:
+            out.append((e, int(pos), n))
+            used |= {(e2, p2) for e2, p2, _ in group}
+    edges = cfg.get("edges")
+    if edges:
+        out = [h for h in out if h[0] in edges]
+    cap = cfg.get("max_per_edge")
+    if cap:   # a push-in cropping a whole pane runs a column of text lines into the edge: a framing choice, not a cut word
+        cnt = {}
+        for e, _, _ in out:
+            cnt[e] = cnt.get(e, 0) + 1
+        out = [h for h in out if cnt[h[0]] <= cap]
+    return out
 
 
 # ------------------------------------------------------------------ empty-frame (new WARN)
@@ -470,19 +507,36 @@ def empty_fraction(gray, vp, cfg):
     h, w = (g.shape[0] // B) * B, (g.shape[1] // B) * B
     blk = b[:h, :w].reshape(h // B, B, w // B, B)
     flat = blk.std(axis=(1, 3)) <= cfg["flat_std"]
-    lab, n = label(flat)
-    if n == 0:
+    r = int(cfg.get("halo_blocks", 1))           # the gaps between text lines / inside a dense panel are not empty canvas
+    if r > 0:
+        from scipy.ndimage import binary_dilation
+        flat &= ~binary_dilation(~flat, iterations=r)
+    mean = blk.mean(axis=(1, 3))
+    tol = float(cfg.get("lum_tol", 4))
+    best, bmask = 0, None
+    # one region = flat blocks of ONE background level (canvas), so a card's or a composer's flat fill is not counted
+    # as the canvas around it; seed levels = the most common flat-block luminances
+    levels = np.round(mean[flat] / tol) * tol if flat.any() else np.array([])
+    vals, counts = np.unique(levels, return_counts=True) if levels.size else (np.array([]), np.array([]))
+    for v in vals[np.argsort(-counts)][:4]:
+        m = flat & (np.abs(mean - v) <= tol)
+        lab, n = label(m)
+        if n == 0:
+            continue
+        sizes = np.bincount(lab.ravel())[1:]
+        k = int(np.argmax(sizes)) + 1
+        if sizes[k - 1] > best:
+            best, bmask = int(sizes[k - 1]), lab == k
+    if bmask is None:
         return 0.0, None
-    sizes = np.bincount(lab.ravel())[1:]
-    k = int(np.argmax(sizes)) + 1
-    ys, xs = np.nonzero(lab == k)
+    ys, xs = np.nonzero(bmask)
     box = [int(x0 + xs.min() * B), int(y0 + ys.min() * B), int(x0 + (xs.max() + 1) * B), int(y0 + (ys.max() + 1) * B)]
-    return float(sizes.max()) / flat.size, box
+    return float(best) / flat.size, box
 
 
 # ------------------------------------------------------------------ long-hold (new WARN)
 def longest_static(diffs, thr):
-    """diffs[i] = mean abs change frame i -> i+1. Returns (frames in the longest static run, its first frame index);
+    """diffs[i] = change frame i -> i+1 (fraction of changed pixels). Returns (frames in the longest static run, its first frame index);
     a run of k sub-threshold diffs spans k + 1 identical-looking frames."""
     best, start, cur, cs = 0, 0, 0, 0
     for i, v in enumerate(diffs):
@@ -497,16 +551,27 @@ def longest_static(diffs, thr):
     return (best + 1 if best else 0), start
 
 
-def static_runs(path, spec, rects, width=192, diff=0.35):
-    """Per shot: longest run (s) where the footage viewport does not change frame to frame.
-    Decodes the output once at width x width*9/16 gray (ffmpeg -threads 2)."""
+def changed_fraction(seg, pix_delta=10):
+    """seg = frames x h x w gray. Per frame step: fraction of pixels that change by > pix_delta levels. A typed
+    character or a badge flip moves a few hundred pixels (well above 0); encoder noise moves none past pix_delta."""
+    return (np.abs(np.diff(seg, axis=0)) > pix_delta).mean(axis=(1, 2))
+
+
+def static_runs(path, spec, rects, width=384, pix_delta=10, max_changed=0.0005, frames=None):
+    """Per footage shot: longest run (s) where the footage viewport does not change frame to frame (no pixel moves
+    more than pix_delta levels, beyond max_changed of the viewport). Cards / credits are skipped (a held card is
+    the design). Decodes the output once at width x width*9/16 gray (ffmpeg -threads 2); `frames` = pre-decoded."""
     W, H = int(width), int(round(width * 9 / 16))
-    raw = subprocess.check_output(["ffmpeg", "-v", "error", "-threads", "2", "-i", path, "-an", "-vf", f"scale={W}:{H}:flags=area",
+    fr = frames
+    if fr is None:
+      raw = subprocess.check_output(["ffmpeg", "-v", "error", "-threads", "2", "-i", path, "-an", "-vf", f"scale={W}:{H}:flags=area",
                                    "-f", "rawvideo", "-pix_fmt", "gray", "-"])
-    fr = np.frombuffer(raw, np.uint8).reshape(-1, H, W).astype(np.float32)
+      fr = np.frombuffer(raw, np.uint8).reshape(-1, H, W).astype(np.float32)
     k = W / 1920.0
     out = {}
     for s in spec.shots:
+        if s.type in ("card", "live2d_credits") or s.cfg.get("placeholder") or not clips_of(spec, s):
+            continue                       # cards / credits / blank screens: a held frame is the design, not a stalled clip
         f0, f1 = int(round(s.t0 * spec.fps)), min(len(fr), int(round(s.t1 * spec.fps)))
         x0, y0, x1, y1 = rects.get(s.id, (0, 0, 1920, 1080))
         xa, ya, xb, yb = int(x0 * k), int(y0 * k), max(int(x0 * k) + 2, int(x1 * k)), max(int(y0 * k) + 2, int(y1 * k))
@@ -514,8 +579,8 @@ def static_runs(path, spec, rects, width=192, diff=0.35):
             out[s.id] = (0.0, s.t0)
             continue
         seg = fr[f0:f1, ya:yb, xa:xb]
-        d = np.abs(np.diff(seg, axis=0)).mean(axis=(1, 2))
-        n, i0 = longest_static(d, diff)
+        d = changed_fraction(seg, pix_delta)
+        n, i0 = longest_static(d, max_changed + 1e-12)
         out[s.id] = (n / spec.fps, (f0 + i0) / spec.fps)
     return out
 
@@ -547,21 +612,13 @@ def frame_gates(spec, rules=None, clipped_named=()):
         for t in sample_times(s, k):
             g = grab(out, s.t0 + t)
             vpt = viewport(spec, s, s.t0 + t)
-            if te.get("on", True):
-                hits += [(t,) + h for h in edge_hits(g, vpt, te)]
+            if te.get("on", True) and is_ui_shot(spec, s, rules):
+                hits.append(edge_hits(g, vpt, te))
             if ef.get("on", True) and is_ui_shot(spec, s, rules):
                 fracs.append((t,) + empty_fraction(g, vpt, ef))
-        if hits:
-            by_edge = {}
-            for t, e, pos, kind in hits:
-                by_edge.setdefault(e, []).append((t, pos, kind))
-            # a real cut glyph persists: require the same edge on >= half the samples (or a static shot)
-            strong = {e: v for e, v in by_edge.items() if len({round(x[0], 2) for x in v}) >= max(int(te.get("min_hits", 1)), (k + 1) // 2)}
-            for e, v in strong.items():
-                pos = sorted({x[1] for x in v})
-                edge_msgs.append(f"shot {s.id} {e} edge: text-like ink cut by the {'crop' if vp != [0, 0, 1920, 1080] else 'frame'} edge "
-                                 f"on {len({round(x[0], 2) for x in v})}/{k} sampled frames at {'y' if e in ('left', 'right') else 'x'} "
-                                 f"{', '.join(str(p) for p in pos[:4])}{' ...' if len(pos) > 4 else ''}")
+        for e, pos, n in persistent_edges(hits, te):
+            edge_msgs.append(f"shot {s.id} {e} edge: text-like ink cut by the {'crop' if list(vp) != [0, 0, 1920, 1080] else 'frame'} edge "
+                             f"on {n}/{len(hits)} sampled frames at {'y' if e in ('left', 'right') else 'x'}~{pos}")
         if fracs:
             med = sorted(f for _, f, _ in fracs)[len(fracs) // 2]
             box = max(fracs, key=lambda x: x[1])[2]
@@ -576,7 +633,8 @@ def frame_gates(spec, rules=None, clipped_named=()):
         res.append(("empty-frame", "WARN" if empty_msgs else "PASS", "; ".join(empty_msgs) if empty_msgs else
                     f"no UI shot over {ef['max_frac'] * 100:.0f}% empty canvas (largest: {top or 'n/a'})"))
     if lh.get("on", True):
-        runs = static_runs(out, spec, rects, width=lh.get("width", 192), diff=lh.get("diff", 0.35))
+        runs = static_runs(out, spec, rects, width=lh.get("width", 384), pix_delta=lh.get("pix_delta", 10),
+                           max_changed=lh.get("max_changed", 0.0005))
         long_ = [(sid, d, t) for sid, (d, t) in runs.items() if d > lh["max_s"] + 1e-6]
         top = max(runs.items(), key=lambda x: x[1][0]) if runs else None
         res.append(("long-hold", "WARN" if long_ else "PASS",

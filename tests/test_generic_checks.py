@@ -92,12 +92,14 @@ def test_warn_rules_per_preset_and_project_override():
     hero = NS(style={"preset": None}, qa={}, raw={})
     anime = NS(style={"preset": "anime-opening"}, qa={}, raw={})
     live = NS(style={"preset": "livestream"}, qa={}, raw={})
-    assert G.rules_for(hero)["empty_frame"]["max_frac"] == 0.5
-    assert G.rules_for(anime)["empty_frame"]["max_frac"] == 0.35 and G.rules_for(anime)["long_hold"]["max_s"] == 2.8
+    assert G.rules_for(hero)["empty_frame"]["max_frac"] == 0.40 and G.rules_for(hero)["long_hold"]["max_s"] == 3.5
+    assert G.rules_for(anime)["empty_frame"]["max_frac"] == 0.40 and G.rules_for(anime)["long_hold"]["max_s"] == 2.8
     assert G.rules_for(live)["long_hold"]["max_s"] == 6.0
+    # a talk-show spec without a style preset (the framed preview) still gets the livestream rules
+    assert G.rules_for(NS(style={}, qa={}, raw={"livestream": {"screen": {}}}))["long_hold"]["max_s"] == 6.0
     over = NS(style={"preset": None}, qa={"warn_rules": {"long_hold": {"max_s": 9}, "text_edge": {"on": False}}}, raw={})
     r = G.rules_for(over)
-    assert r["long_hold"]["max_s"] == 9 and r["long_hold"]["diff"] == G.WARN_RULES["_default"]["long_hold"]["diff"] and not r["text_edge"]["on"]
+    assert r["long_hold"]["max_s"] == 9 and r["long_hold"]["pix_delta"] == G.WARN_RULES["_default"]["long_hold"]["pix_delta"] and not r["text_edge"]["on"]
 
 
 # ---------------------------------------------------------------- text-edge heuristic
@@ -143,6 +145,30 @@ def test_text_edge_uses_the_crop_viewport():
     assert not any(e == "bottom" for e, _, _ in G.edge_hits(_g(im), [0, 0, 1920, 1080], cfg))
 
 
+def test_text_edge_needs_a_persistent_isolated_cut():
+    cfg = G.WARN_RULES["_default"]["text_edge"]
+    w = "x"
+    one = [("right", 205, w), ("left", 600, w)]
+    # same word on 2 of 3 samples (within pos_tol) -> kept; a one-off hit is noise
+    assert G.persistent_edges([one, [("right", 210, w)], []], cfg) == [("right", 205, 2)]
+    # scrolling text (moves > pos_tol between samples) does not persist
+    assert G.persistent_edges([[("right", 100, w)], [("right", 160, w)], [("right", 220, w)]], cfg) == []
+    # a push-in cropping a whole text column (many lines on one edge) is framing, not a cut word
+    col = [("left", 100 + 40 * i, w) for i in range(6)]
+    assert G.persistent_edges([col, col, col], cfg) == []
+    # top / bottom stroke hits are off by default (panel scrolls); a project can opt in
+    assert G.persistent_edges([[("top", 600, w)]] * 3, cfg) == []
+    assert G.persistent_edges([[("top", 600, w)]] * 3, dict(cfg, edges=None)) == [("top", 600, 3)]
+
+
+def test_text_edge_ignores_frame_corners():
+    cfg = G.WARN_RULES["_default"]["text_edge"]
+    f = ImageFont.truetype(FONT, 30)
+    im, d = _ui()
+    d.text((1880, 4), "Ab", font=f, fill=230)                     # ink in the top-right corner only (a rounded frame corner)
+    assert [h for h in G.edge_hits(_g(im), [0, 0, 1920, 1080], cfg) if h[0] == "right"] == []
+
+
 # ---------------------------------------------------------------- empty-frame
 def test_empty_frame_measures_dotted_canvas_as_empty():
     cfg = G.WARN_RULES["_default"]["empty_frame"]
@@ -164,11 +190,27 @@ def test_empty_frame_measures_dotted_canvas_as_empty():
     assert frac2 < 0.2, frac2
 
 
+def test_ui_shot_needs_footage():
+    s = NS(type="clip", cfg={}, dur=2.0, clip="", clips=[], id="10")
+    assert G.is_ui_shot(NS(raw={}, footage_manifest=None), s, G.WARN_RULES["_default"]) is False
+
+
 # ---------------------------------------------------------------- long-hold
 def test_longest_static_run():
     d = [5, 5, 0.1, 0.1, 0.2, 0.1, 9, 0.1, 0.1]
     assert G.longest_static(d, 0.35) == (5, 2)                         # 4 sub-threshold diffs = 5 identical frames from frame 2
     assert G.longest_static([1, 2, 3], 0.35) == (0, 0)
+
+
+def test_changed_fraction_sees_typing_but_not_noise():
+    rng = np.random.default_rng(0)
+    base = np.full((216, 384), 30, np.float32)
+    noisy = np.stack([base + rng.uniform(-3, 3, base.shape) for _ in range(4)])     # encoder noise only
+    assert (G.changed_fraction(noisy) <= 0.0005).all()
+    typed = noisy.copy()
+    typed[2:, 100:106, 200:216] = 220                                               # a typed word appears (96 px at 384 wide)
+    d = G.changed_fraction(typed)
+    assert d[1] > 0.0005 and d[0] <= 0.0005 and d[2] <= 0.0005                       # the old mean-abs metric missed this
 
 
 # ---------------------------------------------------------------- caption-truth
