@@ -90,6 +90,18 @@ rules; anything the spec sets under `style:` wins (deep merge). `promo styles` p
 Claim tables (`claims:`, `promo/claims.py`) pick a card / caption line from the legibility record of the evidence shot,
 so a number on screen can never outrun the frame (`text_from: claims.<table>`; `confirm: <who>` marks provisional copy).
 
+## Running tests and checks
+
+```bash
+PY=.venv/bin/python                      # the venv with pyyaml etc.; system python3 lacks pyyaml; no pytest needed
+for t in tests/test_*.py; do nice -n 10 $PY "$t" || echo "FAILED: $t"; done   # each file is a plain script
+$PY -m promo -p projects/<name>/promo.yaml check     # QA gates on the existing render (no re-render); exit 1 on any FAIL
+```
+
+`promo check` samples frames with ffmpeg (`-threads 2`) under the shared cargo lock (`/tmp/commission-ai-cargo.lock`),
+so it may wait for other heavy jobs. Talk-show tests and specs read the hero footage manifest via
+`HERO_FOOTAGE_MANIFEST` (defaults to this checkout's `projects/commission-ai-hero/footage/manifest.yaml` in tests).
+
 ## QA gates (`promo check`)
 | Gate | FAIL when |
 |---|---|
