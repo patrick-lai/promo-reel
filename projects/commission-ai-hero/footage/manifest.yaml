@@ -219,14 +219,14 @@ clips:
   path: /workspace/videos/commission-ai-promo/footage/v1-1080/shot-10.mov
   sha256: f449790233c33ecdc3dfe9c2ad5a46c04308fc84ecec687d6ab11249589630a2
   app_commit: 4a427fc05f829d7b2e4ed7ea642d77340554f7f8
-  capture: '?demo=promo ; injected CSS: cursor:none (all takes), NO_TOASTS ([data-sonner-toaster]{display:none} - Sonner toasts hidden); cursor overlay: capture-overlay arrow following the real pointer'
-  framing: full, board zoomed 2 in-app steps (165%) on PAY-106; capture-overlay cursor in frame
+  capture: '?demo=promo ; main 4a427fc0 ; injected CSS: cursor:none (all takes), NO_TOASTS ([data-sonner-toaster]{display:none} - Sonner toasts hidden); cursor overlay: capture-overlay arrow following the real pointer'
+  framing: Full 1920x1080 CSS at DPR 1 (1920x1080 output), 60 fps; board zoomed 2 in-app steps (165%) on PAY-106; crop below the $1.84 Commander header; capture-overlay cursor in frame
   resolution: 1920x1080
   dpr: 1
   fps: 60.0
   captured_at: '2026-10-03T16:58:43.932Z'
-  notes: 'needs-you: PAY-106 Running -> Needs you live at 21.25 s; real click on the card''s Allow once at 23.95 s; back to Running at 24.25 s (clip 20.0-26.2 s) || Bell, rail ''Needs you · 1 in PAY'', ''2 need you'' header pill and Commander ''Needs you'' card light up. Click lands on the hover-revealed ''Allow once'' (clip ~3.95 s). After the click the Commander card shows ''Answer Cursor · Reply'' for ~0.3 s until the scenario''s own timeout resolves PAY-106 (the scenario writes ''Rejected by you / Skip the new package'' into the PAY-106 thread; not on screen here). ''$1.84'' session cost is in the Commander header (top, y<50 px): crop below it. Clicking selects the card, so the board finder shows ''4 of 9'' from ~4.0 s. Agents on screen: PAY-103 Claude Code logo, PAY-104 Codex logo, PAY-106 Cursor logo (''Answer Cursor'' in the Commander card). Commander composer footer shows the amber Access pill = ''Bypass permissions'' (the ''Auto-approve'' look; it is the default access for new threads,
-    compose.ts:143), bottom-left of the Commander pane; not changed in this take.'
+  notes: 'needs-you: PAY-106 Running -> Needs you live at 21.25 s; real click on the card''s Allow once at 23.95 s; back to Running at 24.25 s (clip 20.0-26.2 s) || Board zoomed 2 in-app steps on PAY-106. Bell, rail ''Needs you · 1 in PAY'', ''2 need you'' header pill and Commander ''Needs you'' card light up. Click lands on the hover-revealed ''Allow once'' (clip ~3.95 s). After the click the Commander card shows ''Answer Cursor · Reply'' for ~0.3 s until the scenario''s own timeout resolves PAY-106 (the scenario writes ''Rejected by you / Skip the new package'' into the PAY-106 thread; not on screen here). ''$1.84'' session cost is in the Commander header (top, y<50 px): crop below it. Clicking selects the card, so the board finder shows ''4 of 9'' from ~4.0 s. Agents on screen: PAY-103 Claude Code logo, PAY-104 Codex logo, PAY-106 Cursor logo (''Answer Cursor'' in the Commander card). Commander composer footer shows the amber Access pill = ''Bypass permissions'' (the ''Auto-approve''
+    look; it is the default access for new threads, compose.ts:143), bottom-left of the Commander pane; not changed in this take. Capture-overlay cursor hovers the card before the real click. startMs=20000, clickMs=23950. Source is 1080p so the ~3x push is an upscale (soft); recapture at DPR 2 before publishing.'
   demo: true
 - id: shot-03-night-v1080
   shots:
@@ -678,7 +678,7 @@ clips:
   fps: 60.0
   captured_at: '2026-10-04T04:17:32.161Z'
   notes: 'Left rail + Commander as the run starts: project card ''Checkout Revamp · Running · 0/8''; the rail goes from ''Start'' links to a ''Working'' list as agents claim tickets: PAY-103 ''Design tokens for checkout…'' (Claude logo) Coding ~6.7 s, PAY-104 ''Cart summary uses the prici…'' (Codex logo) ~7.7 s, PAY-106 ''Localized price display in or…'' (Cursor logo) ~8.7 s, each with its live diff stat (+18 -4 -> +36 -8); later Checks / Pushed. Commander shows the sent ask ''Ship the checkout revamp tonight. No broken builds.'' and the plan reply (''Here''s the plan: eight checkout tickets in three waves…'') || Measured on the 1920 frame at 4.5 s: rail row title cap height ~27 px (''D'' of Design, glyph rows 29 px incl. antialias), ticket ID cap ~22 px (PAY-103), project name cap ~27 px. Agent logos ~50 px squares: all 3 agents visible (Claude orange, Codex teal, Cursor dark). The ''PAY Collab · 3 people'' row with AM/RC/MC avatars and ''# standup @1'' are at the bottom. At 4.5 s: no amber
-    pill or Blocked state in the rail.'
+    pill or Blocked state visible in the rail.'
   demo: true
 - id: shot-11-dpr2-r3-v1080
   shots:

@@ -44,7 +44,7 @@ then point the shot's `source:` at the new id.
 | shot-15 | 15 16 | 3840x2160 | 2 | 60.0 | `bc10d245` | 2026-10-01T06:13:44.669Z | yes | ?demo=promo (branch promo/demo-scenario, PR #86) |
 | shot-16a | 16 | 3840x2160 | 2 | 60.0 | `bc10d245` | 2026-10-01T06:41:28.209Z | yes | ?demo=promo (branch promo/demo-scenario, PR #86) |
 | shot-17-v1 | 17 | 3840x2160 | 2 | 60.0 | `0a3c3acd` | 2026-10-01T03:10:28.804Z | yes | ?demo=1&view=workshop&workshop=fast |
-| shot-10-v1080 | 10 | 1920x1080 | 1 | 60.0 | `4a427fc0` | 2026-10-03T16:58:43.932Z | yes | ?demo=promo ; injected CSS: cursor:none (all takes), NO_TOASTS ([data-sonner-toaster]{display:none} - Sonner toasts hidden); cursor overlay: capture-overlay arrow following the real pointer |
+| shot-10-v1080 | 10 | 1920x1080 | 1 | 60.0 | `4a427fc0` | 2026-10-03T16:58:43.932Z | yes | ?demo=promo ; main 4a427fc0 ; injected CSS: cursor:none (all takes), NO_TOASTS ([data-sonner-toaster]{display:none} - Sonner toasts hidden); cursor overlay: capture-overlay arrow following the real pointer |
 | shot-03-night-v1080 | 03 | 1920x1080 | 1 | 60.0 | `4a427fc0` | 2026-10-03T17:59:30.301Z | yes | ?demo=promo&view=workshop&workshop=fast&workshopHour=22:00 ; injected CSS: cursor:none (all takes); cursor overlay: none |
 | shot-15-morning-v1080 | 15 | 1920x1080 | 1 | 60.0 | `4a427fc0` | 2026-10-03T18:20:51.734Z | yes | ?demo=promo&view=workshop&workshop=fast&workshopHour=07:00 ; injected CSS: cursor:none (all takes); cursor overlay: none |
 | shot-08-v1080 | 08 09 | 1920x1080 | 2 | 60.0 | `4a427fc0` | 2026-10-03T18:38:03.980Z | yes | ?demo=promo (PAY-104 node clicked at 9.0 s) ; injected CSS: cursor:none (all takes), NO_TOASTS ([data-sonner-toaster]{display:none} - Sonner toasts hidden); cursor overlay: none |
