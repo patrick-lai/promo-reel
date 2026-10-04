@@ -1,8 +1,8 @@
-# commission-ai 60 s hero v2: v1 structure re-cut on the v1-1080 recapture (app main 4a427fc0) + Zen's v1 notes.
+# commission-ai 60 s hero v3 (v2 + Zen v2 notes; see docs/hero-v3.md): v1 structure re-cut on the v1-1080 recapture (app main 4a427fc0) + Zen's v1 notes.
 # Shot order (locked): 01 02 03 04 05 06 08(+09) 10 12 15 11 16 14b 17. Shot 13 out; shot 07 dropped (see docs/hero-v2.md).
 # Paths are relative to this file; ${VAR:-default} env expansion everywhere.
-project: {name: commission-ai-hero, title: "commission-ai hero v2"}
-output: {name: hero-v2, resolution: 1080, fps: 30, duration: 60.0}     # resolution 1080 or 2160; CLI --scale / PROMO_SCALE override
+project: {name: commission-ai-hero, title: "commission-ai hero v3"}
+output: {name: hero-v3, resolution: 1080, fps: 30, duration: 60.0}     # resolution 1080 or 2160; CLI --scale / PROMO_SCALE override
 paths: {build: build, out: out}
 assets: assets.yaml                       # music / vo models / sfx / font (licence gate)
 footage: footage/manifest.yaml            # raw clips by id: absolute path + sha256 + provenance (footage never in git)
@@ -108,7 +108,7 @@ shots:
     source: shot-05-v1
     label: "footage/shot-05-v1.mov (OLD promo take, bc10d245, 3840x2160)"
     t_in: 0.6
-    cam: [[0, 0.18, 0.28, 0.37], [4.9, 0.175, 0.275, 0.345]]
+    cam: [[0, 0.193, 0.28, 0.39], [4.9, 0.19, 0.275, 0.38]]     # v3: right edge stays at/after the Commander pane edge (src x 0.38) so the message actions and the pane ⋯ menu are not cut
     sfx:
       - {sfx: tick,  src: 1.1, db: -4}
       - {sfx: tick2, src: 2.1, db: -4}
@@ -161,8 +161,8 @@ shots:
   - id: "12"
     beats: [54, 64]
     type: clip
-    source: shot-12-dpr2-v1080
-    label: "v1-1080/shot-12-dpr2.mov (main 4a427fc0, DPR 2 pre-framed 2x): reviewer thread 'Approved. ...' for PR #432"
+    source: shot-12-dpr2-z179-v1080
+    label: "v1-1080/shot-12-dpr2-z179.mov (main 4ccfa5be, DPR 2 pre-framed 2x, replaces shot-12-dpr2: no literal **): reviewer thread 'Approved. ...' for PR #432"
     segs:
       - {t_in: 0.0, t_out: 5.4, dur: 6.1333}       # static thread hold played at 0.88x to fill the slot
     cam: [[0, 0.5, 0.5, 1.0], [end, 0.4762, 0.4762, 0.9524]]   # top-left crop 1.0x -> 1.05x: the 10:40 PM divider lands at y 848, above the caption
@@ -173,21 +173,20 @@ shots:
   - id: "15"
     beats: [64, 70]
     type: float_window
-    source: shot-15
-    label: "footage/shot-15.mov (OLD promo take, bc10d245) over the v1-1080 morning Workshop plate"
-    t_in: 5.9
+    source: shot-16-prcard-v1080
+    label: "v1-1080/shot-15-prcard.mov (main 4a427fc0, DPR 2 pre-framed 1.6x): PAY-110 drawer In review -> Done -> PR #438 Merged, in a window over the morning plate"
+    t_in: 5.83                     # latest start that fills 3.67 s inside the 9.50 s take; badge Open -> Merged at src 7.70 (out 1.87 s)
     window: [1300, 731]
     y: 470
     plate: morning
-    camA: [[0, 0.895, 0.226, 0.16], [1.9, 0.895, 0.222, 0.15]]
-    camB: [[1.6, 0.7, 0.418, 0.205], [3.67, 0.7, 0.418, 0.195]]
-    dissolve: [1.6, 1.95]
-    overlays:
-      - {type: caption, text: "Wake up to merged PRs.", t: [0.3, 99]}
+    camA: [[0, 0.6667, 0.385, 0.646], [3.67, 0.6667, 0.385, 0.636]]   # v3: whole drawer width (src x 670-1890): PR card incl. its 'Open' link no longer clipped at the right
+    camB: [[0, 0.6667, 0.385, 0.646], [3.67, 0.6667, 0.385, 0.636]]
+    dissolve: [3.0, 3.2]
+    # v3: no caption. Merged only holds 7.70-9.50 s of the take (1.8 s < the 2.0 s caption gate), and the 'Merged' badge is ~12 px here (< 18 px),
+    # so 'Wake up to merged PRs.' moved to S16's Merged flip as VO (S16's fixed caption zone would sit on the Evidence text, so no caption there either).
     sfx:
-      - {sfx: swell, src: 7.0, offset: -0.9, db: -10}
-      - {sfx: tick,  src: 7.0, db: -3}
-      - {sfx: tick2, src: 8.2, db: -5}
+      - {sfx: tick2, src: 6.5, db: -6}
+      - {sfx: tick,  src: 7.7, db: -4}
 
   - id: "11"
     beats: [70, 76]
@@ -195,9 +194,9 @@ shots:
     label: "v1-1080/shot-11.mov (header '8 in this run · 8 landed') then shot-11-all8.mov (all 8 Done cards), main 4a427fc0, DPR 2"
     segs:
       - {source: shot-11-header-v1080, t_in: 0.25, t_out: 2.70, dur: 2.45,
-         cam: [[0, 0.5833, 0.4167, 0.86], [2.45, 0.5833, 0.4167, 0.8333]]}      # header + Landed column, 1.16x -> 1.2x
+         cam: [[0, 0.5833, 0.4167, 0.8333], [2.45, 0.5833, 0.4167, 0.8333]]}    # v3: held at the 1.2x cap, top-right anchored (header + Landed column)
       - {source: shot-11-all8-v1080, t_in: 1.0, t_out: 2.2167, dur: 1.2167,
-         cam: [[0, 0.5, 0.5, 1.0], [1.2167, 0.5, 0.5, 0.93]]}                   # all 8 cards, 1.0x -> 1.08x
+         cam: [[0, 0.55, 0.5, 0.88], [1.2167, 0.55, 0.5, 0.8333]]}              # v3: all 8 cards + Plan more, 1.14x -> 1.2x
     cam: [[0, 0.5, 0.5, 1.0], [end, 0.5, 0.5, 1.0]]
     overlays:
       # claim only what the caption frame shows: '8 in this run · 8 landed' (8 tasks, all landed = 'Merged and closed').
@@ -221,16 +220,16 @@ shots:
   - id: "14b"
     beats: [80, 90]
     type: clip
-    label: "v1-1080/shot-14b-dusk.mov (main 4a427fc0, 19:30 dusk, DPR 1): Outside view, then the Street glide"
+    label: "v1-1080/shot-14b-dusk-r2.mov (main 4a427fc0, 19:30 dusk, DPR 1): full-screen Outside view, then the Street glide (the 2.7-3.5 s collapse/re-expand flicker is cut)"
     segs:
-      - {source: shot-14b-dusk-v1080, t_in: 0.15, t_out: 2.55, dur: 2.4,
-         cam: [[0, 0.40, 0.50, 0.80], [2.4, 0.40, 0.50, 0.77]]}     # full-screen dusk Outside view; crop excludes the settings popover / toasts (right) and the HUD (bottom-left)
-      - {source: shot-14b-dusk-v1080, t_in: 4.3, t_out: 8.0333, dur: 3.7333,
-         cam: [[0, 0.71, 0.5495, 0.60], [3.7333, 0.71, 0.5495, 0.58]]}   # Street glide inside the Workshop pane; crop excludes the app shell ($ cost), HUD and crew pill
+      - {source: shot-14b-dusk-r2-v1080, t_in: 0.1333, t_out: 2.50, dur: 2.3667,
+         cam: [[0, 0.40, 0.50, 0.80], [2.3667, 0.40, 0.50, 0.77]]}    # dusk Outside view; crop excludes the settings popover / toasts (right), top bar and HUD (bottom-left); 1.25x -> 1.3x
+      - {source: shot-14b-dusk-r2-v1080, t_in: 3.70, t_out: 7.4667, dur: 3.7667,
+         cam: [[0, 0.43, 0.48, 0.80], [3.7667, 0.43, 0.48, 0.78]]}    # re-expanded full-screen: Outside + Street glide; crop excludes the Street toast (top right), top bar and HUD; 1.25x -> 1.28x
     cam: [[0, 0.40, 0.50, 0.80], [end, 0.40, 0.50, 0.77]]
     overlays:
       - {type: caption, text: "Every token builds something.", style: light, t: [0.35, 99]}
-    notes: "Closing the achievements toast collapses the full-screen Workshop into the app layout (real app), so the Street glide is framed inside the right pane: DPR 1 at 1.67x -> 1.72x (soft, check WARN)."
+    notes: "v3: r2 retake. 0-2.5 s and 3.6-7.5 s only (the toast close collapses the Workshop; it is re-expanded by a real click, flicker 2.7-3.5 s cut). Both segments are full-screen, so no 1.7x pane crop."
 
   - id: "17"
     beats: [90, 98]
@@ -263,7 +262,8 @@ vo:
     - {shot: "08", at: 0.25, text: "They code, run the checks and push.", tts: "They code, run the checks, and push."}
     - {shot: "10", at: 0.95, text: "It only asks when it needs you."}
     - {shot: "12", at: 0.50, text: "A reviewer checks each change and tells you why it passes."}   # = audio/vo/stems/vo-12-v2-bf_emma.wav (same voice/speed, deterministic)
-    - {shot: "15", at: 0.30, text: "Go to bed. Wake up to merged PRs.", tts: "Go to bed. Wake up to merged P R's."}
+    - {shot: "15", at: 0.40, text: "Go to bed."}
+    - {shot: "16", at: 0.52, text: "Wake up to merged PRs.", tts: "Wake up to merged P R's."}   # 1.84 s line ends at 2.36 s inside the 2.43 s shot; "merged" lands just after the Open -> Merged flip (out 0.65 s)
     - {shot: "14b", at: 0.45, text: "And while they work, your workshop grows."}
     - {shot: "17", at: 0.45, text: "commission-ai. Your AI dev crew, on your Mac.", tts: "Commission AI. Your AI dev crew, on your Mac."}
 

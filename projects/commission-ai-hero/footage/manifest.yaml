@@ -502,3 +502,31 @@ clips:
   captured_at: '2026-10-04T00:31:30.492Z'
   notes: 'In-app Workshop Outside view at 19:30 dusk; 1.0 s settings, 1.7 s Demo controls > Finish 5 rooms; 1.85 s ''Your workshop is now a Street'' toast; earned toast closed ~2.5 s (collapses the full-screen Workshop into the app layout: sidebar + Commander with ''$1.84'' in its header from ~2.7 s); Street notice legible ~2.7-4.2 s; 4.2 s Room view > Street glide to 8.5 s (bright town view even at 19:30). Wallet/mora hidden with capture CSS. Crew pill ''Caretaker bot building''. No ''?'' bubbles.'
   demo: true
+- id: shot-14b-dusk-r2-v1080
+  shots:
+  - 14b
+  path: /workspace/videos/commission-ai-promo/footage/v1-1080/shot-14b-dusk-r2.mov
+  sha256: 91cd3b337c1fa9b16ed037f65749591c37e8a61a1822200059762b55fb5eef5e
+  app_commit: 4a427fc05f829d7b2e4ed7ea642d77340554f7f8
+  capture: ?demo=promo&pause=1&workshopHour=19:30 + prefs stage ws-pay=workshop (19:30 dusk)
+  framing: DPR 1, full 1920x1080, locked
+  resolution: 1920x1080
+  dpr: 1
+  fps: 60.0
+  captured_at: '2026-10-04T01:07:48Z'
+  notes: 'Dusk retake 2 (preferred). Toast closed ~2.5 s collapses the Workshop; re-expanded by real click ~2.9 s; 2.7-3.5 s collapse/re-expand flicker: use 0-2.5 s and 3.6-7.5 s. 3.6-4.6 s full-screen dusk Outside with the Street notice; 4.6 s Room view > Street glide to 7.5 s. Street view renders bright at 19:30 (real app).'
+  demo: true
+- id: shot-12-dpr2-z179-v1080
+  shots:
+  - '12'
+  path: /workspace/videos/commission-ai-promo/footage/v1-1080/shot-12-dpr2-z179.mov
+  sha256: c5c20554b03a321d6a432857d60956aa8d86d706c0d391e1c6632af89298f5cb
+  app_commit: 4ccfa5be580eb3dbbaf8cb1138b0e4f55f544636
+  capture: ?demo=promo, conversationWidth=940; PAY-104 drawer -> Review thread click at 26.6 s (vite build of main 4ccfa5be)
+  framing: DPR 2. Clip x290 y0 960x540 CSS (2.0x), same as shot-12-dpr2
+  resolution: 1920x1080
+  dpr: 2
+  fps: 60.0
+  captured_at: '2026-10-04T00:50:31Z'
+  notes: 'REPLACES shot-12-dpr2-v1080: Z179 renders the bold (no literal **). Zen clean.'
+  demo: true
