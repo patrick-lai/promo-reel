@@ -121,19 +121,19 @@ profiles:
     text_check: {box: [237, 247], src_px: 1080, min_px: 24}                              # 'Approved...' + reason, 2.25x
     named:
       - {name: "Approved line", box: [237, 247], src_px: 1080, at: 2.05}
-  talk-dag-wide-v1080:                                                                   # S03 v4.1, DPR 2 still (1.928x); crop x 60-1402, y 40-1002, scale 1.073
-    # Zen v4 (X1): the v4 crop (x 96-1602) cut 'pricing', so PAY-104 read 'Cart summary uses the / engine' as a whole
-    # sentence. A full title needs x1 >= 1760, which at the panel aspect pushes x0 >= 254 and cuts the PAY-101 id (x 148);
-    # a left matte would hide it. So the right edge sits in the word gap BEFORE 'uses' (x 1396-1411): PAY-104 reads
-    # 'Cart summary' with the card running off the edge. Side effect: PAY-105's title is cut inside 'validation'
-    # ('Promo code va|', x 1364-1569); no word gap before 'uses' is shared by both titles. No matte (nothing hidden).
-    cam: [0.38073, 0.48241, 0.69896]
+  talk-dag-wide-v1080:                                                                   # S03 v4, DPR 2 still (1.928x), widest panel crop (full height, 1506 px)
+    # source x 96-1602: PAY-101 / PAY-102 cards whole on the left, the PAY-105 card text whole; the right edge sits in the
+    # word gap of PAY-104's title (after 'the', x 1591-1607) so no glyph is cut; 'pricing' and the cards' icon buttons are
+    # out of frame (the content needs 1605 px vs the panel's 1506 at full height). No matte.
+    # v4.1 tried an edge before 'uses' (x 60-1402) for Zen X1, but it cut PAY-105 mid-word ('Promo code va|'): reverted.
+    # Waiting on talk-dag-wide-r2 (wider frame, full PAY-104 / PAY-105 titles).
+    cam: [0.44219, 0.5, 0.7846]
     fit_clip: true
     named:
       - {name: "PAY-101 id", box: [140, 405, 330, 465], src_px: 1080, at: 3.0}
       - {name: "PAY-105 id", box: [1085, 90, 1275, 145], src_px: 1080, at: 3.0}
       - {name: "PAY-104 id", box: [1085, 690, 1275, 750], src_px: 1080, at: 3.0}
-      - {name: "PAY-104 title", box: [1085, 770, 1395, 830], src_px: 1080, at: 3.0}
+      - {name: "PAY-104 title", box: [1085, 770, 1590, 830], src_px: 1080, at: 3.0}
       - {name: "PAY-101 title", box: [140, 480, 760, 535], src_px: 1080, at: 3.0}
   talk-dag-tight-v1080:                                                                  # S03, DPR 2 still: widest crop (1.27x), scale 0.96
     cam: [0.4133, 0.5, 0.7846]                                                           # PAY-101 card whole + the fan; PAY-104 title clipped at the right edge
