@@ -4,13 +4,15 @@
 # slates: swapping one in is a config change (replace `placeholder:` with `source:` + `cam:`). No URL on the end card.
 # Heavy steps hold flock /tmp/commission-ai-cargo.lock (promo/lock.py) and run niced with ffmpeg -threads 2.
 project: {name: commission-ai-anime, title: "commission-ai anime opening (Direction 2)"}
-output: {name: anime-v5, resolution: 1080, fps: 30, duration: 76.192188}  # ends where the music master ends (76.192 s = 224.767 beats); 2286 frames, no tail pad
+output: {name: anime-v6, resolution: 1080, fps: 30, duration: 76.192188}  # ends where the music master ends (76.192 s = 224.767 beats); 2286 frames, no tail pad
 paths: {build: build, out: out}
 assets: assets.yaml
 footage: footage/manifest.yaml
 
 style:
-  preset: anime-opening        # bar-snapped cuts, 1-bar UI holds, cards >= 1 bar in ONE fixed lower-third band, fx at cuts only
+  preset: anime-opening        # bar-snapped cuts, 1-bar UI holds, cards >= 1 bar in ONE fixed lower band, fx at cuts only
+  # v6 (Zen A4): the preset band is 15% of the frame (band.frac 0.15 -> y 918-1080, 162 px; v5 was 280 px = 26%).
+  # UI shots are framed in the 1920x918 area above it; card cap heights >= 18 px (gate card-band).
 
 # edit-v1.json: 177 BPM, 221 beats (0..220), 56 bars, 8-bar phrase flags, markers. 1 bar = 4 beats = 1.3559 s.
 # Timeline ends exactly at the end of the music master (76.192188 s = 224.76695 beats): the end card is trimmed, not
@@ -85,12 +87,18 @@ shots:
     t_in: 0.20                 # Zen: start at frame 8 or later (lamp lit from frame 7); 0.20 s = frame 12
     cam: [[0, 0.50, 0.58, 0.88, linear], [end, 0.50, 0.58, 0.76, linear]]   # steady push-in; header cropped
     cards:
-      - {row: title, text: "commission-ai", bars: [0, 3], slam: false}
-      - {row: sub, text: "Your AI dev crew", bars: [0, 3]}
+      - {row: title, text: "commission-ai", bars: [0, end], slam: false}     # 'end': follows a move-cut of the 02|03 cut
+      - {row: sub, text: "Your AI dev crew", bars: [0, end]}
     contact_at: 2.0
     notes: "Script asks for a robot's light flicking on: not verified in this take (lamp is already lit at frame 7)."
 
-  # ---- 6.78 s: the ask (4 bars) -- composer take not in v1-1080
+  # ---- 6.78 s: the ask (4 bars) -- composer take not in v1-1080. SWAP RECIPE when shot-03-composer-dpr2 lands:
+  #   1. `promo footage add <path>/shot-03-composer-dpr2.mov --id shot-03-composer-dpr2 --shots 03 --dpr 2 ...`
+  #   2. replace `placeholder:` below with `source: shot-03-composer-dpr2` + `segs:`/`t_in:` + `cam:` (+ `named:` for the
+  #      typed ask, so the gate checks it reads >= 18 px and is not under the band)
+  #   3. first real UI at ~0:04: `promo move-cut 20 12` (02 -> 1 bar, 03 starts at beat 12 = 4.07 s; 02's cards use
+  #      bars [0, end] so they follow). To shorten 03 instead: `promo move-cut 36 <beat>` once 04 is the 04b take.
+  #   4. `promo check`, `promo build`.
   - id: "03"
     beats: [20, 36]
     type: anime
@@ -114,7 +122,9 @@ shots:
     source: shot-11
     label: "shot-11 (DPR 2): board header 'All done · Plan next · 8 in this run · 8 landed' + Landed column"
     segs: [{t_in: 0.10, t_out: 2.95, dur: 5.4237288}]
-    cam: [[0, 0.60, 0.25, 0.84], [end, 0.60, 0.25, 0.78]]     # crop src x ~346-1920 -> 403-1901, y 0-; search box cropped
+    # v6: viewport is 1920x918 now; the crop's bottom edge sits in the gap between the PAY-104 card (ends src y 742) and
+    # PAY-105 (starts 767) for the whole push, so no card title is cut by the band (crop y 0-762 -> 0-748).
+    cam: [[0, 0.60, 0.25, 0.8300], [end, 0.60, 0.25, 0.8150]]
     named:                     # the count the '8 TASKS.' card rests on (claims.plan_count): must read >= 18 px
       - {name: "header count '8 in this run · 8 landed'", box: [845, 45, 1110, 95]}
       - {name: "header pill 'All done · Plan next'", box: [560, 45, 815, 95]}
@@ -131,7 +141,9 @@ shots:
     source: shot-10-dpr2
     freeze: 0.20
     label: "shot-10-dpr2 frozen at 0.20 s: PAY-103 card with the Claude Code logo"
-    cam: [[0, 0.60, 0.205, 0.44], [end, 0.60, 0.205, 0.38]]
+    # v6 (A4): crop y 2-332 -> 15-318, bottom edge in the gap between PAY-103 (ends src y 323) and PAY-104 (starts 352):
+    # no card cut by the band. x 799-1490 -> 827-1461 keeps the Wave 2 titles (x >= 1490) out.
+    cam: [[0, 0.596, 0.1542, 0.36], [end, 0.596, 0.1542, 0.33]]
     cards:
       - {row: title, text: "CLAUDE CODE", bars: [0, 2]}
       - {row: sub, text: "on the job", bars: [0, 2]}
@@ -145,7 +157,8 @@ shots:
     source: shot-10-dpr2
     freeze: 0.20
     label: "shot-10-dpr2 frozen at 0.20 s: PAY-104 card with the Codex logo"
-    cam: [[0, 0.60, 0.42, 0.44], [end, 0.60, 0.42, 0.38]]
+    # v6 (A4): PAY-104 + PAY-105 whole: crop y 328-815 -> 340-803, top/bottom edges in the card gaps (323-352, 791-821)
+    cam: [[0, 0.602, 0.5292, 0.53], [end, 0.602, 0.5292, 0.505]]
     cards:
       - {row: title, text: "CODEX", bars: [0, 2]}
       - {row: sub, text: "on the job", bars: [0, 2]}
@@ -159,7 +172,8 @@ shots:
     source: shot-10-dpr2
     freeze: 0.20
     label: "shot-10-dpr2 frozen at 0.20 s: PAY-106 card with the Cursor logo"
-    cam: [[0, 0.60, 0.855, 0.44], [end, 0.60, 0.855, 0.38]]
+    # v6 (A4): PAY-105 + PAY-106 whole: crop y 566-1071 -> 580-1057, top edge in the 557-587 gap (v5 cut 'endpoint')
+    cam: [[0, 0.602, 0.7579, 0.55], [end, 0.602, 0.7579, 0.52]]
     cards:
       - {row: title, text: "CURSOR", bars: [0, 2]}
       - {row: sub, text: "on the job", bars: [0, 2]}
@@ -169,6 +183,9 @@ shots:
 
   # ---- 25.76 s: montage A, the exact chip words, 2 bars each (shot-08-dpr2 PAY-104 drawer, Codex; 2.13x pre-framed,
   # whole stepper in frame). Push in on the active stepper chip. Same scenario timings as shot-08.
+  # v6 (A4): centre y 470 (cy 0.4352) for 1.61x -> 1.85x: crop top stays in the 160-253 gap (below the task title) and
+  # the bottom in the gap after 'Codex · Board run' (y 625-698) for every frame of the push, so no line is ever cut by the
+  # band; 08 sits at cx 0.456 so the board sliver ('Wave 1 / Starts after', x < 280) stays out.
   - id: "08"
     beats: [76, 84]
     type: anime
@@ -176,7 +193,7 @@ shots:
     source: shot-08-dpr2
     label: "shot-08-dpr2 PAY-104 drawer: Running / Coding chip"
     segs: [{t_in: 0.0, t_out: 1.95, dur: 2.7118644}]
-    cam: [[0, 0.383, 0.4167, 0.62, linear], [end, 0.383, 0.4167, 0.54, linear]]   # steady push on the active 'Coding' chip
+    cam: [[0, 0.456, 0.4352, 0.62, linear], [end, 0.456, 0.4352, 0.54, linear]]   # v6 (A4): crop edges stay in text gaps for the whole push
     named:                     # the chip label the card names: >= 18 px cap height (gate `named`; upscale WARNs)
       - {name: "Coding chip label", box: [680, 555, 792, 592]}
     cards: [{row: title, text: "CODING.", bars: [0, 2]}]
@@ -189,7 +206,7 @@ shots:
     source: shot-08-dpr2
     label: "shot-08-dpr2 PAY-104 drawer: Verifying / Checks chip"
     segs: [{t_in: 2.0, t_out: 4.85, dur: 2.7118644}]
-    cam: [[0, 0.511, 0.4167, 0.62, linear], [end, 0.511, 0.4167, 0.54, linear]]   # steady push on the active 'Checks' chip
+    cam: [[0, 0.511, 0.4352, 0.62, linear], [end, 0.511, 0.4352, 0.54, linear]]   # v6 (A4): crop edges stay in text gaps for the whole push
     named:                     # the chip label the card names: >= 18 px cap height (gate `named`; upscale WARNs)
       - {name: "Checks chip label", box: [925, 518, 1040, 550]}
     cards: [{row: title, text: "CHECKS.", bars: [0, 2]}]
@@ -202,7 +219,7 @@ shots:
     source: shot-08-dpr2
     label: "shot-08-dpr2 PAY-104 drawer: In review / Pushed chip"
     segs: [{t_in: 4.95, t_out: 7.75, dur: 2.7118644}]
-    cam: [[0, 0.640, 0.4167, 0.62, linear], [end, 0.640, 0.4167, 0.54, linear]]   # steady push on the active 'Pushed' chip
+    cam: [[0, 0.640, 0.4352, 0.62, linear], [end, 0.640, 0.4352, 0.54, linear]]   # v6 (A4): crop edges stay in text gaps for the whole push
     named:                     # the chip label the card names: >= 18 px cap height (gate `named`; upscale WARNs)
       - {name: "Pushed chip label", box: [1170, 522, 1285, 552]}
     cards: [{row: title, text: "PUSHED.", bars: [0, 2]}]
@@ -215,7 +232,7 @@ shots:
     source: shot-08-dpr2
     label: "shot-08-dpr2 PAY-104 drawer: PR raised #432 chip"
     segs: [{t_in: 7.85, t_out: 9.20, dur: 2.7118644}]
-    cam: [[0, 0.768, 0.4167, 0.62, linear], [end, 0.768, 0.4167, 0.54, linear]]   # steady push on the active 'PR raised' chip
+    cam: [[0, 0.768, 0.4352, 0.62, linear], [end, 0.768, 0.4352, 0.54, linear]]   # v6 (A4): crop edges stay in text gaps for the whole push
     named:                     # the chip label the card names: >= 18 px cap height (gate `named`; upscale WARNs)
       - {name: "PR raised chip label", box: [1405, 521, 1545, 552]}
     cards: [{row: title, text: "PR RAISED.", bars: [0, 2]}]
@@ -237,24 +254,24 @@ shots:
 
   # ---- 44.75 s peak: hero UI montage (16 bars) ----
   - id: "13"
-    beats: [132, 148]
+    beats: [132, 152]          # v6: +1 bar from the shortened shot 15 (more time to read the reason)
     type: anime
     ui: true
     source: shot-12-dpr2-z179  # DPR 2 retake, no raw '**' (main 4ccfa5be); full width above the band (no pillars)
     label: "shot-12-dpr2-z179 (DPR 2): reviewer thread 'Approved. ...' for PR #432, full width"
-    segs: [{t_in: 0.80, t_out: 5.45, dur: 5.4237288}]
+    segs: [{t_in: 0.80, t_out: 5.45, dur: 6.7796610}]
     # src x 0-1856 (drops the 3 px border + sliver of the next pane at x >= 1858), y ~35-808 (Cursor tab -> 10:40 PM divider)
     cam: [[0, 0.48333, 0.3904, 0.96667]]
     ui_text:
       - [0.010, 0.435, 0.885, 0.466]     # reviewer's 'Approved. Cart summary uses the pricing engine matches the plan ...'
     named:
       - {name: "reviewer 'Approved.' line", box: [15, 468, 1700, 505]}
-    cards: [{row: title, text: "REVIEWED, WITH THE REASON WHY.", bars: [0, 4]}]
+    cards: [{row: title, text: "REVIEWED, WITH THE REASON WHY.", bars: [0, 5]}]
     fx_in: {kind: flash, frames: 3}
     contact_at: 2.5
     notes: "Director v2 note 4: 'Approved. ...' and its reason read; card in the band, never over the line."
   - id: "14"
-    beats: [148, 160]
+    beats: [152, 168]          # v6: +1 bar (the Merged payoff lingers) from the shortened shot 15
     type: anime
     ui: true
     source: shot-16-prcard-tight   # DPR 2, 776x436.5 CSS clip (2.474x): PAY-110 PR card, badge Open -> Merged
@@ -262,41 +279,49 @@ shots:
     # Flip verified on the frames: Open at src frame 461, Merged at frame 462 = 7.700 s (the card itself only lays out
     # at frame 390 = 6.500 s, so start at 6.52). Flip lands at shot 1.17 s (out frame 1540), 6 frames before the 'MERGED.' card (bar 1 =
     # 1.356 s); real time to just after the flip, then the static Merged hold at 0.6x fills the 3 bars.
-    segs: [{t_in: 6.52, t_out: 7.75, dur: 1.23}, {t_in: 7.75, t_out: 9.44, dur: 2.8366667}]
+    segs: [{t_in: 6.52, t_out: 7.75, dur: 1.23}, {t_in: 7.75, t_out: 9.44, dur: 4.1937288}]
     # Gentle push 1.0x -> 1.05x landing on the flip, then hold. 1.05x is the most that keeps the WHOLE card in frame:
     # card outline src x 56-1866 (1811 px of 1920), y 386-692; crop at hold = src x 47-1876, y 158-920 (~9 px margins).
     # 1.1x would cut ~47 src px off each side of the card.
-    cam: [[0, 0.5005, 0.50, 1.0], [1.18, 0.5005, 0.499, 0.95238], [end, 0.5005, 0.499, 0.95238]]
+    # v6 (A4): viewport 1920x918: crop y 0-918 -> 6-880 ends above the Evidence 'QA decision' box (text from y 922), so
+    # no app line is cut by the band; the card (y 386-692) stays whole.
+    cam: [[0, 0.5005, 0.41, 1.0], [1.18, 0.5005, 0.4102, 0.95238], [end, 0.5005, 0.4102, 0.95238]]
     named:                     # measured while 'MERGED.' is up
       - {name: "PR card title (PAY-110 Remove legacy pricing module)", box: [200, 480, 900, 530], t: 2.0}
       - {name: "PR badge 'Merged' (the flip)", box: [300, 415, 430, 470], t: 2.0}
       - {name: "PR card 'Builds pass · 1 approval' line", box: [200, 600, 1000, 660], t: 2.0}
-    cards: [{row: title, text: "MERGED.", bars: [1, 3]}]     # no PR number on any card
+    cards: [{row: title, text: "MERGED.", bars: [1, 4]}]     # no PR number on any card
     fx_in: {kind: flash, frames: 3}
     contact_at: 2.0
     notes: "PR number #438 is visible in the app frame (real UI), never in a card."
   - id: "15"
-    beats: [160, 180]
+    beats: [168, 176]          # v6 (Zen A3): 2 bars = 2.71 s (was 5 bars over the dim all8 column)
     type: anime
     ui: true
-    source: shot-11-all8       # visual only: all 8 cards Done in Landed. NOT the claim source (card text ~9-11 px)
-    label: "shot-11-all8 (DPR 2): Landed column, all 8 cards Done, tilt down at 1.2x"
-    segs: [{t_in: 0.10, t_out: 4.95, dur: 6.7796610}]
-    cam: [[0, 0.5755, 0.309, 0.8333], [end, 0.5755, 0.691, 0.8333]]   # crop src x 305-1905; tilt y 0-667 -> 413-1080
-    cards: [{row: title, text_from: claims.merged_count, bars: [1, 5]}]
+    source: shot-11            # the header take: the frame shows the claim ('8 in this run · 8 landed') at >= 18 px
+    label: "shot-11 (DPR 2): board header 'All done · Plan next · 8 in this run · 8 landed', tight"
+    segs: [{t_in: 0.10, t_out: 2.95, dur: 2.7118644}]
+    # header-only crop src x 540-1490, y 0-454 (2.02x): the only text in frame is the header (17 src px -> 34 px); the
+    # search box (x <= 529) and the Landed column (x >= 1500, IDs 13 src px) stay out, so nothing visible is < 18 px.
+    cam: [[0, 0.5286, 0.20, 0.4948]]
+    named:
+      - {name: "header count '8 in this run · 8 landed'", box: [845, 45, 1110, 95]}
+      - {name: "header pill 'All done · Plan next'", box: [560, 45, 815, 95]}
+    cards: [{row: title, text_from: claims.merged_count, bars: [0, 2]}]
     fx_in: {kind: flash, frames: 3}
-    contact_at: 3.0
-    notes: "Card text from claims.merged_count (shot11_legible = the shot-11 header take), never from this take's small text."
+    contact_at: 1.4
+    notes: "Card text from claims.merged_count (shot11_legible = this header take). shot-11-all8 is no longer used."
   - id: "16"
-    beats: [180, 196]
+    beats: [176, 196]          # v6: +1 bar from the shortened shot 15
     type: anime
     ui: true
     layout: full               # no card on this shot: full frame, no band
     source: shot-14b-dusk-r2
     label: "shot-14b-dusk-r2: dusk Outside with the 'Your workshop is now a Street' notice -> Street glide"
-    # usable: 0-2.5 s and 3.6-7.5 s only (2.7-3.5 s collapse/re-expand flicker; 1.0-1.8 s settings popover). 3.6-7.45 s at
-    # 0.71x: the notice reads alone on the dusk Outside, then Room view > Street (4.6 s) and the glide.
-    segs: [{t_in: 3.60, t_out: 7.45, dur: 5.4237288}]
+    # usable: 0-2.5 s and 3.6-7.5 s only (2.7-3.5 s collapse/re-expand flicker; 1.0-1.8 s settings popover). v6: 0.10-0.95 s
+    # real time (clean dusk Outside, before the popover), then 3.60-7.45 s at 0.65x: the notice appears and reads alone on
+    # the dusk Outside, then Room view > Street (4.6 s) and the glide.
+    segs: [{t_in: 0.10, t_out: 0.95, dur: 0.85}, {t_in: 3.60, t_out: 7.45, dur: 5.9296610}]
     cam: [[0, 0.5247, 0.516, 0.94]]      # header tab bar cropped (src y >= 50); notice (src x 1668-1898, y 108-186) in
     ui_text:
       - [0.865, 0.095, 0.992, 0.178]     # Street notice, top-right: never under a card

@@ -362,6 +362,9 @@ def build_parser():
     cpk.add_argument("--out", help="pack folder (default <project>/out/critique-pack, or critique.out in promo.yaml)")
     cpk.add_argument("--no-check", action="store_true", help="reuse the last saved check report instead of running promo check")
     cpk.add_argument("--video", action="store_true", help="also copy the primary render into the pack")
+    mc = add("move-cut", "move one cut on the beat grid (end the shot at <beat>, start the next at <new_beat>); edits promo.yaml", True)
+    mc.add_argument("beat", type=float)
+    mc.add_argument("new_beat", type=float)
     mp = add("mpeek", "grid of frames: out.png clip-id:t[:x0,y0,x1,y1] ...")
     mp.add_argument("out")
     mp.add_argument("specs", nargs="+")
@@ -413,6 +416,15 @@ def dispatch(spec, args):
             r = critique.build(spec, out=args.out, reuse_check=args.no_check, video=args.video,
                                log=lambda *a: print(*a, file=sys.stderr))
         return r, critique.print_summary, 0
+    if c == "move-cut":
+        from . import retime
+        try:
+            bpb = spec.grid.beats_per_bar if spec.grid else 4
+            r = retime.move_cut(args.project, spec.raw, args.beat, args.new_beat, bar_s=bpb * spec.timeline.B, beats_per_bar=bpb)
+        except retime.RetimeError as e:
+            r = dict(ok=False, error=str(e))
+        return r, (lambda r_: print(r_.get("error") or f"cut {r_['moved'][0]:g} -> {r_['moved'][1]:g}: {r_['shots']} "
+                                    f"(starts {r_.get('starts_s')}); run `promo check`")), 0 if r["ok"] else 1
     if c == "grid":
         r = cmd_grid(spec, args)
         return r, print_grid, 0 if r["ok"] else 1

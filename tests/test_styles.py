@@ -84,7 +84,8 @@ def test_presets_have_rules():
 
 def test_resolve_merges_overrides_and_rejects_unknown():
     st = styles.resolve(dict(style=dict(preset="anime-opening", band=dict(y0=780))))
-    assert st["band"]["y0"] == 780 and st["band"]["y1"] == 1040 and st["preset"] == "anime-opening"
+    assert st["band"]["y0"] == 780 and st["band"]["y1"] == 1076 and st["preset"] == "anime-opening"
+    assert st["band"]["rows"]["title"]["size"] == round(0.44 * 300)          # rows re-flow with an explicit y0 too
     assert styles.resolve(dict(style=dict(font=dict(path="x"))))["preset"] is None      # legacy specs untouched
     raw = yaml.safe_load(open(EXAMPLE))
     raw["style"]["preset"] = "vaporwave"
@@ -186,6 +187,48 @@ def test_one_fixed_band():
     assert status(_variant(overlay), "card-band") == "FAIL"
 
 
+def test_band_is_a_preset_parameter():
+    """A4: the caption band is one preset parameter (frac of the frame height, rows placed relative to it). The default
+    anime band is 15% (162 px at 1080p); every card stays inside it and its cap height stays >= band.min_cap_px."""
+    st = styles.resolve(dict(style=dict(preset="anime-opening")))
+    b = st["band"]
+    assert b["y0"] == 918 and 1080 - b["y0"] == 162 and b["y1"] <= 1080
+    assert b["y0"] < b["rows"]["title"]["cy"] < b["rows"]["sub"]["cy"] < b["y1"]
+    g = gates(_variant(lambda s: None))
+    assert g["card-band"][0] == "PASS" and "162 px = 15%" in g["card-band"][1], g["card-band"]
+    p = anime_project(copy.deepcopy(GOOD), claims=CLAIMS, style=dict(band=dict(frac=0.2)))
+    assert load_spec(p).style["band"]["y0"] == 864 and status(p, "card-band") == "PASS"
+    tiny = anime_project(copy.deepcopy(GOOD), claims=CLAIMS, style=dict(band=dict(frac=0.04)))     # 43 px band
+    g = gates(tiny)
+    assert g["card-band"][0] == "FAIL" and "cap height" in g["card-band"][1], g["card-band"]
+    from promo.shots.anime import card_geometry
+    sp = load_spec(_variant(lambda s: None))
+    for row, text in (("title", "REVIEWED, WITH THE REASON WHY."), ("sub", "Your AI dev crew, on your Mac."), ("tag", "macOS alpha")):
+        f = card_geometry(sp, row, text)["font"]
+        assert f.getbbox("H")[3] - f.getbbox("H")[1] >= 18, row
+
+
+def test_move_cut_retimes_one_slot_and_keeps_comments():
+    """03-slot swap helper: `promo move-cut <beat> <new>` moves one cut, edits only the two beats lines, refuses unsafe moves."""
+    from promo import retime
+    p = _variant(lambda s: None)
+    txt = open(p).read().replace("- id: '02'", "# keep me\n- id: '02'")
+    open(p, "w").write(txt)
+    raw = yaml.safe_load(open(p))
+    r = retime.move_cut(p, raw, 10, 8)
+    assert r["ok"] and r["shots"] == {"02": [4, 8], "03": [8, 12]}, r
+    raw2 = yaml.safe_load(open(p))
+    assert [s_["beats"] for s_ in raw2["shots"]][:3] == [[0, 4], [4, 8], [8, 12]]
+    assert "# keep me" in open(p).read()
+    assert status(p, "bar-cuts") == "PASS"
+    for bad in ((8, 6), (8, 30), (9, 8)):                 # card would outrun a half-bar shot / outside / no cut at 9
+        try:
+            retime.move_cut(p, yaml.safe_load(open(p)), *bad)
+            raise AssertionError(f"move {bad} should be refused")
+        except retime.RetimeError:
+            pass
+
+
 def test_card_never_covers_ui_text():
     def full_ui(s):                 # full-bleed UI shot with a card and no ui_text rects
         s[1]["layout"] = "full"
@@ -193,7 +236,7 @@ def test_card_never_covers_ui_text():
 
     def full_ui_rect(s):            # text in the lower third of the frame -> under the band card
         s[1]["layout"] = "full"
-        s[1]["ui_text"] = [[0.30, 0.76, 0.70, 0.84]]
+        s[1]["ui_text"] = [[0.30, 0.88, 0.70, 0.95]]
     g = gates(_variant(full_ui_rect))
     assert g["card-ui-clear"][0] == "FAIL" and "covers ui_text" in g["card-ui-clear"][1]
 

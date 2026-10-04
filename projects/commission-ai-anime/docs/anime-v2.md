@@ -1,5 +1,22 @@
 # commission-ai anime opening — v2 → v3 (Direction 2, style preset `anime-opening`)
 
+## v6 (2026-10-04): Zen v5 review (3.00; Polish 2) — fixes that need no new footage
+- **A4 band (Calm):** the caption band is a style-preset parameter now (`style.band.frac`, rows placed relative to it;
+  `promo/styles.py layout_band`). anime-opening default **15% = 162 px (y 918-1080)**, was 280 px (26%). Rows: title 71 px
+  (cap 50), sub 34 px, tag 28 px (right of the sub; cap >= 18 enforced by gate `card-band`). UI shots are framed in the
+  1920x918 area above it. `named` now FAILs an element "hidden by the caption band" (box below band y0, any layout).
+  Re-framed every UI shot whose crop edge cut a line or card: 04 (bottom edge between PAY-104 and PAY-105), 05-07 roll call
+  (edges in the gaps between board cards; 06/07 now show two whole cards), 08-11 chips (centre y 470: edges stay in text
+  gaps for the whole push; 08 moved right so the board sliver is out), 14 (crop ends above the Evidence 'QA decision' box).
+- **A3 (shot 15):** 5 bars -> **2 bars (2.71 s)**, on the bar. Picture is a header-only crop of the `shot-11` header take
+  (src x 540-1490, 2.02x): the only text in frame is 'All done · Plan next · 8 in this run · 8 landed' at **34.4 px** —
+  the frame now shows the claim the card makes. shot-11-all8 is no longer used. Freed 3 bars: 13 +1 (reason reads longer),
+  14 +1 (Merged lingers), 16 +1 (0.10-0.95 s clean dusk Outside, then 3.60-7.45 s at 0.65x). Runtime unchanged (76.192 s):
+  the music master is one mastered edit; the stop-time seam (beat 196) and final hit stay on their markers.
+- **03 slot (A1, still a placeholder):** swap recipe in promo.yaml + `promo move-cut <beat> <new_beat>` (moves one cut,
+  keeps comments; refuses unsafe moves). `promo move-cut 20 12` lands 03 (first real UI) at 4.07 s; 02's cards run to `end`.
+- **A2** (04 '8 TASKS.' card) left as is; waiting on shot-03-composer-dpr2 and shot-04b-ready8-dpr2.
+
 ## v5 (2026-10-04)
 New v1-1080 takes registered with `promo footage add` (sha256 match manifest.md): shot-16-prcard-tight, shot-08-dpr2,
 shot-12-dpr2-z179, shot-14b-dusk-r2, shot-11, shot-11-all8. Output `anime-v5`.
@@ -75,7 +92,7 @@ v2 output was `out/anime-v2-1080.mp4` (1920x1080 30 fps, 2288 frames, 76.267 s, 
 Music: Pixabay 324102 edit-v1 (`anime/music/edit-v1-master.wav`), grid `edit-v1.json` (177 BPM, 1 bar = 1.356 s);
 every cut is on a bar line; intro_hit, lift, peak_start, seam_A_to_B_outro, final_hit all land on cuts.
 
-## Text map (cards all in the fixed lower-third band y 800-1040)
+## Text map (cards all in the fixed band y 918-1076 since v6; v1-v5: y 800-1040 + 280 px solid band)
 | Shot | Beats | Picture | Card |
 |---|---|---|---|
 | 01 | 0-4 | dusk Workshop (shot-01-dusk), held | — |
@@ -86,10 +103,10 @@ every cut is on a bar line; intro_hit, lift, peak_start, seam_A_to_B_outro, fina
 | 05-07 | 52-76 | shot-10-dpr2 frozen, push on PAY-103/104/106 cards | CLAUDE CODE / CODEX / CURSOR + "on the job" |
 | 08-11 | 76-108 | shot-08-dpr2 PAY-104 drawer stepper, push-in on the active chip (Coding→PR raised) | CODING. / CHECKS. / PUSHED. / PR RAISED. |
 | 12 | 108-132 | shot-10-dpr2 needs-you card | …ONLY WHEN IT NEEDS YOU. |
-| 13 | 132-148 | shot-12-dpr2-z179 reviewer thread, full width (x 0-1856, 1.03x) | REVIEWED, WITH THE REASON WHY. |
-| 14 | 148-160 | shot-16-prcard-tight (DPR 2): PAY-110 PR card Open→Merged (7.70 s), push 1.0→1.05x, whole card in | MERGED. |
-| 15 | 160-180 | shot-11-all8: Landed column, all 8 Done, 1.2x tilt down | `claims.merged_count` → 8 TASKS · ALL MERGED |
-| 16-17 | 180-200 | shot-14b-dusk-r2 3.60-7.45 s: Street notice → Street glide; 17 freezes on 7.45 s | — |
+| 13 | 132-152 | shot-12-dpr2-z179 reviewer thread, full width (x 0-1856, 1.03x) | REVIEWED, WITH THE REASON WHY. |
+| 14 | 152-168 | shot-16-prcard-tight (DPR 2): PAY-110 PR card Open→Merged (7.70 s), push 1.0→1.05x, whole card in | MERGED. |
+| 15 | 168-176 | shot-11 header-only crop (2.02x): '8 in this run · 8 landed' | `claims.merged_count` → 8 TASKS · ALL MERGED |
+| 16-17 | 176-200 | shot-14b-dusk-r2 0.10-0.95 + 3.60-7.45 s: Street notice → Street glide; 17 freezes on 7.45 s | — |
 | 18 | 200-212 | morning Workshop (shot-15-morning) | GOOD MORNING. |
 | 19 | 212-224.767 | dusk freeze, blur/dim (ends with the music, 76.192 s) | commission-ai / Your AI dev crew, on your Mac. / macOS alpha (no URL) |
 
