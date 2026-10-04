@@ -25,4 +25,7 @@ record the full app commit + URL params).
 | shot-14b-dusk-r2 | 16 17 | 1920x1080 | 1 | 60.0 | `4a427fc0` | 2026-10-04 | yes | ?demo=promo&pause=1&workshopHour=19:30 + prefs stage ws-pay=workshop |
 | shot-11 | 04 15 | 1920x1080 | 2 | 60.0 | `4a427fc0` | 2026-10-04 | yes | ?demo=promo (scenario clock to 72.6 s, run complete) |
 | shot-11-all8 |  | 1920x1080 | 2 | 60.0 | `4a427fc0` | 2026-10-04 | yes | ?demo=promo (scenario clock to 72.6 s, run complete) |
+| shot-16-prcard-tighter | 14 | 1920x1080 | 2 | 60.0 | `4a427fc0` | 2026-10-04 | yes | ?demo=promo (scenario clock), PAY-110 node clicked at 59 s; record 61.0-70.5 s |
+| shot-11-dpr2 |  | 1920x1080 | 2 | 60.0 | `4a427fc0` | 2026-10-04 | yes | ?demo=promo (scenario clock to 72.6 s, run complete), canvas panned with real wheel scroll |
+| shot-04-dpr2-promo |  | 1920x1080 | 2 | 60.0 | `4a427fc0` | 2026-10-04 | yes | ?demo=promo (scenario clock 5.9-11.9 s) |
 <!-- promo:footage-table END -->

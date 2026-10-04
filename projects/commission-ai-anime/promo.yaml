@@ -4,7 +4,7 @@
 # slates: swapping one in is a config change (replace `placeholder:` with `source:` + `cam:`). No URL on the end card.
 # Heavy steps hold flock /tmp/commission-ai-cargo.lock (promo/lock.py) and run niced with ffmpeg -threads 2.
 project: {name: commission-ai-anime, title: "commission-ai anime opening (Direction 2)"}
-output: {name: anime-v6, resolution: 1080, fps: 30, duration: 76.192188}  # ends where the music master ends (76.192 s = 224.767 beats); 2286 frames, no tail pad
+output: {name: anime-v7, resolution: 1080, fps: 30, duration: 76.192188}  # ends where the music master ends (76.192 s = 224.767 beats); 2286 frames, no tail pad
 paths: {build: build, out: out}
 assets: assets.yaml
 footage: footage/manifest.yaml
@@ -25,13 +25,17 @@ music:
   track_offset: 0.0
   edit: {segments: [[0, 0, 224.76695]], crossfade: 0.0, gains: []}
 
-# Truth gate for the plan + peak cards: text is picked from what the shot-11 header take legibly shows. Evidence is the
-# '### Shot 11 (header counts)' entry of manifest.md ('8 in this run · 8 landed'), NOT shot-11-all8 (its card text is
-# ~9-11 px). cards: 8 is recorded because the header digits measure 17 src px x1.19-1.28 = 20.2-21.8 px in shot 04's crop
-# (named gate on shot 04 keeps that >= 18 px). logos stays null: no legible logo count in the header take.
+# Truth gate for the plan + peak cards: each card's text is picked from what its own shot legibly shows.
+#  - peak (15): the shot-11 header take, '### Shot 11 (header counts)' in manifest.md ('8 in this run · 8 landed'), NOT
+#    shot-11-all8 (card text ~9-11 px). cards: 8 because the header digits are 17 src px x2.02 = 34 px in shot 15's crop
+#    (named gate on shot 15 keeps that >= 18 px). logos stays null: no legible logo count in the header take.
+#  - plan (04, v7): shot-04-dpr2-promo, '### Shot 4 (DPR2 promo plan DAG)' ('fitted to the 8 cards'). cards: 8 is the
+#    number of whole cards in shot 04's crop (counted on the full-res frames: Wave 1 4, Wave 2 3, Wave 3 1; every card
+#    whole, nothing under the band). It is a count of cards, so no card ID is named on any card.
 claims:
   legible:
-    shot11_legible: {cards: 8, logos: null}        # shot-11 header '8 in this run · 8 landed' (>= 18 px in shot 04's crop)
+    shot11_legible: {cards: 8, logos: null}        # shot-11 header '8 in this run · 8 landed' (34 px in shot 15's crop)
+    shot04p_legible: {cards: 8}                    # shot-04-dpr2-promo: 8 whole task cards in shot 04's frame
   tables:
     merged_count:              # reusable selector: the hero caption uses the same table
       selector: shot11_legible
@@ -41,9 +45,9 @@ claims:
         - {logos: 3, text: "3 AGENTS · ALL MERGED"}
         - {cards: 8, text: "8 TASKS · ALL MERGED"}
         - {text: "ALL MERGED."}
-    plan_count:                # the 12.20 s plan card: '8 TASKS.' only when the shot-11 full board legibly shows 8 cards
-      selector: shot11_legible
-      evidence: {manifest: "${COMMISSION_AI_PROMO:-/workspace/videos/commission-ai-promo}/footage/v1-1080/manifest.md", section: "Shot 11 (header counts)"}
+    plan_count:                # the 12.20 s plan card: '8 TASKS.' only when shot 04's frame shows 8 whole cards
+      selector: shot04p_legible
+      evidence: {manifest: "${COMMISSION_AI_PROMO:-/workspace/videos/commission-ai-promo}/footage/v1-1080/manifest.md", section: "Shot 4 (DPR2 promo plan DAG)"}
       rows:
         - {cards: 8, text: "8 TASKS."}
         - {text: "THE PLAN.", confirm: "Marketing"}     # softened fallback, not final copy: Marketing to confirm
@@ -113,25 +117,34 @@ shots:
     fx_in: {kind: flash, frames: 3}
     contact_at: 1.0
 
-  # ---- 12.20 s: plan (4 bars) on the shot-11 header take (DPR 2): 'All done · Plan next' / '8 in this run · 8 landed' +
-  # the top of the Landed column. Static 3.0 s hold played at 0.55x under a slow push; header digits 17 src px.
+  # ---- 12.20 s: plan (4 bars) on shot-04-dpr2-promo (DPR 2, ?demo=promo, 1006x566 CSS clip, 1.909x): the plan of 8 as a
+  # DAG. Wave 1 (4 cards) Ready, Waves 2 (3) and 3 (1) with the app's real Blocked padlock. Zen (v7 A2): it still reads as
+  # the start of the run after the first card goes Running, because the other seven are still Ready or Blocked, so the
+  # card holds through that flip. Measured on the full-res frames: cards animate into place 0-0.40 s (PAY-104/105
+  # overlap) and are settled from 0.43 s; first card Running at 0.733 s; the SECOND card goes Running at 1.733 s, so the
+  # take is only used up to 1.70 s. The settled board is static apart from the flip, so the Ready state holds 2 bars
+  # (0.45-0.733 s stretched; identical frames), the flip plays real time ON bar 2, then the Running state holds 2 bars.
   - id: "04"
     beats: [36, 52]
     type: anime
     ui: true
-    source: shot-11
-    label: "shot-11 (DPR 2): board header 'All done · Plan next · 8 in this run · 8 landed' + Landed column"
-    segs: [{t_in: 0.10, t_out: 2.95, dur: 5.4237288}]
-    # v6: viewport is 1920x918 now; the crop's bottom edge sits in the gap between the PAY-104 card (ends src y 742) and
-    # PAY-105 (starts 767) for the whole push, so no card title is cut by the band (crop y 0-762 -> 0-748).
-    cam: [[0, 0.60, 0.25, 0.8300], [end, 0.60, 0.25, 0.8150]]
-    named:                     # the count the '8 TASKS.' card rests on (claims.plan_count): must read >= 18 px
-      - {name: "header count '8 in this run · 8 landed'", box: [845, 45, 1110, 95]}
-      - {name: "header pill 'All done · Plan next'", box: [560, 45, 815, 95]}
+    source: shot-04-dpr2-promo
+    label: "shot-04-dpr2-promo (DPR 2): the plan of 8 as a DAG, Wave 1 Ready -> first card Running, Waves 2/3 Blocked"
+    segs: [{t_in: 0.45, t_out: 0.7333333, dur: 2.7118644}, {t_in: 0.7333333, t_out: 0.90, dur: 0.1666667},
+           {t_in: 0.90, t_out: 1.70, dur: 2.5451977}]
+    # 1:1 (no upscale): the 8 cards span src x 67-1516, y 141-1043 (903 px) and the band-layout viewport is 1920x918, so
+    # crop src x 0-1920, y 133-1051 (cy 0.548148, ~8 px above and below the card stack). The Wave
+    # 1/2/3 headings + 'Ready to start' / '1 running · 3 queued' lines (src y 45-110) sit wholly above the crop, so no
+    # line is cut; every card is whole and nothing is under the band. IDs stay 16 px (not named on any card).
+    cam: [[0, 0.5, 0.548148, 1.0]]
+    named:                     # the 8 cards the '8 TASKS.' card counts (claims.plan_count): titles >= 18 px, none under the band
+      - {name: "top-left card title (Wave 1, first card)", box: [80, 200, 472, 234], t: 1.0}
+      - {name: "bottom-left card title, 2nd line (lowest text in frame)", box: [80, 934, 472, 967], t: 1.0}
+      - {name: "Wave 3 card title (Remove legacy pricing module)", box: [1118, 200, 1505, 234], t: 1.0}
     cards:
       - {row: title, text_from: claims.plan_count, bars: [0, 4]}
     contact_at: 1.0
-    notes: "The card's 8 is the header's '8 in this run · 8 landed' (claims.plan_count via shot11_legible.cards)."
+    notes: "The card's 8 is the count of whole task cards in frame (claims.plan_count via shot04p_legible.cards). No IDs on cards."
 
   # ---- 17.63 s lift: roll call, 2 bars each (real board-card logos, frozen frame of shot-10-dpr2 before Needs you)
   - id: "05"
@@ -274,22 +287,23 @@ shots:
     beats: [152, 168]          # v6: +1 bar (the Merged payoff lingers) from the shortened shot 15
     type: anime
     ui: true
-    source: shot-16-prcard-tight   # DPR 2, 776x436.5 CSS clip (2.474x): PAY-110 PR card, badge Open -> Merged
-    label: "shot-16-prcard-tight (DPR 2): PAY-110 pull request card, Open -> Merged"
-    # Flip verified on the frames: Open at src frame 461, Merged at frame 462 = 7.700 s (the card itself only lays out
-    # at frame 390 = 6.500 s, so start at 6.52). Flip lands at shot 1.17 s (out frame 1540), 6 frames before the 'MERGED.' card (bar 1 =
-    # 1.356 s); real time to just after the flip, then the static Merged hold at 0.6x fills the 3 bars.
+    source: shot-16-prcard-tighter   # DPR 2, 752x423 CSS clip (2.553x): Done stepper + PAY-110 PR card, Open -> Merged
+    label: "shot-16-prcard-tighter (DPR 2): Done stepper + PAY-110 pull request card, Open -> Merged"
+    # v7, measured on full-res 1920 frames of this take: the drawer reflows to Done at frame 390 = 6.500 s (card jumps up
+    # ~100 px and is whole from then on; before it the card's Builds pass row is cut off the bottom of the take) and the
+    # badge text flips Open -> Merged at frame 462 = 7.700 s (hard flip). Same timing as the -tight take, so the same
+    # segs: start 6.52 s (card whole), flip lands at shot 1.18 s, 6 frames before the 'MERGED.' card on bar 1 (1.356 s);
+    # real time to just after the flip, then the static Merged hold at 0.4x fills the 3 bars.
     segs: [{t_in: 6.52, t_out: 7.75, dur: 1.23}, {t_in: 7.75, t_out: 9.44, dur: 4.1937288}]
-    # Gentle push 1.0x -> 1.05x landing on the flip, then hold. 1.05x is the most that keeps the WHOLE card in frame:
-    # card outline src x 56-1866 (1811 px of 1920), y 386-692; crop at hold = src x 47-1876, y 158-920 (~9 px margins).
-    # 1.1x would cut ~47 src px off each side of the card.
-    # v6 (A4): viewport 1920x918: crop y 0-918 -> 6-880 ends above the Evidence 'QA decision' box (text from y 922), so
-    # no app line is cut by the band; the card (y 386-692) stays whole.
-    cam: [[0, 0.5005, 0.41, 1.0], [1.18, 0.5005, 0.4102, 0.95238], [end, 0.5005, 0.4102, 0.95238]]
+    # 1:1 hold, no push: the card spans src x 25-1893 (1869 of 1920 px), so there is no room to push in without cutting
+    # it; at 1.0x the Merged cap is 20 px native (src rows 761-780). Viewport 1920x918 (band layout): crop src y 125-1043
+    # (cy 0.5407): the 'Done' status row (icon ends y 107) is wholly above it, the stepper + 'Codex · Board run' + the
+    # whole card (y 715-1031) are inside, 12 px to spare at the bottom; nothing under the band. Evidence is out of the take.
+    cam: [[0, 0.5, 0.5407, 1.0]]
     named:                     # measured while 'MERGED.' is up
-      - {name: "PR card title (PAY-110 Remove legacy pricing module)", box: [200, 480, 900, 530], t: 2.0}
-      - {name: "PR badge 'Merged' (the flip)", box: [300, 415, 430, 470], t: 2.0}
-      - {name: "PR card 'Builds pass · 1 approval' line", box: [200, 600, 1000, 660], t: 2.0}
+      - {name: "PR card title (PAY-110 Remove legacy pricing module)", box: [175, 810, 860, 846], t: 2.0}
+      - {name: "PR badge 'Merged' (the flip)", box: [288, 752, 402, 781], t: 2.0}
+      - {name: "PR card 'Builds pass · 1 approval' line", box: [195, 948, 655, 988], t: 2.0}
     cards: [{row: title, text: "MERGED.", bars: [1, 4]}]     # no PR number on any card
     fx_in: {kind: flash, frames: 3}
     contact_at: 2.0

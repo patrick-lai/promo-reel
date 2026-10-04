@@ -1,5 +1,32 @@
 # commission-ai anime opening — v2 → v3 (Direction 2, style preset `anime-opening`)
 
+## v7 (2026-10-04): new v1-1080 takes (all `?demo=promo`), from 2029ceb
+Registered with `promo footage add` (sha256 match manifest.md): shot-16-prcard-tighter, shot-11-dpr2, shot-04-dpr2-promo.
+Output `anime-v7`. Runtime unchanged (76.192 s), no cut moved.
+1. **MERGED. (14) -> `shot-16-prcard-tighter`** (752x423 CSS clip, DPR 2, 2.553x; frame = Done stepper + PR card only,
+   Evidence / 'QA decision not recorded' out of the take). Measured on full-res 1920 frames (manifest sizes were not in
+   when started): Done reflow at frame 390 = **6.500 s** (card jumps up ~100 px and is whole from then; before it the
+   Builds pass row is off the bottom of the take), badge text Open -> Merged at frame 462 = **7.700 s** (hard flip) —
+   same timing as -tight, so the segs are unchanged and the flip still lands at shot 1.18 s, 6 frames before 'MERGED.'
+   on bar 1. Card spans src x 25-1893, so **no push** (1.0x, 1:1 pixels, no upscale WARN): badge 'Merged' **20.0 px**
+   cap, PR title 26 px, 'Builds pass · 1 approval' 23 px. Crop src y 125-1043 in the 1920x918 band-safe viewport: 'Done'
+   row wholly above, stepper + whole card inside (card bottom at viewport y 906 of 918), nothing under the band.
+2. **12.20 s '8 TASKS.' (04, Zen A2 ruling) -> `shot-04-dpr2-promo`**: the plan of 8 as a DAG, Wave 1 Ready, Waves 2/3
+   with the real Blocked padlock. Measured: cards animate in 0-0.40 s (PAY-104/105 overlap; not used), settled from
+   0.43 s; first card Running 0.733 s; **second card Running 1.733 s** -> take used 0.45-1.70 s only. Ready state held 2
+   bars (static frames), the Running flip plays real time **on bar 2**, Running state holds 2 bars: the card holds over
+   the whole 4 bars, through the flip, while the other seven stay Ready / Blocked. Framed 1:1 (crop src y 133-1051): the
+   8-card stack (903 src px) only just fits the 918 px viewport, so the Wave headings + '1 running · 3 queued' line sit
+   wholly above the crop (no line cut); every card whole, none under the band. Titles 18-19 px (named, pass), IDs 16 px
+   (not named, no ID on any card). Claim: new record `shot04p_legible: {cards: 8}` (8 whole cards counted in frame),
+   evidence `### Shot 4 (DPR2 promo plan DAG)` ('fitted to the 8 cards'); `plan_count` -> '8 TASKS.'.
+3. **15 (A3): not swapped**, stays the shot-11 header-only crop (2.02x, header 34.4 px, smallest visible text = header).
+   shot-11-dpr2's header (18 src px, x 605-1174) sits between the search box (to x 540) + a caret streak (x 558-560) and
+   the Landed heading (from x 1354), so a clean header-only window is <= 780 px wide (>= 2.46x): edge width 3.44 px vs
+   2.91 px now (softer, not sharper). A wider window cuts the search box or the PAY-103 card / puts PAY-104 under the
+   band. Card stays `8 TASKS · ALL MERGED` (frame unchanged: '8 in this run · 8 landed'). Waiting on shot-11-dpr2-r2.
+4. **03** stays the placeholder (shot-03-composer-dpr2 not landed; the `_rejects` composer take is skipped).
+
 ## v6 (2026-10-04): Zen v5 review (3.00; Polish 2) — fixes that need no new footage
 - **A4 band (Calm):** the caption band is a style-preset parameter now (`style.band.frac`, rows placed relative to it;
   `promo/styles.py layout_band`). anime-opening default **15% = 162 px (y 918-1080)**, was 280 px (26%). Rows: title 71 px
@@ -99,12 +126,12 @@ every cut is on a bar line; intro_hit, lift, peak_start, seam_A_to_B_outro, fina
 | 01b | 4-8 | dusk Workshop, steady push-in from the intro hit; flash + speed lines at head | commission-ai / Your AI dev crew (slam) |
 | 02 | 8-20 | night Workshop (shot-03-night, frame 12+), push continues | commission-ai / Your AI dev crew (carried over) |
 | 03 | 20-36 | PLACEHOLDER S3 composer | ONE ASK. → TONIGHT. |
-| 04 | 36-52 | shot-11 header take (DPR 2): 'All done · Plan next · 8 in this run · 8 landed', push 1.19→1.28x | `claims.plan_count` → 8 TASKS. |
+| 04 | 36-52 | shot-04-dpr2-promo (DPR 2): plan of 8 as a DAG, 1:1; Ready 2 bars → first card Running on bar 2 → hold | `claims.plan_count` (shot04p_legible) → 8 TASKS. |
 | 05-07 | 52-76 | shot-10-dpr2 frozen, push on PAY-103/104/106 cards | CLAUDE CODE / CODEX / CURSOR + "on the job" |
 | 08-11 | 76-108 | shot-08-dpr2 PAY-104 drawer stepper, push-in on the active chip (Coding→PR raised) | CODING. / CHECKS. / PUSHED. / PR RAISED. |
 | 12 | 108-132 | shot-10-dpr2 needs-you card | …ONLY WHEN IT NEEDS YOU. |
 | 13 | 132-152 | shot-12-dpr2-z179 reviewer thread, full width (x 0-1856, 1.03x) | REVIEWED, WITH THE REASON WHY. |
-| 14 | 152-168 | shot-16-prcard-tight (DPR 2): PAY-110 PR card Open→Merged (7.70 s), push 1.0→1.05x, whole card in | MERGED. |
+| 14 | 152-168 | shot-16-prcard-tighter (DPR 2): Done stepper + PAY-110 PR card Open→Merged (7.70 s), 1:1 hold, whole card in, badge 20 px | MERGED. |
 | 15 | 168-176 | shot-11 header-only crop (2.02x): '8 in this run · 8 landed' | `claims.merged_count` → 8 TASKS · ALL MERGED |
 | 16-17 | 176-200 | shot-14b-dusk-r2 0.10-0.95 + 3.60-7.45 s: Street notice → Street glide; 17 freezes on 7.45 s | — |
 | 18 | 200-212 | morning Workshop (shot-15-morning) | GOOD MORNING. |
@@ -117,8 +144,8 @@ Selected by `shot11_legible: {cards: N, logos: N}` (v5: `{cards: 8, logos: null}
 and FAILs if the selected row claims more than the manifest entry says. Same selector is reusable (`promo/claims.py`) for the hero caption.
 
 ## Placeholders waiting on footage
-S3 composer (03) only. v5 wired in shot-11 (04), shot-08-dpr2 (08-11), shot-12-dpr2-z179 (13), shot-16-prcard-tight (14),
-shot-11-all8 (15), shot-14b-dusk-r2 (16, 17). `talk-dag-tight` is deliberately not used (3 cards, different demo board).
+S3 composer (03) only. v7: shot-04-dpr2-promo (04), shot-08-dpr2 (08-11), shot-12-dpr2-z179 (13), shot-16-prcard-tighter
+(14), shot-11 header crop (15), shot-14b-dusk-r2 (16, 17). `talk-dag-tight` is deliberately not used (3 cards, different demo board).
 
 ## Script vs footage mismatches
 - v1-1080 numbering ≠ script S-numbers: shot-03 is the night Workshop (no composer take; the sent ask is visible in shot-10-dpr2); shot-15 is the morning Workshop, not the merge (that is shot-16, uncaptured).
