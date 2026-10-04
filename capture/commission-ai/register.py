@@ -31,7 +31,7 @@ def build_commands(notes, fdir, py, only=(), log=()):
         if not os.path.exists(f) or (only and cid not in only):
             continue
         flags = capmeta.clip_flags(n, fdir)
-        capture = n["url"].strip("`") + (" ; " + n["capture_extra"] if n.get("capture_extra") else "") + " ; " + capmeta.capture_text(flags)
+        capture = n["url"].replace("`", "") + (" ; " + n["capture_extra"] if n.get("capture_extra") else "") + " ; " + capmeta.capture_text(flags)
         framing = n["framing"] + ("; " + capmeta.framing_text(flags) if capmeta.framing_text(flags) else "")
         at = next((e["at"] for e in reversed(list(log)) if e.get("shot") == n["file"]), None)
         cmd = [py, "-m", "promo", "-p", PROJ, "footage", "add", f, "--id", cid, "--shots", *n["shots"], "--commit", n.get("commit", capmeta.DEFAULT_COMMIT),

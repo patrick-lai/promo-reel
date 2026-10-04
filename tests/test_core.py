@@ -232,7 +232,7 @@ def _cap_fixture(tmp):
     open(os.path.join(fdir, "capture-log.jsonl"), "w").write(json.dumps({"at": "2026-10-03T00:00:00Z", "shot": "b"}) + "\n")
     clip = dict(url="`?demo=promo`", beat="beat `x`", framing="DPR2 clip", notes="n", dpr=2)
     notes = {"header": ["- head"], "stills": [], "footer": [], "clips": [
-        dict(clip, shot="A", file="a", id="a-v1080", shots=["01"]),
+        dict(clip, shot="A", file="a", id="a-v1080", shots=["01"], url="`?demo=promo` (node clicked at 9.0 s)"),
         dict(clip, shot="B", file="b", id="b-v1080", shots=["02"], inject={"css": ["NO_TOASTS"], "cursor_overlay": False}),
         dict(clip, shot="C", file="missing", id="c-v1080", shots=["03"], inject={"css": []})]}
     np = os.path.join(tmp, "notes.json")
@@ -296,6 +296,7 @@ def test_capture_register_dry_run_writes_nothing():
         cmds = dict(reg.build_commands(notes, fdir, "PY", (), reg.read_log(fdir)))
         a, b = cmds["a-v1080"], cmds["b-v1080"]
         cap, fr = a[a.index("--capture") + 1], a[a.index("--framing") + 1]
+        assert "`" not in cap and cap.startswith("?demo=promo (node clicked at 9.0 s) ; ")   # inner backticks stripped too
         assert "HIDE_MONEY" in cap and "capture-overlay" in cap and "HIDE_MONEY" in fr and "capture-overlay cursor" in fr
         assert "NO_TOASTS" in b[b.index("--capture") + 1] and b[b.index("--framing") + 1] == "DPR2 clip"
         assert b[-2:] == ["--captured-at", "2026-10-03T00:00:00Z"] and "--captured-at" not in a
