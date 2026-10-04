@@ -87,8 +87,14 @@ no dissolve; `dusk -> day @ 5.50` or `{from, to, at}` = a change); with no field
 - **06b cursor**: source frames end at 3.35 s, before the cursor covers "Allow once"; the hold is kept.
 - **Beat 8a take swap**: `shot-16-prcard-tight-v1080` (landed 10:55) replaces shot-15-prcard. It holds only the PR
   card (1810 px wide), so the crop keeps its left part (x 30-1180, y 135-959, scale 1.25): 'Merged' pill 22.5 px, PR
-  title 32.6 px. Pill flips Open -> Merged at 7.70 s, synced to MAO's "merged"; 2.1 s of Merged on screen before 08b.
+  title 32.6 px. Pill flips Open -> Merged at 7.70 s, synced to MAO's "merged"; 2.1 s of Merged on screen before 08b. (Superseded crop numbers: see the take swaps line.)
   The stepper / 'Done' heading are not in this take and are no longer named.
+- **Take swaps (11:3x)**: S05 = `shot-08-dpr2-v1080` (same timeline, PR raised 7.80 s; x 300-1545 / y 100-992,
+  scale 1.157, labels 19.7-20.8 px, mattes right 18 / bottom 21). 08b = `shot-11-header-v1080` ('All done · Plan
+  next' / '8 in this run · 8 landed', 18.3 px at 1.075x; replaces the placeholder). `shot-11-all8` not used (9-11 px
+  text). `shot11_legible: {cards: false, logos: false}` -> beat 8 line unchanged. 08a crop is 1.15x (the lowest clean
+  push; 1.0x would need ~190 px mattes) + a 64 px bottom matte over the QA line. `shot-14b-dusk` has no manifest entry
+  yet: 09b keeps shot-14b.
 - **Beat 3 tightened**: the new MAO line is 2.46 s shorter, so the beat is 8.6 s; the 6.0 s take plays at 0.692x
   (`fit_clip: true`) instead of freezing for 2.6 s.
 - **Beat 3**: no overlay names ticket ids. PAY-105 is cut in the source itself, so the full top card cannot be framed.
