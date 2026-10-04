@@ -465,18 +465,20 @@ SCRIPT = "/workspace/promo/marketing/scripts-3-directions-v1.md"
 
 
 def test_anime_s03_ask_cards_match_marketing_copy():
-    """Marketing Lead (4 Oct, anime v9): 'ONE ASK.' 6.78-9.49 s while the ask types, 'TONIGHT.' 9.49-12.20 s to the cut,
-    2 bars each, in the band; the script record carries the same windows."""
+    """Marketing Lead (4 Oct, anime v10, Zen v9 condition): 'ONE ASK.' 4.07-8.14 s from the first UI frame while the ask
+    types, 'TONIGHT.' 8.14-12.20 s from the first bar after 'tonight' starts typing, to the cut; 3 bars each, in the band;
+    the script record carries the same windows."""
     from promo.shots.anime import card_times
     spec = load_spec(ANIME)
     s03 = next(s for s in spec.shots if s.id == "03")
     got = [(c["text"], round(s03.t0 + card_times(spec, s03, c)[0], 2), round(s03.t0 + card_times(spec, s03, c)[1], 2))
            for c in s03.cfg["cards"]]
-    assert got == [("ONE ASK.", 6.78, 9.49), ("TONIGHT.", 9.49, 12.2)], got
+    assert got == [("ONE ASK.", 4.07, 8.14), ("TONIGHT.", 8.14, 12.2)], got
+    assert [c["bars"] for c in s03.cfg["cards"]] == [[0, 3], [3, 6]]
     assert all(c["row"] == "title" for c in s03.cfg["cards"])
     if os.path.exists(SCRIPT):
         row = next(ln for ln in open(SCRIPT, encoding="utf-8") if ln.startswith("| The ask |"))
-        assert '"ONE ASK." 6.78–9.49' in row and '"TONIGHT." 9.49–12.20' in row, row
+        assert '"ONE ASK." 4.07–8.14' in row and '"TONIGHT." 8.14–12.20' in row, row
 
 
 def test_anime_s03_typing_never_faster_than_captured_and_holds_short():

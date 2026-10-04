@@ -4,7 +4,7 @@
 # slates: swapping one in is a config change (replace `placeholder:` with `source:` + `cam:`). No URL on the end card.
 # Heavy steps hold flock /tmp/commission-ai-cargo.lock (promo/lock.py) and run niced with ffmpeg -threads 2.
 project: {name: commission-ai-anime, title: "commission-ai anime opening (Direction 2)"}
-output: {name: anime-v9, resolution: 1080, fps: 30, duration: 76.192188}  # ends where the music master ends (76.192 s = 224.767 beats); 2286 frames, no tail pad
+output: {name: anime-v10, resolution: 1080, fps: 30, duration: 76.192188}  # ends where the music master ends (76.192 s = 224.767 beats); 2286 frames, no tail pad
 paths: {build: build, out: out}
 assets: assets.yaml
 footage: footage/manifest.yaml
@@ -92,10 +92,12 @@ shots:
   # v9 (Zen A7): every keystroke plays at the captured speed; the 1.79 s the 6-bar slot needs on top of the 6.35 s take is
   # spread over three still moments instead of one 2.4 s stretch at the end:
   #   placeholder 0-0.333 s -> 1.10 s (typing starts at shot 1.10 s = 5.17 s)
-  #   pause after 'tonight.' (real 3.333-3.833 s, 0.50 s) -> 1.05 s (static frames 3.40-3.80 s stretched)
+  #   pause after 'tonight.' -> 1.05 s (src 3.40-3.80 s stretched 0.42x; NOTE (re-measured v10): the last two keys of
+  #   line 1, the final 't' at 3.433 s and '.' at 3.533 s, fall inside this segment, so they play slowed, not 1x)
   #   caret-only end hold after the last key (real 5.85-6.33 s, 0.48 s) -> 0.97 s
-  # Shot-local events: 't' of 'tonight' 3.60 s (7.67 s), line 1 done 4.10 s (8.17 s), Shift+Enter 5.15 s, line 2
-  # 5.57-7.17 s (9.63-11.24 s), end hold 7.17-8.14 s. 'tonight' is on screen before the TONIGHT. card (bar 4 = 9.49 s).
+  # Shot-local events: 't' of 'tonight' 3.60 s (7.67 s), final 't' 4.25 s (8.31 s), '.' 4.48 s (8.55 s), Shift+Enter 5.15 s, line 2
+  # 5.57-7.17 s (9.63-11.24 s), end hold 7.17-8.14 s. v10: the TONIGHT. card (bar 3 = 8.14 s) lands 0.18 s before the
+  # word's last letter.
   # Swap back to a slate = replace `source:`..`named:` with the old `placeholder:` block (git 41ddc06).
   - id: "03"
     beats: [12, 36]
@@ -116,12 +118,12 @@ shots:
     named:                     # the typed ask (after Shift+Enter): >= 20 px target
       - {name: "typed ask line 1 'Ship the checkout revamp tonight.'", box: [410, 755, 1100, 806], t: 7.5}
       - {name: "typed ask line 2 'No broken builds.'", box: [410, 815, 1000, 858], t: 7.5}
-    cards:                     # v9 copy (Marketing Lead): ONE ASK. 6.78-9.49 s, TONIGHT. 9.49-12.20 s (2 bars each)
-      - {row: title, text: "ONE ASK.", bars: [2, 4]}      # while the ask types (typing runs 5.17-11.24 s)
-      - {row: title, text: "TONIGHT.", bars: [4, 6]}      # 'tonight' already typed at 7.67 s, so the card starts on the bar
+    cards:                     # v10 copy (Marketing Lead, Zen v9 condition): ONE ASK. 4.07-8.14 s, TONIGHT. 8.14-12.20 s (3 bars each)
+      - {row: title, text: "ONE ASK.", bars: [0, 3]}      # from the first UI frame, while the ask types (typing from 5.17 s)
+      - {row: title, text: "TONIGHT.", bars: [3, 6]}      # first bar after 'tonight' starts typing (7.67 s); word complete 8.31 s
     fx_in: {kind: flash, frames: 3}
     contact_at: 5.6
-    notes: "Real keystrokes at the captured 10 chars/s, not sent in the take (send button lit at the end); no card claims a send. Bars 0-2 (4.07-6.78 s) carry no card: the placeholder, then the ask starting to type."
+    notes: "Real keystrokes at the captured 10 chars/s, not sent in the take (send button lit at the end); no card claims a send."
 
   # ---- 12.20 s: plan (4 bars) on shot-04-dpr2-promo (DPR 2, ?demo=promo, 1006x566 CSS clip, 1.909x): the plan of 8 as a
   # DAG. Wave 1 (4 cards) Ready, Waves 2 (3) and 3 (1) with the app's real Blocked padlock. Zen (v7 A2): it still reads as
