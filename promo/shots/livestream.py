@@ -1,7 +1,7 @@
 """`livestream` shot: app screen + Live2D hosts + chat strip, laid out by promo.livestream.layout_at.
 
 Shot keys (per shot; the show-level layout, hosts and chat live in the spec's `livestream:` block):
-    screen: {source: <footage clip id>, t_in: 0, speed: 1, cam: [cx, cy, w]}   real app footage (never edited)
+    screen: {source: <footage clip id>, t_in: 0, speed: 1, tail: {from: src s, speed: 0.7}, cam: [cx, cy, w]}   real app footage (never edited)
     screen: {source: ..., hold_in: 0.8}                                        hold the clip's first frame 0.8 s, then play
     screen: {card: {title: "...", subtitle: "...", lines: ["..."]}}            generated title/end card on the stream screen
     screen: {placeholder: "APP FOOTAGE"}                                       grey placeholder for drafts / demos
@@ -136,6 +136,17 @@ def _style(ctx):
     return LS.style(LS.cfg(ctx.spec))
 
 
+def src_time(sc, t, hold_in=0.0):
+    """Source time of shot-local time t: hold the first frame `hold_in` s, then play at `speed`; after source time
+    `tail.from` (a synced flip / click) play at `tail.speed` (a slower tail instead of freezing on the last frame)."""
+    sp = float(sc.get("speed", 1.0))
+    st = float(sc.get("t_in", 0.0)) + max(0.0, t - hold_in) * sp
+    tl = sc.get("tail")
+    if tl and st > float(tl["from"]):
+        st = float(tl["from"]) + (st - float(tl["from"])) * float(tl["speed"]) / sp
+    return st
+
+
 def stream_bg(ctx):
     """Static stream background (no motion). plain: dark radial glow; framed-glow: diagonal navy -> violet gradient
     with faint grain and a very faint grid."""
@@ -186,7 +197,16 @@ def apply_matte(im, matte, K=1):
         pad = np.pad(prof, ((k, k), (0, 0)), mode="edge")
         return np.stack([np.median(pad[i:i + 2 * k + 1], axis=0) for i in range(len(prof))])
     fe = int(6 * K)
-    for side, px in matte.items():
+
+    def span(v, L):
+        """Weight along the edge: 1 inside [from, to] (fractions of the edge length), 6 px feather at the ends."""
+        if not isinstance(v, dict) or ("from" not in v and "to" not in v):
+            return np.ones(L)
+        i = np.arange(L, dtype=np.float32)
+        lo, hi = float(v.get("from", 0.0)) * L, float(v.get("to", 1.0)) * L
+        return np.clip(np.minimum(i - lo, hi - i) / max(1, fe) + 0.5, 0, 1)
+    for side, v in matte.items():
+        px = v.get("px", 0) if isinstance(v, dict) else v      # px, or {px, from, to}: a band along part of the edge only
         n = int(round(float(px) * K))
         if n <= 0:
             continue
@@ -194,14 +214,16 @@ def apply_matte(im, matte, K=1):
             strip = a[:, n:n + 40 * K] if side == "left" else a[:, W - n - 40 * K:W - n]
             col = smooth(np.median(strip, axis=1))                       # (H, 3)
             al = np.ones(n) if fe == 0 else np.clip(((n - 1 - np.arange(n)) if side == "left" else np.arange(n)) / fe, 0, 1)
+            w2 = span(v, H)[:, None] * al[None, :]                       # (H, n)
             sl = slice(0, n) if side == "left" else slice(W - n, W)
-            a[:, sl] = a[:, sl] * (1 - al[None, :, None]) + col[:, None, :] * al[None, :, None]
+            a[:, sl] = a[:, sl] * (1 - w2[..., None]) + col[:, None, :] * w2[..., None]
         else:
             strip = a[n:n + 40 * K] if side == "top" else a[H - n - 40 * K:H - n]
             col = smooth(np.median(strip, axis=0))                       # (W, 3)
             al = np.clip(((n - 1 - np.arange(n)) if side == "top" else np.arange(n)) / max(1, fe), 0, 1) if fe else np.ones(n)
+            w2 = al[:, None] * span(v, W)[None, :]                       # (n, W)
             sl = slice(0, n) if side == "top" else slice(H - n, H)
-            a[sl] = a[sl] * (1 - al[:, None, None]) + col[None, :, :] * al[:, None, None]
+            a[sl] = a[sl] * (1 - w2[..., None]) + col[None, :, :] * w2[..., None]
     return Image.fromarray(np.clip(a, 0, 255).astype(np.uint8))
 
 
@@ -522,7 +544,7 @@ class Livestream(ShotType):
             def draw_header():
                 comp(out, hdr_cache[key], hb[0] * K, hb[1] * K)
             if src is not None:
-                st = sc.get("t_in", 0.0) + max(0.0, t - hold_in) * sc.get("speed", 1.0)
+                st = src_time(sc, t, hold_in)
                 im = None
                 for at, dd, bsrc in diss:
                     if at - dd / 2 <= st < at + dd / 2:

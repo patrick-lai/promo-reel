@@ -36,6 +36,9 @@ def sha(p):
     return h.hexdigest()
 
 
+MIN_SPEED = 0.7        # slowest playback (UX review v3: keep motion natural)
+
+
 def clip_path(cid):
     """Footage path for a manifest clip id (None if the id is not registered or the file is absent)."""
     mp = expand(FOOTAGE)
@@ -88,6 +91,9 @@ def tod_change(clip, prof):
     ("dusk") = constant, no dissolve; "dusk -> day @ 5.50" or {from, to, at} = a change at that clip time. No field ->
     the plan profile's `time_of_day` (same forms) for the current take."""
     v, origin = manifest_entry(clip).get("time_of_day"), "manifest"
+    pv = prof.get("time_of_day")
+    if isinstance(pv, dict) and pv.get("override"):     # measured change the manifest's constant value misses (logged)
+        v, origin = pv, "plan profile (override: " + str(pv.get("why", "measured")) + ")"
     if v is None:
         v, origin = manifest_md_tod(clip), "manifest.md"
     if v is None:
@@ -265,9 +271,9 @@ def resolve_segments(plan):
             part = sg.get("part")
             if part == "b":
                 prof = {"continue": True, **({"sync": prof["sync_b"]} if "sync_b" in prof else {}),
-                        **{k: prof[k] for k in ("cam", "named") if k in prof}}
+                        **{k: prof[k] for k in ("cam", "named", "speed", "tail_speed", "matte") if k in prof}}
             elif part == "a":
-                prof = {k: v for k, v in prof.items() if k in ("t_in", "until_src", "cam", "named")}
+                prof = {k: v for k, v in prof.items() if k in ("t_in", "until_src", "cam", "named", "speed", "matte")}
             prof.pop("sync_b", None)
             if part == "b" and out and "until_src" not in out[-1]:
                 prof["from"] = {"line": 2, "plus": -0.15}   # take without a split profile: cut on the second line
@@ -329,7 +335,7 @@ def build(plan):
     for i, sg in enumerate(segs):
         a = f0s[i]
         if "until_src" in sg:
-            b = a + fr(sg["until_src"] - sg.get("t_in", 0.0))
+            b = a + fr((sg["until_src"] - sg.get("t_in", 0.0)) / float(sg.get("speed", 1.0)))
             f0s[i + 1] = b if i + 1 < len(f0s) else b
         b = f0s[i + 1] if i + 1 < len(f0s) else end_f
         bounds.append([a, b])
@@ -349,23 +355,31 @@ def build(plan):
             if sg.get("continue"):
                 t_in = clip_t[sg["clip"]]
             hold = 0.0
-            if "sync" in sg:
+            spd = float(sg.get("speed", 1.0))   # playback speed (>= MIN_SPEED; 1.0 = real time)
+            assert MIN_SPEED <= spd <= 1.0, (sg["id"], spd)
+            if sg.get("sync"):
                 y = sg["sync"]
                 vo_local = at_line(sg["beat"], y["line"], y["at"]) - a / fps
-                need = y["src"] - vo_local          # clip time at segment start for the moment to land on cue
+                need = y["src"] - vo_local * spd    # clip time at segment start for the moment to land on cue
                 if need >= t_in and not sg.get("continue"):
                     t_in = need
                 else:
-                    hold = max(0.0, vo_local - (y["src"] - t_in))
+                    hold = max(0.0, vo_local - (y["src"] - t_in) / spd)
             if "end_src" in sg:
-                hold = max(hold, dur - (sg["end_src"] - t_in))
+                hold = max(hold, dur - (sg["end_src"] - t_in) / spd)
             if sg.get("fit_clip") and clip_path(sg["clip"]):  # clip shorter than its segment: play it slower, never freeze
                 import subprocess
                 src_dur = float(subprocess.check_output(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of",
                                                          "csv=p=0", clip_path(sg["clip"])], text=True).strip())
                 show = dur - hold
                 if show > 0 and src_dur - t_in - 0.05 < show:
-                    sc["speed"] = round((src_dur - t_in - 0.05) / show, 3)
+                    sc["speed"] = round(max(MIN_SPEED, (src_dur - t_in - 0.05) / show), 3)
+            if spd != 1.0:
+                sc["speed"] = spd
+            if sg.get("tail_speed") and sg.get("sync"):      # after the synced moment (a flip / a click): play slower
+                ts = float(sg["tail_speed"])
+                assert MIN_SPEED <= ts <= 1.0, (sg["id"], ts)
+                sc["tail"] = {"from": float(sg["sync"]["src"]), "speed": ts}
             sc["t_in"] = round(t_in, 3)
             if hold > 0:
                 sc["hold_in"] = round(hold, 3)
@@ -374,10 +388,10 @@ def build(plan):
             if sg.get("matte"):
                 sc["matte"] = sg["matte"]          # promo matte over cut UI at the crop edge (logged in the notes)
             tc_ = tod_change(sg["clip"], sg)
-            shown = (t_in, t_in + max(0.0, dur - hold))
+            shown = (t_in, t_in + max(0.0, dur - hold) * float(sc.get("speed", 1.0)))
             if tc_ and shown[0] < tc_[0] < shown[1]:            # dissolve over the snap, only if this segment shows it
                 sc["dissolve"] = [{"at": tc_[0], "dur": DISSOLVE, "why": f"time of day {tc_[1]} -> {tc_[2]} ({tc_[3]})"}]
-            clip_t[sg["clip"]] = round(t_in + max(0.0, dur - hold), 4)
+            clip_t[sg["clip"]] = round(t_in + max(0.0, dur - hold) * float(sc.get("speed", 1.0)), 4)
             s["screen"] = sc
         else:
             s["screen"] = sg["screen"]

@@ -632,7 +632,8 @@ def edge_rows(spec, c, min_runs=4):
         ys = slice(int(y0), int(y0 + bh))
         n += 1
         for side in ("left", "right"):
-            inset = float(mt.get(side, 0)) * k
+            mv = mt.get(side, 0)
+            inset = float(mv.get("px", 0) if isinstance(mv, dict) else mv) * k
             x = int(x0 + 1 + inset) if side == "left" else int(x0 + bw - 2 - inset)
             r_ = edge_runs(g[ys, x])
             if r_ >= min_runs:

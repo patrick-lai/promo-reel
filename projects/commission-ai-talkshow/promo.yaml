@@ -143,8 +143,8 @@ vo:
     alt_files:
     - vo/superseded/beat06_line01_hiyori.v1.wav
   - id: beat06_line02
-    shot: 06b
-    at: 0.17
+    shot: 06a
+    at: 2.337
     host: Mao
     text: That's "Needs you". It only taps me on the shoulder when it actually needs a decision. Click Allow once and the agent gets back to work.
     file: vo/beat06_line02_mao.wav
@@ -257,8 +257,8 @@ shots:
   beat: 2
   screen:
     source: shot-03
-    t_in: 0.0
-    hold_in: 10.695
+    speed: 0.7
+    t_in: 0.5
     cam:
     - 0.33073
     - 0.76
@@ -281,7 +281,7 @@ shots:
     src_px: 2160
     at: 6.0
     min_px: 0
-  note: 'Composer (S3). v3 hook: starts at 7.5 s (first app UI) under the rest of beat 1''s VO; holds its first frame until the typing sync'
+  note: 'Composer (S3). v3 hook: starts at 7.5 s (first app UI) under the rest of beat 1''s VO. v4: 0.7 s still, then the typing at 0.7x (no 10.7 s hold)'
 - id: '03'
   beats:
   - 771
@@ -290,7 +290,7 @@ shots:
   beat: 3
   screen:
     source: talk-dag-tight-v1080
-    speed: 0.692
+    speed: 0.7
     t_in: 0.0
     cam:
     - 0.4133
@@ -332,12 +332,13 @@ shots:
   beat: 4
   screen:
     source: shot-05-v1
+    speed: 0.7
     t_in: 0.0
-    hold_in: 4.139
+    hold_in: 3.668
     cam:
-    - 0.551
-    - 0.583
-    - 0.375
+    - 0.54349
+    - 0.5963
+    - 0.32552
   named:
   - name: PAY-103 title
     box:
@@ -381,14 +382,18 @@ shots:
   beat: 5
   screen:
     source: shot-08-dpr2-v1080
+    tail:
+      from: 7.8
+      speed: 0.7
     t_in: 0.01
     cam:
-    - 0.48047
-    - 0.50556
-    - 0.64844
+    - 0.48021
+    - 0.50602
+    - 0.6375
     matte:
-      right: 18
-      bottom: 21
+      right:
+        px: 12
+        to: 0.38
   named:
   - name: Coding
     box:
@@ -416,9 +421,9 @@ shots:
     at: 7.9
   - name: PR raised
     box:
-    - 1410
+    - 1414
     - 522
-    - 1536
+    - 1532
     - 556
     src_px: 1080
     at: 7.9
@@ -426,16 +431,17 @@ shots:
 - id: 06a
   beats:
   - 1633
-  - 1698
+  - 1725
   type: livestream
   beat: 6
   screen:
     source: shot-10-dpr2-v1080
+    speed: 0.7
     t_in: 1.2
     cam:
-    - 0.67708
+    - 0.68698
+    - 0.59537
     - 0.6
-    - 0.63542
   named:
   - name: Needs you pill
     box:
@@ -465,18 +471,22 @@ shots:
   note: PAY-106 flips to Needs you as HIYORI asks about the pill
 - id: 06b
   beats:
-  - 1698
+  - 1725
   - 1964
   type: livestream
   beat: 6
   screen:
     source: shot-10-dpr2-v1080
-    t_in: 3.367
-    hold_in: 4.287
+    speed: 0.7
+    tail:
+      from: 3.95
+      speed: 0.7
+    t_in: 3.347
+    hold_in: 3.108
     cam:
-    - 0.67708
+    - 0.68698
+    - 0.59537
     - 0.6
-    - 0.63542
   named:
   - name: Needs you pill
     box:
@@ -512,8 +522,9 @@ shots:
   beat: 7
   screen:
     source: shot-12-v1080
+    speed: 0.7
     t_in: 2.0
-    hold_in: 5.65
+    hold_in: 3.829
     cam:
     - 0.21771
     - 0.37222
@@ -540,6 +551,9 @@ shots:
   beat: 8
   screen:
     source: shot-16-prcard-tight-v1080
+    tail:
+      from: 7.7
+      speed: 0.85
     t_in: 4.892
     cam:
     - 0.34167
@@ -613,6 +627,7 @@ shots:
   beat: 9
   screen:
     source: shot-01-dusk-v1080
+    speed: 0.934
     t_in: 5.0
     cam:
     - 0.52
@@ -627,12 +642,17 @@ shots:
   type: livestream
   beat: 9
   screen:
-    source: shot-14b-v1080
-    t_in: 4.065
+    source: shot-14b-dusk-v1080
+    speed: 0.7
+    t_in: 3.195
+    cam:
+    - 0.69531
+    - 0.44259
+    - 0.60938
     dissolve:
-    - at: 5.5
+    - at: 4.2
       dur: 0.4
-      why: time of day dusk -> day (plan profile)
+      why: 'time of day dusk -> day (plan profile (override: manifest caveat: Street renders bright; luma 59 -> 113 at 4.20 s))'
   edge_check: false
   note: Outside -> Street (S14b); screen top-right kept clear
 - id: '10'
