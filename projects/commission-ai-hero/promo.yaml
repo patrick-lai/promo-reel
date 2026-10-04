@@ -1,8 +1,8 @@
-# commission-ai 60 s hero v4 (v3 + Zen v3 notes; see docs/hero-v4.md): v1 structure re-cut on the v1-1080 recapture (app main 4a427fc0) + Zen's v1 notes.
+# commission-ai 60 s hero v5 (v4 + S11 on shot-11-dpr2-r2, caption ALL LANDED; see docs/hero-v5.md): v1 structure re-cut on the v1-1080 recapture (app main 4a427fc0) + Zen's v1 notes.
 # Shot order (locked): 01 02 03 04 05 06 08(+09) 10 12 15 11 16 14b 17. Shot 13 out; shot 07 dropped (see docs/hero-v2.md).
 # Paths are relative to this file; ${VAR:-default} env expansion everywhere.
-project: {name: commission-ai-hero, title: "commission-ai hero v4"}
-output: {name: hero-v4, resolution: 1080, fps: 30, duration: 60.0}     # resolution 1080 or 2160; CLI --scale / PROMO_SCALE override
+project: {name: commission-ai-hero, title: "commission-ai hero v5"}
+output: {name: hero-v5, resolution: 1080, fps: 30, duration: 60.0}     # resolution 1080 or 2160; CLI --scale / PROMO_SCALE override
 paths: {build: build, out: out}
 assets: assets.yaml                       # music / vo models / sfx / font (licence gate)
 footage: footage/manifest.yaml            # raw clips by id: absolute path + sha256 + provenance (footage never in git)
@@ -186,17 +186,23 @@ shots:
   - id: "11"
     beats: [70, 76]
     type: clip
-    label: "v1-1080/shot-11-dpr2.mov (header '8 in this run · 8 landed') then shot-11-all8.mov (all 8 Done cards), main 4a427fc0, DPR 2"
+    label: "v1-1080/shot-11-dpr2-r2.mov (header '8 in this run · 8 landed') then shot-11-all8.mov (all 8 Done cards), main 4a427fc0, DPR 2"
     segs:
-      - {source: shot-11-dpr2-v1080, t_in: 0.25, t_out: 2.70, dur: 2.45,
-         cam: [[0, 0.5562, 0.40, 0.82], [2.45, 0.5562, 0.40, 0.80]]}    # v4: header + Landed column side by side, 1.22x -> 1.25x, top anchored; column kept right of the caption pill
+      # v5: shot-11-dpr2-r2, static 1.557x crop = src x 646-1879, y 27-721 (1233x694 of 1920x1080). Every edge sits in a clean gap:
+      #   left 6 px after the search box (ends x 640) and before the 'All done' pill; right 9 px after the cards (end x 1870);
+      #   top above the header row (y 40); bottom in the PAY-104 / PAY-105 gap (y 703-735). No clipped text on any edge.
+      #   <= 1.25x is not possible with clean edges (the left edge would cut the search box, the bottom a card). The column
+      #   lands at output x ~1272, right of the caption pill (x ~658-1262).
+      - {source: shot-11-dpr2-r2-v1080, t_in: 0.25, t_out: 2.70, dur: 2.45,
+         cam: [[0, 0.65755, 0.34630, 0.64219], [2.45, 0.65755, 0.34630, 0.64219]]}
       - {source: shot-11-all8-v1080, t_in: 1.0, t_out: 2.2167, dur: 1.2167,
          cam: [[0, 0.55, 0.5, 0.88], [1.2167, 0.55, 0.5, 0.8333]]}              # v3: all 8 cards + Plan more, 1.14x -> 1.2x
     cam: [[0, 0.5, 0.5, 1.0], [end, 0.5, 0.5, 1.0]]
     overlays:
-      # claim only what the caption frame shows: '8 in this run · 8 landed' (8 tasks, all landed = 'Merged and closed').
-      # The header take shows 2 agent logos (Claude, Codex; Cursor's PAY-106 logo is below the frame) -> no '3 AGENTS'.
-      - {type: caption, text: "8 TASKS · ALL MERGED", t: [0.2, 2.42]}
+      # v5 (team decision): word for word with the header '8 in this run · 8 landed'. Must equal claims.landed_count
+      # (tools/claims_v5.py runs promo.claims.audit and asserts this caption == the selected row). No '3 AGENTS': the frame
+      # shows 2 logos (Claude, Codex; Cursor's PAY-106 is below the frame).
+      - {type: caption, text: "8 TASKS · ALL LANDED", t: [0.2, 2.42]}
     notes: "Caption over the header segment only (the all-8 column fills the bottom-centre, so a caption there would cover cards)."
 
   - id: "16"
@@ -241,6 +247,21 @@ shots:
       - {type: text, text: "Your AI dev crew, on your Mac.", cy: 590, size: 50, weight: Medium, t: [0.25, 99], fade_in: 0.3}
       - {type: pill, text: "macOS alpha", style: light, cy: 690, size: 32, t: [0.5, 99], fade_in: 0.3}
     notes: "End card, no URL. Music hard-stops at beat 96; the last 1.2 s holds on the card."
+
+# Claims (promo/claims.py): the S11 caption line is chosen by what the footage manifest says the frame legibly shows.
+# shot11_legible = shot-11-dpr2-r2 header '8 in this run · 8 landed' (cap 21 px source, 32.7 px in the cut): cards 8 (from
+# '8 in this run'), landed 8 (from '8 landed'). logos left null: only 2 of the 3 agent logos are in the S11 crop.
+claims:
+  legible:
+    shot11_legible: {cards: 8, landed: 8, logos: null}
+  tables:
+    landed_count:
+      selector: shot11_legible
+      evidence: {manifest: /workspace/videos/commission-ai-promo/footage/v1-1080/manifest.md, section: "Shot 11 (DPR2 r2, header 20 px + Landed column)"}
+      rows:
+        - {cards: 8, landed: 8, text: "8 TASKS · ALL LANDED"}     # word for word with the header (team decision, 4 Oct)
+        - {landed: 8, text: "ALL LANDED."}
+        - {text: "LANDED."}
 
 vo:
   engine: kokoro

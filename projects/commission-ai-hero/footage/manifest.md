@@ -323,6 +323,50 @@
 - **Demo beat:** Same beat as shot-16-prcard-tight: PAY-110 drawer Running -> Checks 62.3 s -> Pushed 63.1 s -> PR raised #438 63.9 s -> Merged 67.5 s, hold to 9.50 s. End frame: status 'Done' with the full stepper, 'Codex · Board run · +1 -1', then 'Pull request' and the card '#438 [Merged] · PAY-110 Remove legacy pricing module · commission/PAY-110-legacy-pricing -> main · Builds pass · 1 approval · 1 comment · Open'
 - **Commit:** `4a427fc05f829d7b2e4ed7ea642d77340554f7f8` (main)
 - **Framing:** DPR 2. Clip x1142 y122 752x423 CSS (16:9), scale 2.553x. The bottom edge sits just above the Evidence section, so the Evidence / 'QA decision not recorded' block is out of frame in the final state. In the final frame the card spans output x 25-1894 and ends at y 1032 (~25 px side margins, ~48 px bottom margin).
-- **Notes / Zen checks:** Measured on the 1920 frame at 9.0 s: 'Merged' badge cap height (M) ~19-20 px (glyph rows 761-780 incl. antialias; badge text box 95x26 px). PR title cap height (P) 26 px, title line incl. descenders 34 px. 'Builds pass' cap height (B) 22 px, chip line with icon 30 px. LIMIT: the card is ~732 CSS px wide, so with the whole card in a 16:9 frame the Merged badge tops out at ~19-20 px cap height. The 24+ px target would need cropping the card's right side (Open link / title end). CAVEAT: during PR raised (63.9-67.5 s) the status block is taller, so the PR card sits ~40 CSS px lower and its bottom row (Builds pass chips) is clipped at the frame edge until the Merged reflow at 67.5 s. Use the 67.5-70.5 s Merged hold as the payoff. Zen: no '?' bubbles, no amber pill, no Blocked.
+- **Notes / Zen checks:** CLIP TIMES (confirmed by the Director): the drawer status changes to Done at 6.5 s and the PR card badge flips to Merged at 7.70 s; hold to 9.50 s (use 7.7-9.5 s as the payoff). Measured on the 1920 frame at 9.0 s: 'Merged' badge cap height (M) ~19-20 px (glyph rows 761-780 incl. antialias; badge text box 95x26 px). PR title cap height (P) 26 px, title line incl. descenders 34 px. 'Builds pass' cap height (B) 22 px, chip line with icon 30 px. LIMIT: the card is ~732 CSS px wide, so with the whole card in a 16:9 frame the Merged badge tops out at ~19-20 px cap height. The 24+ px target would need cropping the card's right side (Open link / title end). CAVEAT: during PR raised (63.9-67.5 s) the status block is taller, so the PR card sits ~40 CSS px lower and its bottom row (Builds pass chips) is clipped at the frame edge until the reflow when the status turns Done (6.5 s clip time). Zen: no '?' bubbles, no amber pill, no Blocked.
+
+### Shot 3/composer (DPR2, talk-show beat 2 / hero composer / anime cold open)
+- **File:** `footage/v1-1080/shot-03-composer-dpr2.mov` (lossless H.264 yuv444p) + `shot-03-composer-dpr2-preview.mp4` + poster `shot-03-composer-dpr2-poster.png`
+- **sha256 (.mov):** `e45a22dd567561be393993425eedbd32a1841c43b218cd52263629680ef1fcda`
+- **DPR:** 2
+- **Duration:** 6.35 s; **video:** 1920x1080 @ 60 fps, 381 frames
+- **URL / route:** `?demo=promo&pause=1` (promo held on its first beat, empty board)
+- **Demo beat:** Commander composer, focused. Before rolling, the composer's Access pill was switched from 'Bypass permissions' (amber) to 'Edits' through the real Access menu. The ask is typed with real keystrokes at 10 chars/s: 'Ship the checkout revamp tonight.' + Shift+Enter + 'No broken builds.' (the same text that appears as the sent message in shot-10 / shot-05). Ends ~0.4 s after the last keystroke with the send (arrow) button highlighted. Not sent.
+- **Commit:** `4a427fc05f829d7b2e4ed7ea642d77340554f7f8` (main)
+- **Framing:** DPR 2. Clip x150 y675 720x405 CSS (2.667x) on the bottom of the Commander pane: composer box (text, + / Edits / 'Sonnet 5.5 High' / tools / send) with the 'Finish the board' and 'Where does the board stand?' starter cards above. Duration 6.35 s.
+- **Notes / Zen checks:** Measured on the 1920 frame at 6.3 s: composer text cap height ~27 px ('S' of Ship, 'N' of No: glyph rows 28 px incl. overshoot/antialias), first line incl. descenders 36 px. That beats the >=20 px target. Access shows the 'Edits' icon (not the amber Bypass pill). FIX NOTE: the first attempt (shot-03-composer, now in footage/v1-1080/_rejects/) used clip y465, which was computed from a probe screenshot I misread as 1280 px wide (it was shown at 1024). The composer (CSS y~966-1059) fell below that clip, so the take showed only starter cards; it was never registered. Zen: no '?' bubbles, no amber pill, no Blocked.
+
+### Shot 11 (DPR2 r2, header 20 px + Landed column)
+- **File:** `footage/v1-1080/shot-11-dpr2-r2.mov` (lossless H.264 yuv444p) + `shot-11-dpr2-r2-preview.mp4` + poster `shot-11-dpr2-r2-poster.png`
+- **sha256 (.mov):** `90ff6b72e1c1243711287593390061328c0b9f2987e9fe39b9fa4ed89d921689`
+- **DPR:** 2
+- **Duration:** 5.00 s; **video:** 1920x1080 @ 60 fps, 300 frames
+- **URL / route:** `?demo=promo` (scenario clock to 72.6 s, run complete), Full window, Show done, Fit, board canvas panned with real mouse-wheel scrolling so the Landed column starts at x~617 CSS
+- **Demo beat:** 5 s locked hold: 'Find a ticket' search + 'All done · Plan next' pill + '8 in this run · 8 landed' across the top; 'Landed · Merged and closed' column on the right with PAY-103 (Claude, #431), PAY-104 (Codex, #432), PAY-105 (Claude, #433) whole, all 'Done'; PAY-106 (Cursor) cut at the bottom
+- **Commit:** `4a427fc05f829d7b2e4ed7ea642d77340554f7f8` (main)
+- **Framing:** DPR 2. Clip x8 y44 800x450 CSS (2.4x).
+- **Notes / Zen checks:** Measured on the 1920 poster: header cap height 21 px ('A' of All done, digit '8' of '8 landed'), card ID cap 16 px, card title cap 18 px. EDGE CHECK: left edge in a clean gap (canvas 0-37 px, search box border starts at x~38); right edge in a clean gap (column cards end at x~1885, canvas 1890-1919, no neighbouring column, no stray 'L'). CAVEAT: the lower-left ~55% of the frame is empty dotted canvas under the header (the header is on top, the column to the right). For a frame filled with whole cards use shot-11-dpr2-r3 (zoomed board, column under the header; queued). Zen: no '?' bubbles, no amber pill, no Blocked.
+
+### Shot 5 / rail (DPR2, agent rail with logos)
+- **File:** `footage/v1-1080/shot-05-rail.mov` (lossless H.264 yuv444p) + `shot-05-rail-preview.mp4` + poster `shot-05-rail-poster.png`
+- **sha256 (.mov):** `53764a87d812bb78dee10870c301c9add5c531e175616fe54f390631d9b28ccb`
+- **DPR:** 2
+- **Duration:** 12.00 s; **video:** 1920x1080 @ 60 fps, 720 frames
+- **URL / route:** `?demo=promo` (scenario 5.6-17.6 s)
+- **Demo beat:** Left rail + Commander as the run starts: project card 'Checkout Revamp · Running · 0/8'; the rail goes from 'Start' links to a 'Working' list as agents claim tickets: PAY-103 'Design tokens for checkout…' (Claude logo) Coding ~6.7 s, PAY-104 'Cart summary uses the prici…' (Codex logo) ~7.7 s, PAY-106 'Localized price display in or…' (Cursor logo) ~8.7 s, each with its live diff stat (+18 -4 -> +36 -8); later Checks / Pushed. Commander shows the sent ask 'Ship the checkout revamp tonight. No broken builds.' and the plan reply ('Here's the plan: eight checkout tickets in three waves…')
+- **Commit:** `4a427fc05f829d7b2e4ed7ea642d77340554f7f8` (main)
+- **Framing:** DPR 2. Clip x0 y90 640x360 CSS (3.0x; 1.5x over the DPR2 raster). The rail is fully in frame; the Commander text is cut at the right edge. The '$' cost figure is above the frame.
+- **Notes / Zen checks:** Measured on the 1920 frame at 4.5 s: rail row title cap height ~27 px ('D' of Design, glyph rows 29 px incl. antialias), ticket ID cap ~22 px (PAY-103), project name cap ~27 px. Agent logos ~50 px squares: all 3 agents visible (Claude orange, Codex teal, Cursor dark). The 'PAY Collab · 3 people' row with AM/RC/MC avatars and '# standup @1' are at the bottom. At 4.5 s: no amber pill or Blocked state in the rail.
+
+### Shot 11 (DPR2 r3, header + top of Landed column, zoomed board)
+- **File:** `footage/v1-1080/shot-11-dpr2-r3.mov` (lossless H.264 yuv444p) + `shot-11-dpr2-r3-preview.mp4` + poster `shot-11-dpr2-r3-poster.png`
+- **sha256 (.mov):** `199fe8a7bec5292cf0188f53363c7479819303e9cd841e8e693731a2da8fece5`
+- **DPR:** 2
+- **Duration:** 5.00 s; **video:** 1920x1080 @ 60 fps, 300 frames
+- **URL / route:** `?demo=promo` (scenario clock to 72.6 s, run complete), Full window, Show done, Fit, then real ctrl+wheel zoom (board ended at 111 %, target was 95 %) and real mouse-wheel pan so the Landed column sits at x300 y100 CSS, right under the header
+- **Demo beat:** 5 s locked hold: 'All done · Plan next' pill + '8 in this run · 8 landed' across the top; under it 'Landed · Merged and closed' with PAY-103 Design tokens (Claude, #431) and PAY-104 Cart summary (Codex, #432) whole, all 'Done'; PAY-105 cut at the bottom. Right half: 'Later · Not scheduled yet' column with the dashed 'Plan more' card, then dotted canvas.
+- **Commit:** `4a427fc05f829d7b2e4ed7ea642d77340554f7f8` (main)
+- **Framing:** DPR 2. Clip x270 y44 800x450 CSS (2.4x).
+- **Notes / Zen checks:** Measured on the 1920 poster: header cap height 21 px (digit '8' of '8 landed'), 'Landed' heading cap 28 px, card ID cap 21 px (PAY-103), card title cap ~25 px ('D' of Design). Agent logos ~30 px. EDGE CHECK: right edge clean (no content in x 1900-1919). LEFT EDGE FAILS: x 0-11 shows a sliver of the search box's right end (y~50-280 px, incl. a blue focus/selection line). A retake with the clip moved 6 CSS px right (shot-11-dpr2-r4, clip x276) is queued; use r3 only if you crop 12 px off the left or push in. The whole-card framing (header + 2 whole Landed cards) is right; the empty-canvas problem of r2 is fixed. Zen: no '?' bubbles, no amber pill, no Blocked.
 
 

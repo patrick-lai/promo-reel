@@ -586,3 +586,17 @@ clips:
   captured_at: '2026-10-04T03:10:36Z'
   notes: 'Registered from the brief (not yet in manifest.md at 14:2x). Badge Open -> Merged at src 7.70 s by frame grab (6.50 s = drawer Done/layout shift). Final: ''#438 Merged · PAY-110 Remove legacy pricing module · Builds pass · 1 approval · 1 comment''.'
   demo: true
+- id: shot-11-dpr2-r2-v1080
+  shots:
+  - '11'
+  path: /workspace/videos/commission-ai-promo/footage/v1-1080/shot-11-dpr2-r2.mov
+  sha256: 90ff6b72e1c1243711287593390061328c0b9f2987e9fe39b9fa4ed89d921689
+  app_commit: 4a427fc05f829d7b2e4ed7ea642d77340554f7f8
+  capture: ?demo=promo (run complete, 72.6 s), Full window, Show done, Fit, canvas panned by real wheel scroll (Landed column at x~617 CSS)
+  framing: DPR 2. Clip x8 y44 800x450 CSS (2.4x)
+  resolution: 1920x1080
+  dpr: 2
+  fps: 60.0
+  captured_at: '2026-10-04T04:01:13Z'
+  notes: 'Header ''All done · Plan next'' + ''8 in this run · 8 landed'' (cap 21 px) + ''Landed · Merged and closed'' column: PAY-103/104/105 whole (Claude, Codex, Claude), PAY-106 cut at the bottom. Clean gaps: canvas 0-37 px left, 1890-1919 right.'
+  demo: true
