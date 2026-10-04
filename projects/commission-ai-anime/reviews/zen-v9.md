@@ -22,3 +22,8 @@ A7 is closed: the composer sits in the middle third and the caret hold is about 
 - **v5, 3.00:** the S03 placeholder, the early end-state header giving away the payoff, a 7 s shot 15, and a caption band covering 26% of the frame.
 - **v7, 3.57:** A2 and shot 14 closed; A1 the placeholder, A5 shot 15 thin, A6 the opener three room shots.
 - **v8, 4.14:** A1, A5 and A6 closed; A7 S03 empty pane and a 4 s still stretch.
+
+
+## Scored build: anime v11 (4 Oct 2026, 16:21 AEDT)
+
+Zen checked anime v11 and confirmed the v9 score (average 4.29, PASS, Truth PASS) carries over: "ONE ASK." is up from 4.07 s while the ask types, and "TONIGHT." lands at 8.14 s just after "tonight." is typed. v11 is the scored build for the Sonnet 5.5 pass.
