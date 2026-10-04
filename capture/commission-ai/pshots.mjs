@@ -1,10 +1,10 @@
 import fs from "node:fs";
-import { launch, open, dismiss, COMMIT } from "./lib.mjs";
+import { launch, open, dismiss, COMMIT, CSS, markCursorOverlay } from "./lib.mjs";
 import { Recorder, FOOT, flush } from "./rec.mjs";
 const SHOT = process.argv[2];
 const DRY = !!process.env.DRY;
 const F = (s) => Math.round(s * 60);
-const NO_TOASTS = "[data-sonner-toaster]{display:none!important}";
+const NO_TOASTS = CSS.NO_TOASTS; // every pshots take hides the Sonner toaster (recorded per clip as css: ["NO_TOASTS"] in <clip>.meta.json)
 const log = (o) => fs.appendFileSync(`${FOOT}/capture-log.jsonl`, JSON.stringify({ at: new Date().toISOString(), commit: COMMIT, ...o }) + "\n");
 const b = await launch();
 async function start(opts = {}) {
@@ -43,7 +43,7 @@ async function shot10(hi) {
     const { p, rec } = await start(hi ? { dpr: 2 } : {});
     await rec.skip(19000);
     await zoomOn(p, rec, node(p, "PAY-106"), 2, [1200, 600]);
-    await p.evaluate(CURSOR);
+    await p.evaluate(CURSOR); markCursorOverlay(p); // recorded per clip as cursorOverlay: true
     const s0 = rec.ms;
     if (DRY) { await rec.skip(21700 - rec.ms); await snap(p, rec, "d10"); }
     const allow = () => node(p, "PAY-106").getByRole("button", { name: /^Allow once/ }).first();
@@ -212,8 +212,8 @@ Object.assign(shots, {
     console.log("CLIP04", JSON.stringify(C), "scale", (1920 / C.width).toFixed(3), "id", idPx, "cards", JSON.stringify(cards));
     if (DRY) { fs.writeFileSync("probe/d04p.png", await rec.shot()); return; }
     if (process.env.FREEZE) { // one real DPR2 capture held as a still (scenario clock not advanced), encoded by enc.sh after the browser closes
-      const png = await rec.clipShot({ ...C, scale: 1920 / C.width }); const dir = `${FOOT}/.frames/${OUT4}`; fs.mkdirSync(dir, { recursive: true });
-      const N = F(Number(process.env.FREEZE)); for (let i = 0; i < N; i++) fs.writeFileSync(`${dir}/${String(i).padStart(5, "0")}.png`, png);
+      const N = F(Number(process.env.FREEZE));
+      const png = await rec.clipShot({ ...C, scale: 1920 / C.width }); rec.clip = { ...C, scale: 1920 / C.width }; const dir = rec.frameDir(OUT4, N, { freeze: true }); rec.clip = null; for (let i = 0; i < N; i++) fs.writeFileSync(`${dir}/${String(i).padStart(5, "0")}.png`, png);
       log({ shot: OUT4, frames: N, url: "?demo=promo", startMs: rec.ms, freeze: true, framing: `DPR2, clip ${JSON.stringify(C)} (${(1920 / C.width).toFixed(3)}x) fitted to the 8 cards${process.env.HEADS === "0" ? "" : " + Wave headings"}; still hold`, idFont: idPx, cards });
       console.log("FREEZE frames", N, "-> run enc.sh", OUT4); return;
     }

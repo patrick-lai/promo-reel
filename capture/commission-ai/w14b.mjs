@@ -1,11 +1,11 @@
 // 14b: in-app Workshop, full screen, Outside -> demo control "Finish 5 rooms" -> 'now a Street' notice -> Room view Street. DRY=1 for snapshots only.
 import fs from "node:fs";
-import { launch, open, dismiss, COMMIT } from "./lib.mjs";
+import { launch, open, dismiss, COMMIT, CSS } from "./lib.mjs";
 import { Recorder, FOOT, flush } from "./rec.mjs";
 const DRY = !!process.env.DRY;
 const HOUR = process.env.HOUR || "19:30";
 const F = (s) => Math.round(s * 60);
-const HIDE_MONEY = "section.glass-pop:has(.heading.tabular){visibility:hidden!important} section.glass-pop span.text-meta.tabular.text-dim:has(> .tabular){visibility:hidden!important}";
+const HIDE_MONEY = CSS.HIDE_MONEY; // wallet/mora figures hidden (recorded per clip as css: ["HIDE_MONEY"] in <clip>.meta.json)
 const q = `?demo=promo&pause=1&workshopHour=${HOUR}`;
 const b = await launch();
 const jsClick = (loc) => loc.evaluate((e) => e.click());

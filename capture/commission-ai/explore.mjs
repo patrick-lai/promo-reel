@@ -1,12 +1,12 @@
 // node explore.mjs '<q>' 'JS body using p, rec, snap(name), clickAt(loc), vis(loc)'
 import fs from "node:fs";
-import { launch, open, dismiss } from "./lib.mjs";
+import { launch, open, dismiss, CSS } from "./lib.mjs";
 import { Recorder } from "./rec.mjs";
 const [q, body] = process.argv.slice(2);
 const b = await launch();
 try {
   const t0 = Date.now();
-  const { page: p } = await open(b, { q, clock: "paused", css: "[data-sonner-toaster]{display:none!important}" });
+  const { page: p } = await open(b, { q, clock: "paused", css: CSS.NO_TOASTS });
   p.setDefaultTimeout(60000); p.on("pageerror", (e) => console.log("PAGEERR", String(e).slice(0, 200)));
   await p.waitForTimeout(8000); await dismiss(p);
   const rec = new Recorder(p); await rec.begin({ paused: true });

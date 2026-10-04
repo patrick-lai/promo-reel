@@ -1,9 +1,9 @@
 // usage: node probe.mjs "<query+hash>" outprefix [ms list comma] [paused-clock]
-import { launch, open, dismiss } from "./lib.mjs";
+import { launch, open, dismiss, CSS } from "./lib.mjs";
 const [q, out, times = "0"] = process.argv.slice(2);
 const b = await launch();
 try {
-  const { page } = await open(b, { q, clock: "paused", css: "[data-sonner-toaster]{display:none!important}" });
+  const { page } = await open(b, { q, clock: "paused", css: CSS.NO_TOASTS });
   page.on("pageerror", (e) => console.log("PAGEERR", String(e).slice(0, 200)));
   page.on("console", (m) => { if (m.type() === "error") console.log("CONSOLE", m.text().slice(0, 200)); });
   await page.waitForTimeout(8000); await dismiss(page);
