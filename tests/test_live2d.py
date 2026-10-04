@@ -907,6 +907,38 @@ def test_talkshow_segment_from_absolute_time():
         assert 0.5 <= s03["screen"]["speed"] < 1.0 and "hold_in" not in s03["screen"]
 
 
+def test_src_time_speed_and_tail():
+    from promo.shots.livestream import src_time
+    sc = {"t_in": 1.0, "speed": 0.7}
+    assert abs(src_time(sc, 0.5, hold_in=1.0) - 1.0) < 1e-9          # first frame held
+    assert abs(src_time(sc, 3.0, hold_in=1.0) - 2.4) < 1e-9          # then 0.7x
+    sc = {"t_in": 0.0, "tail": {"from": 2.0, "speed": 0.7}}
+    assert abs(src_time(sc, 2.0) - 2.0) < 1e-9 and abs(src_time(sc, 3.0) - 2.7) < 1e-9   # slower after the synced moment
+
+
+def test_partial_matte_band_only_covers_its_span():
+    from PIL import Image
+    from promo.shots import livestream as SL
+    rng = np.random.default_rng(1)
+    a = rng.integers(0, 255, (200, 300, 3), dtype=np.uint8)
+    out = np.asarray(SL.apply_matte(Image.fromarray(a), {"right": {"px": 12, "to": 0.4}}))
+    assert np.array_equal(out[100:, :], a[100:, :])                 # below the span: untouched
+    assert np.array_equal(out[:, :288], a[:, :288])                 # inside the band's inner edge: untouched
+    assert not np.array_equal(out[:60, 295:], a[:60, 295:])         # the band itself is filled
+
+
+def test_talkshow_speeds_at_least_min():
+    mp = os.path.join(ROOT, "projects", "commission-ai-talkshow", "make_spec.py")
+    assert "MIN_SPEED = 0.7" in open(mp).read()
+    spec = yaml.safe_load(open(os.path.join(ROOT, "projects", "commission-ai-talkshow", "promo.yaml")))
+    for s in spec["shots"]:
+        sc = s.get("screen") or {}
+        assert float(sc.get("speed", 1.0)) >= 0.7 - 1e-9, s["id"]
+        assert float((sc.get("tail") or {}).get("speed", 1.0)) >= 0.7 - 1e-9, s["id"]
+    s02 = next(s for s in spec["shots"] if str(s["id"]) == "02")
+    assert float(s02["screen"].get("hold_in", 0.0)) <= 1.0          # v4: no long first-frame hold before the typing
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_") and callable(fn):

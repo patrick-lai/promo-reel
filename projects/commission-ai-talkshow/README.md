@@ -70,6 +70,24 @@ a 0.4 s `dissolve` over it. It's driven by the take's `time_of_day` field in the
 no dissolve; `dusk -> day @ 5.50` or `{from, to, at}` = a change); with no field, the plan profile's `time_of_day`
 (the current take's fallback) applies. Commission-ai's dusk retake records `dusk` there and the dissolve goes away.
 
+## v4 (Zen v3 styled 3.86: Pacing 3; styled cut is the deliverable)
+
+- **Playback speed** (`speed`, `tail_speed` in a profile; never below 0.7x, `MIN_SPEED`): `tail_speed` slows a clip
+  only after its synced moment (flip / click), so the sync is kept and the end freeze shrinks.
+- **S02**: no VO sync any more (it held the first frame 10.7 s). 0.7 s of static frames, then the typing at 0.7x
+  (8.2-15.3 s); the composer then sits with the typed text (caret only) until beat 3. The typing now ends before
+  MAO says the quoted line; filling the beat needs a longer typing take.
+- **Lifted to >= 20 px** (clean crops): 04 titles 21.9 px (x 1462-2712 4K, PAY-106 card whole), 05 Checks 20.0 px
+  (x 310-1534, scale 1.176; one partial right matte over the top 38 % only), 06a/06b 20.0 px (x 743-1895, scale 1.25).
+- **08b**: not pushed in. The header ('All done' starts x 546) and the Landed column (ends x 1856) need >= 1320 src px,
+  i.e. <= 1.09x = 18.5 px; 20 px would cut the pill or the cards. Needs a take with the column closer to the header.
+- **Holds / freezes**: 04 first-frame hold 4.14 -> 3.67 s, 06b pre-click hold 4.29 -> 3.11 s, 07 5.65 -> 3.83 s
+  (0.7x); end freezes S05 1.1 -> 0.48 s, 06b 1.75 -> 0.82 s, 08a 0.29 -> 0, 09a 0.30 -> 0 (0.934x), 03 0.05 s.
+- **09b**: `shot-14b-dusk-r2` (preferred; usable 0-2.5 / 3.6-7.5 s): 3.6-6.47 s at 0.7x, dusk -> day dissolve at
+  4.60 s. manifest.md records a constant 'dusk', so the plan overrides it (`time_of_day: {..., override: true}`):
+  the Street still renders bright (real app behaviour).
+- **Matte bands** can cover part of an edge: `matte: {right: {px: 12, from: 0, to: 0.38}}`.
+
 ## v3 (UX review 2026-10-04 talkshow-v2, Zen 3.43 FAIL)
 
 - **Hook**: S01b trimmed to 3.5 s (4.0-7.5); beat 1's VO carries over S02, which starts at an absolute 7.5 s
