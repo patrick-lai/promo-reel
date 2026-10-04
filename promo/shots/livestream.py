@@ -132,16 +132,77 @@ def ensure_host_layers(spec, log=print):
 
 
 # ---------------------------------------------------------------- drawing helpers
+def _style(ctx):
+    return LS.style(LS.cfg(ctx.spec))
+
+
 def stream_bg(ctx):
+    """Static stream background (no motion). plain: dark radial glow; framed-glow: diagonal navy -> violet gradient
+    with faint grain and a very faint grid."""
+    st = _style(ctx)
     w, h = ctx.OW, ctx.OH
     y, x = np.mgrid[0:h, 0:w].astype(np.float32)
-    base = np.array([9, 10, 16], np.float32)
-    glow = np.array([30, 26, 58], np.float32)
-    r = np.sqrt(((x - w * 0.25) / (w * 0.6)) ** 2 + ((y - h * 0.9) / (h * 0.8)) ** 2)
-    g = np.clip(1 - r, 0, 1) ** 1.8
-    arr = base + (glow - base) * g[..., None]
-    arr += np.random.default_rng(3).normal(0, 1.0, arr.shape)
+    rng = np.random.default_rng(3)
+    if st["bg"] == "diagonal":
+        u = np.clip((x / w + y / h) / 2.0, 0, 1)[..., None]
+        arr = np.array(st["bg_from"], np.float32) * (1 - u) + np.array(st["bg_to"], np.float32) * u
+        g = int(st.get("bg_grid", 0) * ctx.K)
+        if g > 0:
+            grid = ((x.astype(int) % g) == 0) | ((y.astype(int) % g) == 0)
+            arr += grid[..., None] * 3.0                       # very faint grid (+3/255)
+        arr += rng.normal(0, float(st.get("bg_grain", 1.0)), arr.shape)
+    else:
+        base = np.array([9, 10, 16], np.float32)
+        glow = np.array([30, 26, 58], np.float32)
+        r = np.sqrt(((x - w * 0.25) / (w * 0.6)) ** 2 + ((y - h * 0.9) / (h * 0.8)) ** 2)
+        gg = np.clip(1 - r, 0, 1) ** 1.8
+        arr = base + (glow - base) * gg[..., None]
+        arr += rng.normal(0, 1.0, arr.shape)
     return Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8)).convert("RGBA")
+
+
+def ring_layer(w, h, r, b, color, alpha=255):
+    """A b-px rounded border drawn OUTSIDE a w x h box (radius r): layer of (w + 2b, h + 2b); never covers the box."""
+    outer = np.asarray(R.rounded_mask(w + 2 * b, h + 2 * b, r + b)).astype(np.float32)
+    inner = np.zeros_like(outer)
+    inner[b:b + h, b:b + w] = np.asarray(R.rounded_mask(w, h, r)).astype(np.float32)
+    a = np.clip(outer - inner, 0, 255) * (alpha / 255.0)
+    im = Image.new("RGBA", (w + 2 * b, h + 2 * b), tuple(color) + (0,))
+    im.putalpha(Image.fromarray(a.astype(np.uint8)))
+    return im
+
+
+def apply_matte(im, matte, K=1):
+    """Promo matte over cut-off UI at the screen edges (NOT a UI edit: it covers the crop edge, like a letterbox). `matte`
+    = {left|right|top|bottom: px (output)}. Each band is filled with the panel's own background colour: per row
+    (column) the median of the 40 px just inside the band, median-smoothed so thin text rows don't streak, with a
+    6 px feather on the inner edge."""
+    if not matte:
+        return im
+    a = np.asarray(im.convert("RGB")).astype(np.float32).copy()
+    H, W = a.shape[:2]
+
+    def smooth(prof, k=15):
+        pad = np.pad(prof, ((k, k), (0, 0)), mode="edge")
+        return np.stack([np.median(pad[i:i + 2 * k + 1], axis=0) for i in range(len(prof))])
+    fe = int(6 * K)
+    for side, px in matte.items():
+        n = int(round(float(px) * K))
+        if n <= 0:
+            continue
+        if side in ("left", "right"):
+            strip = a[:, n:n + 40 * K] if side == "left" else a[:, W - n - 40 * K:W - n]
+            col = smooth(np.median(strip, axis=1))                       # (H, 3)
+            al = np.ones(n) if fe == 0 else np.clip(((n - 1 - np.arange(n)) if side == "left" else np.arange(n)) / fe, 0, 1)
+            sl = slice(0, n) if side == "left" else slice(W - n, W)
+            a[:, sl] = a[:, sl] * (1 - al[None, :, None]) + col[:, None, :] * al[None, :, None]
+        else:
+            strip = a[n:n + 40 * K] if side == "top" else a[H - n - 40 * K:H - n]
+            col = smooth(np.median(strip, axis=0))                       # (W, 3)
+            al = np.clip(((n - 1 - np.arange(n)) if side == "top" else np.arange(n)) / max(1, fe), 0, 1) if fe else np.ones(n)
+            sl = slice(0, n) if side == "top" else slice(H - n, H)
+            a[sl] = a[sl] * (1 - al[:, None, None]) + col[None, :, :] * al[:, None, None]
+    return Image.fromarray(np.clip(a, 0, 255).astype(np.uint8))
 
 
 def placeholder_screen(ctx, w, h, label):
@@ -193,12 +254,46 @@ def screen_card(ctx, w, h, card):
     return im
 
 
-def framed(ctx, im, radius=14):
-    """Rounded corners + soft shadow around the app screen (no change to the UI pixels themselves)."""
+def framed(ctx, im, radius=None):
+    """Rounded corners + soft shadow around the app screen, plus (style) an accent border and soft outer glow, all
+    drawn OUTSIDE the screen box: no change to the UI pixels themselves. Returns (layer, pad). The decoration is built
+    once per size and reused every frame."""
+    st = _style(ctx)
+    K = ctx.K
     w, h = im.size
-    im = im.convert("RGBA")
-    im.putalpha(R.rounded_mask(w, h, int(radius * ctx.K)))
-    return R.soft_shadow_layer(ctx, im, blur=22, alpha=170, pad=40)
+    r = int((radius if radius is not None else st["panel_radius"]) * K)
+    b = int(st.get("panel_border", 0) * K)
+    gl = int(st.get("panel_glow", 0) * K)
+    key = ("framed", w, h, r, b, gl, st["preset"])
+    cache = ctx.__dict__.setdefault("_frame_cache", {})
+    if key not in cache:
+        pad = 40 * K
+        W2, H2 = w + 2 * pad, h + 2 * pad
+        shape = Image.new("L", (W2, H2), 0)
+        shape.paste(R.rounded_mask(w + 2 * b, h + 2 * b, r + b), (pad - b, pad - b))
+        sh = Image.new("RGBA", (W2, H2), (0, 0, 0, 0))
+        sh.putalpha(shape.point(lambda v: v * 170 // 255).filter(ImageFilter.GaussianBlur(22 * K)))
+        under = _shift_img(sh, int(14 * K))                    # soft drop shadow (as before)
+        if gl > 0:
+            glow = Image.new("RGBA", (W2, H2), tuple(st["accent"]) + (0,))
+            glow.putalpha(shape.point(lambda v: int(v * st.get("panel_glow_alpha", 0.25))).filter(ImageFilter.GaussianBlur(gl / 2)))
+            under.alpha_composite(glow)
+        ring = ring_layer(w, h, r, b, st["accent"]) if b > 0 else None
+        cache[key] = (under, ring, R.rounded_mask(w, h, r), pad)
+    under, ring, mask, pad = cache[key]
+    out = under.copy()
+    fg = im.convert("RGBA")
+    fg.putalpha(mask)
+    out.alpha_composite(fg, (pad, pad))
+    if ring is not None:
+        out.alpha_composite(ring, (pad - b, pad - b))
+    return out, pad
+
+
+def _shift_img(im, dy):
+    out = Image.new("RGBA", im.size, (0, 0, 0, 0))
+    out.alpha_composite(im, (0, dy))
+    return out
 
 
 def dashed_rect(d, box, K, col=(255, 210, 80, 230)):
@@ -270,6 +365,25 @@ def header_panel(ctx, box, title, tag="EP 1"):
     return im
 
 
+def nameplate(ctx, text, st):
+    """Lower-third host nameplate: UPPERCASE name (cap height >= nameplate_px), translucent dark pill, accent bar."""
+    K = ctx.K
+    size = st.get("nameplate_px", 22) / 0.727                 # Inter cap height ~0.727 em
+    f = ctx.font(size, "Bold")
+    d = ImageDraw.Draw(Image.new("RGBA", (4, 4)))
+    t = text.upper()
+    tw = d.textlength(t, font=f)
+    bar, padx, h = int(5 * K), int(14 * K), int((size + 18) * K)
+    w = int(tw + bar + 2 * padx)
+    im = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    dd = ImageDraw.Draw(im)
+    dd.rounded_rectangle([0, 0, w - 1, h - 1], radius=h // 2, fill=(14, 15, 26, 200))
+    dd.rounded_rectangle([int(10 * K), int(h * 0.22), int(10 * K) + bar, int(h * 0.78)], radius=bar // 2, fill=tuple(st["accent"]) + (255,))
+    bb = dd.textbbox((0, 0), t, font=f)
+    dd.text((int(10 * K) + bar + padx - bb[0] * 0, (h - (bb[3] + bb[1])) / 2), t, font=f, fill=(255, 255, 255, 255))
+    return im
+
+
 def name_tag(ctx, text):
     f = ctx.font(LS.CHROME_FONT_PX, "SemiBold")  # ~20 px cap height (UX review T6: was 14 px)
     d = ImageDraw.Draw(Image.new("RGBA", (4, 4)))
@@ -333,7 +447,11 @@ class Livestream(ShotType):
         hl = LS.host_layout(c)
         hw, hh = hl["w"], hl["h"]
         readers = [LayerReader(layers[str(h.get("id", i))], hw * K, (hh + hl["pads"][i]) * K, shot.f0, spec.fps) for i, h in enumerate(hosts)]
-        tags = [name_tag(ctx, h.get("name", h["model"])) for h in hosts]
+        st = _style(ctx)
+        lower = st.get("nameplate") == "lower-third"
+        tags = [(nameplate(ctx, h.get("name", h["model"]), st) if lower else name_tag(ctx, h.get("name", h["model"]))) for h in hosts]
+        hbb = int(st.get("host_border", 0) * K)
+        hring = ring_layer(hw * K, hh * K, int(16 * K), hbb, st["accent"]) if hbb > 0 else None
         # every host sits in its own panel (rounded card, same size). The host is clipped by the panel's sides and
         # bottom (mid-chest crop, rounded bottom corners) but NOT its top: a hat breaks out above the panel into the
         # layer's headroom (`promo check` livestream-framing keeps that break-out clear of everything else)
@@ -383,13 +501,18 @@ class Livestream(ShotType):
 
             def draw_hosts():
                 for b in L["hosts"]:
+                    if hring is not None:            # thin accent border around each host tile (outside the tile)
+                        comp(out, hring, b[0] * K - hbb, b[1] * K - hbb)
                     comp(out, panel, b[0] * K, b[1] * K)
                 for fr, lb in zip(frames, L["layers"]):
                     if fr is not None:
                         comp(out, fr, lb[0] * K, lb[1] * K)
                 for k, (tg_, b) in enumerate(zip(tags, L["hosts"])):
-                    x = int(round(((b[0] + b[2]) / 2) * K - tg_.width / 2))
-                    comp(out, tg_, x, (b[3] - LS.CHROME_FONT_PX - 26) * K)
+                    if lower:                        # lower-third: bottom-left of the tile
+                        comp(out, tg_, (b[0] + 14) * K, b[3] * K - tg_.height - 14 * K)
+                    else:
+                        x = int(round(((b[0] + b[2]) / 2) * K - tg_.width / 2))
+                        comp(out, tg_, x, (b[3] - LS.CHROME_FONT_PX - 26) * K)
             hb = L["header"]
             key = tuple(round(v, 1) for v in hb)
             if key not in hdr_cache:
@@ -410,7 +533,7 @@ class Livestream(ShotType):
                 if im is None:
                     im = src.frame(st)
                 cam = sc.get("cam", (0.5, 0.5, 1.0))
-                lay, pad = framed(ctx, R.frame_cam(ctx, im, *cam, out=(SW, SH)))
+                lay, pad = framed(ctx, apply_matte(R.frame_cam(ctx, im, *cam, out=(SW, SH)), sc.get("matte"), K))
             else:
                 lay, pad = still
             s = L["screen"]

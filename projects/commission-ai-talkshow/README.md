@@ -70,6 +70,36 @@ a 0.4 s `dissolve` over it. It's driven by the take's `time_of_day` field in the
 no dissolve; `dusk -> day @ 5.50` or `{from, to, at}` = a change); with no field, the plan profile's `time_of_day`
 (the current take's fallback) applies. Commission-ai's dusk retake records `dusk` there and the dissolve goes away.
 
+## v3 (UX review 2026-10-04 talkshow-v2, Zen 3.43 FAIL)
+
+- **Hook**: S01b trimmed to 3.5 s (4.0-7.5); beat 1's VO carries over S02, which starts at an absolute 7.5 s
+  (`from: {t: 7.5}`). First app UI at 7.5 s. S02 holds its first frame ~10.7 s until the typing sync.
+- **Beat 8**: +1.0 s screen hold after the PR pill flips to Merged (7.70 s in the clip); beat 8 VO timing unchanged.
+- **Badges**: the three agent badges are logos, not text, so they are no longer named elements in beat 4. Gate:
+  a named element must be `kind: text|container`; `logo|icon` FAILs (`livestream-named`).
+- **Edge slivers**: new WARN gate `livestream-edges` (short bright runs on the crop's left/right edge column, matte
+  aware, `edge_check: false` opts a shot out). S02 left edge moved into the gap left of the Commander panel; 06
+  re-cropped to clean columns (source x 690-1910). 05 (stepper) has no crop that keeps both edges clean with every
+  named label >= 18 px, so it takes a promo matte (right 14 px, bottom 21 px) filled with the panel's own background
+  colour; app pixels inside are untouched. 03 (dependency fan) still WARNs on the right edge: the source is 1080 tall,
+  so the crop is at most 1507 src px wide and cannot hold PAY-101 and the whole PAY-104 card; a matte would hide the
+  PAY-104 id. Needs a tighter capture.
+- **06b cursor**: source frames end at 3.35 s, before the cursor covers "Allow once"; the hold is kept.
+- **Beat 8a take swap**: `shot-16-prcard-tight-v1080` (landed 10:55) replaces shot-15-prcard. It holds only the PR
+  card (1810 px wide), so the crop keeps its left part (x 30-1180, y 135-959, scale 1.25): 'Merged' pill 22.5 px, PR
+  title 32.6 px. Pill flips Open -> Merged at 7.70 s, synced to MAO's "merged"; 2.1 s of Merged on screen before 08b.
+  The stepper / 'Done' heading are not in this take and are no longer named.
+- **Beat 3 tightened**: the new MAO line is 2.46 s shorter, so the beat is 8.6 s; the 6.0 s take plays at 0.692x
+  (`fit_clip: true`) instead of freezing for 2.6 s.
+- **Beat 3**: no overlay names ticket ids. PAY-105 is cut in the source itself, so the full top card cannot be framed.
+- **VO**: Mao's re-voiced beat 3 / beat 4 lines (10:28, Whisper-checked) replace the v1 takes (in `vo/superseded/`);
+  beat 3 is 2.46 s shorter and is tightened to match, beat 4 0.17 s longer. Runtime 106.00 s.
+- **Style preset** (`plan.yaml` -> `style:`; `make_preview.py --style=framed-glow`): `plain` (default) or
+  `framed-glow`: 2 px accent border (end-card violet 139,124,255), 12 px glow at 25 %, 12 px radius around the app
+  panel; HIYORI / MAO lower-third nameplates (22 px cap height, translucent dark pill, accent bar) replace the 20 px
+  tags; thin border on the host tiles; static diagonal navy-to-violet gradient with faint grain and a faint 48 px grid.
+  Everything is drawn around the footage (`ring_layer` never covers the box).
+
 ## Beat to shot map (v2)
 
 | Shot | Beat | Role in `takes:` | Screen | Status |

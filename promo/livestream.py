@@ -66,6 +66,31 @@ def moves(c):
     return m
 
 
+# Promo frame styles drawn AROUND the footage (never on the app pixels). `livestream.style`: a preset name or a dict
+# ({preset: name, ...overrides}). "plain" = the v1/v2 look.
+ACCENT = (139, 124, 255)          # the end card's violet glow hue (58, 50, 110) at full brightness
+STYLE_PRESETS = {
+    "plain": {"bg": "radial", "panel_border": 0, "panel_glow": 0, "panel_radius": 14, "host_border": 0,
+              "nameplate": "tag", "accent": ACCENT},
+    "framed-glow": {"bg": "diagonal", "bg_from": (10, 14, 38), "bg_to": (46, 26, 84), "bg_grain": 1.2, "bg_grid": 48,
+                    "panel_border": 2, "panel_glow": 12, "panel_glow_alpha": 0.25, "panel_radius": 12,
+                    "host_border": 2, "nameplate": "lower-third", "nameplate_px": 22, "accent": ACCENT},
+}
+
+
+def style(c):
+    """Resolved style dict for the show (preset + overrides)."""
+    v = c.get("style") or "plain"
+    if isinstance(v, str):
+        v = {"preset": v}
+    name = v.get("preset", "plain")
+    if name not in STYLE_PRESETS:
+        raise ValueError(f"livestream.style: unknown preset {name!r} (have {sorted(STYLE_PRESETS)})")
+    out = dict(STYLE_PRESETS[name], preset=name)
+    out.update({k: (tuple(x) if isinstance(x, list) else x) for k, x in v.items() if k != "preset"})
+    return out
+
+
 def has_chat(c):
     """A chat strip exists only if the spec declares chat lines (no asides = no strip at all)."""
     return bool(((c.get("chat") or {}).get("lines")))
@@ -472,6 +497,7 @@ def check(spec, ctx=None):
     rows += text_size_rows(spec, c)
     rows += named_rows(spec, c)
     rows += cam_rows(spec, c)
+    rows += edge_rows(spec, c)
     return rows
 
 
@@ -566,6 +592,56 @@ def cam_rows(spec, c):
     return [("livestream-cam", "FAIL" if bad else "PASS", "; ".join(bad) if bad else f"{n} screen cams fit their sources")]
 
 
+def edge_runs(col, thr=140, lo=2, hi=40):
+    """Short bright runs along one edge column/row of a grey frame: cut glyphs give many 2-40 px runs; borders, rules and
+    flat panels give none or one long run."""
+    ink = np.asarray(col) > thr
+    runs, n = 0, 0
+    for v in list(ink) + [False]:
+        if v:
+            n += 1
+        else:
+            runs += lo <= n <= hi
+            n = 0
+    return runs
+
+
+def edge_rows(spec, c, min_runs=4):
+    """Check note livestream-edges (WARN only): app-footage crops whose left/right edge cuts through text (half-words
+    such as "ummary" at the panel edge, UX review v2 V5). Sampled on the shot's named-element frame (else its first
+    frame), on the outermost source column inside the crop, or just inside a `matte` band. Opt out per shot with
+    `edge_check: false` (e.g. the Workshop scenes, which have no UI text at the edges)."""
+    from . import render as R
+    warn, n = [], 0
+    for s in [s for s in spec.shots if s.type == "livestream"]:
+        sc = s.cfg.get("screen") or {}
+        if not sc.get("source") or s.cfg.get("edge_check") is False:
+            continue
+        try:
+            path = spec.footage_path(sc["source"])
+        except Exception:  # noqa: BLE001
+            continue
+        if not path or not os.path.exists(path):
+            continue
+        named = s.cfg.get("named") or []
+        t = float(named[0].get("at")) if named and named[0].get("at") is not None else float(sc.get("t_in", 0.0)) + 0.05
+        g, W, H = _gray_frame(path, t)
+        x0, y0, bw, bh = cam_crop(sc.get("cam", (0.5, 0.5, 1.0)), W, H, screen_size(c))
+        k = bw / screen_size(c)[0]                                   # source px per output px
+        mt = sc.get("matte") or {}
+        ys = slice(int(y0), int(y0 + bh))
+        n += 1
+        for side in ("left", "right"):
+            inset = float(mt.get(side, 0)) * k
+            x = int(x0 + 1 + inset) if side == "left" else int(x0 + bw - 2 - inset)
+            r_ = edge_runs(g[ys, x])
+            if r_ >= min_runs:
+                warn.append(f"shot {s.id} {side} edge: {r_} cut glyph runs at {t:.2f} s (move the crop to a clean column or add a matte)")
+    if not n:
+        return []
+    return [("livestream-edges", "WARN" if warn else "PASS", "; ".join(warn) if warn else f"{n} app crops: no text cut at the left/right edges")]
+
+
 MIN_NAMED_PX = 18     # named-element cap height at 1080p (UX review T1/T4)
 
 
@@ -573,7 +649,8 @@ def named_rows(spec, c):
     """Gates for elements a VO line names (`named: [{name, box: [x0, y0, x1, y1], src_px, at, min_px}]` on a livestream
     shot; `at` = source time, default the shot's first displayed frame):
       livestream-named  FAIL if an element renders under min_px (default 18; 0 = a container that only has to be fully
-                        in frame, e.g. the whole card) or is not fully inside the screen crop;
+                        in frame, e.g. the whole card) or is not fully inside the screen crop. Named elements are TEXT
+                        (`kind: text`, default, or `container`); `kind: logo|icon` FAILs (no cap height to compare);
       named-upscale     WARN if an element's effective scale (output px / source px) is above 1.0 = upscaled, soft text
                         (prefer a DPR 2 / 4K take)."""
     out, up = [], []
@@ -594,6 +671,9 @@ def named_rows(spec, c):
                 frames[t] = _gray_frame(path, t)
             m = element_px(path, t, cam, screen_size(c), el["box"], el.get("src_px"), frame=frames[t], thr=el.get("thr", 110))
             nm = el.get("name", "?")
+            if el.get("kind", "text") not in ("text", "container"):
+                out.append(f"!shot {s.id} {nm!r}: kind {el.get('kind')!r}: a named element must be text (a logo/icon has no "
+                           "cap height to measure; name it in the line as text or drop it)"); continue
             if m is None:
                 out.append(f"!shot {s.id} {nm!r}: no ink in its box at {t:.2f} s"); continue
             need = el.get("min_px", MIN_NAMED_PX)

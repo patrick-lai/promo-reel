@@ -15,7 +15,7 @@ output:
   name: commission-ai-talkshow
   resolution: 1080
   fps: 30
-  duration: 107.3
+  duration: 106.0
 paths:
   build: build
   out: out
@@ -26,7 +26,7 @@ style:
     path: ${PROMO_FONT:-/usr/share/fonts/truetype/sand-box/google/Inter/Inter-VariableFont_opsz,wght.ttf}
 timeline:
   bpm: 1800
-  beats: 3219
+  beats: 3180
 livestream:
   hosts_side: left
   screen:
@@ -65,22 +65,22 @@ vo:
     file: vo/beat01_line01_hiyori.wav
     sha256: c6023e48c795e6fccca940602231946deb729be9123537ed4f1ad31f71e9d23f
   - id: beat01_line02
-    shot: 01b
-    at: 4.478
+    shot: '02'
+    at: 0.978
     host: Mao
     text: I did. Tonight we're shipping a whole feature, and neither of us is going to write the code.
     file: vo/beat01_line02_mao.wav
     sha256: ef1bc0730ed5d24e721c8b206e33198cba482ea4b2c032008852d6be69fc434c
   - id: beat02_line01
     shot: '02'
-    at: 0.16
+    at: 7.727
     host: Hiyori
     text: Wait, then who's writing it?
     file: vo/beat02_line01_hiyori.wav
     sha256: ac8d7d9bfb306bdad84eeeaae7ff7b3142c020454c38d449024bd9bc8e1ca77d
   - id: beat02_line02
     shot: '02'
-    at: 2.058
+    at: 9.625
     host: Mao
     text: A crew of AI agents. This is commission-ai. I tell the Commander what I want, like "Ship the checkout revamp tonight."
     file: vo/beat02_line02_mao.wav
@@ -98,40 +98,44 @@ vo:
     shot: '03'
     at: 1.637
     host: Mao
-    text: That's the plan. The Commander splits the ask into eight tasks, maps out which ones depend on which, and runs the independent ones in waves.
+    text: That's the plan. The Commander breaks the ask into tasks, and the links show which tasks wait on which.
     file: vo/beat03_line02_mao.wav
-    sha256: 5266eae072f78c7663edb5707e4fd89eaa325d11aa10c815372db60923a9e77f
+    sha256: 330c3bd3fb6cb9dd240ffe7225d0cef232a886dceeea21f8aed717f9d3b37b85
+    alt_files:
+    - vo/superseded/beat03_line02_mao.v1.wav
   - id: beat04_line01
     shot: '04'
-    at: 0.147
+    at: 0.154
     host: Hiyori
     text: Okay, which AIs is it actually using?
     file: vo/beat04_line01_hiyori.wav
     sha256: 97a3344426cad24a451cde356fa8ea1efb029fbf1626e034bb63977f549144b9
   - id: beat04_line02
     shot: '04'
-    at: 2.932
+    at: 2.939
     host: Mao
-    text: Good question. Here it's Claude Code, Codex and Cursor, each picking up its own ticket.
+    text: Good question. Here it's three different AI coding agents, each picking up its own ticket.
     file: vo/beat04_line02_mao.wav
-    sha256: d8e3cf5cf62ec5ac4088702b805d464385b0916f2d9777c341f75091e3494752
+    sha256: fd295f156ef0ed394db1ba7baaa4c3ab5cb285f8422b021b003fb3512e8cffaa
+    alt_files:
+    - vo/superseded/beat04_line02_mao.v1.wav
   - id: beat05_line01
     shot: '05'
-    at: 0.145
+    at: 0.156
     host: Hiyori
     text: Won't they trip over each other?
     file: vo/beat05_line01_hiyori.wav
     sha256: f91fc909ac6521f977f283b9167a9e8043898cea4ff690aa82634d57aa322efa
   - id: beat05_line02
     shot: '05'
-    at: 1.759
+    at: 1.77
     host: Mao
     text: Nope. Every task gets its own git worktree and its own pull request. See the chips? Coding, Checks, Pushed, PR raised.
     file: vo/beat05_line02_mao.wav
     sha256: 32823f4273c13954e66581f3323d30669b22c4d02d77c00c87f8389c9f0e3f10
   - id: beat06_line01
     shot: 06a
-    at: 0.144
+    at: 0.155
     host: Hiyori
     text: Ooh, what's that pill that just popped up?
     file: vo/beat06_line01_hiyori.wav
@@ -139,36 +143,36 @@ vo:
     alt_files:
     - vo/superseded/beat06_line01_hiyori.v1.wav
   - id: beat06_line02
-    shot: 06a
-    at: 2.326
+    shot: 06b
+    at: 0.17
     host: Mao
     text: That's "Needs you". It only taps me on the shoulder when it actually needs a decision. Click Allow once and the agent gets back to work.
     file: vo/beat06_line02_mao.wav
     sha256: d80a941d1c384087f637eda8fc5f3818101db55f42c3689f2e4f1ee5847017d9
   - id: beat07_line01
     shot: '07'
-    at: 0.141
+    at: 0.152
     host: Hiyori
     text: Okay, but do you have to read every line?
     file: vo/beat07_line01_hiyori.wav
     sha256: faf782d3e052445bae3fffc7df7fadd74343ba3304c23a4ba05efd11229bc625
   - id: beat07_line02
     shot: '07'
-    at: 2.758
+    at: 2.769
     host: Mao
     text: Nope. A reviewer checks each change and tells you why it passes. See? Approved, with the reason right there.
     file: vo/beat07_line02_mao.wav
     sha256: 8e014c4f6228069b0348e943743511834ca431913176db6e5e7b38019607d033
   - id: beat08_line01
     shot: 08a
-    at: 0.149
+    at: 0.16
     host: Hiyori
     text: Merged! Wait, all of them?
     file: vo/beat08_line01_hiyori.wav
     sha256: 43556b165788a65d40a6ee765e452339a63b2213143056f584cceed5416850c7
   - id: beat08_line02
     shot: 08a
-    at: 1.997
+    at: 2.008
     host: Mao
     text: Every one of them, merged.
     file: vo/beat08_line02_mao_all.wav
@@ -176,35 +180,35 @@ vo:
     variant: all
   - id: beat09_line01
     shot: 09a
-    at: 0.148
+    at: 0.159
     host: Hiyori
     text: And why is there a tiny town??
     file: vo/beat09_line01_hiyori.wav
     sha256: 7171dbbe1fc7a7678b0e939609f54e913b3f542d700b38ba2502831cc7be2a06
   - id: beat09_line02
     shot: 09a
-    at: 1.824
+    at: 1.835
     host: Mao
     text: That's the Workshop. While the agents work, little robots build it up. Ours just became a Street.
     file: vo/beat09_line02_mao.wav
     sha256: 4191d85936bc30ad9f55fd1670ee5a260c8fe6166495d200407fd8ef53b1a774
   - id: beat09_line03
     shot: 09b
-    at: 2.019
+    at: 1.996
     host: Hiyori
     text: I need this on my desktop.
     file: vo/beat09_line03_hiyori.wav
     sha256: 8b3402c40d463363e44075a2a03314f56d5a2399cc8719d18b91c2d071dc3e68
   - id: beat10_line01
     shot: '10'
-    at: 0.16
+    at: 0.137
     host: Mao
     text: It runs on your Mac. It's an alpha for Apple Silicon right now.
     file: vo/beat10_line01_mao.wav
     sha256: 4ef7657e17dab9286c97551a9f1d29b0c7ed3e2d2be52383dec1c44b34799e08
   - id: beat10_line02
     shot: '10'
-    at: 4.072
+    at: 4.049
     host: Hiyori
     text: 'commission-ai: your AI dev crew. Thanks for watching!'
     file: vo/beat10_line02_hiyori.wav
@@ -232,7 +236,7 @@ shots:
 - id: 01b
   beats:
   - 120
-  - 452
+  - 225
   type: livestream
   beat: 1
   screen:
@@ -242,20 +246,21 @@ shots:
     - 0.5
     - 0.553
     - 0.7
-  note: Dusk Workshop, wide (header bar cropped; 0.70 = widest crop that still hides it at the 1440x1032 aspect), from 0.3 s (after the first-frame brightness dip);
-    beat 1 dialogue
+  edge_check: false
+  note: 'Dusk Workshop, wide, 3.5 s (v3 hook: S02 takes over at 7.5 s; header bar cropped; 0.70 = widest crop that still hides it at the 1440x1032 aspect), from 0.3
+    s (after the first-frame brightness dip); beat 1 dialogue'
 - id: '02'
   beats:
-  - 452
+  - 225
   - 771
   type: livestream
   beat: 2
   screen:
     source: shot-03
     t_in: 0.0
-    hold_in: 3.128
+    hold_in: 10.695
     cam:
-    - 0.266
+    - 0.33073
     - 0.76
     - 0.375
   named:
@@ -276,15 +281,16 @@ shots:
     src_px: 2160
     at: 6.0
     min_px: 0
-  note: Composer (S3)
+  note: 'Composer (S3). v3 hook: starts at 7.5 s (first app UI) under the rest of beat 1''s VO; holds its first frame until the typing sync'
 - id: '03'
   beats:
   - 771
-  - 1103
+  - 1029
   type: livestream
   beat: 3
   screen:
     source: talk-dag-tight-v1080
+    speed: 0.692
     t_in: 0.0
     cam:
     - 0.4133
@@ -320,14 +326,14 @@ shots:
     3 cards and no wave headings'
 - id: '04'
   beats:
-  - 1103
-  - 1390
+  - 1029
+  - 1321
   type: livestream
   beat: 4
   screen:
     source: shot-05-v1
     t_in: 0.0
-    hold_in: 4.132
+    hold_in: 4.139
     cam:
     - 0.551
     - 0.583
@@ -357,30 +363,6 @@ shots:
     - 1609
     src_px: 2160
     at: 3.5
-  - name: Claude Code badge
-    box:
-    - 1642
-    - 936
-    - 1682
-    - 976
-    src_px: 2160
-    at: 3.5
-  - name: Codex badge
-    box:
-    - 1642
-    - 1180
-    - 1682
-    - 1220
-    src_px: 2160
-    at: 3.5
-  - name: Cursor badge
-    box:
-    - 1642
-    - 1668
-    - 1682
-    - 1708
-    src_px: 2160
-    at: 3.5
   - name: PAY-106 card
     box:
     - 1625
@@ -393,17 +375,20 @@ shots:
   note: Rail lighting (S5)
 - id: '05'
   beats:
-  - 1390
-  - 1702
+  - 1321
+  - 1633
   type: livestream
   beat: 5
   screen:
     source: shot-08-v1080
-    t_in: 0.021
+    t_in: 0.01
     cam:
-    - 0.585
-    - 0.5
-    - 0.6667
+    - 0.49583
+    - 0.5454
+    - 0.6
+    matte:
+      right: 14
+      bottom: 21
   named:
   - name: Coding
     box:
@@ -440,17 +425,17 @@ shots:
   note: 'Chips (S8): Coding -> Checks -> Pushed -> PR raised (Codex)'
 - id: 06a
   beats:
-  - 1702
-  - 1778
+  - 1633
+  - 1698
   type: livestream
   beat: 6
   screen:
     source: shot-10-dpr2-v1080
     t_in: 1.2
     cam:
-    - 0.6016
-    - 0.866
+    - 0.67708
     - 0.6
+    - 0.63542
   named:
   - name: Needs you pill
     box:
@@ -467,7 +452,7 @@ shots:
     - 1340
     - 1000
     src_px: 1080
-    at: 3.6
+    at: 3.35
   - name: PAY-106 card
     box:
     - 940
@@ -475,23 +460,23 @@ shots:
     - 1370
     - 1040
     src_px: 1080
-    at: 3.6
+    at: 3.35
     min_px: 0
   note: PAY-106 flips to Needs you as HIYORI asks about the pill
 - id: 06b
   beats:
-  - 1778
-  - 2033
+  - 1698
+  - 1964
   type: livestream
   beat: 6
   screen:
     source: shot-10-dpr2-v1080
-    t_in: 3.733
-    hold_in: 4.276
+    t_in: 3.367
+    hold_in: 4.287
     cam:
-    - 0.6016
-    - 0.866
+    - 0.67708
     - 0.6
+    - 0.63542
   named:
   - name: Needs you pill
     box:
@@ -508,7 +493,7 @@ shots:
     - 1340
     - 1000
     src_px: 1080
-    at: 3.6
+    at: 3.35
   - name: PAY-106 card
     box:
     - 940
@@ -516,13 +501,13 @@ shots:
     - 1370
     - 1040
     src_px: 1080
-    at: 3.6
+    at: 3.35
     min_px: 0
   note: Same take, held, then the Allow once click on cue
 - id: '07'
   beats:
-  - 2033
-  - 2330
+  - 1964
+  - 2261
   type: livestream
   beat: 7
   screen:
@@ -549,66 +534,58 @@ shots:
   note: 'Reviewer thread (S12). Auto take: full MAO line if ''Approved...'' measures >= min_px, else trimmed after ''...why it passes.'''
 - id: 08a
   beats:
-  - 2330
-  - 2462
+  - 2261
+  - 2408
   type: livestream
   beat: 8
   screen:
-    source: shot-16-prcard-v1080
-    t_in: 3.703
+    source: shot-16-prcard-tight-v1080
+    t_in: 4.892
     cam:
-    - 0.666
-    - 0.417
-    - 0.654
+    - 0.3151
+    - 0.50648
+    - 0.59896
   named:
-  - name: Done heading
-    box:
-    - 800
-    - 5
-    - 900
-    - 45
-    src_px: 1080
-    at: 7.9
-  - name: Merged step label
-    box:
-    - 1712
-    - 164
-    - 1791
-    - 192
-    src_px: 1080
-    at: 7.9
   - name: Merged PR pill
     box:
-    - 855
-    - 472
-    - 927
-    - 498
+    - 295
+    - 425
+    - 430
+    - 455
     src_px: 1080
-    at: 7.9
-  - name: PR card
+    at: 8.5
+  - name: PR title
     box:
-    - 690
-    - 445
-    - 1865
-    - 650
+    - 200
+    - 476
+    - 860
+    - 512
     src_px: 1080
-    at: 7.9
+    at: 8.5
+  - name: PR card content
+    box:
+    - 55
+    - 385
+    - 1000
+    - 690
+    src_px: 1080
+    at: 8.5
     min_px: 0
   note: PR raised -> Merged (PR card take), flip on MAO's 'merged'; no PR number in dialogue or card text (the app's own PR card shows it)
 - id: 08b
   beats:
-  - 2462
-  - 2480
+  - 2408
+  - 2441
   type: livestream
   beat: 8
   screen:
     source: shot-11-v1080
     t_in: 0.0
-  note: 'Board all Landed (S11), last 0.6 s of the beat: 08a holds until the PR card''s pill reads Merged (7.70 s)'
+  note: 'Board all Landed (S11), the last 1.1 s of the beat: 08a holds ~1 s on the PR card after its pill reads Merged (7.70 s)'
 - id: 09a
   beats:
-  - 2480
-  - 2638
+  - 2441
+  - 2600
   type: livestream
   beat: 9
   screen:
@@ -618,25 +595,27 @@ shots:
     - 0.52
     - 0.56
     - 0.55
+  edge_check: false
   note: 'Workshop robots building: tighter 1.27x push-in on the room vs 01b, later section (from 5.0 s) so it doesn''t repeat 01b'
 - id: 09b
   beats:
-  - 2638
-  - 2761
+  - 2600
+  - 2723
   type: livestream
   beat: 9
   screen:
     source: shot-14b-v1080
-    t_in: 4.042
+    t_in: 4.065
     dissolve:
     - at: 5.5
       dur: 0.4
       why: time of day dusk -> day (plan profile)
+  edge_check: false
   note: Outside -> Street (S14b); screen top-right kept clear
 - id: '10'
   beats:
-  - 2761
-  - 3039
+  - 2723
+  - 3000
   type: livestream
   beat: 10
   screen:
@@ -649,16 +628,16 @@ shots:
   note: End card (wording from the beat 10 dialogue only; no URL / price / dates / PR numbers)
 - id: 11a
   beats:
-  - 3039
-  - 3129
+  - 3000
+  - 3090
   type: live2d_credits
   size: 30
   note: Live2D notice + licence line
   part: 1
 - id: 11b
   beats:
-  - 3129
-  - 3219
+  - 3090
+  - 3180
   type: live2d_credits
   size: 30
   note: Live2D model credits

@@ -649,10 +649,12 @@ def test_talkshow_spec_gates():
     assert [s.get("part") for s in LS.credit_shots(sp)] == [1, 2]         # two credit cards
     named = [s for s in sp.shots if s.cfg.get("named")]
     assert {s.id for s in named} >= {"02", "04", "05", "06a", "06b", "07"}
-    if "livestream-named" in g:   # known misses only: beat-4 Cursor badge, beat-8a Merged label/pill at the <= 1.2x cap
+    assert not any("badge" in (e.get("name") or "").lower() or e.get("kind") in ("logo", "icon")
+                   for s in named for e in s.cfg["named"]), "v3: agent badges are logos, not named text"
+    if "livestream-named" in g:   # known misses only: beat-8a Merged items (none since the v3 tight PR-card take)
         bad = [m for m in g["livestream-named"][1].split("; ") if "NOT fully" in m or
                (float(m.split("= ")[1].split(" px")[0]) < float(m.split("(min ")[1].split(")")[0]))]
-        assert all("badge" in m or ("08a" in m and "Merged" in m) for m in bad), bad
+        assert all("08a" in m and "Merged" in m for m in bad), bad
     srcs = [(s.cfg.get("screen") or {}).get("source") for s in sp.shots]
     assert all(not x or "/" not in x for x in srcs)              # clip ids, never paths
 
@@ -783,6 +785,126 @@ def test_talkshow_vo_placeholder_and_superseded_fallback():
         assert p.endswith("superseded/b1l2.v1.wav")
     finally:
         shutil.rmtree(d, ignore_errors=True)
+
+
+
+
+# ---------------- v3: named-text guard, edge slivers, matte, style preset, absolute segment start ----------------
+def test_named_element_must_be_text_not_logo():
+    import promo.livestream as LSM
+    tmp = tempfile.NamedTemporaryFile(suffix=".mov", delete=False)
+    tmp.close()
+    g = np.zeros((1080, 1920), int)
+    g[500:520, 800:900] = 220
+    orig = LSM._gray_frame
+    LSM._gray_frame = lambda path, t: (g, 1920, 1080)
+    try:
+        for kind, want in [("text", "PASS"), ("container", "PASS"), ("logo", "FAIL"), ("icon", "FAIL")]:
+            def f(r, kind=kind):
+                _no_chat(r)
+                r["shots"][0]["screen"] = {"source": "x", "cam": (0.5, 0.5, 1.0)}
+                r["shots"][0]["named"] = [{"name": "el", "kind": kind, "box": [790, 495, 910, 525], "src_px": 1080, "min_px": 10}]
+            sp = _spec(f)
+            sp.footage_path = lambda cid: tmp.name
+            rows = {k: (st, msg) for k, st, msg in LS.named_rows(sp, LS.cfg(sp))}
+            assert rows["livestream-named"][0] == want, (kind, rows)
+            if want == "FAIL":
+                assert "must be text" in rows["livestream-named"][1]
+    finally:
+        LSM._gray_frame = orig
+        os.unlink(tmp.name)
+
+
+def test_edge_runs_and_edge_rows():
+    col = np.zeros(400)
+    assert LS.edge_runs(col) == 0
+    col[50:350] = 220                                            # one long border / flat panel: not text
+    assert LS.edge_runs(col) == 0
+    col = np.zeros(400)
+    for y in range(20, 380, 20):                                 # cut glyphs: many short bright runs
+        col[y:y + 8] = 220
+    assert LS.edge_runs(col) >= 10
+    import promo.livestream as LSM
+    tmp = tempfile.NamedTemporaryFile(suffix=".mov", delete=False)
+    tmp.close()
+    g = np.zeros((1080, 1920), int)
+    for y in range(40, 1040, 24):                                # text rows running off the frame's right edge
+        g[y:y + 10, 1700:1920] = 220
+    orig = LSM._gray_frame
+    LSM._gray_frame = lambda path, t: (g, 1920, 1080)
+    try:
+        def mk(**screen):
+            def f(r):
+                _no_chat(r)
+                r["shots"][0]["screen"] = {"source": "x", "cam": (0.5, 0.5, 1.0), **screen}
+            sp = _spec(f)
+            sp.footage_path = lambda cid: tmp.name
+            return {k: (st, msg) for k, st, msg in LS.edge_rows(sp, LS.cfg(sp))}["livestream-edges"]
+        st, msg = mk()
+        assert st == "WARN" and "right edge" in msg and "left edge" not in msg, msg
+        assert mk(matte={"right": 300})[0] == "PASS"             # sampled just inside the matte band
+        def off(r):
+            _no_chat(r)
+            r["shots"][0]["screen"] = {"source": "x", "cam": (0.5, 0.5, 1.0)}
+            r["shots"][0]["edge_check"] = False
+        sp = _spec(off)
+        sp.footage_path = lambda cid: tmp.name
+        assert LS.edge_rows(sp, LS.cfg(sp)) == []
+    finally:
+        LSM._gray_frame = orig
+        os.unlink(tmp.name)
+
+
+def test_apply_matte_only_touches_edge_bands():
+    from PIL import Image
+    from promo.shots import livestream as SL
+    rng = np.random.default_rng(0)
+    a = rng.integers(0, 255, (200, 300, 3), dtype=np.uint8)
+    a[:, 200:] = (30, 32, 40)                                    # panel background next to the right band
+    im = Image.fromarray(a)
+    out = np.asarray(SL.apply_matte(im, {"right": 14, "bottom": 21}))
+    assert np.array_equal(out[:200 - 21, :300 - 14], a[:200 - 21, :300 - 14])   # app pixels inside untouched
+    band = out[:150, 300 - 8:].astype(int)                       # outer band = the panel colour
+    assert np.abs(band - np.array([30, 32, 40])).max() <= 2
+    assert np.array_equal(np.asarray(SL.apply_matte(im, None)), a)
+
+
+def test_style_presets_frame_never_covers_footage():
+    from promo.render import RenderContext
+    from promo.shots import livestream as SL
+    assert LS.style({})["preset"] == "plain" and LS.style({"style": None})["preset"] == "plain"
+    st = LS.style({"style": "framed-glow"})
+    assert st["panel_border"] == 2 and st["panel_radius"] == 12 and st["panel_glow"] == 12 and abs(st["panel_glow_alpha"] - 0.25) < 1e-9
+    assert st["bg"] == "diagonal" and st["host_border"] > 0 and st["nameplate"] == "lower-third"
+    assert LS.style({"style": {"preset": "framed-glow", "panel_border": 3}})["panel_border"] == 3
+    try:
+        LS.style({"style": "neon"})
+        assert False, "unknown preset must raise"
+    except ValueError:
+        pass
+    w, h, b = 200, 120, 2
+    ring = np.asarray(SL.ring_layer(w, h, 12, b, st["accent"]))[..., 3]
+    assert ring.shape == (h + 2 * b, w + 2 * b)
+    assert ring[b + 12:b + h - 12, b + 12:b + w - 12].max() == 0       # never over the box interior
+    assert ring[b + h // 2, 0] > 0 and ring[0, b + w // 2] > 0         # border drawn outside
+    ctx = RenderContext()
+    plate = np.asarray(SL.nameplate(ctx, "Hiyori", st))
+    white = (plate[..., 0] > 200) & (plate[..., 1] > 200) & (plate[..., 2] > 200) & (plate[..., 3] > 200)
+    rows = np.where(white.any(axis=1))[0]
+    assert rows.max() - rows.min() + 1 >= 22, rows                     # cap height >= 22 px (uppercase, no descenders)
+
+
+def test_talkshow_segment_from_absolute_time():
+    mp = os.path.join(ROOT, "projects", "commission-ai-talkshow", "make_spec.py")
+    src = open(mp).read()
+    assert 'frm["t"]' in src                                           # `from: {t: X}` = absolute show time
+    plan = yaml.safe_load(open(os.path.join(ROOT, "projects", "commission-ai-talkshow", "plan.yaml")))
+    assert "style" in plan                                             # style is a plan option (null = plain)
+    assert "fit_clip" in src                                           # a short clip slows down rather than freezing
+    spec = yaml.safe_load(open(os.path.join(ROOT, "projects", "commission-ai-talkshow", "promo.yaml")))
+    s03 = next(s for s in spec["shots"] if str(s["id"]) == "03")
+    if "speed" in s03["screen"]:
+        assert 0.5 <= s03["screen"]["speed"] < 1.0 and "hold_in" not in s03["screen"]
 
 
 if __name__ == "__main__":

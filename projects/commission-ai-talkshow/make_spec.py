@@ -102,7 +102,8 @@ def tod_change(clip, prof):
 
 def script_lines(path):
     """{(beat, n): (HOST, text)} from the Direction 3 table of the marketing script, plus {beat: row text}. Stage
-    directions in parentheses after the dialogue (e.g. beat 8's alternatives) are not dialogue and are dropped."""
+    directions in parentheses after the dialogue (e.g. beat 8's alternatives, "(v2, 4 Oct: ...)" revision notes) are not
+    dialogue and are dropped."""
     txt = open(path).read()
     sec = txt[txt.index("## Direction 3"):]
     sec = sec[: sec.index("\n## ", 5)] if "\n## " in sec[5:] else sec
@@ -114,6 +115,7 @@ def script_lines(path):
         beat, dlg = int(m.group(1)), m.group(2)
         rows[beat] = dlg
         dlg = re.sub(r"\s*\((?:Pick|pick)[^)]*\)\s*$", "", dlg.strip())
+        dlg = re.sub(r"\s*\(v\d+,[^)]*\)\s*$", "", dlg)          # editorial revision note, e.g. "(v2, 4 Oct: ...)"
         parts = re.split(r"\*\*(HIYORI|MAO):\*\*", dlg)
         n = 0
         for host, text in zip(parts[1::2], parts[2::2]):
@@ -310,6 +312,8 @@ def build(plan):
             f0s.append(0)
         elif frm == "title_card":
             f0s.append(fr(plan["title_card"]))
+        elif isinstance(frm, dict) and "t" in frm:          # absolute show time (e.g. the hook cut: VO carries over)
+            f0s.append(fr(float(frm["t"])))
         elif isinstance(frm, dict):
             f0s.append(fr(at_line(sg["beat"], frm["line"], frm.get("plus", 0.0))))
         else:
@@ -355,11 +359,20 @@ def build(plan):
                     hold = max(0.0, vo_local - (y["src"] - t_in))
             if "end_src" in sg:
                 hold = max(hold, dur - (sg["end_src"] - t_in))
+            if sg.get("fit_clip") and clip_path(sg["clip"]):  # clip shorter than its segment: play it slower, never freeze
+                import subprocess
+                src_dur = float(subprocess.check_output(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of",
+                                                         "csv=p=0", clip_path(sg["clip"])], text=True).strip())
+                show = dur - hold
+                if show > 0 and src_dur - t_in - 0.05 < show:
+                    sc["speed"] = round((src_dur - t_in - 0.05) / show, 3)
             sc["t_in"] = round(t_in, 3)
             if hold > 0:
                 sc["hold_in"] = round(hold, 3)
             if sg.get("cam"):
                 sc["cam"] = sg["cam"]
+            if sg.get("matte"):
+                sc["matte"] = sg["matte"]          # promo matte over cut UI at the crop edge (logged in the notes)
             tc_ = tod_change(sg["clip"], sg)
             shown = (t_in, t_in + max(0.0, dur - hold))
             if tc_ and shown[0] < tc_[0] < shown[1]:            # dissolve over the snap, only if this segment shows it
@@ -371,7 +384,9 @@ def build(plan):
         if sg.get("text_check"):
             s["text_check"] = sg["text_check"]
         if sg.get("named"):
-            s["named"] = sg["named"]          # elements the VO line names: `promo check` livestream-named / named-upscale
+            s["named"] = sg["named"]
+        if sg.get("edge_check") is False:
+            s["edge_check"] = False          # elements the VO line names: `promo check` livestream-named / named-upscale
         s["note"] = sg.get("note", "")
         shots.append(s)
     shots[0]["sfx"] = [{"sfx": "swell", "at": 0.0, "db": -6}]
@@ -439,6 +454,7 @@ def render(d, plan):
             "slot_gap": 16,
             "keep_clear": [{"name": "street-notice", "box": plan["keep_clear"]}],
             "tag": "EP 1",
+            **({"style": plan["style"]} if plan.get("style") else {}),
             "title": "Building in Public",
             **({"chat": {"max_lines": 4, "lines": d["chat"]}} if d["chat"] else {}),
             "hosts": [
