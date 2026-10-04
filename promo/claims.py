@@ -5,16 +5,15 @@ Team rule: no number on screen that the frame does not show. A claim table picks
 
     claims:
       legible:                                   # one record per evidence shot; null = not captured / not checked yet
-        shot11_legible: {cards: null, logos: null}
+        shot11_legible: {cards: null, landed: null, logos: null}
       tables:
-        merged_count:                            # reusable: the anime peak card and the hero caption both use it
+        landed_count:                            # the anime peak card over the shot-11 header ('8 in this run · 8 landed')
           selector: shot11_legible
           evidence: {manifest: /abs/footage/manifest.md, section: "Shot 11"}
           rows:                                  # first row whose every count matches exactly wins; last row = no numbers
-            - {cards: 8, logos: 3, text: "8 TASKS · 3 AGENTS · ALL MERGED"}
-            - {logos: 3, text: "3 AGENTS · ALL MERGED"}
-            - {cards: 8, text: "8 TASKS · ALL MERGED"}
-            - {text: "ALL MERGED."}
+            - {cards: 8, landed: 8, text: "8 TASKS · ALL LANDED"}     # word for word with the header (Marketing, 4 Oct)
+            - {landed: 8, text: "ALL LANDED."}
+            - {text: "LANDED.", confirm: "Marketing"}
         plan_count:
           selector: shot11_legible
           rows:
@@ -23,9 +22,12 @@ Team rule: no number on screen that the frame does not show. A claim table picks
 
 A row's `confirm: <who>` marks provisional copy: while that row is selected, the claims gate WARNs that <who> must confirm
 the line (and critique packs flag it). Remove `confirm` once the line is signed off.
-A card/caption uses `text_from: claims.merged_count` instead of literal text. `promo check` (gate `claims`) fails if a
-selected line has a digit that is not one of the legible counts it was selected on, if a table has no number-free
-fallback row, or if the manifest section names counts that disagree with the legibility record.
+A card/caption uses `text_from: claims.landed_count` instead of literal text. `promo check` (gate `claims`) fails if a
+selected line has a digit that is not one of the legible counts it was selected on (so '3 AGENTS' needs a `logos: 3`
+condition: a crop with no legible logos can never show it), if a row says 'ALL LANDED' without a `landed` condition (or
+with a `landed` count different from its `cards` count), if a table has no number-free fallback row, or if the manifest
+section names counts that disagree with the legibility record. Counts read from manifest.md: cards ('8 task cards',
+the board header '8 in this run'), landed ('8 landed'), logos, tasks, agents.
 """
 from __future__ import annotations
 
@@ -33,7 +35,11 @@ import os
 import re
 
 COUNT_WORDS = {"cards": r"(\d+)\s+(?:task\s+|ticket\s+)?cards?|(\d+)\s+in\s+this\s+run\b",   # board header '8 in this run'
+               "landed": r"(\d+)\s+landed\b",                                                       # board header '8 landed'
                "logos": r"(\d+)\s+(?:agent\s+)?logos?", "tasks": r"(\d+)\s+tasks?", "agents": r"(\d+)\s+agents?"}
+
+# Words that claim a count without a digit: the row must carry the named condition (and match `cards` when it has one).
+ALL_WORDS = {"landed": r"\bALL\s+LANDED\b"}
 
 
 META = ("text", "note", "confirm")       # row keys that are not count conditions
@@ -115,6 +121,12 @@ def audit(raw, resolve_path=lambda p: p):
             conds = {int(v) for k, v in r.items() if k not in META}
             if nums - conds:
                 res.append(("FAIL", f"claim table {name}: row {r.get('text')!r} shows {sorted(nums - conds)} without a matching legible-count condition"))
+            for key, rx in ALL_WORDS.items():
+                if re.search(rx, r.get("text", ""), flags=re.I):
+                    if r.get(key) is None:
+                        res.append(("FAIL", f"claim table {name}: row {r.get('text')!r} claims all {key} without a legible '{key}' count condition"))
+                    elif r.get("cards") is not None and int(r[key]) != int(r["cards"]):
+                        res.append(("FAIL", f"claim table {name}: row {r.get('text')!r}: {key}={r[key]} but cards={r['cards']} (not all {key})"))
         leg = legible_for(raw, t) or {}
         try:
             row = select(rows, leg)

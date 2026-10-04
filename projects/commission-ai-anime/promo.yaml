@@ -4,7 +4,7 @@
 # slates: swapping one in is a config change (replace `placeholder:` with `source:` + `cam:`). No URL on the end card.
 # Heavy steps hold flock /tmp/commission-ai-cargo.lock (promo/lock.py) and run niced with ffmpeg -threads 2.
 project: {name: commission-ai-anime, title: "commission-ai anime opening (Direction 2)"}
-output: {name: anime-v7, resolution: 1080, fps: 30, duration: 76.192188}  # ends where the music master ends (76.192 s = 224.767 beats); 2286 frames, no tail pad
+output: {name: anime-v8, resolution: 1080, fps: 30, duration: 76.192188}  # ends where the music master ends (76.192 s = 224.767 beats); 2286 frames, no tail pad
 paths: {build: build, out: out}
 assets: assets.yaml
 footage: footage/manifest.yaml
@@ -26,25 +26,25 @@ music:
   edit: {segments: [[0, 0, 224.76695]], crossfade: 0.0, gains: []}
 
 # Truth gate for the plan + peak cards: each card's text is picked from what its own shot legibly shows.
-#  - peak (15): the shot-11 header take, '### Shot 11 (header counts)' in manifest.md ('8 in this run · 8 landed'), NOT
-#    shot-11-all8 (card text ~9-11 px). cards: 8 because the header digits are 17 src px x2.02 = 34 px in shot 15's crop
-#    (named gate on shot 15 keeps that >= 18 px). logos stays null: no legible logo count in the header take.
+#  - peak (15, v8): the shot-11-dpr2-r2 take, '### Shot 11 (DPR2 r2, header 20 px + Landed column)' in manifest.md
+#    ('8 in this run · 8 landed'). cards: 8 and landed: 8 from that header (21 src px x2.17 = 45 px in shot 15's crop;
+#    named gate keeps it >= 18 px). logos stays null: the crop shows one card's logo, not a count of agents, so the
+#    '3 AGENTS' line can never be selected (Marketing 4 Oct: '8 TASKS · ALL LANDED', word for word with '8 landed').
 #  - plan (04, v7): shot-04-dpr2-promo, '### Shot 4 (DPR2 promo plan DAG)' ('fitted to the 8 cards'). cards: 8 is the
 #    number of whole cards in shot 04's crop (counted on the full-res frames: Wave 1 4, Wave 2 3, Wave 3 1; every card
 #    whole, nothing under the band). It is a count of cards, so no card ID is named on any card.
 claims:
   legible:
-    shot11_legible: {cards: 8, logos: null}        # shot-11 header '8 in this run · 8 landed' (34 px in shot 15's crop)
+    shot11_legible: {cards: 8, landed: 8, logos: null}   # shot-11-dpr2-r2 header '8 in this run · 8 landed' (45 px in 15)
     shot04p_legible: {cards: 8}                    # shot-04-dpr2-promo: 8 whole task cards in shot 04's frame
   tables:
-    merged_count:              # reusable selector: the hero caption uses the same table
+    landed_count:              # the peak card on shot 15 (v8 copy, Marketing Lead 4 Oct; scripts-3-directions-v1.md)
       selector: shot11_legible
-      evidence: {manifest: "${COMMISSION_AI_PROMO:-/workspace/videos/commission-ai-promo}/footage/v1-1080/manifest.md", section: "Shot 11 (header counts)"}
+      evidence: {manifest: "${COMMISSION_AI_PROMO:-/workspace/videos/commission-ai-promo}/footage/v1-1080/manifest.md", section: "Shot 11 (DPR2 r2, header 20 px + Landed column)"}
       rows:
-        - {cards: 8, logos: 3, text: "8 TASKS · 3 AGENTS · ALL MERGED"}
-        - {logos: 3, text: "3 AGENTS · ALL MERGED"}
-        - {cards: 8, text: "8 TASKS · ALL MERGED"}
-        - {text: "ALL MERGED."}
+        - {cards: 8, landed: 8, text: "8 TASKS · ALL LANDED"}     # matches the header '8 in this run · 8 landed'
+        - {landed: 8, text: "ALL LANDED."}
+        - {text: "LANDED.", confirm: "Marketing"}                 # softened fallback, not final copy
     plan_count:                # the 12.20 s plan card: '8 TASKS.' only when shot 04's frame shows 8 whole cards
       selector: shot04p_legible
       evidence: {manifest: "${COMMISSION_AI_PROMO:-/workspace/videos/commission-ai-promo}/footage/v1-1080/manifest.md", section: "Shot 4 (DPR2 promo plan DAG)"}
@@ -65,57 +65,52 @@ shots:
     contact_at: 0.8
     notes: "Header bar text cropped by the camera (box top y >= 0.10). Pet cat 'zzz' bubble is real app art."
 
-  # ---- 1.36 s intro hit: logo slam + a steady push-in starts on the same dusk plate (continuous source + framing, so
-  # the cut on the marker is invisible: the hit reads as the push starting), 1 bar
-  - id: "01b"
-    beats: [4, 8]
-    type: anime
-    ui: false
-    source: shot-01-dusk
-    label: "shot-01 dusk Workshop, steady push-in from the intro hit"
-    t_in: 1.6166667            # = 0.25 + 41 frames: continues shot 01 frame-exactly
-    cam: [[0, 0.50, 0.56, 0.90, linear], [end, 0.50, 0.565, 0.84, linear]]
-    cards:
-      - {row: title, text: "commission-ai", bars: [0, 1], fade_out: 0}
-      - {row: sub, text: "Your AI dev crew", bars: [0, 1], fade_out: 0}
-    fx_in: [{kind: flash, frames: 3}, {kind: speed_lines, frames: 6}]
-    contact_at: 0.9
-
-  # ---- 2.71 s next bar: cut to the night Workshop (lamp lit), push continues; the logo card carries over (no re-slam)
+  # ---- 1.36 s intro hit: cut to the night Workshop (lamp lit) with the logo slam + a steady push-in.
+  # v8 (Zen A6, Hook): 01b (the same dusk plate pushed in) is dropped, so the opening is 2 shots of the room, not 3, and
+  # the first app UI (03) lands at beat 12 = 4.07 s (`promo move-cut 20 12`). 02 took over 01b's slot + its slam/fx.
   - id: "02"
-    beats: [8, 20]
+    beats: [4, 12]
     type: anime
     ui: false
     source: shot-03-night
-    label: "shot-03 night Workshop (22:00), lamp lit"
+    label: "shot-03 night Workshop (22:00), lamp lit, logo slam on the intro hit"
     t_in: 0.20                 # Zen: start at frame 8 or later (lamp lit from frame 7); 0.20 s = frame 12
-    cam: [[0, 0.50, 0.58, 0.88, linear], [end, 0.50, 0.58, 0.76, linear]]   # steady push-in; header cropped
+    cam: [[0, 0.50, 0.58, 0.88, linear], [end, 0.50, 0.58, 0.78, linear]]   # steady push-in; header cropped
     cards:
-      - {row: title, text: "commission-ai", bars: [0, end], slam: false}     # 'end': follows a move-cut of the 02|03 cut
+      - {row: title, text: "commission-ai", bars: [0, end]}        # slams in on the intro hit; 'end' follows move-cuts
       - {row: sub, text: "Your AI dev crew", bars: [0, end]}
-    contact_at: 2.0
+    fx_in: [{kind: flash, frames: 3}, {kind: speed_lines, frames: 6}]
+    contact_at: 1.5
     notes: "Script asks for a robot's light flicking on: not verified in this take (lamp is already lit at frame 7)."
 
-  # ---- 6.78 s: the ask (4 bars) -- composer take not in v1-1080. SWAP RECIPE when shot-03-composer-dpr2 lands:
-  #   1. `promo footage add <path>/shot-03-composer-dpr2.mov --id shot-03-composer-dpr2 --shots 03 --dpr 2 ...`
-  #   2. replace `placeholder:` below with `source: shot-03-composer-dpr2` + `segs:`/`t_in:` + `cam:` (+ `named:` for the
-  #      typed ask, so the gate checks it reads >= 18 px and is not under the band)
-  #   3. first real UI at ~0:04: `promo move-cut 20 12` (02 -> 1 bar, 03 starts at beat 12 = 4.07 s; 02's cards use
-  #      bars [0, end] so they follow). To shorten 03 instead: `promo move-cut 36 <beat>` once 04 is the 04b take.
-  #   4. `promo check`, `promo build`.
+  # ---- 4.07 s: the ask (6 bars; v8: first app UI at beat 12, +2 bars from the dropped 01b) on shot-03-composer-dpr2
+  # (DPR 2, 720x405 CSS clip, 2.667x): the Commander composer, Access = Edits, the ask typed with REAL keystrokes.
+  # Measured on the frames: placeholder 'Ask Commander anything...' until 0.333 s; line 1 'Ship the checkout revamp
+  # tonight.' 0.333-3.333 s (6 frames per char = 10 chars/s); Shift+Enter 3.833 s (the box grows up, top y 773 -> 714);
+  # line 2 'No broken builds.' 4.25-5.85 s; take ends 6.35 s with the send button lit (ready) -- the take is NOT sent.
+  # Keystrokes play real time from 0.20 s: 't' of 'tonight' lands at shot 2.63 s (TONIGHT. card on bar 2 = 2.71 s), line 2
+  # starts on bar 3 (4.07 s), last key at 5.65 s; then the final 0.38 s (send lit, caret) is stretched over the last 2.39 s.
+  # Swap back to a slate = replace `source:`..`named:` with the old `placeholder:` block (git 41ddc06).
   - id: "03"
-    beats: [20, 36]
+    beats: [12, 36]
     type: anime
     ui: true
-    placeholder:
-      id: S3 composer
-      label: "Composer typing 'Ship the checkout revamp tonight.' + smash-zoom on Send"
-      expects: "No composer take in v1-1080 (v1-1080 shot-03 is the night Workshop).\nReal sent ask exists in shot-10-dpr2 (Commander thread, top-left) as a fallback."
+    source: shot-03-composer-dpr2
+    label: "shot-03-composer-dpr2 (DPR 2): Commander composer, 'Ship the checkout revamp tonight.' / 'No broken builds.' typed"
+    segs: [{t_in: 0.20, t_out: 5.95, dur: 5.75}, {t_in: 5.95, t_out: 6.33, dur: 2.3855932}]
+    # Crop src x 336-1586 (the gaps between the sidebar | Commander pane | right pane borders, 348 / 1571) and y 468-1066
+    # (below the pane's bottom border 1057), 1.54x -> slow push to 1.60x (x 360-1560, y 480-1054): the composer box (src
+    # x 377-1543, y 714-1028) stays whole; the starter cards (cut by the take's top edge) stay out. Above the box: empty pane.
+    cam: [[0, 0.50052, 0.71019, 0.65104, linear], [end, 0.5, 0.71019, 0.625, linear]]
+    named:                     # the typed ask (after Shift+Enter): >= 20 px target
+      - {name: "typed ask line 1 'Ship the checkout revamp tonight.'", box: [410, 755, 1100, 806], t: 7.5}
+      - {name: "typed ask line 2 'No broken builds.'", box: [410, 815, 1000, 858], t: 7.5}
     cards:
       - {row: title, text: "ONE ASK.", bars: [0, 2]}
-      - {row: title, text: "TONIGHT.", bars: [2, 4]}
+      - {row: title, text: "TONIGHT.", bars: [2, end]}    # held while line 2 is typed (03 is 6 bars since v8)
     fx_in: {kind: flash, frames: 3}
-    contact_at: 1.0
+    contact_at: 3.4
+    notes: "Real keystrokes, not sent in the take (send button lit at the end); no card claims a send. Script's 'smash-zoom on Send' not done: a zoom to the button would cut the typed lines."
 
   # ---- 12.20 s: plan (4 bars) on shot-04-dpr2-promo (DPR 2, ?demo=promo, 1006x566 CSS clip, 1.909x): the plan of 8 as a
   # DAG. Wave 1 (4 cards) Ready, Waves 2 (3) and 3 (1) with the app's real Blocked padlock. Zen (v7 A2): it still reads as
@@ -309,22 +304,31 @@ shots:
     contact_at: 2.0
     notes: "PR number #438 is visible in the app frame (real UI), never in a card."
   - id: "15"
-    beats: [168, 176]          # v6 (Zen A3): 2 bars = 2.71 s (was 5 bars over the dim all8 column)
+    beats: [168, 176]          # v6 (Zen A3): 2 bars = 2.71 s
     type: anime
     ui: true
-    source: shot-11            # the header take: the frame shows the claim ('8 in this run · 8 landed') at >= 18 px
-    label: "shot-11 (DPR 2): board header 'All done · Plan next · 8 in this run · 8 landed', tight"
-    segs: [{t_in: 0.10, t_out: 2.95, dur: 2.7118644}]
-    # header-only crop src x 540-1490, y 0-454 (2.02x): the only text in frame is the header (17 src px -> 34 px); the
-    # search box (x <= 529) and the Landed column (x >= 1500, IDs 13 src px) stay out, so nothing visible is < 18 px.
-    cam: [[0, 0.5286, 0.20, 0.4948]]
+    source: shot-11-dpr2-r2    # DPR 2, 800x450 CSS clip (2.4x): header '8 in this run · 8 landed' + the Landed column
+    label: "shot-11-dpr2-r2 (DPR 2): header '8 in this run · 8 landed' + 'Landed · Merged and closed' + the first landed card"
+    segs: [{t_in: 0.20, t_out: 2.92, dur: 2.7118644}]   # locked 5 s hold, real time
+    # v8 (Zen A5): was a header-only crop (~80% empty canvas). Crop src x 1014-1898, y 50-473 (2.17x): left edge in the
+    # gap between the 'All done · Plan next' pill (bg ends x 1002) and the count text (from x 1026); right edge in the
+    # canvas gap right of the column (cards end x 1886, nothing until the frame edge); top above the header (text from
+    # y 65; the take's top rule at y 18 stays out); bottom in the gap between PAY-103 (ends y 465) and PAY-104 (from 493),
+    # so the first landed card is whole and nothing is under the band. About 44% of the frame is still canvas (lower
+    # left, under the count). Two whole cards + the count cannot share a 1920x918 frame in any take: the header sits
+    # above-left of the column, so a frame tall enough for 2 cards (>= 670 src px) is >= 1400 wide and cuts the search box
+    # or pill. shot-11-dpr2-r3 (column under the header) is queued for that.
+    cam: [[0, 0.75833, 0.24194, 0.46042]]
     named:
-      - {name: "header count '8 in this run · 8 landed'", box: [845, 45, 1110, 95]}
-      - {name: "header pill 'All done · Plan next'", box: [560, 45, 815, 95]}
-    cards: [{row: title, text_from: claims.merged_count, bars: [0, 2]}]
+      - {name: "header count '8 in this run · 8 landed'", box: [1020, 58, 1330, 96]}
+      - {name: "column heading sub 'Merged and closed'", box: [1470, 192, 1700, 216]}
+      - {name: "first landed card ID (PAY-103)", box: [1478, 278, 1620, 306]}
+      - {name: "first landed card title line 2", box: [1478, 355, 1700, 380]}
+      - {name: "smallest text: card PR number '#431'", box: [1535, 418, 1640, 444]}
+    cards: [{row: title, text_from: claims.landed_count, bars: [0, 2]}]
     fx_in: {kind: flash, frames: 3}
     contact_at: 1.4
-    notes: "Card text from claims.merged_count (shot11_legible = this header take). shot-11-all8 is no longer used."
+    notes: "Card text from claims.landed_count (shot11_legible = this header). The Landed card shows one agent logo: no agents count is claimed."
   - id: "16"
     beats: [176, 196]          # v6: +1 bar from the shortened shot 15
     type: anime

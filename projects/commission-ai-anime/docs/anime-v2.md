@@ -1,5 +1,30 @@
 # commission-ai anime opening — v2 → v3 (Direction 2, style preset `anime-opening`)
 
+## v8 (2026-10-04): Zen v7 review (3.57; Polish 2) + Marketing copy, from 41ddc06
+Registered (sha256 match manifest.md): shot-11-dpr2-r2, shot-03-composer-dpr2. Output `anime-v8`. Runtime unchanged
+(76.192 s, the fixed music master; no music edit). Cuts after beat 36 unchanged, every marker still on a cut.
+1. **Copy (Marketing Lead):** shot 15's card is **'8 TASKS · ALL LANDED'**, word for word with the header '8 in this run · 8
+   landed'. Table `claims.landed_count` (was merged_count): rows {cards 8, landed 8} -> '8 TASKS · ALL LANDED', {landed 8} ->
+   'ALL LANDED.', fallback 'LANDED.' (confirm: Marketing). No '3 AGENTS' row: the crop shows one card's logo, not an agents
+   count (`logos: null`). `claims.py`: new count word `landed` ('8 landed' in manifest.md) and an audit rule: a row saying
+   'ALL LANDED' FAILs without a `landed` condition, or when its landed count differs from its cards count; a digit like
+   the 3 of '3 AGENTS' still FAILs without its own `logos: 3` condition. Tests updated + `test_claim_all_landed_and_agents_need_their_counts`.
+2. **A5 (shot 15), 2 bars:** `shot-11-dpr2-r2` (800x450 CSS, 2.4x), crop src x 1014-1898, y 50-473 (2.17x): the count
+   '8 in this run · 8 landed' (45.6 px), 'Landed · Merged and closed' and the first landed card (PAY-103, whole). Edges:
+   left in the gap between the pill and the count text, right in the canvas gap after the column, top above the header,
+   bottom between PAY-103 and PAY-104; nothing under the band. Smallest text in frame: card ID / 'Done' / '#431' at 34.8 px.
+   Canvas: ~44% of the frame (was ~80%). LIMIT: no take fits the header and 2 whole cards in a 1920x918 frame with clean
+   edges (the header is above-left of the column; 2 cards need >= 670 src px of height -> >= 1400 px wide, which cuts the
+   search box or the pill), so it is one whole card; shot-11-dpr2-r3 (column under the header) is queued.
+3. **A6 (Hook):** 01b dropped (it was the same dusk plate pushed in). 02 (night Workshop) takes the intro hit (beat 4,
+   logo slam + flash + speed lines) and `promo move-cut 20 12` ends it at beat 12: the first app UI (03) lands at
+   **4.07 s** (was 6.78 s). The 2 freed bars went to 03 (6 bars); the lift marker (beat 52) and everything after stay put.
+4. **03 is real (A1):** `shot-03-composer-dpr2`, real keystrokes at 10 chars/s ('Ship the checkout revamp tonight.' /
+   'No broken builds.'), played real time; 'tonight' starts at shot 2.63 s, TONIGHT. card on bar 2 (2.71 s); line 2 starts
+   on bar 3; the last 0.38 s (send button lit) stretched over the final 2.39 s. Typed text **44.7 px** (28 src px x1.59 at
+   the end of the push). The take ends with the send button lit; it is **not sent** (Commission-ai's capture), so no
+   'smash-zoom on Send' and no card claims a send. The `_rejects` composer take is not used.
+
 ## v7 (2026-10-04): new v1-1080 takes (all `?demo=promo`), from 2029ceb
 Registered with `promo footage add` (sha256 match manifest.md): shot-16-prcard-tighter, shot-11-dpr2, shot-04-dpr2-promo.
 Output `anime-v7`. Runtime unchanged (76.192 s), no cut moved.
@@ -123,28 +148,28 @@ every cut is on a bar line; intro_hit, lift, peak_start, seam_A_to_B_outro, fina
 | Shot | Beats | Picture | Card |
 |---|---|---|---|
 | 01 | 0-4 | dusk Workshop (shot-01-dusk), held | — |
-| 01b | 4-8 | dusk Workshop, steady push-in from the intro hit; flash + speed lines at head | commission-ai / Your AI dev crew (slam) |
-| 02 | 8-20 | night Workshop (shot-03-night, frame 12+), push continues | commission-ai / Your AI dev crew (carried over) |
-| 03 | 20-36 | PLACEHOLDER S3 composer | ONE ASK. → TONIGHT. |
+| 02 | 4-12 | night Workshop (shot-03-night, frame 12+), push-in from the intro hit; flash + speed lines at head (v8: 01b dropped) | commission-ai / Your AI dev crew (slam) |
+| 03 | 12-36 | shot-03-composer-dpr2: the ask typed with real keystrokes (not sent), 1.54→1.60x push | ONE ASK. → TONIGHT. (held to the end) |
 | 04 | 36-52 | shot-04-dpr2-promo (DPR 2): plan of 8 as a DAG, 1:1; Ready 2 bars → first card Running on bar 2 → hold | `claims.plan_count` (shot04p_legible) → 8 TASKS. |
 | 05-07 | 52-76 | shot-10-dpr2 frozen, push on PAY-103/104/106 cards | CLAUDE CODE / CODEX / CURSOR + "on the job" |
 | 08-11 | 76-108 | shot-08-dpr2 PAY-104 drawer stepper, push-in on the active chip (Coding→PR raised) | CODING. / CHECKS. / PUSHED. / PR RAISED. |
 | 12 | 108-132 | shot-10-dpr2 needs-you card | …ONLY WHEN IT NEEDS YOU. |
 | 13 | 132-152 | shot-12-dpr2-z179 reviewer thread, full width (x 0-1856, 1.03x) | REVIEWED, WITH THE REASON WHY. |
 | 14 | 152-168 | shot-16-prcard-tighter (DPR 2): Done stepper + PAY-110 PR card Open→Merged (7.70 s), 1:1 hold, whole card in, badge 20 px | MERGED. |
-| 15 | 168-176 | shot-11 header-only crop (2.02x): '8 in this run · 8 landed' | `claims.merged_count` → 8 TASKS · ALL MERGED |
+| 15 | 168-176 | shot-11-dpr2-r2 (2.17x): '8 in this run · 8 landed' + 'Landed · Merged and closed' + PAY-103 whole | `claims.landed_count` → 8 TASKS · ALL LANDED |
 | 16-17 | 176-200 | shot-14b-dusk-r2 0.10-0.95 + 3.60-7.45 s: Street notice → Street glide; 17 freezes on 7.45 s | — |
 | 18 | 200-212 | morning Workshop (shot-15-morning) | GOOD MORNING. |
 | 19 | 212-224.767 | dusk freeze, blur/dim (ends with the music, 76.192 s) | commission-ai / Your AI dev crew, on your Mac. / macOS alpha (no URL) |
 
-## Shot-11 claim (config table, `claims.merged_count`)
-Selected by `shot11_legible: {cards: N, logos: N}` (v5: `{cards: 8, logos: null}` from "### Shot 11 (header counts)"):
-8 cards + 3 logos → `8 TASKS · 3 AGENTS · ALL MERGED`; 3 logos only → `3 AGENTS · ALL MERGED`;
-8 cards only → `8 TASKS · ALL MERGED`; neither / unknown → `ALL MERGED.`; v5 selects `8 TASKS · ALL MERGED`. `promo check` WARNs until filled
-and FAILs if the selected row claims more than the manifest entry says. Same selector is reusable (`promo/claims.py`) for the hero caption.
+## Shot-11 claim (config table, `claims.landed_count`; v1-v7: merged_count)
+Selected by `shot11_legible: {cards: N, landed: N, logos: N}` (v8: `{cards: 8, landed: 8, logos: null}` from "### Shot 11
+(DPR2 r2, header 20 px + Landed column)"): 8 cards + 8 landed → `8 TASKS · ALL LANDED` (Marketing Lead, 4 Oct: word for
+word with the header); 8 landed only → `ALL LANDED.`; unknown → `LANDED.` (Marketing to confirm). No agents row: shot 15
+shows no agents count. `promo check` FAILs if a row says ALL LANDED without a matching landed count, shows a digit
+without a condition, or claims more than the manifest entry says. v1-v7 read `8 TASKS · ALL MERGED`.
 
 ## Placeholders waiting on footage
-S3 composer (03) only. v7: shot-04-dpr2-promo (04), shot-08-dpr2 (08-11), shot-12-dpr2-z179 (13), shot-16-prcard-tighter
+None since v8 (03 = shot-03-composer-dpr2, 15 = shot-11-dpr2-r2). v7: shot-04-dpr2-promo (04), shot-08-dpr2 (08-11), shot-12-dpr2-z179 (13), shot-16-prcard-tighter
 (14), shot-11 header crop (15), shot-14b-dusk-r2 (16, 17). `talk-dag-tight` is deliberately not used (3 cards, different demo board).
 
 ## Script vs footage mismatches
