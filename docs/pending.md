@@ -23,3 +23,12 @@
 - Marketing's open items (copy study, X and LinkedIn drafts): /workspace/promo/marketing/pending.md
 - Final cuts: /workspace/promo-reel-evals/anime-v11-preview.mp4, /workspace/promo-reel-evals/talkshow-preview-v7-styled.mp4,
   and the hero v5 1080 render (projects/commission-ai-hero/out/hero-v5-1080.mp4).
+
+## Render budget: review in rounds, one full render per round (Patrick, 4 Oct 2026)
+
+Patrick's rule: iterating one fix at a time burns tokens. Collect all feedback first, then do one full render.
+
+1. **Cheap preview:** add `promo preview <project>`, which makes contact sheets, per-shot stills and a 540p draft in seconds. It must never run a full-resolution render.
+2. **One feedback window:** each round has `projects/<p>/rounds/<n>/feedback.md`. Zen, Marketing and the Promo Video Director each add one consolidated list and a `signed-off: <name>` line. Late notes go to the next round.
+3. **One full render:** `promo build --final` refuses to run unless the current round's feedback file has all three sign-offs. Rendering at 1080p or 4K requires `--final`, and anything without it is capped at 540p. Run `promo check` once after the final render.
+4. **Round cap:** at most 3 rounds per video before it goes to Patrick. The CLI should warn when round 4 starts.
