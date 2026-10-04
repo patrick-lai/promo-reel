@@ -140,8 +140,23 @@ class Spec:
         paths = raw.get("paths", {})
         self.build = self.resolve(paths.get("build", "build"))
         self.out = self.resolve(paths.get("out", "out"))
+        from . import styles
+        try:
+            self.style = styles.resolve(raw)
+        except styles.StyleError as e:
+            raise SpecError(str(e))
         tl = raw.get("timeline", {})
-        self.timeline = Timeline(tl.get("bpm", 98), tl.get("beats", 98), self.fps)
+        self.grid = None
+        bpm = tl.get("bpm", 98)
+        if tl.get("grid"):          # beat grid from a music analysis JSON (tempo, bars, markers)
+            try:
+                self.grid = styles.BeatGrid.load(self.resolve(tl["grid"]))
+            except styles.StyleError as e:
+                raise SpecError(str(e))
+            if tl.get("bpm") is not None and abs(float(tl["bpm"]) - self.grid.bpm) > 1e-6:
+                raise SpecError(f"timeline.bpm {tl['bpm']} != grid tempo {self.grid.bpm} ({tl['grid']}); drop timeline.bpm")
+            bpm = self.grid.bpm
+        self.timeline = Timeline(bpm, tl.get("beats", 98), self.fps)
         self.shots = self._build_shots()
         self.plugins = [self.resolve(p) for p in raw.get("plugins", [])]
         self._plugins_loaded = False
@@ -189,6 +204,12 @@ class Spec:
         return os.path.join(self.out, f"{self.name}-{self.tag}{suffix}.mp4")
 
     @property
+    def qa(self):
+        """Effective qa thresholds (style preset defaults + the spec's qa:)."""
+        from . import styles
+        return styles.qa(self.raw)
+
+    @property
     def masters(self):
         ms = self.raw.get("mix", {}).get("masters") or [{"name": "web", "suffix": "", "lufs": -14.0, "ceiling": -1.2, "max_true_peak": -1.0}]
         return ms
@@ -201,6 +222,10 @@ class Spec:
             if sid in seen:
                 raise SpecError(f"duplicate shot id {sid}")
             seen.add(sid)
+            if "beats" not in s and "bars" in s:       # bars: [b0, b1] = bar-line edges (0 = start), needs 4/4 or a grid
+                bpb = self.grid.beats_per_bar if self.grid else 4
+                off = self.grid.offset if self.grid else 0
+                s = dict(s, beats=[s["bars"][0] * bpb + off, s["bars"][1] * bpb + off])
             b0, b1 = s["beats"]
             tl = self.timeline
             shots.append(Shot(id=sid, b0=b0, b1=b1, t0=tl.t(b0), t1=tl.t(b1), f0=round(tl.t(b0) * self.fps),

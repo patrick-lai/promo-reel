@@ -1,0 +1,23 @@
+# Every asset needs a licence. music / vo_model / sfx also need source_url (hard gate for build/mix/check).
+assets:
+  - id: music-track
+    kind: music
+    path: media/music/edit-master.wav
+    licence: "FILL ME IN (e.g. Pixabay Content License)"
+    source_url: "https://FILL-ME-IN"
+    redistributable: false
+    notes: never commit the audio file
+  - id: font-barlow-condensed
+    kind: font
+    path: "/usr/share/fonts/truetype/sand-box/google/Barlow Condensed/BarlowCondensed-BlackItalic.ttf"
+    licence: "SIL Open Font License 1.1 (embedded name table: Copyright 2017 The Barlow Project Authors)"
+    source_url: https://github.com/jpt/barlow
+    redistributable: true
+    notes: card titles / subtitles / tags (BlackItalic, SemiBoldItalic, BoldItalic)
+  - id: font-inter
+    kind: font
+    path: "/usr/share/fonts/truetype/sand-box/google/Inter/Inter-VariableFont_opsz,wght.ttf"
+    licence: "SIL Open Font License 1.1 (Copyright 2016 The Inter Project Authors)"
+    source_url: https://github.com/rsms/inter
+    redistributable: true
+    notes: placeholder slate text
