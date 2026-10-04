@@ -1,4 +1,4 @@
-"""Fast unit tests (plain asserts; run `python tests/test_core.py` or pytest).
+"""Fast unit tests (plain asserts; run `<venv>/bin/python tests/test_core.py` or pytest; needs the promo-reel deps incl. pyyaml: `pip install -e .`).
 
 Reference-data tests (events == legacy events.json) are skipped when the legacy file is not on this machine.
 """

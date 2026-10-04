@@ -69,4 +69,6 @@ viewport, DPR, clip rect, injected CSS, cursor overlay) matches the new take; ot
 ## Run
 `cp queue.example.txt queue.txt` (edit it), `./bg.sh queue ./queue.sh`, or one shot: `node pshots.mjs 10b`, `node wshots.mjs shot-03-night 22:00 9`.
 Then `python3 mk_manifest.py && <promo venv>/bin/python register.py --dry-run [clip-id ...]`, and again without `--dry-run`.
-Tests: `python tests/test_core.py` from the repo root (covers `mk_manifest.py` and `register.py --dry-run`).
+Tests: `<promo venv>/bin/python tests/test_core.py` from the repo root (covers `mk_manifest.py` and `register.py --dry-run`). They need the
+promo-reel dependencies (pyyaml, numpy, ...): a bare system `python3` without pyyaml fails at `import yaml`. On Patrick's box the venv is
+`/workspace/videos/commission-ai-promo/.venv`; elsewhere `python3 -m venv .venv && .venv/bin/pip install -e .` (see the top-level README).

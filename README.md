@@ -27,7 +27,7 @@ projects/<name>/
 capture/                  capture-script contract (product repos PR their capture scripts here)
 skills/promo-reel/        agent skill
 templates/new-project/    scaffold used by `promo new`
-tests/                    fast unit tests (python tests/test_core.py)
+tests/                    fast unit tests (.venv/bin/python tests/test_core.py; needs the deps above, incl. pyyaml)
 ```
 
 ## CLI
