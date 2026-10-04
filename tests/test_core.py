@@ -206,7 +206,8 @@ def test_status_and_other_json_parse():
     rc, f = _cli_json("footage", "verify", "--json")
     assert f["ok"] and rc == 0
     rc, f = _cli_json("footage", "list", "--json")
-    assert f["ok"] and len(f["clips"]) == 16
+    n = len(yaml.safe_load(open(os.path.join(ROOT, "projects", "commission-ai-hero", "footage", "manifest.yaml")))["clips"])
+    assert f["ok"] and len(f["clips"]) == n >= 16 and len({c["id"] for c in f["clips"]}) == n
 
 
 # ---------------------------------------------------------------- capture/commission-ai helpers (mk_manifest.py, register.py)
