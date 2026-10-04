@@ -1,5 +1,15 @@
 # commission-ai anime opening — v2 → v3 (Direction 2, style preset `anime-opening`)
 
+## v11 (2026-10-04): 'tonight.' typed before the TONIGHT. card; Zen reviews in the critique pack, from 87d3670
+
+- S03 segs: placeholder hold 1.10 -> 0.76 s; the 1x line-1 segment now runs to src 3.55 s (was 3.40), so the final 't'
+  (src 3.433 s) and '.' (src 3.533 s) play at the captured speed and the '.' lands at ~8.03 s, before the TONIGHT. card
+  (8.14 s, unchanged). The pause after 'tonight.' is src 3.55-3.80 s held 1.10 s (no keys); the caret-only end hold is
+  ~1.01 s. Typing now starts at 4.83 s (was 5.17 s). Cards, cam and take unchanged; nothing plays faster than captured.
+- Take: still shot-03-composer-dpr2 (not sent); shot-03-composer-send-dpr2 had not landed in footage/v1-1080.
+- critique.reviews -> reviews/zen-v9.md (Zen's v9 review + earlier rounds), so the pack's reviews/ is filled.
+- New test: test_anime_s03_tonight_typed_before_its_card.
+
 ## v10 (2026-10-04): Zen v9 pass (4.29) on condition of Marketing Lead's card times, from a102aca
 Only S03's cards changed (script `scripts-3-directions-v1.md` "The ask" row, Marketing's edit): **"ONE ASK." 4.07-8.14 s**
 (bars 0-3, from the first UI frame while the ask types) and **"TONIGHT." 8.14-12.20 s** (bars 3-6, the first bar after

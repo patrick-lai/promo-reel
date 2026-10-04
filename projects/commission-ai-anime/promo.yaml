@@ -4,10 +4,14 @@
 # slates: swapping one in is a config change (replace `placeholder:` with `source:` + `cam:`). No URL on the end card.
 # Heavy steps hold flock /tmp/commission-ai-cargo.lock (promo/lock.py) and run niced with ffmpeg -threads 2.
 project: {name: commission-ai-anime, title: "commission-ai anime opening (Direction 2)"}
-output: {name: anime-v10, resolution: 1080, fps: 30, duration: 76.192188}  # ends where the music master ends (76.192 s = 224.767 beats); 2286 frames, no tail pad
+output: {name: anime-v11, resolution: 1080, fps: 30, duration: 76.192188}  # ends where the music master ends (76.192 s = 224.767 beats); 2286 frames, no tail pad
 paths: {build: build, out: out}
 assets: assets.yaml
 footage: footage/manifest.yaml
+
+# critique-pack inputs (copy + footage manifests keep the anime defaults): Zen's anime reviews go into the pack's reviews/.
+critique:
+  reviews: [reviews/zen-v9.md]
 
 style:
   preset: anime-opening        # bar-snapped cuts, 1-bar UI holds, cards >= 1 bar in ONE fixed lower band, fx at cuts only
@@ -89,15 +93,16 @@ shots:
   # tonight.' 0.333-3.333 s (6 frames per char = 10 chars/s, Commission-ai confirmed); Shift+Enter 3.833 s (one-frame
   # reflow, box top y 773 -> 714); line 2 'No broken builds.' 4.25-5.85 s; take ends 6.35 s with the send button lit --
   # the take is NOT sent.
-  # v9 (Zen A7): every keystroke plays at the captured speed; the 1.79 s the 6-bar slot needs on top of the 6.35 s take is
-  # spread over three still moments instead of one 2.4 s stretch at the end:
-  #   placeholder 0-0.333 s -> 1.10 s (typing starts at shot 1.10 s = 5.17 s)
-  #   pause after 'tonight.' -> 1.05 s (src 3.40-3.80 s stretched 0.42x; NOTE (re-measured v10): the last two keys of
-  #   line 1, the final 't' at 3.433 s and '.' at 3.533 s, fall inside this segment, so they play slowed, not 1x)
-  #   caret-only end hold after the last key (real 5.85-6.33 s, 0.48 s) -> 0.97 s
-  # Shot-local events: 't' of 'tonight' 3.60 s (7.67 s), final 't' 4.25 s (8.31 s), '.' 4.48 s (8.55 s), Shift+Enter 5.15 s, line 2
-  # 5.57-7.17 s (9.63-11.24 s), end hold 7.17-8.14 s. v10: the TONIGHT. card (bar 3 = 8.14 s) lands 0.18 s before the
-  # word's last letter.
+  # v9 (Zen A7): no 4 s still stretch; the 1.79 s the 6-bar slot needs on top of the 6.35 s take is spread over three
+  # still moments. v11 (Marketing: TONIGHT. echoes what was just typed): every keystroke now plays at exactly 1x (in v9/v10
+  # the final 't' 3.433 s and '.' 3.533 s sat inside the slowed 3.40-3.80 s segment), and 'tonight.' is complete before
+  # the TONIGHT. card at bar 3 (8.136 s):
+  #   placeholder 0-0.333 s -> 0.76 s (typing starts at shot 0.76 s = 4.83 s)
+  #   line 1 0.333-3.55 s at 1x ('.' at src 3.533 s -> shot 3.96 s = 8.03 s, i.e. ~0.1 s before the card)
+  #   pause after 'tonight.' src 3.55-3.80 s -> 1.10 s (no keys; Shift+Enter is 3.833 s, in the next 1x segment)
+  #   caret-only end hold after the last key (real 5.85-6.33 s, 0.48 s) -> 0.05 + 0.959 = 1.01 s
+  # Shot-local events: 't' of 'tonight' 3.26 s (7.33 s), '.' 3.96 s (8.03 s), Shift+Enter 5.11 s, line 2 5.53-7.13 s
+  # (9.59-11.19 s), end hold 7.13-8.14 s.
   # Swap back to a slate = replace `source:`..`named:` with the old `placeholder:` block (git 41ddc06).
   - id: "03"
     beats: [12, 36]
@@ -105,9 +110,9 @@ shots:
     ui: true
     source: shot-03-composer-dpr2
     label: "shot-03-composer-dpr2 (DPR 2): Commander composer, 'Ship the checkout revamp tonight.' / 'No broken builds.' typed"
-    segs: [{t_in: 0.0, t_out: 0.3333333, dur: 1.10}, {t_in: 0.3333333, t_out: 3.40, dur: 3.0666667},
-           {t_in: 3.40, t_out: 3.80, dur: 0.95}, {t_in: 3.80, t_out: 5.90, dur: 2.10},
-           {t_in: 5.90, t_out: 6.33, dur: 0.9189265}]
+    segs: [{t_in: 0.0, t_out: 0.3333333, dur: 0.76}, {t_in: 0.3333333, t_out: 3.55, dur: 3.2166667},
+           {t_in: 3.55, t_out: 3.80, dur: 1.10}, {t_in: 3.80, t_out: 5.90, dur: 2.10},
+           {t_in: 5.90, t_out: 6.33, dur: 0.9589265}]
     # v9 (Zen A7): held at 1.59x (no zoom), panned DOWN as far as the take allows: crop src x 357-1565 (inside the gaps
     # either side of the Commander pane borders 348 / 1571), y 502.6-1080 (the take's bottom edge; the composer sits at
     # the bottom of the 720x405 CSS clip, so it cannot go lower without more zoom). Composer box (src y 714-1028 after
@@ -120,7 +125,7 @@ shots:
       - {name: "typed ask line 2 'No broken builds.'", box: [410, 815, 1000, 858], t: 7.5}
     cards:                     # v10 copy (Marketing Lead, Zen v9 condition): ONE ASK. 4.07-8.14 s, TONIGHT. 8.14-12.20 s (3 bars each)
       - {row: title, text: "ONE ASK.", bars: [0, 3]}      # from the first UI frame, while the ask types (typing from 5.17 s)
-      - {row: title, text: "TONIGHT.", bars: [3, 6]}      # first bar after 'tonight' starts typing (7.67 s); word complete 8.31 s
+      - {row: title, text: "TONIGHT.", bars: [3, 6]}      # v11: 'tonight.' complete at ~8.03 s, the card echoes it at 8.14 s
     fx_in: {kind: flash, frames: 3}
     contact_at: 5.6
     notes: "Real keystrokes at the captured 10 chars/s, not sent in the take (send button lit at the end); no card claims a send."

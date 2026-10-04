@@ -498,6 +498,34 @@ def test_anime_s03_typing_never_faster_than_captured_and_holds_short():
     assert sum(float(g["dur"]) for g in keys) >= 5.1                              # the typing itself is real time
     assert abs(sum(float(g["dur"]) for g in segs) - s03.dur) < 0.01
 
+
+def test_anime_s03_tonight_typed_before_its_card():
+    """v11 (Marketing: TONIGHT. echoes what was just typed): line 1's last keys (final 't' src 3.433 s, '.' src 3.533 s,
+    measured on the take's frames) play at 1x and the '.' is on screen by 8.10 s, before the TONIGHT. card (8.14 s);
+    the caret-only hold after line 2's last key (src 5.85 s) to the cut is ~1 s at most."""
+    from promo.shots.anime import card_times
+    spec = load_spec(ANIME)
+    s03 = next(s for s in spec.shots if s.id == "03")
+    segs = s03.cfg["segs"]
+
+    def out_t(src):
+        t = 0.0
+        for g in segs:
+            a, b, d = float(g["t_in"]), float(g["t_out"]), float(g["dur"])
+            if a <= src < b:
+                return t + (src - a) * d / (b - a), abs((b - a) - d) < 1e-6
+            t += d
+        raise AssertionError(src)
+
+    card = next(c for c in s03.cfg["cards"] if c["text"] == "TONIGHT.")
+    card_in = s03.t0 + card_times(spec, s03, card)[0]
+    for key in (3.4333333, 3.5333333):
+        t, real = out_t(key)
+        assert real, key                                                             # keystroke at the captured speed
+        assert s03.t0 + t <= 8.10 + 1e-6 < card_in, (key, s03.t0 + t, card_in)
+    hold = s03.dur - out_t(5.85)[0]
+    assert hold <= 1.05, hold
+
 if __name__ == "__main__":
     fails = 0
     for k, v in list(globals().items()):
