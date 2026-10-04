@@ -33,7 +33,7 @@ def build_commands(notes, fdir, py, only=(), log=()):
         flags = capmeta.clip_flags(n, fdir)
         capture = n["url"].replace("`", "") + (" ; " + n["capture_extra"] if n.get("capture_extra") else "") + " ; " + capmeta.capture_text(flags)
         framing = n["framing"] + ("; " + capmeta.framing_text(flags) if capmeta.framing_text(flags) else "")
-        at = next((e["at"] for e in reversed(list(log)) if e.get("shot") == n["file"]), None)
+        at = next((e["at"] for e in reversed(list(log)) if e.get("shot") == n["file"] and not e.get("correction")), None)  # correction lines are not takes
         cmd = [py, "-m", "promo", "-p", PROJ, "footage", "add", f, "--id", cid, "--shots", *n["shots"], "--commit", n.get("commit", capmeta.DEFAULT_COMMIT),
                "--capture", capture, "--framing", framing, "--dpr", str(n.get("dpr", 1)), "--notes", (n["beat"] + " || " + n["notes"]).replace("`", "'"), "--demo", "--json"]
         if at:

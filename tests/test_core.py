@@ -229,7 +229,8 @@ def _cap_fixture(tmp):
     for f in ("a", "b"):
         open(os.path.join(fdir, f + ".mov"), "wb").write(b"x")
     json.dump({"hash": "h", "params": {"css": ["HIDE_MONEY"], "cursorOverlay": True}}, open(os.path.join(fdir, "a.meta.json"), "w"))
-    open(os.path.join(fdir, "capture-log.jsonl"), "w").write(json.dumps({"at": "2026-10-03T00:00:00Z", "shot": "b"}) + "\n")
+    open(os.path.join(fdir, "capture-log.jsonl"), "w").write(json.dumps({"at": "2026-10-03T00:00:00Z", "shot": "b"}) + "\n"
+                                                             + json.dumps({"at": "2026-10-03T01:00:00Z", "shot": "b", "correction": True}) + "\n")
     clip = dict(url="`?demo=promo`", beat="beat `x`", framing="DPR2 clip", notes="n", dpr=2)
     notes = {"header": ["- head"], "stills": [], "footer": [], "clips": [
         dict(clip, shot="A", file="a", id="a-v1080", shots=["01"], url="`?demo=promo` (node clicked at 9.0 s)"),
