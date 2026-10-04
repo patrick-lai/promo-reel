@@ -4,7 +4,7 @@
 # slates: swapping one in is a config change (replace `placeholder:` with `source:` + `cam:`). No URL on the end card.
 # Heavy steps hold flock /tmp/commission-ai-cargo.lock (promo/lock.py) and run niced with ffmpeg -threads 2.
 project: {name: commission-ai-anime, title: "commission-ai anime opening (Direction 2)"}
-output: {name: anime-v8, resolution: 1080, fps: 30, duration: 76.192188}  # ends where the music master ends (76.192 s = 224.767 beats); 2286 frames, no tail pad
+output: {name: anime-v9, resolution: 1080, fps: 30, duration: 76.192188}  # ends where the music master ends (76.192 s = 224.767 beats); 2286 frames, no tail pad
 paths: {build: build, out: out}
 assets: assets.yaml
 footage: footage/manifest.yaml
@@ -86,10 +86,16 @@ shots:
   # ---- 4.07 s: the ask (6 bars; v8: first app UI at beat 12, +2 bars from the dropped 01b) on shot-03-composer-dpr2
   # (DPR 2, 720x405 CSS clip, 2.667x): the Commander composer, Access = Edits, the ask typed with REAL keystrokes.
   # Measured on the frames: placeholder 'Ask Commander anything...' until 0.333 s; line 1 'Ship the checkout revamp
-  # tonight.' 0.333-3.333 s (6 frames per char = 10 chars/s); Shift+Enter 3.833 s (the box grows up, top y 773 -> 714);
-  # line 2 'No broken builds.' 4.25-5.85 s; take ends 6.35 s with the send button lit (ready) -- the take is NOT sent.
-  # Keystrokes play real time from 0.20 s: 't' of 'tonight' lands at shot 2.63 s (TONIGHT. card on bar 2 = 2.71 s), line 2
-  # starts on bar 3 (4.07 s), last key at 5.65 s; then the final 0.38 s (send lit, caret) is stretched over the last 2.39 s.
+  # tonight.' 0.333-3.333 s (6 frames per char = 10 chars/s, Commission-ai confirmed); Shift+Enter 3.833 s (one-frame
+  # reflow, box top y 773 -> 714); line 2 'No broken builds.' 4.25-5.85 s; take ends 6.35 s with the send button lit --
+  # the take is NOT sent.
+  # v9 (Zen A7): every keystroke plays at the captured speed; the 1.79 s the 6-bar slot needs on top of the 6.35 s take is
+  # spread over three still moments instead of one 2.4 s stretch at the end:
+  #   placeholder 0-0.333 s -> 1.10 s (typing starts at shot 1.10 s = 5.17 s)
+  #   pause after 'tonight.' (real 3.333-3.833 s, 0.50 s) -> 1.05 s (static frames 3.40-3.80 s stretched)
+  #   caret-only end hold after the last key (real 5.85-6.33 s, 0.48 s) -> 0.97 s
+  # Shot-local events: 't' of 'tonight' 3.60 s (7.67 s), line 1 done 4.10 s (8.17 s), Shift+Enter 5.15 s, line 2
+  # 5.57-7.17 s (9.63-11.24 s), end hold 7.17-8.14 s. 'tonight' is on screen before the TONIGHT. card (bar 4 = 9.49 s).
   # Swap back to a slate = replace `source:`..`named:` with the old `placeholder:` block (git 41ddc06).
   - id: "03"
     beats: [12, 36]
@@ -97,20 +103,25 @@ shots:
     ui: true
     source: shot-03-composer-dpr2
     label: "shot-03-composer-dpr2 (DPR 2): Commander composer, 'Ship the checkout revamp tonight.' / 'No broken builds.' typed"
-    segs: [{t_in: 0.20, t_out: 5.95, dur: 5.75}, {t_in: 5.95, t_out: 6.33, dur: 2.3855932}]
-    # Crop src x 336-1586 (the gaps between the sidebar | Commander pane | right pane borders, 348 / 1571) and y 468-1066
-    # (below the pane's bottom border 1057), 1.54x -> slow push to 1.60x (x 360-1560, y 480-1054): the composer box (src
-    # x 377-1543, y 714-1028) stays whole; the starter cards (cut by the take's top edge) stay out. Above the box: empty pane.
-    cam: [[0, 0.50052, 0.71019, 0.65104, linear], [end, 0.5, 0.71019, 0.625, linear]]
+    segs: [{t_in: 0.0, t_out: 0.3333333, dur: 1.10}, {t_in: 0.3333333, t_out: 3.40, dur: 3.0666667},
+           {t_in: 3.40, t_out: 3.80, dur: 0.95}, {t_in: 3.80, t_out: 5.90, dur: 2.10},
+           {t_in: 5.90, t_out: 6.33, dur: 0.9189265}]
+    # v9 (Zen A7): held at 1.59x (no zoom), panned DOWN as far as the take allows: crop src x 357-1565 (inside the gaps
+    # either side of the Commander pane borders 348 / 1571), y 502.6-1080 (the take's bottom edge; the composer sits at
+    # the bottom of the 720x405 CSS clip, so it cannot go lower without more zoom). Composer box (src y 714-1028 after
+    # Shift+Enter) -> viewport y 336-836 of 918, centre 586 = inside the middle third (306-612); both typed lines
+    # (viewport y 416-472 / 510-553) sit in the middle third. Empty pane above: viewport y 0-336 (37% of the picture,
+    # was 41-44% in v8). The pane's bottom border + 20 src px of window background are the bottom 36 px; nothing under the band.
+    cam: [[0, 0.50052, 0.7327, 0.62893]]
     named:                     # the typed ask (after Shift+Enter): >= 20 px target
       - {name: "typed ask line 1 'Ship the checkout revamp tonight.'", box: [410, 755, 1100, 806], t: 7.5}
       - {name: "typed ask line 2 'No broken builds.'", box: [410, 815, 1000, 858], t: 7.5}
-    cards:
-      - {row: title, text: "ONE ASK.", bars: [0, 2]}
-      - {row: title, text: "TONIGHT.", bars: [2, end]}    # held while line 2 is typed (03 is 6 bars since v8)
+    cards:                     # v9 copy (Marketing Lead): ONE ASK. 6.78-9.49 s, TONIGHT. 9.49-12.20 s (2 bars each)
+      - {row: title, text: "ONE ASK.", bars: [2, 4]}      # while the ask types (typing runs 5.17-11.24 s)
+      - {row: title, text: "TONIGHT.", bars: [4, 6]}      # 'tonight' already typed at 7.67 s, so the card starts on the bar
     fx_in: {kind: flash, frames: 3}
-    contact_at: 3.4
-    notes: "Real keystrokes, not sent in the take (send button lit at the end); no card claims a send. Script's 'smash-zoom on Send' not done: a zoom to the button would cut the typed lines."
+    contact_at: 5.6
+    notes: "Real keystrokes at the captured 10 chars/s, not sent in the take (send button lit at the end); no card claims a send. Bars 0-2 (4.07-6.78 s) carry no card: the placeholder, then the ask starting to type."
 
   # ---- 12.20 s: plan (4 bars) on shot-04-dpr2-promo (DPR 2, ?demo=promo, 1006x566 CSS clip, 1.909x): the plan of 8 as a
   # DAG. Wave 1 (4 cards) Ready, Waves 2 (3) and 3 (1) with the app's real Blocked padlock. Zen (v7 A2): it still reads as

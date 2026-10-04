@@ -1,5 +1,22 @@
 # commission-ai anime opening — v2 → v3 (Direction 2, style preset `anime-opening`)
 
+## v9 (2026-10-04): Zen v8 review (4.14) — A7 in S03, from 645b598
+Output `anime-v9`. Only S03 changed (runtime 76.192 s, first UI 4.07 s, all other cuts as v8).
+1. **Reframe:** held at **1.59x** (no zoom; v8 pushed 1.54 -> 1.60x), panned down as far as the take allows: crop src
+   y 502.6-1080 (the take's bottom edge), x 357-1565 (gaps beside the Commander pane borders). Composer box -> viewport
+   y 336-836 of 918, centre 586, inside the middle third (306-612); both typed lines (y 416-472, 510-553) in the middle
+   third, whole, clear of the band. Empty pane left above: viewport y 0-336 = **37%** of the picture (v8: 41-44%). It
+   cannot mostly leave without more zoom: the composer is at the very bottom of the 720x405 CSS clip.
+2. **Cards (Marketing Lead):** "ONE ASK." 6.78-9.49 s (bars 2-4, while the ask types) and "TONIGHT." 9.49-12.20 s (bars
+   4-6, to the cut); no card 4.07-6.78 s. 'tonight' is typed at 7.67-8.17 s, before the TONIGHT. window, so that card
+   starts on its bar. Script record (`/workspace/promo/marketing/scripts-3-directions-v1.md`, Title slam + The ask rows)
+   and tests (`test_anime_s03_ask_cards_match_marketing_copy`) updated.
+3. **No still stretch:** keystrokes at the captured 10 chars/s throughout; the 1.79 s the slot needs beyond the 6.35 s
+   take is spread over three still moments: placeholder 1.10 s (typing starts 5.17 s), the pause after 'tonight.' 1.05 s
+   (real 0.50 s), the **caret-only end hold 0.97 s** (real 0.48 s; was 2.39 s from the last key in v8 terms). No frame
+   plays faster than captured (`test_anime_s03_typing_never_faster_than_captured_and_holds_short`).
+4. `shot-03-composer-send-dpr2` had not landed at render time; S03 still ends before Send (take not sent).
+
 ## v8 (2026-10-04): Zen v7 review (3.57; Polish 2) + Marketing copy, from 41ddc06
 Registered (sha256 match manifest.md): shot-11-dpr2-r2, shot-03-composer-dpr2. Output `anime-v8`. Runtime unchanged
 (76.192 s, the fixed music master; no music edit). Cuts after beat 36 unchanged, every marker still on a cut.
@@ -149,7 +166,7 @@ every cut is on a bar line; intro_hit, lift, peak_start, seam_A_to_B_outro, fina
 |---|---|---|---|
 | 01 | 0-4 | dusk Workshop (shot-01-dusk), held | — |
 | 02 | 4-12 | night Workshop (shot-03-night, frame 12+), push-in from the intro hit; flash + speed lines at head (v8: 01b dropped) | commission-ai / Your AI dev crew (slam) |
-| 03 | 12-36 | shot-03-composer-dpr2: the ask typed with real keystrokes (not sent), 1.54→1.60x push | ONE ASK. → TONIGHT. (held to the end) |
+| 03 | 12-36 | shot-03-composer-dpr2: the ask typed with real keystrokes at 10 chars/s (not sent), 1.59x held, composer in the middle third | — (4.07-6.78) → ONE ASK. (6.78-9.49) → TONIGHT. (9.49-12.20) |
 | 04 | 36-52 | shot-04-dpr2-promo (DPR 2): plan of 8 as a DAG, 1:1; Ready 2 bars → first card Running on bar 2 → hold | `claims.plan_count` (shot04p_legible) → 8 TASKS. |
 | 05-07 | 52-76 | shot-10-dpr2 frozen, push on PAY-103/104/106 cards | CLAUDE CODE / CODEX / CURSOR + "on the job" |
 | 08-11 | 76-108 | shot-08-dpr2 PAY-104 drawer stepper, push-in on the active chip (Coding→PR raised) | CODING. / CHECKS. / PUSHED. / PR RAISED. |

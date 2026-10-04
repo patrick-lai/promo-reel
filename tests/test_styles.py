@@ -458,6 +458,44 @@ def test_heavy_commands_take_the_lock():
     assert seen == [("build", True)]
 
 
+
+# ---------------------------------------------------------------- anime project: S03 (the ask), Marketing copy v9
+ANIME = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "projects", "commission-ai-anime", "promo.yaml")
+SCRIPT = "/workspace/promo/marketing/scripts-3-directions-v1.md"
+
+
+def test_anime_s03_ask_cards_match_marketing_copy():
+    """Marketing Lead (4 Oct, anime v9): 'ONE ASK.' 6.78-9.49 s while the ask types, 'TONIGHT.' 9.49-12.20 s to the cut,
+    2 bars each, in the band; the script record carries the same windows."""
+    from promo.shots.anime import card_times
+    spec = load_spec(ANIME)
+    s03 = next(s for s in spec.shots if s.id == "03")
+    got = [(c["text"], round(s03.t0 + card_times(spec, s03, c)[0], 2), round(s03.t0 + card_times(spec, s03, c)[1], 2))
+           for c in s03.cfg["cards"]]
+    assert got == [("ONE ASK.", 6.78, 9.49), ("TONIGHT.", 9.49, 12.2)], got
+    assert all(c["row"] == "title" for c in s03.cfg["cards"])
+    if os.path.exists(SCRIPT):
+        row = next(ln for ln in open(SCRIPT, encoding="utf-8") if ln.startswith("| The ask |"))
+        assert '"ONE ASK." 6.78–9.49' in row and '"TONIGHT." 9.49–12.20' in row, row
+
+
+def test_anime_s03_typing_never_faster_than_captured_and_holds_short():
+    """Zen A7: no 4 s still stretch. Every S03 segment plays at <= the captured speed (keystrokes at exactly 1x), the
+    segments tile the source without gaps, and each slowed (still) segment adds at most ~1 s on screen."""
+    spec = load_spec(ANIME)
+    s03 = next(s for s in spec.shots if s.id == "03")
+    segs = s03.cfg["segs"]
+    for a, b in zip(segs, segs[1:]):
+        assert abs(float(a["t_out"]) - float(b["t_in"])) < 1e-6, (a, b)          # continuous source, nothing skipped
+    for g in segs:
+        src = float(g["t_out"]) - float(g["t_in"])
+        assert src <= float(g["dur"]) + 1e-6, g                                   # never faster than captured
+        if src < float(g["dur"]) - 1e-6:
+            assert float(g["dur"]) <= 1.10 + 1e-6, g                              # a still moment, ~1 s at most
+    keys = [g for g in segs if abs(float(g["t_out"]) - float(g["t_in"]) - float(g["dur"])) < 1e-6]
+    assert sum(float(g["dur"]) for g in keys) >= 5.1                              # the typing itself is real time
+    assert abs(sum(float(g["dur"]) for g in segs) - s03.dur) < 0.01
+
 if __name__ == "__main__":
     fails = 0
     for k, v in list(globals().items()):
