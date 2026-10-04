@@ -15,7 +15,7 @@ output:
   name: commission-ai-talkshow
   resolution: 1080
   fps: 30
-  duration: 106.0
+  duration: 104.833
 paths:
   build: build
   out: out
@@ -26,7 +26,7 @@ style:
     path: ${PROMO_FONT:-/usr/share/fonts/truetype/sand-box/google/Inter/Inter-VariableFont_opsz,wght.ttf}
 timeline:
   bpm: 1800
-  beats: 3180
+  beats: 3145
 livestream:
   hosts_side: left
   screen:
@@ -73,14 +73,14 @@ vo:
     sha256: ef1bc0730ed5d24e721c8b206e33198cba482ea4b2c032008852d6be69fc434c
   - id: beat02_line01
     shot: '02'
-    at: 6.327
+    at: 4.16
     host: Hiyori
     text: Wait, then who's writing it?
     file: vo/beat02_line01_hiyori.wav
     sha256: ac8d7d9bfb306bdad84eeeaae7ff7b3142c020454c38d449024bd9bc8e1ca77d
   - id: beat02_line02
     shot: '02'
-    at: 8.225
+    at: 6.058
     host: Mao
     text: A crew of AI agents. This is commission-ai. I tell the Commander what I want, like "Ship the checkout revamp tonight."
     file: vo/beat02_line02_mao.wav
@@ -121,21 +121,21 @@ vo:
     - vo/superseded/beat04_line02_mao.v1.wav
   - id: beat05_line01
     shot: '05'
-    at: 0.156
+    at: 0.155
     host: Hiyori
     text: Won't they trip over each other?
     file: vo/beat05_line01_hiyori.wav
     sha256: f91fc909ac6521f977f283b9167a9e8043898cea4ff690aa82634d57aa322efa
   - id: beat05_line02
     shot: '05'
-    at: 1.77
+    at: 1.769
     host: Mao
     text: Nope. Every task gets its own git worktree and its own pull request. See the chips? Coding, Checks, Pushed, PR raised.
     file: vo/beat05_line02_mao.wav
     sha256: 32823f4273c13954e66581f3323d30669b22c4d02d77c00c87f8389c9f0e3f10
   - id: beat06_line01
     shot: 06a
-    at: 0.155
+    at: 0.154
     host: Hiyori
     text: Ooh, what's that pill that just popped up?
     file: vo/beat06_line01_hiyori.wav
@@ -144,7 +144,7 @@ vo:
     - vo/superseded/beat06_line01_hiyori.v1.wav
   - id: beat06_line02
     shot: 06a
-    at: 2.337
+    at: 2.336
     host: Mao
     text: That's "Needs you". It only taps me on the shoulder when it actually needs a decision. Click Allow once and the agent gets back to work.
     file: vo/beat06_line02_mao.wav
@@ -236,7 +236,7 @@ shots:
 - id: 01b
   beats:
   - 120
-  - 267
+  - 332
   type: livestream
   beat: 1
   screen:
@@ -247,12 +247,12 @@ shots:
     - 0.553
     - 0.7
   edge_check: false
-  note: 'Dusk Workshop, wide, 4.9 s (v4.1: S02 takes over at 8.9 s, was 7.5; header bar cropped; 0.70 = widest crop that still hides it at the 1440x1032 aspect),
-    from 0.3 s (after the first-frame brightness dip); beat 1 dialogue'
+  note: 'Dusk Workshop, wide, 7.1 s (v6: S02 takes over at 11.05 s; v4.1 8.9, v3 7.5; header bar cropped; 0.70 = widest crop that still hides it at the 1440x1032
+    aspect), from 0.3 s (after the first-frame brightness dip); beat 1 dialogue'
 - id: '02'
   beats:
-  - 267
-  - 771
+  - 332
+  - 736
   type: livestream
   beat: 2
   screen:
@@ -281,12 +281,12 @@ shots:
     src_px: 2160
     at: 6.0
     min_px: 0
-  note: 'Composer (S3). v3 hook: starts at 7.5 s (first app UI) under the rest of beat 1''s VO. v4: 0.7 s still, then the typing at 0.7x (no 10.7 s hold). v4.1: starts
-    at 8.9 s (01b runs 4.9 s), 1.0 s still, ~1.0 s end freeze'
+  note: 'Composer (S3). v3 hook: starts at 7.5 s (first app UI) under the rest of beat 1''s VO. v4: 0.7 s still, then the typing at 0.7x (no 10.7 s hold). v6: starts
+    at 11.05 s (01b runs 7.1 s), 1.0 s still, ~1.0 s hold after the typing, no freeze'
 - id: '03'
   beats:
-  - 771
-  - 1029
+  - 736
+  - 994
   type: livestream
   beat: 3
   screen:
@@ -350,15 +350,15 @@ shots:
     tasks'' and ''waves''; this frame shows 3 cards and no wave headings'
 - id: '04'
   beats:
-  - 1029
-  - 1321
+  - 994
+  - 1286
   type: livestream
   beat: 4
   screen:
     source: shot-05-v1
     speed: 0.7
     t_in: 0.0
-    hold_in: 3.668
+    hold_in: 3.667
     cam:
     - 0.54349
     - 0.5963
@@ -400,8 +400,8 @@ shots:
   note: Rail lighting (S5)
 - id: '05'
   beats:
-  - 1321
-  - 1633
+  - 1286
+  - 1598
   type: livestream
   beat: 5
   screen:
@@ -409,7 +409,7 @@ shots:
     tail:
       from: 7.8
       speed: 0.7
-    t_in: 0.01
+    t_in: 0.011
     cam:
     - 0.48021
     - 0.50602
@@ -454,8 +454,8 @@ shots:
   note: 'Chips (S8): Coding -> Checks -> Pushed -> PR raised (Codex)'
 - id: 06a
   beats:
-  - 1633
-  - 1725
+  - 1598
+  - 1690
   type: livestream
   beat: 6
   screen:
@@ -495,8 +495,8 @@ shots:
   note: PAY-106 flips to Needs you as HIYORI asks about the pill
 - id: 06b
   beats:
-  - 1725
-  - 1964
+  - 1690
+  - 1929
   type: livestream
   beat: 6
   screen:
@@ -540,8 +540,8 @@ shots:
   note: Same take, held, then the Allow once click on cue
 - id: '07'
   beats:
-  - 1964
-  - 2261
+  - 1929
+  - 2226
   type: livestream
   beat: 7
   screen:
@@ -576,8 +576,8 @@ shots:
   note: 'Reviewer thread (S12). Auto take: full MAO line if ''Approved...'' measures >= min_px, else trimmed after ''...why it passes.'''
 - id: 08a
   beats:
-  - 2261
-  - 2408
+  - 2226
+  - 2373
   type: livestream
   beat: 8
   screen:
@@ -621,8 +621,8 @@ shots:
   note: PR raised -> Merged (PR card take), flip on MAO's 'merged'; no PR number in dialogue or card text (the app's own PR card shows it)
 - id: 08b
   beats:
-  - 2408
-  - 2441
+  - 2373
+  - 2406
   type: livestream
   beat: 8
   screen:
@@ -660,8 +660,8 @@ shots:
   note: 'Board all Landed (S11), the last 1.1 s of the beat: 08a holds ~1 s on the PR card after its pill reads Merged (7.70 s)'
 - id: 09a
   beats:
-  - 2441
-  - 2600
+  - 2406
+  - 2565
   type: livestream
   beat: 9
   screen:
@@ -676,15 +676,15 @@ shots:
   note: 'Workshop robots building: tighter 1.27x push-in on the room vs 01b, later section (from 5.0 s) so it doesn''t repeat 01b'
 - id: 09b
   beats:
-  - 2600
-  - 2723
+  - 2565
+  - 2688
   type: livestream
   beat: 9
   screen:
     source: shot-14b-dusk-r2-v1080
     speed: 0.7
     t_in: 3.6
-    hold_in: 0.007
+    hold_in: 0.006
     cam:
     - 0.60755
     - 0.5
@@ -697,8 +697,8 @@ shots:
   note: Outside -> Street (S14b); screen top-right kept clear
 - id: '10'
   beats:
-  - 2723
-  - 3000
+  - 2688
+  - 2965
   type: livestream
   beat: 10
   screen:
@@ -711,16 +711,16 @@ shots:
   note: End card (wording from the beat 10 dialogue only; no URL / price / dates / PR numbers)
 - id: 11a
   beats:
-  - 3000
-  - 3090
+  - 2965
+  - 3055
   type: live2d_credits
   size: 30
   note: Live2D notice + licence line
   part: 1
 - id: 11b
   beats:
-  - 3090
-  - 3180
+  - 3055
+  - 3145
   type: live2d_credits
   size: 30
   note: Live2D model credits

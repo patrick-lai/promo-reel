@@ -70,6 +70,16 @@ a 0.4 s `dissolve` over it. It's driven by the take's `time_of_day` field in the
 no dissolve; `dusk -> day @ 5.50` or `{from, to, at}` = a change); with no field, the plan profile's `time_of_day`
 (the current take's fallback) applies. Commission-ai's dusk retake records `dusk` there and the dissolve goes away.
 
+## v6 (Zen v5 4.14: trim the S02 tail)
+
+- **S02 tail**: the last keystroke ('No broken builds.') is at src ~9.05 s. Beat 2's hold 1.5 -> 1/3 s (`holds: {2: ...}`),
+  so beat 3 onward (VO, lip-sync, nameplates, cuts) moves exactly 35 frames (1.167 s) earlier; S02 starts at 11.07 s
+  (was 8.9) so the typing ends ~1.0 s before the cut (was ~3.5 s caret frames + 1.0 s freeze). No end freeze.
+  HIYORI's 'Whoa, look at that map!' now starts 0.48 s after MAO's line (was 1.65 s). Runtime 106.00 -> 104.83 s.
+- **First app UI**: 11.07 s (was 8.9 s); 01b (dusk Workshop) runs 7.1 s, src 0.3-7.37, which overlaps 09a's section
+  (src 5.0-9.95, tighter crop) by ~2.4 s.
+- **Music**: the talk show has no music bed (only the intro swell SFX at 0 s), so nothing to re-edit.
+
 ## v5 (Zen X1 / X2)
 
 - **03 (X1)**: `talk-dag-wide-r2` (DPR 2, 1.667x, same `?demo=1` board as the earlier talk-dag takes). Source x 217-1723 at

@@ -11,7 +11,7 @@ title_card: 4.0       # the title card cuts to the app (Workshop) this far in
 gap_line: 0.20        # silence between lines inside a beat
 cut_lead: 0.15        # a beat's screen cuts this long before its first line
 hold: 1.5             # screen hold after each beat's last line (room: 1.5-2.5 s per beat, ~1:45 total, no time-stretch)
-holds: {1: 2.0, 8: 2.5, 9: 0.6}   # per-beat overrides (beat 1 may run long). Beat 9: 0.6 s (room-directed, UX review T5) so the
+holds: {1: 2.0, 2: 0.333333, 8: 2.5, 9: 0.6}   # per-beat overrides (beat 1 may run long). Beat 2: 1/3 s (v6, Zen v5 S02 tail: everything after S02 moves exactly 35 frames earlier). Beat 9: 0.6 s (room-directed, UX review T5) so the
                           # street tail is trimmed and "It runs on your Mac" starts on the end card. Beat 10's hold = end card.
                           # Beat 8: 2.5 s (director-approved v3, +1.0 s): the screen holds ~1 s on the PR card after its pill
                           # reads Merged (7.70 s) and 08b gets a full beat; beat 8's VO timing is unchanged.
@@ -59,6 +59,8 @@ profiles:
     # (src 1.0-6.0) at 0.7x = 7.1 s from 8.2 s; the composer then sits with the typed text (src 6.0-11.35, caret only).
     # v4.1: t_in 0.3 (src 0.3-1.0 static = 1.0 s on screen at 0.7x) and S02 starts at 8.9 s (was 7.5): the end freeze
     # after 'No broken builds.' drops from 2.72 to ~1.0 s. 0.7x is already the floor, so no slower typing is possible.
+    # v6 (Zen v5): the typing ends at src ~9.05 ('No broken builds.' done; caret only after). S02 starts at 11.05 s and
+    # beat 2's hold is 1/3 s, so the cut to beat 3 comes ~1.0 s after the last keystroke (src ends ~9.73, no freeze).
     t_in: 0.3
     speed: 0.7
     named:
@@ -255,9 +257,9 @@ segments:
   - {id: "01", beat: 1, from: start, screen: {card: {title: "Building in Public", subtitle: "episode one"}},
      note: "Stream intro sting (generated card, swell SFX); cuts to the app at title_card"}
   - {id: 01b, beat: 1, from: title_card, take: workshop, t_in: 0.3, cam: [0.5, 0.553, 0.70],
-     note: "Dusk Workshop, wide, 4.9 s (v4.1: S02 takes over at 8.9 s, was 7.5; header bar cropped; 0.70 = widest crop that still hides it at the 1440x1032 aspect), from 0.3 s (after the first-frame brightness dip); beat 1 dialogue"}
-  - {id: "02", beat: 2, take: composer, from: {t: 8.9},
-     note: "Composer (S3). v3 hook: starts at 7.5 s (first app UI) under the rest of beat 1's VO. v4: 0.7 s still, then the typing at 0.7x (no 10.7 s hold). v4.1: starts at 8.9 s (01b runs 4.9 s), 1.0 s still, ~1.0 s end freeze"}
+     note: "Dusk Workshop, wide, 7.1 s (v6: S02 takes over at 11.05 s; v4.1 8.9, v3 7.5; header bar cropped; 0.70 = widest crop that still hides it at the 1440x1032 aspect), from 0.3 s (after the first-frame brightness dip); beat 1 dialogue"}
+  - {id: "02", beat: 2, take: composer, from: {t: 11.05},
+     note: "Composer (S3). v3 hook: starts at 7.5 s (first app UI) under the rest of beat 1's VO. v4: 0.7 s still, then the typing at 0.7x (no 10.7 s hold). v6: starts at 11.05 s (01b runs 7.1 s), 1.0 s still, ~1.0 s hold after the typing, no freeze"}
   - {id: "03", beat: 3, take: dag, note: "Dependency map (v5: talk-dag-wide-r2; v4: talk-dag-wide; v3: talk-dag-tight): PAY-101 fanning into PAY-104 / PAY-105. FLAG: MAO's beat 3 line claims 'eight tasks' and 'waves'; this frame shows 3 cards and no wave headings"}
   - {id: "04", beat: 4, take: rail, note: "Rail lighting (S5)"}
   - {id: "05", beat: 5, take: chips, note: "Chips (S8): Coding -> Checks -> Pushed -> PR raised (Codex)"}
