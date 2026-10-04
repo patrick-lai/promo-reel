@@ -39,6 +39,12 @@ Pick the **style preset** first (`promo styles`): `hero` (calm VO-led hero), `an
 - `output` (name, resolution 1080|2160, fps, duration), `timeline` (bpm, beats), `style` (font, caption zone).
 - `shots`: id, `beats: [start, end]`, `type` (`clip`, `card`, or a project plugin type from `shots.py`), `source: <clip id from footage/manifest.yaml>` + `t_in`/`speed` or `segs`, camera keys `cam: [[t, cx, cy, w], ...]` (normalised: centre x/y and box width as a fraction of the source width; smaller w = tighter), overlays (`caption`, `text`, `pill`, `scrim`), `sfx` events, `contact_at`.
 - `music` (asset, bpm, track grid, edit segments on bar lines), `vo` (engine, voice, lines with shot + `at`), `sfx` library, `mix` (bus levels, ducking, masters), `qa` thresholds.
+Talk-show layouts with Live2D hosts use the `livestream` shot type plus a show-level `livestream:` block. See
+`projects/live2d-demo/promo.yaml`, `live2d/README.md` and **`docs/live2d-licences.md`**. Only Live2D Original
+Characters are allowed; the copyright notice goes on the `live2d_credits` end card (gated) and in the description.
+Never fake an audience: chat lines are the hosts' own asides (or the strip carries a visible `scripted_label`), no
+LIVE badge, no viewer counts. **HUMAN:** confirm that the publisher
+is a General User or Small-Scale Enterprise (sales below JPY 10M) or holds Live2D's written approval.
 Use `promo peek <src> <t>` / `promo mpeek` (normalised grid overlays) to read coordinates for camera boxes and anchors off real frames. Bespoke shot types go in the project's `shots.py` (see the example's composer / rail_labels / tilt_card / float_window / tiles).
 
 ## 5. Build
@@ -84,6 +90,7 @@ Hand over: `out/<name>-1080.mp4` (web, -14 LUFS), `out/<name>-1080-social.mp4` (
 ## Operational notes for agents on the shared box
 - Heavy steps take the box-wide lock `/tmp/commission-ai-cargo.lock` (`promo/lock.py`, shared with Commission-ai's cargo test gates) and wait while it is held. Never SIGCONT or kill a render that something else paused.
 - Use the project venv (`/workspace/videos/commission-ai-promo/.venv` on Patrick's box has every dependency; `pip install -e .[vo,asr]` elsewhere).
-- Render one shot at a time (ffmpeg `-threads 2`); never run two renders at once. A full 1080 build takes ~15-25 min on 8 cores.
+- Render one shot at a time (ffmpeg `-threads 2`); never run two renders at once. Heavy renders hold
+  `flock /tmp/commission-ai-cargo.lock` (shared with Commission-ai's cargo test gates; `promo` takes it itself). A full 1080 build takes ~15-25 min on 8 cores.
 - Do not commit media, builds or the music file; `.gitignore` covers `media/`, `build/`, `out/`, `*.mov`, `*.mp4`, `*.wav`, `*.mp3`, models.
 - Do not git push or publish unless the human asked for that specific action.

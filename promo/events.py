@@ -57,7 +57,7 @@ def compute_events(spec):
             add(name, None if out is None else (out + offset if offset else out), db, **extra)
     vo = {}
     for line in spec.raw.get("vo", {}).get("lines", []):
-        vo[str(line["shot"])] = spec.g(line["shot"], line.get("at", 0.0))
+        vo[str(line.get("id", line["shot"]))] = spec.g(line["shot"], line.get("at", 0.0))
     return dict(sfx=sorted(sfx, key=lambda e: e["t"]), vo=vo)
 
 

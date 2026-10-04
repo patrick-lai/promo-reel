@@ -1,0 +1,66 @@
+# Live2D runtime + sample-model manifest for `promo live2d` and the `livestream` shot type.
+# NOTHING listed here is committed: `promo live2d fetch` downloads each file from Live2D's official servers,
+# checks its sha256 and unpacks models under live2d/media/ (gitignored). Redistribution is not allowed (see
+# docs/live2d-licences.md); every render credits the copyright notice below.
+#
+# character_type: only `original` (Live2D Original Character) is accepted by the renderer. `collaboration`
+# characters (e.g. Jin Natori, Tsumiki Harugasa) are non-commercial only and are refused; `external` (Hatsune Miku,
+# Unity-chan) are under third-party terms and refused too.
+runtime:
+  id: cubism-core
+  kind: live2d_runtime
+  path: media/core/live2dcubismcore.min.js
+  fetch_url: https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js
+  sha256: 25ae938cb4fe282ce189b357bcc97e603d1e1f7ec78bf04150d401c23cdc792f
+  licence: "Live2D Proprietary Software License Agreement v2.1 (revised 2025-02-03); file is 'Redistributable Code' but we do not redistribute it"
+  licence_url: https://www.live2d.com/eula/live2d-proprietary-software-license-agreement_en.html
+  source_url: https://www.live2d.com/en/sdk/download/web/
+  redistributable: false
+  notes: "Live2D Cubism Core for Web (header: '(C) 2019 Live2D Inc. All rights reserved.'). Re-pin sha256 when Live2D updates the file."
+
+notice:
+  long: "This content uses sample data owned and copyrighted by Live2D Inc. The sample data are utilized in accordance with terms and conditions set by Live2D Inc. This content itself is created at the author's sole discretion."
+  short: "This content uses sample data owned and copyrighted by Live2D Inc."
+  source_url: https://www.live2d.com/en/learn/sample/model-terms/
+
+models:
+  hiyori:
+    name: Hiyori Momose (PRO)
+    character_type: original
+    archive: media/archives/hiyori_en.zip
+    fetch_url: https://cubism.live2d.com/sample-data/bin/hiyori/hiyori_en.zip
+    sha256: 1e4254d561f2a151562aa67036d78e17e4ffee08869b8ce10ab6052a05e2b3a4
+    model3: hiyori_pro/runtime/hiyori_pro_t11.model3.json     # path inside the unpacked archive
+    source_url: https://www.live2d.com/en/learn/sample/momose-hiyori/
+    licence: "Live2D Free Material License Agreement v1.6 (2025-02-03), Live2D Original Character licence (s.2.1.3) + Terms of Use for Live2D Cubism Sample Data"
+    licence_url: https://www.live2d.com/eula/live2d-free-material-license-agreement_en.html
+    credit: "Illustration: Kani Biimu; Modeling: Live2D Inc."
+    individual_terms: "No changes of any kind to the design of this character are permitted."
+    mouth: {open: [ParamMouthOpenY], form: ParamMouthForm}
+    # Framing anchors in MODEL units (x = fraction of model width, y = fraction of model height, from the top), read
+    # off a full-body render (`promo live2d anchors --model hiyori` draws the grid + the measured eye/mouth lines).
+    # top = top of the FULL silhouette incl. ahoge / hat (alpha, full-body render, minus ~0.003 for physics sway);
+    # head_top = top of the skull/hair (not ahoge, hats or accessories); chin; chest = mid-chest; cx = face centre;
+    # mouth = QA pixel probe. promo/live2d.py `framing` turns them into the same crop for every model.
+    anchors: {top: 0.072, head_top: 0.080, chin: 0.236, chest: 0.345, cx: 0.499, mouth: [0.499, 0.220]}
+  mao:
+    name: Niziiro Mao (PRO)
+    character_type: original
+    archive: media/archives/mao_en.zip
+    fetch_url: https://cubism.live2d.com/sample-data/bin/mao/mao_en.zip
+    sha256: c6bc527b3d8877f0735f4099b34c2b9bb17162d77b5957687839c74d374449d3
+    model3: runtime/mao_pro.model3.json
+    source_url: https://www.live2d.com/en/learn/sample/niziiro-mao/
+    licence: "Live2D Free Material License Agreement v1.6 (2025-02-03), Live2D Original Character licence (s.2.1.3) + Terms of Use for Live2D Cubism Sample Data"
+    licence_url: https://www.live2d.com/eula/live2d-free-material-license-agreement_en.html
+    credit: "Illustration: Live2D Inc.; Modeling: Live2D Inc."
+    individual_terms: "none listed"
+    mouth: {open: [ParamA], form: null}
+    # skull top is hidden by the hat: the hat band (forehead line) is at ~0.175 and the crown encloses the skull, so the
+    # top of the head is ~0.03 above it (same forehead-to-crown share as Hiyori). Eye line 0.243 (measured).
+    anchors: {top: 0.082, head_top: 0.152, chin: 0.287, chest: 0.380, cx: 0.500, mouth: [0.500, 0.282]}
+  natori:
+    name: Jin Natori
+    character_type: collaboration        # refused: Collaboration Character = non-commercial only
+    source_url: https://www.live2d.com/en/learn/sample/natori-jin/
+    licence: "Collaboration Character licence (s.2.1.4): non-commercial only; not usable for a product promo"

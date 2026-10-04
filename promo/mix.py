@@ -106,7 +106,7 @@ def run(spec, force=False):
         j = min(N, i + len(x))
         buf[i:j] += x[: j - i]
 
-    music = load(music_path(spec), SR)
+    music = load(music_path(spec), SR) if spec.raw.get("music") else np.zeros((N, 2))   # music bed is optional
     if len(music) != N:                      # equal for a well-formed spec; pad/trim so a rounded duration still mixes
         music = np.vstack([music, np.zeros((max(0, N - len(music)), 2))])[:N]
     sfx = np.zeros((N, 2))
@@ -133,15 +133,22 @@ def run(spec, force=False):
     vo_marks = []
     meta = json.load(open(os.path.join(spec.vo_dir, "vo.json"))) if os.path.exists(os.path.join(spec.vo_dir, "vo.json")) else dict(lines=[])
     for line in meta["lines"]:
-        t = ev["vo"].get(line["shot"])
+        t = ev["vo"].get(str(line.get("id", line["shot"])))
         if t is None:
             continue
-        x = load(os.path.join(spec.vo_dir, line["file"]), SR)
-        meter = pyln.Meter(SR)
-        L = meter.integrated_loudness(x) if len(x) > SR * 0.5 else -20
+        # chain per line: level (gain) at the file's own rate -> resample to the mix rate (float, no clipping even
+        # for full-scale Kokoro output) -> the master's true-peak limiter (4x oversampled) at the master ceiling
+        x, sr0 = sf.read(os.path.join(spec.vo_dir, line["file"]), always_2d=True)
+        x = x.astype(np.float64)
+        meter = pyln.Meter(sr0)
+        L = meter.integrated_loudness(x) if len(x) > sr0 * 0.5 else -20
         x = x * db(cfg.get("vo_line_lufs", -16.0) - L)
+        if sr0 != SR:
+            x = resample_poly(x, SR, sr0, axis=0)
+        if x.shape[1] == 1:
+            x = np.repeat(x, 2, 1)
         place(vo, x, t)
-        vo_marks.append((t, t + len(x) / SR, line["shot"], line["text"]))
+        vo_marks.append((t, t + len(x) / SR, str(line.get("id", line["shot"])), line["text"]))
     # music ducking under VO (and under SFX with duck_music)
     dk = cfg.get("duck", {})
     duck_db, att, rel = dk.get("db", 7.0), dk.get("attack", 0.12), dk.get("release", 0.35)

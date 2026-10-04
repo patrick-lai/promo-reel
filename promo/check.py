@@ -105,6 +105,12 @@ def run(spec):
     # 1. assets + lint (lint already ran at load)
     probs = A.validate(spec)
     rep.add("assets", "FAIL" if probs else "PASS", "; ".join(probs) if probs else "manifest complete; spec lint clean")
+    try:
+        dr = A.drafts(A.load_manifest(spec))
+    except A.AssetError:
+        dr = []
+    if dr:
+        rep.add("assets-draft", "WARN", "licence still `status: draft` (terms pending confirmation; clear before publishing): " + ", ".join(dr))
     from . import footage as FT
     try:
         bad = [r for r in FT.verify(spec) if not r["ok"]]
@@ -148,7 +154,7 @@ def run(spec):
         out = spec.output_path(m.get("suffix", ""))
         nm = os.path.basename(out)
         if not os.path.exists(out):
-            for g in ("duration", "video-format", "loudness"):
+            for g in ("duration", "video-format", "loudness", "true-peak"):
                 rep.add(g, "FAIL", f"{nm}: output missing (run `promo build`)")
             continue
         j = ffprobe_json(out, "-show_streams", "-show_format")
@@ -166,6 +172,17 @@ def run(spec):
         tol = qa.get("lufs_tolerance", 0.5)
         ok = L is not None and abs(L - m["lufs"]) <= tol and tp is not None and tp <= m.get("max_true_peak", -1.0)
         rep.add("loudness", "PASS" if ok else "FAIL", f"{nm}: {L} LUFS (target {m['lufs']}±{tol}), true peak {tp} dBTP (max {m.get('max_true_peak', -1.0)})")
+        # true peak on its own: the master WAV (before the encoder) and the encoded file must both stay <= max_true_peak
+        mx = m.get("max_true_peak", -1.0)
+        mw = os.path.join(spec.audio_dir, f"mix-{m['name']}.wav")
+        wtp = None
+        if os.path.exists(mw):
+            import soundfile as _sf
+
+            from .mix import true_peak as _tp
+            wtp = round(float(_tp(_sf.read(mw, always_2d=True)[0])), 2)
+        bad = [x for x in (tp, wtp) if x is not None and x > mx] or ([] if tp is not None else ["unmeasured"])
+        rep.add("true-peak", "FAIL" if bad else "PASS", f"{nm}: encoded {tp} dBTP, master WAV {wtp} dBTP (max {mx} dBTP)")
 
     # 6/7. captions: hold + safe zone
     from .render import RenderContext
@@ -200,6 +217,11 @@ def run(spec):
     for g, st_, msg in style_check.run(spec):
         rep.add(g, st_, msg)
 
+    # 7b. livestream layout: screen share, chat lines, single side move, keep-clear rectangles
+    from . import livestream as LS
+    for gate, status, msg in LS.check(spec, ctx):
+        rep.add(gate, status, msg)
+
     # 8. contact sheet
     from . import contact
     try:
@@ -229,10 +251,10 @@ def run(spec):
         if not have:
             rep.add("vo-script", "WARN", "skipped: faster-whisper not installed")
         else:
-            meta = {str(x["shot"]): x for x in json.load(open(vj))["lines"]}
+            meta = {str(x.get("id", x["shot"])): x for x in json.load(open(vj))["lines"]}
             bad, maxw_ = [], qa.get("vo_max_wer", 0.0)
             for ln in lines:
-                sid = str(ln["shot"])
+                sid = str(ln.get("id", ln["shot"]))
                 if sid not in meta:
                     bad.append(f"{sid}: no stem")
                     continue
@@ -247,7 +269,7 @@ def run(spec):
                     stamps.write(key, h + qa.get("asr_model", "small.en"), text=txt)
                 ref_s = ln["text"]
                 hyp_s = txt
-                for k, v in (ln.get("asr_aliases") or {}).items():       # alias: heard-as -> script word
+                for k, v in {**(qa.get("asr_aliases") or {}), **(ln.get("asr_aliases") or {})}.items():   # alias: heard-as -> script word
                     hyp_s = re.sub(re.escape(k), v, hyp_s, flags=re.I)
                 w = wer(norm_words(ref_s), norm_words(hyp_s))
                 if w > maxw_:

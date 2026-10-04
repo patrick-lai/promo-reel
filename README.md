@@ -49,7 +49,28 @@ promo -p projects/<name>/promo.yaml <cmd>
   compare <ref.mp4> [--json]             per-shot PSNR + audio diff against a reference render
   peek <clip> <t> [box] | segpeek <shot> [t..] | mpeek out.png clip:t[:box] ...   framing helpers (build/peek/)
   --scale 2                              3840x2160 from the same spec (needs DPR2 sources to be sharp)
+promo live2d fetch | models | render --model hiyori --wav a.wav --out a.mov | lag    Live2D hosts (prototype, live2d/README.md)
 ```
+
+### Live2D talk-show hosts (prototype)
+Shot type `livestream` puts the app screen (at least 55 % of the frame) next to one or two Live2D hosts, which are
+lip-synced offline from a WAV per host and stacked `slot_gap` px apart (default 16, minimum 12), plus a chat strip of
+up to 4 lines. Nothing fakes an audience: chat lines are the hosts' own asides (author = a host's id or name) unless
+`chat.scripted_label` is set and shown on the strip; the header has a neutral `tag` ("EP 1"), never a LIVE badge or
+viewer counts. Hosts stay on one side (`hosts_side: left|right`) with no slide by default; an optional single `move`
+(>= 0.5 s, on a beat change) slides them off the frame edge, never behind the screen. `keep_clear` rectangles on
+the app screen may not be covered by anything (their outlines are drawn only with `promo --debug`). Every host sits
+in its own panel and is framed by per-model head/chest anchors (`live2d/assets.yaml`), so all hosts get the same
+mid-chest-up crop, head height and scale; a taller silhouette (a hat, `top` anchor) breaks out above its panel,
+and `promo check` keeps that clear of everything else. The Live2D
+credit is a `live2d_credits` end card (full notice + model credits, >= 28 px, >= 2 s). `promo check` gates all of
+this. The Cubism Core and the sample models are fetched from live2d.com and never committed. Licences and the
+required notice are in [`docs/live2d-licences.md`](docs/live2d-licences.md). Example: `projects/live2d-demo/`.
+
+**Shared heavy-work lock:** `promo build|shot|vo|music|sfx|mix|events|assemble|contact`, Live2D host renders and the
+livestream compositor hold `flock /tmp/commission-ai-cargo.lock` for their whole run (the lock Commission-ai's
+pre-merge cargo test gates use), so a render and a test gate never overlap. They block until it is free and log
+every 30 s while waiting (`promo/lock.py`; re-entrant within one process).
 With `--json`, only JSON goes to stdout and it always has `ok`; logs go to stderr. This keeps the CLI ready to wrap as an MCP server later.
 
 Builds are **idempotent**. Each step stamps a hash of its inputs (spec subtree, input files, code, scale) and is skipped when nothing has changed. Editing one shot re-renders only that shot, then re-runs events, mix and assemble only if their inputs changed.
@@ -70,6 +91,7 @@ Builds are **idempotent**. Each step stamps a hash of its inputs (spec subtree, 
 | freshness | WARN if an output is stale against its inputs |
 | style: anime-opening | grid (music JSON present, no drift); bar-cuts (cuts on bar lines, half bars only beside text-free shots; cards start on bars); shot-hold (UI >= 1 bar, text-free >= 1/2 bar, `ui:` set); card-hold (>= 1 bar, words >= 0.6 s); card-band (one fixed band, no per-card positions or free overlays); card-ui-clear (no card over `ui_text`, UI shots framed above the band); fx-between (fx_in/fx_out only, <= 6 frames, never full-frame on UI shots); flash-rate (<= 3/s); claims (numbers come from claim tables or cite evidence); named (app text a card names, `named:` boxes, renders >= 18 px cap height at 1080p; `named-upscale` WARNs above 1.0x); markers (listed grid markers land on cuts); placeholders (WARN) |
 | style: livestream | shot-hold (>= 4 s), no-fx |
+| livestream-* | (livestream specs only) `licence`: a host is not a Live2D Original Character, or there is no `live2d_credits` end card with text >= 28 px held >= 2 s at full opacity; `screen`: under 55 % of the frame; `chat`: `max_lines` > 4; `chat-truth`: a chat author is not a host and no `chat.scripted_label` is set; `lint`: on-screen text says LIVE or shows a viewer count; `side`: `hosts_side` not left/right, `slot_gap` < 12, more than one move, a move shorter than 0.5 s or off a beat change, or a per-shot side flip; `keep-clear`: anything drawn (hosts, header, chat strip, overlays) covers a `keep_clear` rectangle on any frame |
 
 ## Licences
 Music is **never committed**: for example, the Pixabay Content License forbids redistributing the file standalone. `assets.yaml` holds the track page, licence, `fetch_url` and `sha256`; run `promo fetch`. The Kokoro VO model is Apache-2.0 and fetched the same way. SFX are synthesised by `promo sfx` (no samples). Raw footage stays on the box and is tracked by sha256 in the footage manifest. It never goes in git, including Git LFS.

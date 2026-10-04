@@ -165,9 +165,14 @@ def verified_sha(spec, cid):
 
 
 # ---------------------------------------------------------------- QA helpers
-def max_magnification(shot):
-    """Largest push-in on the shot's cameras: 1 / smallest box width (fraction of source width). None if no camera keys."""
+def max_magnification(shot, screen_frac=1.0):
+    """Largest push-in on the shot's cameras: 1 / smallest box width (fraction of source width). None if no camera keys.
+    A livestream screen cam `screen.cam: [cx, cy, w]` shown on a screen `screen_frac` of the frame wide counts as
+    screen_frac / w (e.g. w 1/3 on a 1440-px screen = 2.25x)."""
     ws = []
+    sc = shot.cfg.get("screen")
+    if isinstance(sc, dict) and isinstance(sc.get("cam"), (list, tuple)) and len(sc["cam"]) == 3 and sc.get("source"):
+        ws.append(float(sc["cam"][2]) / screen_frac)
 
     def keys(v):
         if isinstance(v, list) and v and all(isinstance(k, list) and len(k) >= 4 for k in v):
@@ -189,8 +194,10 @@ def qa_findings(spec, mag_limit=1.5):
         c = man.get(cid)
         if c and c.get("demo"):
             demo.append(cid)
+    lsc = spec.raw.get("livestream") or {}
+    frac = float((lsc.get("screen") or {}).get("w", 1440)) / 1920 if lsc else 1.0
     for s in spec.shots:
-        mag = max_magnification(s)
+        mag = max_magnification(s, frac)
         if not mag or mag <= mag_limit:
             continue
         for cid in {c for c, ss in referenced(spec, {s.id}).items()}:

@@ -1,0 +1,95 @@
+<!doctype html>
+<!-- promo-reel Live2D frame page. Loaded by render.mjs from a localhost static server; never opened by hand.
+     The seeded random stream below follows createSeededRandom() from moeru-ai/airi packages/motion-driver-magic
+     (MIT License, Copyright (c) 2024-PRESENT Neko Ayaka); see live2d/THIRD_PARTY.md. -->
+<html><head><meta charset="utf-8">
+<style>html,body{margin:0;background:transparent;overflow:hidden}</style>
+<script>
+  // Determinism: seeded Math.random (mulberry32-style stream, as in moeru-ai/airi motion-driver-magic, MIT) and a
+  // virtual clock for performance.now / Date.now, installed before any library loads.
+  (function () {
+    const q = new URLSearchParams(location.search);
+    let state = (Number(q.get("seed")) || 1) >>> 0;
+    Math.random = function () {
+      state += 0x6D2B79F5;
+      let v = state;
+      v = Math.imul(v ^ v >>> 15, v | 1);
+      v ^= v + Math.imul(v ^ v >>> 7, v | 61);
+      return ((v ^ v >>> 14) >>> 0) / 4294967296;
+    };
+    window.__clockMs = 0;
+    performance.now = () => window.__clockMs;
+    Date.now = () => 1700000000000 + window.__clockMs;
+  })();
+</script>
+<script src="/core/live2dcubismcore.min.js"></script>
+<script src="/lib/pixi.min.js"></script>
+<script src="/lib/cubism4.min.js"></script>
+</head><body>
+<script>
+window.L2D = {
+  async init(job) {
+    const W = job.width, H = job.height;
+    const app = new PIXI.Application({ width: W, height: H, backgroundAlpha: 0, antialias: true, autoStart: false,
+                                       preserveDrawingBuffer: true, resolution: 1, sharedTicker: false });
+    app.ticker.stop();
+    document.body.appendChild(app.view);
+    const model = await PIXI.live2d.Live2DModel.from(job.modelUrl, { autoUpdate: false, autoInteract: false });
+    app.stage.addChild(model);
+    const im = model.internalModel;
+    // We drive every expressive parameter from precomputed per-frame tracks: switch off the library's own idle motion
+    // picker, eye blink and breath (they would double up), keep physics + pose (deterministic for a fixed dt).
+    im.motionManager.update = () => false;
+    im.eyeBlink = undefined;
+    im.breath = undefined;
+    im.focusController.update = () => {};
+    // Framing (computed in promo/live2d.py `frame_job` from the model's head/chest anchors): the model height is
+    // `zoom` x H; normalised model point at_x[0] (fraction of model width) lands at at_x[1] x W and at_y[0]
+    // (fraction of model height) at at_y[1] x H. Legacy {zoom, cy, dx} = at_y [cy, 0.5], at_x [0.5, 0.5] + dx.
+    const fr = job.frame, zoom = fr.zoom;
+    const ay = fr.at_y || [fr.cy, 0.5], ax = fr.at_x || [0.5, 0.5 + (fr.dx || 0)];
+    const s = (H * zoom) / im.originalHeight;
+    model.scale.set(s);
+    model.x = ax[1] * W - im.originalWidth * s * ax[0];
+    model.y = ay[1] * H - im.originalHeight * s * ay[0];
+    const core = im.coreModel;
+    const ids = Object.keys(job.tracks);
+    const known = new Set(core.getModel().parameters.ids);
+    this.missing = ids.filter((id) => !known.has(id));
+    this.state = { app, model, core, ids: ids.filter((id) => known.has(id)), frame: 0, job };
+    // Tracks go in right after the (disabled) motion step, so physics + pose see the head angles this frame.
+    im.on("afterMotionUpdate", () => {
+      const st = this.state, f = st.frame;
+      for (const id of st.ids) {
+        const tr = st.job.tracks[id];
+        const v = tr.v[Math.min(f, tr.v.length - 1)];
+        if (tr.mode === "add") core.addParameterValueById(id, v);
+        else core.setParameterValueById(id, v);
+      }
+    });
+    // Warm up physics so frame 0 is settled (same fixed step, frame index held at 0).
+    for (let i = 0; i < (job.warmup || 0); i++) { model.update(1000 / job.fps); app.renderer.render(app.stage); }
+    window.__clockMs = 0;
+    return { width: im.originalWidth, height: im.originalHeight, missing: this.missing,
+             params: core.getModel().parameters.ids.length, gl: app.renderer.gl.getParameter(app.renderer.gl.VERSION) };
+  },
+  // Advance exactly 1/fps of model time, render, read back RGBA (bottom-up, premultiplied) as base64.
+  async frame(i) {
+    const st = this.state;
+    st.frame = i;
+    const dt = 1000 / st.job.fps;
+    window.__clockMs += dt;
+    st.model.update(dt);
+    st.app.renderer.render(st.app.stage);
+    const rb = {};
+    for (const id of st.job.readback || []) rb[id] = st.core.getParameterValueById(id);
+    const gl = st.app.renderer.gl, W = st.job.width, H = st.job.height;
+    const px = new Uint8Array(W * H * 4);
+    gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    const url = await new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(new Blob([px])); });
+    return { b64: url.slice(url.indexOf(",") + 1), rb };
+  },
+};
+window.__ready = true;
+</script>
+</body></html>

@@ -1,0 +1,52 @@
+# Live2D talk-show prototype: two Live2D Original Character hosts beside a placeholder app screen, then a credits card.
+# Prototype only: the screen is a PLACEHOLDER (no product footage, no claims). Test dialogue is Kokoro TTS.
+# No audience is simulated: the chat strip carries only the hosts' own asides; no LIVE badge, no viewer counts.
+#   promo live2d fetch                                     # Cubism Core + Hiyori + Mao from live2d.com (sha256-pinned)
+#   python projects/live2d-demo/make_test_wavs.py          # test-only host WAVs -> $LIVE2D_DEMO_WAVS
+#   python projects/live2d-demo/make_demo.py               # shots -> mux -> mp4 + 6-frame contact sheet + lip-lag report
+project: {name: live2d-demo, title: "Live2D talk-show prototype"}
+output: {name: live2d-demo, resolution: 1080, fps: 30, duration: 10.0}
+paths: {build: build, out: out}
+assets: assets.yaml
+footage: footage/manifest.yaml
+
+style:
+  font:
+    path: "${PROMO_FONT:-/usr/share/fonts/truetype/sand-box/google/Inter/Inter-VariableFont_opsz,wght.ttf}"
+
+timeline: {bpm: 120, beats: 20}      # 20 beats at 120 BPM = 10.000 s
+
+livestream:
+  hosts_side: left                   # the whole show; no slide
+  screen: {w: 1440}                  # 1440x810 = 56.25 % of the frame
+  margin: 24
+  slot_gap: 16                       # px between Hiyori's and Mao's slots
+  keep_clear:
+    - {name: app-top-right, box: [0.80, 0.0, 1.0, 0.14]}    # e.g. the app's status corner (outline only with --debug)
+  tag: "EP 1"
+  title: "Building in public"
+  chat:                              # hosts' own asides only (no invented viewers)
+    max_lines: 4
+    lines:
+      - {t: 1.0, user: Hiyori, text: "screen share is up"}
+      - {t: 3.4, user: Mao, text: "placeholder for now, real footage soon"}
+      - {t: 5.8, user: Hiyori, text: "next: the actual app"}
+  hosts:
+    - {id: a, model: hiyori, name: Hiyori, seed: 11, wav: "${LIVE2D_DEMO_WAVS:-/workspace/promo-reel-evals/live2d-v2}/host_a.wav"}
+    - {id: b, model: mao, name: Mao, seed: 22, wav: "${LIVE2D_DEMO_WAVS:-/workspace/promo-reel-evals/live2d-v2}/host_b.wav"}
+
+shots:
+  - id: "01"
+    beats: [0, 9]
+    type: livestream
+    screen: {placeholder: "APP FOOTAGE"}
+  - id: "02"
+    beats: [9, 15]
+    type: livestream
+    screen: {placeholder: "APP FOOTAGE"}
+  - id: "03"
+    beats: [15, 20]                  # 2.5 s end card: 0.25 s fade-in, 2.25 s at full opacity
+    type: live2d_credits
+    size: 30
+
+qa: {min_caption_hold: 2.0}

@@ -58,6 +58,10 @@ Need something the preset can't do? Extend the preset or the `anime` shot type i
 - `promo critique-pack [projects/<name>] [--out DIR] [--no-check] [--video]` (review folder for a reviewer model; holds the lock)
 - `promo check [--json]`; `promo compare <ref.mp4> [--json]` (per-shot PSNR + audio diff vs a reference)
 - `promo peek <clip-id> <t> [x0 y0 x1 y1]`, `promo segpeek <shot> [t...]`, `promo mpeek out.png clip:t[:box] ...` (output in build/peek/)
+- `promo live2d fetch|render|lag`: offline Live2D hosts for the `livestream` shot type (hosts on one side, screen >= 55 %,
+  chat <= 4 lines of host asides only, neutral EP tag, no LIVE/viewer counts, keep-clear rects, `live2d_credits` end card).
+  Only Live2D Original Characters; notice + licence rules in `docs/live2d-licences.md`. Heavy renders hold
+  `/tmp/commission-ai-cargo.lock` (shared with Commission-ai cargo test gates); `--debug` draws keep-clear outlines.
 - `--json` prints only JSON on stdout (always has `ok`), logs go to stderr. `promo fetch` downloads licensed assets (sha256 checked).
 
 ## Team rules
