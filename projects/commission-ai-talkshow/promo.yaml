@@ -642,17 +642,18 @@ shots:
   type: livestream
   beat: 9
   screen:
-    source: shot-14b-dusk-v1080
+    source: shot-14b-dusk-r2-v1080
     speed: 0.7
-    t_in: 3.195
+    t_in: 3.6
+    hold_in: 0.007
     cam:
-    - 0.69531
-    - 0.44259
-    - 0.60938
+    - 0.60755
+    - 0.5
+    - 0.7849
     dissolve:
-    - at: 4.2
+    - at: 4.6
       dur: 0.4
-      why: 'time of day dusk -> day (plan profile (override: manifest caveat: Street renders bright; luma 59 -> 113 at 4.20 s))'
+      why: 'time of day dusk -> day (plan profile (override: manifest caveat: Street renders bright; luma 55 -> 105 at 4.60 s))'
   edge_check: false
   note: Outside -> Street (S14b); screen top-right kept clear
 - id: '10'

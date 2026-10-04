@@ -32,7 +32,7 @@ takes:
   merged:    shot-16-prcard-tight-v1080 # beat 8a  DPR 2, PR card only: pill Open -> Merged at 7.70 s (wider alt: shot-16-prcard-v1080)
   landed:    shot-11-header-v1080 # beat 8b  DPR 2 header hold: 'All done · Plan next' / '8 in this run · 8 landed' (shot-11-all8: text 9-11 px, not used)
   workshop:  shot-01-dusk-v1080   # beat 1b + 9a
-  street:    shot-14b-dusk-v1080  # beat 9b  v4: dusk retake (19:30), pop-up closed; old: shot-14b-v1080
+  street:    shot-14b-dusk-r2-v1080 # beat 9b  v4: dusk retake 2 (preferred; 19:30, pop-up closed, full screen); alt: shot-14b-dusk-v1080, old: shot-14b-v1080
 
 # Shot 11 legibility (stand-in for the `shot11_legible` selector on branch style-presets, until it merges). Fill in from
 # the shot-11 entry in footage manifest.md once it is recorded: are all 8 cards / all 3 agent logos legible?
@@ -174,6 +174,17 @@ profiles:
     # Fallback until the footage manifest records `time_of_day` for this take: the Outside (dusk) view cuts to the
     # daylit Street at 5.50 s (measured luma jump 61.6 -> 108.2) -> 0.4 s dissolve. The dusk retake drops this.
     time_of_day: {from: dusk, to: day, at: 5.50}
+  shot-14b-dusk-r2-v1080:                                                                # S09b v4, DPR 1 dusk retake 2 (preferred)
+    # Usable ranges 0-2.5 s and 3.6-7.5 s (2.7-3.5 s collapse / re-expand flicker cut). 09b uses 3.6-6.47 s only: dusk
+    # Outside with the Street notice alone (3.6-4.6), Street (bright: real app behaviour) from 4.60 s (luma 55 -> 105).
+    # At 0.7x the cue ("...a Street") puts the clip start at 3.6 s. Full height, x 413-1920 so the top-right Street
+    # notice and the 'Caretaker bot building' pill stay in (the bottom-left Street info card is out). Scale 0.955.
+    t_in: 3.6
+    speed: 0.7
+    cam: [0.60755, 0.5, 0.78490]
+    sync: {src: 4.6, line: 2, at: 4.9}
+    edge_check: false
+    time_of_day: {from: dusk, to: day, at: 4.60, override: true, why: "manifest caveat: Street renders bright; luma 55 -> 105 at 4.60 s"}
   shot-14b-dusk-v1080:                                                                   # S09b v4, DPR 1 dusk retake
     # From ~2.7 s the app collapses to its normal layout (sidebar + Commander + Workshop pane), so frame the Workshop
     # pane only: x 750-1920 (pane border 748 .. frame edge), y 58-897 (the 'Caretaker bot building' pill and the
