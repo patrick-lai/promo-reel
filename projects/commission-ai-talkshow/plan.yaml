@@ -26,18 +26,18 @@ takes:
   composer:  shot-03              # beat 2   legacy 4K take (3840 wide, DPR 2): native for the push-in; a new take must be DPR 2
   dag:       talk-dag-tight-v1080 # beat 3   DPR 2: PAY-101 fanning into PAY-104 / PAY-105 (3 cards, no wave headings)
   rail:      shot-05-v1           # beat 4   legacy 4K take (3840 wide, DPR 2): native for the push-in; a new take must be DPR 2
-  chips:     shot-08-v1080        # beat 5   -> Commission-ai's DPR 2 take (push-in upscales 1.12x until then)
+  chips:     shot-08-dpr2-v1080   # beat 5   DPR 2 retake (11:14), same timeline as shot-08 (PR raised at 7.80 s); old: shot-08-v1080
   needs_you: shot-10-dpr2-v1080   # beat 6
   review:    shot-12-v1080        # beat 7   1x until the Z179 DPR 2 retake lands (PR #95)
   merged:    shot-16-prcard-tight-v1080 # beat 8a  DPR 2, PR card only: pill Open -> Merged at 7.70 s (wider alt: shot-16-prcard-v1080)
-  landed:    shot-11-v1080        # beat 8b  board all Landed (missing)
+  landed:    shot-11-header-v1080 # beat 8b  DPR 2 header hold: 'All done · Plan next' / '8 in this run · 8 landed' (shot-11-all8: text 9-11 px, not used)
   workshop:  shot-01-dusk-v1080   # beat 1b + 9a
   street:    shot-14b-v1080       # beat 9b  -> retake with the achievements pop-up closed
 
 # Shot 11 legibility (stand-in for the `shot11_legible` selector on branch style-presets, until it merges). Fill in from
 # the shot-11 entry in footage manifest.md once it is recorded: are all 8 cards / all 3 agent logos legible?
 # null = not recorded yet -> the safe line.
-shot11_legible: null              # or {cards: true|false, logos: true|false}
+shot11_legible: {cards: false, logos: false}   # v3: manifest: shot-11 (header) shows 3.5 cards; shot-11-all8 has all 8 but ids/titles 9-11 px -> the safe line (unchanged)
 beat8_variants:                   # MAO's beat 8 line per legibility (texts quoted from the script; files by the VO director)
   full:   {cards: true,  logos: true,  text: "All eight tasks, three agents, all merged.", file: vo/beat08_line02_mao_full.wav}
   agents: {cards: false, logos: true,  text: "Three agents, and every task merged.",       file: vo/beat08_line02_mao_agents.wav}
@@ -121,16 +121,41 @@ profiles:
       - {name: "PR card", box: [690, 445, 1865, 650], src_px: 1080, at: 7.9, min_px: 0}
   shot-16-prcard-tight-v1080:                                                            # S08a v3, DPR 2 tight PR-card take
     # The card is 1810 px wide (x 55-1865), wider than any crop that keeps the 18 px 'Merged' pill >= 18 px on the 1440
-    # screen, so frame its left part: x 30-1180 (right edge in the card's empty middle, left of 'Open' / 'Refresh
-    # evidence'), y 135-959 (below the Thread row; the QA heading whole, its description out). Scale 1.25. No stepper / 'Done' heading in
+    # screen, so frame its left part. Director asked for 1.0x (<= ~1.1x with the whole card): the whole card cannot fit at >= 0.8x, and
+    # at 1.0x the crop's right edge cuts 'Thread' / 'Refresh evidence' / the QA line (would need ~190 px mattes), so the
+    # lowest CLEAN push is 1.15x: x 30-1282 (right edge left of 'Refresh evidence' and 'Thread'), y 116-1013 (under the
+    # Thread row) + a 64 px bottom matte over the QA description line, which runs past
+    # the right edge. Scale 1.15. No stepper / 'Done' heading in
     # this take (PR card only), so those named items go; the pill text flips Open -> Merged at 7.70 s (frame diff), synced
     # to MAO's "merged" (0.80 s into line 2); the card re-lays out (taller, chips appear) at 6.50 s.
-    cam: [0.31510, 0.50648, 0.59896]
+    cam: [0.34167, 0.52269, 0.65208]
+    matte: {bottom: 64}                                                                  # promo matte over the QA description line (runs past the right edge), panel colour
     sync: {src: 7.7, line: 2, at: 0.80}
     named:
       - {name: "Merged PR pill", box: [295, 425, 430, 455], src_px: 1080, at: 8.5}
       - {name: "PR title", box: [200, 476, 860, 512], src_px: 1080, at: 8.5}
       - {name: "PR card content", box: [55, 385, 1000, 690], src_px: 1080, at: 8.5, min_px: 0}
+  shot-08-dpr2-v1080:                                                                    # S05 v3, DPR 2 retake (2.13x pre-framed)
+    # Wider layout than shot-08 (stepper Coding..PR raised spans src x 690-1536). x 300-1545: left edge in the drawer's
+    # inner margin (border 281, content 317), right edge just past 'PR raised'; y 100-992: under 'In Progress', title whole.
+    # Promo mattes (panel colour): right 18 px over the left sliver of the 'Review PR' / 'Review' buttons, bottom 21 px over
+    # the cut 'Pull request #432' line. Scale 1.157.
+    cam: [0.48047, 0.50556, 0.64844]
+    matte: {right: 18, bottom: 21}
+    sync: {src: 7.8, line: 2, at: 6.02}                                                  # 'PR raised' at 7.80 s (18.9 - 11.1)
+    named:
+      - {name: "Coding", box: [690, 522, 785, 556], src_px: 1080, at: 7.9}
+      - {name: "Checks", box: [933, 522, 1032, 556], src_px: 1080, at: 7.9}
+      - {name: "Pushed", box: [1178, 522, 1278, 556], src_px: 1080, at: 7.9}
+      - {name: "PR raised", box: [1410, 522, 1536, 556], src_px: 1080, at: 7.9}
+  shot-11-header-v1080:                                                                  # S08b v3, DPR 2 header hold (3 s)
+    # x 536-1876: left edge between the search box (border ~530) and the 'All done' pill, right edge in the dotted
+    # canvas right of the Landed column (cards end 1856); y 0-961. Scale 1.075 (the header text is 17 src px).
+    t_in: 0.5
+    cam: [0.62813, 0.44491, 0.69792]
+    named:
+      - {name: "All done · Plan next", box: [546, 38, 830, 86], src_px: 1080, at: 1.0}
+      - {name: "8 in this run · 8 landed", box: [848, 45, 1106, 79], src_px: 1080, at: 1.0}
   shot-14b-v1080:                                                                        # Outside -> Street on "...a Street"
     sync: {src: 5.5, line: 2, at: 4.9}
     edge_check: false                                                                    # full-frame Workshop scene

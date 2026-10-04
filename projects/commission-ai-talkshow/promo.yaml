@@ -6,7 +6,7 @@
 # VO: pre-rendered Kokoro-82M lines (Apache-2.0; HIYORI af_bella, MAO bf_isabella), sha256-pinned, by the Promo Video Director.
 # Footage: clip ids from the hero footage manifest (never paths). Missing takes are reported by `promo build`; for a
 # timing review use make_preview.py (labelled placeholder cards, gitignored preview spec, never a deliverable).
-# beat 8 MAO line: variant 'all' (shot11_legible = None)
+# beat 8 MAO line: variant 'all' (shot11_legible = {'cards': False, 'logos': False})
 # auto take (07, shot-12-v1080): measured 24.8 px (min 24) -> beat07_line02 FULL; fallback cut would be at 3.11 s
 project:
   name: commission-ai-talkshow
@@ -380,46 +380,46 @@ shots:
   type: livestream
   beat: 5
   screen:
-    source: shot-08-v1080
+    source: shot-08-dpr2-v1080
     t_in: 0.01
     cam:
-    - 0.49583
-    - 0.5454
-    - 0.6
+    - 0.48047
+    - 0.50556
+    - 0.64844
     matte:
-      right: 14
+      right: 18
       bottom: 21
   named:
   - name: Coding
     box:
-    - 725
-    - 510
-    - 815
-    - 540
+    - 690
+    - 522
+    - 785
+    - 556
     src_px: 1080
     at: 7.9
   - name: Checks
     box:
-    - 953
-    - 510
-    - 1048
-    - 540
+    - 933
+    - 522
+    - 1032
+    - 556
     src_px: 1080
     at: 7.9
   - name: Pushed
     box:
-    - 1185
-    - 510
+    - 1178
+    - 522
     - 1278
-    - 540
+    - 556
     src_px: 1080
     at: 7.9
   - name: PR raised
     box:
-    - 1403
-    - 510
-    - 1521
-    - 540
+    - 1410
+    - 522
+    - 1536
+    - 556
     src_px: 1080
     at: 7.9
   note: 'Chips (S8): Coding -> Checks -> Pushed -> PR raised (Codex)'
@@ -542,9 +542,11 @@ shots:
     source: shot-16-prcard-tight-v1080
     t_in: 4.892
     cam:
-    - 0.3151
-    - 0.50648
-    - 0.59896
+    - 0.34167
+    - 0.52269
+    - 0.65208
+    matte:
+      bottom: 64
   named:
   - name: Merged PR pill
     box:
@@ -579,8 +581,29 @@ shots:
   type: livestream
   beat: 8
   screen:
-    source: shot-11-v1080
-    t_in: 0.0
+    source: shot-11-header-v1080
+    t_in: 0.5
+    cam:
+    - 0.62813
+    - 0.44491
+    - 0.69792
+  named:
+  - name: All done · Plan next
+    box:
+    - 546
+    - 38
+    - 830
+    - 86
+    src_px: 1080
+    at: 1.0
+  - name: 8 in this run · 8 landed
+    box:
+    - 848
+    - 45
+    - 1106
+    - 79
+    src_px: 1080
+    at: 1.0
   note: 'Board all Landed (S11), the last 1.1 s of the beat: 08a holds ~1 s on the PR card after its pill reads Merged (7.70 s)'
 - id: 09a
   beats:
