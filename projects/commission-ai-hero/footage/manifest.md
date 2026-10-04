@@ -281,4 +281,48 @@
 - **Framing:** DPR 2. Clip x340 y200 1264x711 CSS (16:9), scale 1.519x. Pre-framed for <=1.2x push-in.
 - **Notes / Zen checks:** Measured on the 1920 poster (3.0 s): card ID cap height 22 px (PAY-101, PAY-102, PAY-104, PAY-105, glyph rows incl. antialias), which beats the >=18 px target (ideal 20). Title cap height 26 px ('C' of 'Cart summary'); column heading cap 28 px ('Landed'). NOTE: this is the ?demo=1 board (as briefed: Landed PAY-102/PAY-101 -> Wave 1), not the ?demo=promo plan-forming beat of shot-04-v1080. The Wave 1 header line reads '2 need you' with a small amber dot (header text). Clock paused for the hold (still frame). Zen: no '?' bubbles, no Blocked card in frame.
 
+### Shot 11 (DPR2, header + Landed column)
+- **File:** `footage/v1-1080/shot-11-dpr2.mov` (lossless H.264 yuv444p) + `shot-11-dpr2-preview.mp4` + poster `shot-11-dpr2-poster.png`
+- **sha256 (.mov):** `d523056eca26216adbf7981f8593691506acae1a0d66ab300d50ae5c4ec70579`
+- **DPR:** 2
+- **Duration:** 5.00 s; **video:** 1920x1080 @ 60 fps, 300 frames
+- **URL / route:** `?demo=promo` (scenario clock to 72.6 s, run complete), Full window, Show done, Fit, then the board canvas panned with real mouse-wheel scrolling so the Landed column sits right after the header counts
+- **Demo beat:** 5 s locked hold: header 'All done · Plan next' pill + '8 in this run · 8 landed' (with the 'Find a ticket' search box) and, directly to its right, the 'Landed · Merged and closed' column: PAY-103 Design tokens (Claude, #431), PAY-104 Cart summary (Codex, #432), PAY-105 Promo code (Claude, #433), PAY-106 Localized price display (Cursor, #434), all 'Done' and fully in frame. PAY-107 onwards continue below the frame. 'Later · Not scheduled yet' card at the right edge
+- **Commit:** `4a427fc05f829d7b2e4ed7ea642d77340554f7f8` (main)
+- **Framing:** DPR 2. Clip x10 y40 900x506.25 CSS (2.133x). Column left edge panned to x~644 CSS (header text ends at x~603), so there is almost no gap between the counts and the column. The lower-left of the frame is empty dotted canvas (layout has the header on top and the column to the right).
+- **Notes / Zen checks:** Measured on the 1920 poster: header cap height 18 px ('A' of 'All done', digit '8', 'l' of 'landed'), card ID cap 14 px, card title cap 17 px. That is just under the 20 px header target; a narrower 800-px retake (shot-11-dpr2-r2, ~2.4x, ~20 px header cap) is queued. Agent logos visible on the 4 cards: Claude, Codex, Claude, Cursor (all 3 agents). Zen: no '?' bubbles, no amber pill, no Blocked cards.
+
+### Shot talk-dag (wide r2, talk-show beat 3)
+- **File:** `footage/v1-1080/talk-dag-wide-r2.mov` (lossless H.264 yuv444p) + `talk-dag-wide-r2-preview.mp4` + poster `talk-dag-wide-r2-poster.png`
+- **sha256 (.mov):** `04f17ab39286c2970d19dd94278bfa357b19758f3964f2faeb0bcba1616d6d48`
+- **DPR:** 2
+- **Duration:** 6.00 s; **video:** 1920x1080 @ 60 fps, 360 frames
+- **URL / route:** `?demo=1&still=1` (Board graph, Full window, Show done, ctrl+wheel zoom to ~180%), same board state as talk-dag-tight / talk-dag-wide
+- **Demo beat:** 6 s locked hold: PAY-102 (Done, #413) and PAY-101 'Extract pricing engine into a pure module' (Done, #412), with PAY-101's two edges into PAY-105 'Promo code validation endpoint' (Verifying, API group) and PAY-104 'Cart summary uses the pricing engine' (Running, Backend group). Wave 2 cards are cut at the right edge.
+- **Commit:** `4a427fc05f829d7b2e4ed7ea642d77340554f7f8` (main)
+- **Framing:** DPR 2. Clip x629 y237 1152x648 CSS (16:9), scale 1.667x (72 px pad around the PAY-101/104/105 union).
+- **Notes / Zen checks:** VERIFIED on the poster: no title is cut. PAY-101's card, ID and full title are inside; the full PAY-104 title 'Cart summary uses the pricing / engine' and the full PAY-105 title 'Promo code validation / endpoint' are inside, with the PAY-104/105 group borders ending at x~1716 of 1920 (~200 px clean margin on the right) and >=120 px margins elsewhere. PAY-102 is also fully in frame. Measured on the 1920 poster: task ID cap height 25 px (PAY-101/104/105), title cap height 29 px ('C' of Cart, 'E' of Extract). Clock paused (still frame). Zen: no '?' bubbles, no Blocked card, no amber pill in frame.
+
+### Shot 4 (DPR2 promo plan DAG)
+- **File:** `footage/v1-1080/shot-04-dpr2-promo.mov` (lossless H.264 yuv444p) + `shot-04-dpr2-promo-preview.mp4` + poster `shot-04-dpr2-promo-poster.png`
+- **sha256 (.mov):** `367b0be6793a496cbaa8e86b710d33c7e1c2ae8776585a501ed69c4dc9f66055`
+- **DPR:** 2
+- **Duration:** 6.00 s; **video:** 1920x1080 @ 60 fps, 360 frames
+- **URL / route:** `?demo=promo` (scenario clock 5.9-11.9 s)
+- **Demo beat:** 6 s locked shot of the promo plan of 8 as a DAG: Wave 1 (PAY-103 Design tokens, PAY-104 Cart summary, PAY-105 Promo code, PAY-106 Localized price display), Wave 2 (PAY-107 Checkout theming 'after PAY-103', PAY-108 Express checkout 'after PAY-104 +1', PAY-109 Order confirmation email 'after PAY-106'), Wave 3 (PAY-110 Remove legacy pricing 'after PAY-104 +1'), 'Later · Plan more', with dependency edges. At 5.9 s Wave 1 is all Ready; the run starts at 6.2 s; PAY-103 goes Running ~0.8 s in, then the others ('1 running · 3 queued' -> more running)
+- **Commit:** `4a427fc05f829d7b2e4ed7ea642d77340554f7f8` (main)
+- **Framing:** DPR 2. Clip x779 y316 1006x566 CSS (1.909x), fitted to the 8 cards + Wave 1/2/3 headings (20 px pad). 'Later' column cut at the right edge.
+- **Notes / Zen checks:** Measured on the 1920 poster (1.0 s): card ID cap height 16 px (PAY-104, PAY-107, PAY-110), title cap 18 px ('C' of 'Cart summary'), Wave heading cap 20 px. The 20 px ID target cannot be met with all 8 cards in a 16:9 frame: the 4-card Wave 1 column sets the frame height. Wave 2/3 cards show the real 'Blocked' padlock state ('after PAY-103' etc.) for the whole run until wave 1 lands. Promo can't show Wave 2/3 without it. Zen: no '?' bubbles, no amber pill.
+
+### Shot 16 (PR card, tighter)
+- **File:** `footage/v1-1080/shot-16-prcard-tighter.mov` (lossless H.264 yuv444p) + `shot-16-prcard-tighter-preview.mp4` + poster `shot-16-prcard-tighter-poster.png`
+- **sha256 (.mov):** `ffc3b750c28fb4423247008eff4b68725fa6aaad26f4dc992b5ec0ff5ab27867`
+- **DPR:** 2
+- **Duration:** 9.50 s; **video:** 1920x1080 @ 60 fps, 570 frames
+- **URL / route:** `?demo=promo` (scenario clock), PAY-110 node clicked at 59 s to open its drawer; record 61.0-70.5 s
+- **Demo beat:** Same beat as shot-16-prcard-tight: PAY-110 drawer Running -> Checks 62.3 s -> Pushed 63.1 s -> PR raised #438 63.9 s -> Merged 67.5 s, hold to 9.50 s. End frame: status 'Done' with the full stepper, 'Codex · Board run · +1 -1', then 'Pull request' and the card '#438 [Merged] · PAY-110 Remove legacy pricing module · commission/PAY-110-legacy-pricing -> main · Builds pass · 1 approval · 1 comment · Open'
+- **Commit:** `4a427fc05f829d7b2e4ed7ea642d77340554f7f8` (main)
+- **Framing:** DPR 2. Clip x1142 y122 752x423 CSS (16:9), scale 2.553x. The bottom edge sits just above the Evidence section, so the Evidence / 'QA decision not recorded' block is out of frame in the final state. In the final frame the card spans output x 25-1894 and ends at y 1032 (~25 px side margins, ~48 px bottom margin).
+- **Notes / Zen checks:** Measured on the 1920 frame at 9.0 s: 'Merged' badge cap height (M) ~19-20 px (glyph rows 761-780 incl. antialias; badge text box 95x26 px). PR title cap height (P) 26 px, title line incl. descenders 34 px. 'Builds pass' cap height (B) 22 px, chip line with icon 30 px. LIMIT: the card is ~732 CSS px wide, so with the whole card in a 16:9 frame the Merged badge tops out at ~19-20 px cap height. The 24+ px target would need cropping the card's right side (Open link / title end). CAVEAT: during PR raised (63.9-67.5 s) the status block is taller, so the PR card sits ~40 CSS px lower and its bottom row (Builds pass chips) is clipped at the frame edge until the Merged reflow at 67.5 s. Use the 67.5-70.5 s Merged hold as the payoff. Zen: no '?' bubbles, no amber pill, no Blocked.
+
 

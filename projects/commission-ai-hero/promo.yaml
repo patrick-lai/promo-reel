@@ -1,8 +1,8 @@
-# commission-ai 60 s hero v3 (v2 + Zen v2 notes; see docs/hero-v3.md): v1 structure re-cut on the v1-1080 recapture (app main 4a427fc0) + Zen's v1 notes.
+# commission-ai 60 s hero v4 (v3 + Zen v3 notes; see docs/hero-v4.md): v1 structure re-cut on the v1-1080 recapture (app main 4a427fc0) + Zen's v1 notes.
 # Shot order (locked): 01 02 03 04 05 06 08(+09) 10 12 15 11 16 14b 17. Shot 13 out; shot 07 dropped (see docs/hero-v2.md).
 # Paths are relative to this file; ${VAR:-default} env expansion everywhere.
-project: {name: commission-ai-hero, title: "commission-ai hero v3"}
-output: {name: hero-v3, resolution: 1080, fps: 30, duration: 60.0}     # resolution 1080 or 2160; CLI --scale / PROMO_SCALE override
+project: {name: commission-ai-hero, title: "commission-ai hero v4"}
+output: {name: hero-v4, resolution: 1080, fps: 30, duration: 60.0}     # resolution 1080 or 2160; CLI --scale / PROMO_SCALE override
 paths: {build: build, out: out}
 assets: assets.yaml                       # music / vo models / sfx / font (licence gate)
 footage: footage/manifest.yaml            # raw clips by id: absolute path + sha256 + provenance (footage never in git)
@@ -85,14 +85,18 @@ shots:
   - id: "04"
     beats: [16, 25]
     type: clip
-    source: shot-04-v1080
-    label: "v1-1080/shot-04.mov (main 4a427fc0, DPR 2 pre-framed 1.81x): plan lands, 8 cards pop in by wave"
-    t_in: 2.65
-    speed: 1.04
-    cam: [[0, 0.5, 0.5, 1.0], [end, 0.5, 0.5, 0.95]]       # pre-framed DPR 2: push capped at 1.05x
+    label: "v1-1080/shot-04.mov (plan lands, cards pop in by wave) -> shot-04-dpr2-promo.mov (the plan of 8 as a DAG), main 4a427fc0, DPR 2, ?demo=promo"
+    segs:
+      # A: the plan landing on the old take, scenario 2.65-5.85 s (empty board -> 8 cards pop in)
+      - {source: shot-04-v1080, t_in: 2.65, t_out: 5.80, dur: 3.15,
+         cam: [[0, 0.5, 0.5, 1.0], [3.15, 0.474, 0.5, 0.948]]}     # ends at ~1.9x CSS on the same centre as take B; cut before the 5.82 s Wave-1 reorder animation
+      # B: shot-04-dpr2-promo from scenario 6.32 s: all 8 cards in frame, Wave 1 Ready, PAY-103 Running ~0.8 s in
+      - {source: shot-04-dpr2-promo-v1080, t_in: 0.42, t_out: 2.77, dur: 2.35,
+         cam: [[0, 0.5, 0.5, 1.0], [2.35, 0.5, 0.5, 0.96]]}        # from 0.42 s (layout settled at 0.40 s, frame diff); 1.0x -> 1.04x
+    cam: [[0, 0.5, 0.5, 1.0], [end, 0.5, 0.5, 1.0]]
     overlays:
-      - {type: caption, text: "Split into 8 tasks.", t: [3.45, 99]}   # from src 6.24 s: all 8 cards (4 + 3 + 1 tickets) are on the board
-    sfx:                                                     # card pops measured by frame difference (src s)
+      - {type: caption, text: "Split into 8 tasks.", t: [3.2, 99]}   # on take B only: 4 + 3 + 1 cards all in frame; the pill sits in the empty canvas below Wave 2 (clear of every card)
+    sfx:                                                     # card pops measured by frame difference (take A src s)
       - {sfx: tick,  src: 3.13, db: -7}
       - {sfx: tick2, src: 3.53, db: -7}
       - {sfx: tick,  src: 3.92, db: -7}
@@ -100,7 +104,7 @@ shots:
       - {sfx: tick,  src: 4.85, db: -7}
       - {sfx: tick2, src: 5.43, db: -7}
       - {sfx: tick,  src: 5.82, db: -7}
-    notes: "Evidence for 8: Wave 1 '4 tickets', Wave 2 '3 tickets', Wave 3 '1 ticket' = 8 cards in frame from src 6.2 s. Wave 2/3 cards show the real 'Blocked' dependency state from 5.5 s (manifest note)."
+    notes: "v4: caption moves to shot-04-dpr2-promo (IDs 16 px, titles 18 px, headings 20 px source). Wave 2/3 cards show the real 'Blocked' padlock (dependency state)."
 
   - id: "05"
     beats: [25, 33]
@@ -172,29 +176,20 @@ shots:
 
   - id: "15"
     beats: [64, 70]
-    type: float_window
-    source: shot-16-prcard-v1080
-    label: "v1-1080/shot-15-prcard.mov (main 4a427fc0, DPR 2 pre-framed 1.6x): PAY-110 drawer In review -> Done -> PR #438 Merged, in a window over the morning plate"
-    t_in: 5.83                     # latest start that fills 3.67 s inside the 9.50 s take; badge Open -> Merged at src 7.70 (out 1.87 s)
-    window: [1300, 731]
-    y: 470
-    plate: morning
-    camA: [[0, 0.6667, 0.385, 0.646], [3.67, 0.6667, 0.385, 0.636]]   # v3: whole drawer width (src x 670-1890): PR card incl. its 'Open' link no longer clipped at the right
-    camB: [[0, 0.6667, 0.385, 0.646], [3.67, 0.6667, 0.385, 0.636]]
-    dissolve: [3.0, 3.2]
-    # v3: no caption. Merged only holds 7.70-9.50 s of the take (1.8 s < the 2.0 s caption gate), and the 'Merged' badge is ~12 px here (< 18 px),
-    # so 'Wake up to merged PRs.' moved to S16's Merged flip as VO (S16's fixed caption zone would sit on the Evidence text, so no caption there either).
-    sfx:
-      - {sfx: tick2, src: 6.5, db: -6}
-      - {sfx: tick,  src: 7.7, db: -4}
+    type: clip
+    source: shot-03-night-v1080
+    label: "v1-1080/shot-03-night.mov (main 4a427fc0, night, DPR 1): the Workshop at night, unblurred, tight on the lamp / window / desk"
+    t_in: 2.0                      # lamp lit from frame 7
+    cam: [[0, 0.54, 0.52, 0.70], [end, 0.57, 0.51, 0.68]]   # 1.43x -> 1.47x (DPR 1, under the 1.5x line); excludes the header bar; S03 only shows this take blurred behind the composer
+    notes: "v4: S16 is the only PR shot. VO 'Go to bed.' only, no caption."
 
   - id: "11"
     beats: [70, 76]
     type: clip
-    label: "v1-1080/shot-11.mov (header '8 in this run · 8 landed') then shot-11-all8.mov (all 8 Done cards), main 4a427fc0, DPR 2"
+    label: "v1-1080/shot-11-dpr2.mov (header '8 in this run · 8 landed') then shot-11-all8.mov (all 8 Done cards), main 4a427fc0, DPR 2"
     segs:
-      - {source: shot-11-header-v1080, t_in: 0.25, t_out: 2.70, dur: 2.45,
-         cam: [[0, 0.5833, 0.4167, 0.8333], [2.45, 0.5833, 0.4167, 0.8333]]}    # v3: held at the 1.2x cap, top-right anchored (header + Landed column)
+      - {source: shot-11-dpr2-v1080, t_in: 0.25, t_out: 2.70, dur: 2.45,
+         cam: [[0, 0.5562, 0.40, 0.82], [2.45, 0.5562, 0.40, 0.80]]}    # v4: header + Landed column side by side, 1.22x -> 1.25x, top anchored; column kept right of the caption pill
       - {source: shot-11-all8-v1080, t_in: 1.0, t_out: 2.2167, dur: 1.2167,
          cam: [[0, 0.55, 0.5, 0.88], [1.2167, 0.55, 0.5, 0.8333]]}              # v3: all 8 cards + Plan more, 1.14x -> 1.2x
     cam: [[0, 0.5, 0.5, 1.0], [end, 0.5, 0.5, 1.0]]
@@ -207,15 +202,15 @@ shots:
   - id: "16"
     beats: [76, 80]
     type: clip
-    source: shot-16-prcard-tight-v1080
-    label: "v1-1080/shot-16-prcard-tight.mov (main 4a427fc0, DPR 2 pre-framed 2.47x): PR #438 Open -> Merged"
+    source: shot-16-prcard-tighter-v1080
+    label: "v1-1080/shot-16-prcard-tighter.mov (main 4a427fc0, ?demo=promo, DPR 2 pre-framed 2.55x): Done stepper + PR #438 Open -> Merged, Evidence out of frame"
     t_in: 7.05
     speed: 1.0
-    cam: [[0, 0.5, 0.5, 1.0], [end, 0.5, 0.5, 1.0]]        # no push-in (brief)
+    cam: [[0, 0.5, 0.5, 1.0], [end, 0.5, 0.5, 1.0]]        # no push-in
     sfx:
       - {sfx: swell, src: 7.7, offset: -0.9, db: -10}
       - {sfx: tick,  src: 7.7, db: -3}
-    notes: "Badge flips Open -> Merged at src 7.70 s (the 6.50 s change is the stats/layout update); t_in 7.05 puts the flip 0.65 s in and holds Merged ~1.8 s. The drawer's real 'Evidence: QA decision not recorded' block shows below the card."
+    notes: "Badge flips Open -> Merged at src 7.70 s (frame grab; 7.683 s still Open; the 6.50 s change is the Done reflow). t_in 7.05: flip at 0.65 s, Merged holds ~1.78 s; VO 'Wake up to merged PRs.' from 0.52 s. No caption: the fixed zone (y 895-1025) would sit on the 'Builds pass · 1 approval · 1 comment' chips (y ~940-995)."
 
   - id: "14b"
     beats: [80, 90]

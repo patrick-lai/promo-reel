@@ -544,3 +544,45 @@ clips:
   captured_at: '2026-10-04T01:29:24Z'
   notes: 'demo=1 board (PAY-101/102 #412/#413, Wave 1 6 tickets, 2 need you): NOT the promo run (PAY-103-110, #431-438). Registered for a quick swap, not used in hero v3.'
   demo: true
+- id: shot-04-dpr2-promo-v1080
+  shots:
+  - '04'
+  path: /workspace/videos/commission-ai-promo/footage/v1-1080/shot-04-dpr2-promo.mov
+  sha256: 367b0be6793a496cbaa8e86b710d33c7e1c2ae8776585a501ed69c4dc9f66055
+  app_commit: 4a427fc05f829d7b2e4ed7ea642d77340554f7f8
+  capture: ?demo=promo (scenario clock 5.9-11.9 s)
+  framing: DPR 2. Clip x779 y316 1006x566 CSS (1.909x), fitted to the 8 cards + Wave 1/2/3 headings
+  resolution: 1920x1080
+  dpr: 2
+  fps: 60.0
+  captured_at: '2026-10-04T02:50:45Z'
+  notes: 'Promo plan of 8 as a DAG: Wave 1 PAY-103-106 Ready (run starts 6.2 s, PAY-103 Running ~0.8 s in), Wave 2 PAY-107-109 and Wave 3 PAY-110 real Blocked padlock. ID cap 16 px, title 18 px, Wave heading 20 px.'
+  demo: true
+- id: shot-11-dpr2-v1080
+  shots:
+  - '11'
+  path: /workspace/videos/commission-ai-promo/footage/v1-1080/shot-11-dpr2.mov
+  sha256: d523056eca26216adbf7981f8593691506acae1a0d66ab300d50ae5c4ec70579
+  app_commit: 4a427fc05f829d7b2e4ed7ea642d77340554f7f8
+  capture: ?demo=promo (run complete, 72.6 s), Full window, Show done, Fit, canvas panned by real wheel scroll
+  framing: DPR 2. Clip x10 y40 900x506.25 CSS (2.133x); Landed column right after the header counts
+  resolution: 1920x1080
+  dpr: 2
+  fps: 60.0
+  captured_at: '2026-10-04T02:23:16Z'
+  notes: Header 'All done · Plan next' + '8 in this run · 8 landed' (cap 18 px) with the Landed column PAY-103..106 (Claude, Codex, Claude, Cursor) directly right.
+  demo: true
+- id: shot-16-prcard-tighter-v1080
+  shots:
+  - '16'
+  path: /workspace/videos/commission-ai-promo/footage/v1-1080/shot-16-prcard-tighter.mov
+  sha256: ffc3b750c28fb4423247008eff4b68725fa6aaad26f4dc992b5ec0ff5ab27867
+  app_commit: 4a427fc05f829d7b2e4ed7ea642d77340554f7f8
+  capture: ?demo=promo (scenario clock), PAY-110 drawer
+  framing: 'DPR 2, 2.55x: Done stepper + Pull request card, Evidence out of frame'
+  resolution: 1920x1080
+  dpr: 2
+  fps: 60.0
+  captured_at: '2026-10-04T03:10:36Z'
+  notes: 'Registered from the brief (not yet in manifest.md at 14:2x). Badge Open -> Merged at src 7.70 s by frame grab (6.50 s = drawer Done/layout shift). Final: ''#438 Merged · PAY-110 Remove legacy pricing module · Builds pass · 1 approval · 1 comment''.'
+  demo: true
