@@ -222,6 +222,12 @@ def run(spec):
     for gate, status, msg in LS.check(spec, ctx):
         rep.add(gate, status, msg)
 
+    # 7c. generic gates for every project (promo/generic_check.py): named >= 18 px on clip shots and the claims audit
+    # (folded in from the hero's per-project tools), plus the WARN-only text-edge / empty-frame / caption-truth / long-hold
+    from . import generic_check as GC
+    for gate, status, msg in GC.run(spec, ctx):
+        rep.add(gate, status, msg)
+
     # 8. contact sheet
     from . import contact
     try:

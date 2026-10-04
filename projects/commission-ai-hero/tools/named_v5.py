@@ -1,4 +1,7 @@
-"""Hero v5: measure every on-screen text a caption or VO line names, with promo check's named-element measurement
+"""SUPERSEDED (integrate/v1): `promo check` now runs this for every project (generic `named` gate,
+promo/generic_check.py; the rows below live in promo.yaml as QA-only named: keys). Kept as the v5 record.
+
+Hero v5: measure every on-screen text a caption or VO line names, with promo check's named-element measurement
 (promo/named.py: ascender-top -> baseline ink height x effective scale, 1080p). Run from the repo root:
     python projects/commission-ai-hero/tools/named_v5.py [--json out.json]
 Each row: shot, name, box (source px of the clip), shot-local output times to measure at, min px (18 = gate), ink thr.

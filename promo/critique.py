@@ -38,15 +38,14 @@ DEFAULT_REVIEWS = {
 }
 MIN_NAMED_PX = 18
 
-RUBRIC = [
-    ("hook", "Do the first 2-3 s grab attention (a hit, a clear subject, a reason to keep watching)?"),
-    ("legibility", "Can every card, caption and named piece of app text be read at 1080p in the time it is on screen?"),
-    ("story", "Does the cut tell the script's story in order (the beats in the copy files), without gaps or wrong scenes?"),
-    ("pacing", "Do cuts and cards sit on the music (bars / hits), with holds long enough to read and no dead air?"),
-    ("calm composition", "One focal point per frame; text in a consistent place; nothing fighting the app UI."),
-    ("style fidelity", "Does it look and move like the chosen style (preset) and the brief, not a generic template?"),
-    ("polish", "No glitches: black/empty frames, ghosting, soft upscales, jitter, clipped text, stray UI chrome."),
-]
+def rubric_for(spec=None):
+    """Zen's rubric from the versioned evals/rubric.yaml (or `critique.rubric:` in promo.yaml / $PROMO_RUBRIC)."""
+    from . import rubric as RB
+    p = ((spec.raw.get("critique") or {}).get("rubric") if spec is not None else None)
+    return RB.load(spec.resolve(p) if p else None)
+
+
+RUBRIC = __import__("promo.rubric", fromlist=["x"]).criteria(rubric_for())     # [(name, question)], from evals/rubric.yaml
 HARD_RULES = [
     "Text a line names (a card, caption or VO line points at it) renders at >= 18 px cap height at 1080p, from a DPR 2 take where one exists (see each still's sidecar: elements[].cap_px, effective_scale; > 1.0 = upscaled).",
     "No chat asides: no on-screen chatter, jokes or commentary that is not in the copy.",
@@ -191,7 +190,15 @@ def named_elements(spec, shot, t_shot):
     out = []
     for el in shot.get("named"):
         try:
-            m = measure_named(spec, shot, el, t=t_shot)
+            if shot.type == "anime":
+                m = measure_named(spec, shot, el, t=t_shot)
+            else:                    # clip / plugin shots: the generic `named` gate's measurement (promo/generic_check.py)
+                from .generic_check import _measure_clip_named
+                r, st = _measure_clip_named(spec, shot, el, t_shot)
+                mn = float(el.get("min_px", 18))
+                m = dict(name=el.get("name"), t=round(t_shot, 3), src_t=round(st, 3), min_px=mn, info=bool(el.get("info")),
+                         **(dict(px=r["px"], src=r["src"], scale=r["scale"], inside=r["inside"], ok=r["inside"] and r["px"] >= mn)
+                            if r else dict(ok=False, error="no ink in the box at this frame")))
         except Exception as e:  # noqa: BLE001
             m = dict(name=el.get("name"), ok=False, error=str(e))
         m = dict(kind="named", **m)
@@ -410,6 +417,9 @@ def text_lines_md(index):
 
 
 def brief_md(spec, kind, master, index, copied, payload, have_contact, have_vo, video, missing):
+    from . import rubric as RB
+    rb = rubric_for(spec)
+    sc = rb.get("scale") or {}
     shots = [x for x in index if x["kind"] == "shot-mid"]
     L = [f"# Critique brief: {spec.title}", "",
          "You are the final reviewer for this cut. Judge ONLY from the files in this folder (stills, contact sheet, copy,",
@@ -422,11 +432,12 @@ def brief_md(spec, kind, master, index, copied, payload, have_contact, have_vo, 
          f"({sum(1 for r in payload['results'] if r['status'] == 'FAIL')} FAIL, {sum(1 for r in payload['results'] if r['status'] == 'WARN')} WARN): see `CHECK.txt`",
          "- Placeholder slates (labelled 'PLACEHOLDER', yellow frame) mark shots not captured yet: judge the cut around them, list them, do not score them as footage.",
          "",
-         "## Rubric", "", "Score each criterion 1-5 (5 = ship it, 3 = acceptable, 1 = broken):", ""]
-    L += [f"{i}. **{n}**: {d}" for i, (n, d) in enumerate(RUBRIC, 1)]
-    L += ["", "Plus **truth: PASS / FAIL**: every word on screen (and in the VO) is true of the frame it sits on and of the product,"
-          " per the copy files and the footage manifests.", "",
-          "**Passing needs:** truth PASS, no criterion under 3, and an average of the seven scores >= 4.2.", "",
+         "## Rubric", "", f"Score each criterion {sc.get('min', 1)}-{sc.get('max', 5)} ({sc.get('anchors', '5 = ship it, 3 = acceptable, 1 = broken')}):", ""]
+    L += [f"{i}. **{n}**: {d}" for i, (n, d) in enumerate(RB.criteria(rb), 1)]
+    L += ["", f"Plus **truth: {' / '.join(rb['truth'].get('values', ['PASS', 'FAIL']))}**: {rb['truth']['question']}", "",
+          f"**Passing needs:** {RB.pass_text(rb)}", "",
+          f"_Rubric: `{rb.get('id')}` v{rb.get('version')} ({os.path.relpath(rb['_path'], os.path.dirname(os.path.dirname(os.path.abspath(__file__))))}); "
+          f"`promo rubric <scores>` computes PASS/FAIL from a scores file._", "",
           "## Hard rules (any break = FAIL of that line / frame, and truth FAIL where it is a claim)", ""]
     L += [f"- {r}" for r in HARD_RULES]
     L += ["", "## What to return", "",

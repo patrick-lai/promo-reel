@@ -84,7 +84,10 @@ def plan(spec):
         return go
     for s in spec.shots:
         add(f"shot {s.id}", f"shot_{s.id}_{spec.OW}", (lambda s=s: shot_digest(spec, s)), [spec.seg_path(s.id)], shot_run(s))
-    add("events", "events", lambda: digest(spec.raw.get("shots"), spec.raw.get("vo", {}).get("lines"), spec.raw.get("timeline"), spec.fps,
+    # QA-only shot keys (named boxes, contact_at) never make the events step stale (same rule as shot_digest)
+    qa_free_shots = lambda: [{k: v for k, v in sh.items() if k not in QA_ONLY_KEYS} if isinstance(sh, dict) else sh
+                             for sh in (spec.raw.get("shots") or [])] if spec.raw.get("shots") is not None else None
+    add("events", "events", lambda: digest(qa_free_shots(), spec.raw.get("vo", {}).get("lines"), spec.raw.get("timeline"), spec.fps,
                                           code_hash("events", "spec", "shots/clip", extra_files=spec.plugins)),
         [events_path(spec)], lambda a: events.write_events(spec))
 

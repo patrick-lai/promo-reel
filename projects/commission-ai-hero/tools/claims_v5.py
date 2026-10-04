@@ -1,4 +1,7 @@
-"""Hero v5: run promo check's claims audit (promo.claims.audit, the same function the anime-opening `claims` gate runs) on the
+"""SUPERSEDED (integrate/v1): `promo check` now runs this for every project (generic `claims` gate,
+promo/generic_check.py). Kept as the v5 record.
+
+Hero v5: run promo check's claims audit (promo.claims.audit, the same function the anime-opening `claims` gate runs) on the
 hero spec, and assert the S11 caption equals the selected claims.landed_count row. The hero spec has no style preset, so
 `promo check` does not run the claims gate itself (it lives in style_check.anime_gates). Run from the repo root:
     python projects/commission-ai-hero/tools/claims_v5.py [--json out.json]"""

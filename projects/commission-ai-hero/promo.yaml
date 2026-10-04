@@ -105,6 +105,12 @@ shots:
       - {sfx: tick2, src: 5.43, db: -7}
       - {sfx: tick,  src: 5.82, db: -7}
     notes: "v4: caption moves to shot-04-dpr2-promo (IDs 16 px, titles 18 px, headings 20 px source). Wave 2/3 cards show the real 'Blocked' padlock (dependency state)."
+    # QA-only (not in the shot digest): text a caption / VO line names, gated >= 18 px by `promo check` (named);
+    # moved here from tools/named_v5.py. box = source px of the clip on screen at t; info rows are reported, not gated.
+    named:
+      - {name: "card id 'PAY-103' (dpr2-promo)", box: [82, 162, 180, 190], t: [3.25, 4.4, 5.45], min_px: 18, thr: 90, info: true, why: "caption 'Split into 8 tasks.' counts the cards; IDs not named (info)"}
+      - {name: "card title 'Cart summary uses the pricing'", box: [84, 436, 462, 468], t: [3.25, 4.4, 5.45], min_px: 18, thr: 90, info: true, why: "info"}
+      - {name: "heading 'Wave 1'", box: [64, 40, 162, 72], t: [3.25, 4.4, 5.45], min_px: 18, thr: 90, info: true, why: "info: the 4 + 3 + 1 waves the count rests on"}
 
   - id: "05"
     beats: [25, 33]
@@ -147,6 +153,11 @@ shots:
       - {sfx: tick2, src: 4.9, db: -5}
       - {sfx: tick,  src: 7.8, db: -4}
     notes: "No caption in v2: the fixed caption zone would sit on the drawer's 'Pull request' text at every framing up to 1.2x. The VO names the steps."
+    # QA-only (not in the shot digest): text a caption / VO line names, gated >= 18 px by `promo check` (named);
+    # moved here from tools/named_v5.py. box = source px of the clip on screen at t; info rows are reported, not gated.
+    named:
+      - {name: "status line 'Running checks'", box: [482, 358, 692, 383], t: [0.6, 2.4], min_px: 18, thr: 100, why: "VO 'run the checks'"}
+      - {name: "chip 'Checks'", box: [936, 523, 1029, 546], t: [0.6, 2.4], min_px: 18, thr: 110, why: "VO 'run the checks'"}
 
   - id: "10"
     beats: [45, 54]
@@ -161,6 +172,10 @@ shots:
       - {sfx: tick,  src: 3.95, db: -2}
       - {sfx: tick2, src: 4.25, db: -6}
     notes: "No caption in v2: the PAY-106 'Needs you' card fills the bottom-centre of the frame at every framing, so the fixed zone would cover it. The VO names 'needs you' (chip measured >= 18 px)."
+    # QA-only (not in the shot digest): text a caption / VO line names, gated >= 18 px by `promo check` (named);
+    # moved here from tools/named_v5.py. box = source px of the clip on screen at t; info rows are reported, not gated.
+    named:
+      - {name: "PAY-106 chip 'Needs you'", box: [1129, 845, 1238, 868], t: [1.0, 2.5, 3.4], min_px: 18, thr: 110, why: "VO 'when it needs you'"}
 
   - id: "12"
     beats: [54, 64]
@@ -173,6 +188,10 @@ shots:
     overlays:
       - {type: caption, text: "Reviewed, with the reason why.", t: [1.2, 99]}   # sits below the 10:40 PM divider (empty pane)
     notes: "1.2x top-left was asked for; on the DPR 2 take it would cut the reviewer's reason line (ends at src x 1695) and the 'PR raised' / timestamp labels, so the push stops at 1.05x."
+    # QA-only (not in the shot digest): text a caption / VO line names, gated >= 18 px by `promo check` (named);
+    # moved here from tools/named_v5.py. box = source px of the clip on screen at t; info rows are reported, not gated.
+    named:
+      - {name: "reviewer line 'Approved. ... matches the plan ...'", box: [20, 464, 1695, 502], t: [1.2, 3.0, 6.0], min_px: 18, thr: 110, why: "VO 'tells you why it passes' / caption 'Reviewed, with the reason why.'"}
 
   - id: "15"
     beats: [64, 70]
@@ -204,6 +223,13 @@ shots:
       # shows 2 logos (Claude, Codex; Cursor's PAY-106 is below the frame).
       - {type: caption, text: "8 TASKS · ALL LANDED", t: [0.2, 2.42]}
     notes: "Caption over the header segment only (the all-8 column fills the bottom-centre, so a caption there would cover cards)."
+    # QA-only (not in the shot digest): text a caption / VO line names, gated >= 18 px by `promo check` (named);
+    # moved here from tools/named_v5.py. box = source px of the clip on screen at t; info rows are reported, not gated.
+    named:
+      - {name: "header '8 in this run · 8 landed' (r2)", box: [1018, 50, 1332, 100], t: [0.2, 1.3, 2.4], min_px: 18, thr: 110, why: "caption '8 TASKS · ALL LANDED' (word for word)"}
+      - {name: "column title 'Landed' (r2)", box: [1455, 146, 1572, 182], t: [0.2, 1.3, 2.4], min_px: 18, thr: 110, why: "caption '... ALL LANDED'"}
+      - {name: "column sub-title 'Merged and closed' (r2)", box: [1455, 193, 1700, 226], t: [0.2, 1.3, 2.4], min_px: 18, thr: 90, info: true, why: "info"}
+      - {name: "card id 'PAY-103' (r2)", box: [1478, 278, 1580, 304], t: [1.3], min_px: 18, thr: 90, info: true, why: "info: smallest UI text in the crop (not named)"}
 
   - id: "16"
     beats: [76, 80]
@@ -217,6 +243,10 @@ shots:
       - {sfx: swell, src: 7.7, offset: -0.9, db: -10}
       - {sfx: tick,  src: 7.7, db: -3}
     notes: "Badge flips Open -> Merged at src 7.70 s (frame grab; 7.683 s still Open; the 6.50 s change is the Done reflow). t_in 7.05: flip at 0.65 s, Merged holds ~1.78 s; VO 'Wake up to merged PRs.' from 0.52 s. No caption: the fixed zone (y 895-1025) would sit on the 'Builds pass · 1 approval · 1 comment' chips (y ~940-995)."
+    # QA-only (not in the shot digest): text a caption / VO line names, gated >= 18 px by `promo check` (named);
+    # moved here from tools/named_v5.py. box = source px of the clip on screen at t; info rows are reported, not gated.
+    named:
+      - {name: "PR badge 'Merged' (tighter)", box: [292, 754, 396, 786], t: [0.7, 1.5, 2.4], min_px: 18, thr: 110, why: "VO 'Wake up to merged PRs.' lands on the flip"}
 
   - id: "14b"
     beats: [80, 90]
