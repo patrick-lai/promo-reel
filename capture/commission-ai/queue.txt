@@ -1,0 +1,41 @@
+node wshots.mjs shot-15-morning 07:00 9
+node pshots.mjs 08
+node pshots.mjs 12
+node pshots.mjs 10b
+node pshots.mjs 12b
+node wshots.mjs shot-01-dusk 19:30 10
+DRY=1 ZOOM=0 node pshots.mjs talk-dag
+DRY=1 node w14b.mjs
+DRY=1 ZOOM=0 node pshots.mjs talk-dag #2
+node w14b.mjs
+DRY=1 FULL=1 ZOOM=2 node pshots.mjs talk-dag #3
+node pshots.mjs 15pr
+FULL=1 ZOOM=130 ID=talk-dag node pshots.mjs talk-dag
+FULL=1 ZOOM=130 ID=talk-dag-tight UNION=PAY-101,PAY-104 node pshots.mjs talk-dag
+DRY=1 node pshots.mjs 03c #v2
+DRY=1 node pshots.mjs 05 #v2
+node pshots.mjs 04
+node pshots.mjs 11b
+OUT=shot-16-prcard-tight CLIP='{"x":1130,"y":246,"width":776,"height":436.5}' node pshots.mjs 15pr
+OUT=shot-08-dpr2 CLIP='{"x":1000,"y":10,"width":900,"height":506.25}' node pshots.mjs 08
+HOUR=19:30 CLOSE_EARNED=1 STREET_AT=4.2 SECS=8.5 OUT=shot-14b-dusk node w14b.mjs
+BASE=http://127.0.0.1:6461/ COMMIT=4ccfa5be580eb3dbbaf8cb1138b0e4f55f544636 SUFFIX=-z179 node pshots.mjs 12b
+REEXPAND=1 HOUR=19:30 CLOSE_EARNED=1 STREET_AT=4.6 SECS=7.5 OUT=shot-14b-dusk-r2 node w14b.mjs
+FULL=1 ZOOM=130 ID=talk-dag-wide UNION=PAY-101,PAY-104,PAY-105 node pshots.mjs talk-dag
+FULL=1 ZOOM=130 ID=shot-04-dpr2 node pshots.mjs talk-dag
+CLIP='{"x":49,"y":465,"width":720,"height":405}' node pshots.mjs 03c
+node pshots.mjs 11c
+FULL=1 ZOOM=130 PAD=72 ID=talk-dag-wide-r2 UNION=PAY-101,PAY-104,PAY-105 node pshots.mjs talk-dag
+node pshots.mjs 04p
+OUT=shot-16-prcard-tighter CLIP='{"x":1142,"y":122,"width":752,"height":423}' node pshots.mjs 15pr
+OUT=shot-03-composer-dpr2 CHARF=6 LEAD=20 TAIL=24 CLIP='{"x":150,"y":675,"width":720,"height":405}' node pshots.mjs 03c
+OUT=shot-11-dpr2-r2 TX=612 TY=104 CLIP='{"x":8,"y":44,"width":800,"height":450}' node pshots.mjs 11c
+OUT=shot-05-rail CLIP='{"x":0,"y":90,"width":640,"height":360}' node pshots.mjs 05
+OUT=shot-11-dpr2-r3 ZOOMTO=95 TX=300 TY=100 CLIP='{"x":270,"y":44,"width":800,"height":450}' node pshots.mjs 11c
+DRY=1 SEND=1 node pshots.mjs 03c
+OUT=shot-11-dpr2-r4 ZOOMTO=95 TX=300 TY=100 CLIP='{"x":276,"y":44,"width":800,"height":450}' node pshots.mjs 11c
+DRY=1 SEND=1 PROBE=2 node pshots.mjs 03c
+OUT=shot-11-dpr2-r4-wide ZOOMTO=95 TX=300 TY=100 CLIP='{"x":276,"y":44,"width":880,"height":495}' node pshots.mjs 11c
+DRY=1 SEND=1 PROBE=3 node pshots.mjs 03c
+DRY=1 SEND=1 PROBE=4 node pshots.mjs 03c
+OUT=shot-03-composer-send-dpr2 SEND=1 SENDGAP=30 TAIL=132 PANY=50 PANSTART=15 PANDUR=36 CLIP='{"x":150,"y":675,"width":720,"height":405}' CHARF=6 node pshots.mjs 03c
