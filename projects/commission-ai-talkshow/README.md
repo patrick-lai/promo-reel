@@ -70,6 +70,19 @@ a 0.4 s `dissolve` over it. It's driven by the take's `time_of_day` field in the
 no dissolve; `dusk -> day @ 5.50` or `{from, to, at}` = a change); with no field, the plan profile's `time_of_day`
 (the current take's fallback) applies. Commission-ai's dusk retake records `dusk` there and the dissolve goes away.
 
+## v4.1 (Zen v4 4.00)
+
+- **07**: `shot-12-dpr2-z179` (DPR 2, Z179 bold fix, no '**'). The reply is one line on this wide pane; crop x 0-1318,
+  y 0-945 (scale 1.093), the right edge in the word gap after 'inside' ('src/cart/CartSummary.tsx.' out of frame).
+  Approved line 22 src px -> 24.0 px; upscale 2.25x -> 1.09x. The take is static, so it plays at 0.7x (fit_clip).
+- **03 (X1)**: 'pricing' cut made PAY-104 read 'Cart summary uses the / engine'. The full title needs x1 >= 1760,
+  which at the panel aspect forces x0 >= 254 and cuts the PAY-101 id (x 148). A left matte would hide it. So the right
+  edge now sits before 'uses' (x 60-1402, y 40-1002, scale 1.073): 'Cart summary' with the card running off. No word gap
+  before 'uses' is shared by PAY-105's title, so it is cut inside 'validation' ('Promo code va|'): livestream-edges WARN.
+- **S02**: t_in 0.3 (1.0 s still) and starts at 8.9 s (01b 4.9 s): end freeze 2.72 -> ~1.0 s. First app UI 7.5 -> 8.9 s.
+  0.7x is already the floor, so slower typing isn't possible. VO timing unchanged.
+- **08b**: `shot-11-dpr2` queued, not in the manifest yet (still shot-11-header, 18.3 px).
+
 ## v4 (Zen v3 styled 3.86: Pacing 3; styled cut is the deliverable)
 
 - **Playback speed** (`speed`, `tail_speed` in a profile; never below 0.7x, `MIN_SPEED`): `tail_speed` slows a clip

@@ -28,7 +28,7 @@ takes:
   rail:      shot-05-v1           # beat 4   legacy 4K take (3840 wide, DPR 2): native for the push-in; a new take must be DPR 2
   chips:     shot-08-dpr2-v1080   # beat 5   DPR 2 retake (11:14), same timeline as shot-08 (PR raised at 7.80 s); old: shot-08-v1080
   needs_you: shot-10-dpr2-v1080   # beat 6
-  review:    shot-12-v1080        # beat 7   1x until the Z179 DPR 2 retake lands (PR #95)
+  review:    shot-12-dpr2-z179-v1080 # beat 7   v4.1: DPR 2 Z179 retake (main 4ccfa5be; bold renders, no '**'); old: shot-12-v1080 (1x)
   merged:    shot-16-prcard-tight-v1080 # beat 8a  DPR 2, PR card only: pill Open -> Merged at 7.70 s (wider alt: shot-16-prcard-v1080)
   landed:    shot-11-header-v1080 # beat 8b  DPR 2 header hold: 'All done · Plan next' / '8 in this run · 8 landed' (shot-11-all8: text 9-11 px, not used)
   workshop:  shot-01-dusk-v1080   # beat 1b + 9a
@@ -57,7 +57,9 @@ profiles:
     cam: [0.33073, 0.76, 0.375]                                                          # v3: left edge in the gap left of the Commander panel (v2 cut the sidebar)
     # v4: no VO sync (it held the first frame 10.7 s). Static frames 0.5-1.0 s (0.7 s on screen), then the typing
     # (src 1.0-6.0) at 0.7x = 7.1 s from 8.2 s; the composer then sits with the typed text (src 6.0-11.35, caret only).
-    t_in: 0.5
+    # v4.1: t_in 0.3 (src 0.3-1.0 static = 1.0 s on screen at 0.7x) and S02 starts at 8.9 s (was 7.5): the end freeze
+    # after 'No broken builds.' drops from 2.72 to ~1.0 s. 0.7x is already the floor, so no slower typing is possible.
+    t_in: 0.3
     speed: 0.7
     named:
       - {name: "composer text", box: [600, 1980, 1080, 2016], src_px: 2160, at: 6.0}
@@ -100,6 +102,17 @@ profiles:
       - {name: "Needs you pill", box: [1095, 844, 1240, 873], src_px: 1080, at: 1.25}
       - {name: "Allow once", box: [1215, 975, 1340, 1000], src_px: 1080, at: 3.35}       # hover button 3.0-3.9 s; cursor on the check icon, label clear (3.2-3.6 s)
       - {name: "PAY-106 card", box: [940, 830, 1370, 1040], src_px: 1080, at: 3.35, min_px: 0}
+  shot-12-dpr2-z179-v1080:                                                               # S07 v4.1, DPR 2 retake (2.0x pre-framed), static 5.5 s hold
+    # The reply is one line here (wide pane): 'Approved. ... the diff stays inside src/cart/CartSummary.tsx.' spans x 21-1691.
+    # Crop x 0-1318, y 0-945 (scale 1.093): the right edge sits in the word gap after 'inside' (x 1313-1323, a clear
+    # column top to bottom), so no glyph is cut; 'src/cart/CartSummary.tsx.' is out of frame. Cap height 22 src px.
+    # The take is static (Approved shows from frame 0), so fit_clip plays it at the 0.7x floor.
+    cam: [0.34323, 0.4375, 0.68646]
+    fit_clip: true
+    text_check: {box: [474, 496], src_px: 1080, min_px: 24}
+    named:
+      - {name: "Approved line", box: [474, 496], src_px: 1080, at: 2.0}
+      - {name: "1 task approved", box: [96, 570, 300, 600], src_px: 1080, at: 2.0}
   shot-12-v1080:                                                                         # S07, 1x take (kept until the DPR 2 retake lands)
     t_in: 2.0
     end_src: 6.25
@@ -108,17 +121,19 @@ profiles:
     text_check: {box: [237, 247], src_px: 1080, min_px: 24}                              # 'Approved...' + reason, 2.25x
     named:
       - {name: "Approved line", box: [237, 247], src_px: 1080, at: 2.05}
-  talk-dag-wide-v1080:                                                                   # S03 v4, DPR 2 still (1.928x), widest panel crop (full height, 1506 px)
-    # source x 96-1602: PAY-101 / PAY-102 cards whole on the left, the PAY-105 card text whole; the right edge sits in the
-    # word gap of PAY-104's title (after 'the', x 1591-1607) so no glyph is cut; 'pricing' and the cards' icon buttons are
-    # out of frame (the content needs 1605 px vs the panel's 1506 at full height). No matte.
-    cam: [0.44219, 0.5, 0.7846]
+  talk-dag-wide-v1080:                                                                   # S03 v4.1, DPR 2 still (1.928x); crop x 60-1402, y 40-1002, scale 1.073
+    # Zen v4 (X1): the v4 crop (x 96-1602) cut 'pricing', so PAY-104 read 'Cart summary uses the / engine' as a whole
+    # sentence. A full title needs x1 >= 1760, which at the panel aspect pushes x0 >= 254 and cuts the PAY-101 id (x 148);
+    # a left matte would hide it. So the right edge sits in the word gap BEFORE 'uses' (x 1396-1411): PAY-104 reads
+    # 'Cart summary' with the card running off the edge. Side effect: PAY-105's title is cut inside 'validation'
+    # ('Promo code va|', x 1364-1569); no word gap before 'uses' is shared by both titles. No matte (nothing hidden).
+    cam: [0.38073, 0.48241, 0.69896]
     fit_clip: true
     named:
       - {name: "PAY-101 id", box: [140, 405, 330, 465], src_px: 1080, at: 3.0}
       - {name: "PAY-105 id", box: [1085, 90, 1275, 145], src_px: 1080, at: 3.0}
       - {name: "PAY-104 id", box: [1085, 690, 1275, 750], src_px: 1080, at: 3.0}
-      - {name: "PAY-104 title", box: [1085, 770, 1590, 830], src_px: 1080, at: 3.0}
+      - {name: "PAY-104 title", box: [1085, 770, 1395, 830], src_px: 1080, at: 3.0}
       - {name: "PAY-101 title", box: [140, 480, 760, 535], src_px: 1080, at: 3.0}
   talk-dag-tight-v1080:                                                                  # S03, DPR 2 still: widest crop (1.27x), scale 0.96
     cam: [0.4133, 0.5, 0.7846]                                                           # PAY-101 card whole + the fan; PAY-104 title clipped at the right edge
@@ -215,9 +230,9 @@ segments:
   - {id: "01", beat: 1, from: start, screen: {card: {title: "Building in Public", subtitle: "episode one"}},
      note: "Stream intro sting (generated card, swell SFX); cuts to the app at title_card"}
   - {id: 01b, beat: 1, from: title_card, take: workshop, t_in: 0.3, cam: [0.5, 0.553, 0.70],
-     note: "Dusk Workshop, wide, 3.5 s (v3 hook: S02 takes over at 7.5 s; header bar cropped; 0.70 = widest crop that still hides it at the 1440x1032 aspect), from 0.3 s (after the first-frame brightness dip); beat 1 dialogue"}
-  - {id: "02", beat: 2, take: composer, from: {t: 7.5},
-     note: "Composer (S3). v3 hook: starts at 7.5 s (first app UI) under the rest of beat 1's VO. v4: 0.7 s still, then the typing at 0.7x (no 10.7 s hold)"}
+     note: "Dusk Workshop, wide, 4.9 s (v4.1: S02 takes over at 8.9 s, was 7.5; header bar cropped; 0.70 = widest crop that still hides it at the 1440x1032 aspect), from 0.3 s (after the first-frame brightness dip); beat 1 dialogue"}
+  - {id: "02", beat: 2, take: composer, from: {t: 8.9},
+     note: "Composer (S3). v3 hook: starts at 7.5 s (first app UI) under the rest of beat 1's VO. v4: 0.7 s still, then the typing at 0.7x (no 10.7 s hold). v4.1: starts at 8.9 s (01b runs 4.9 s), 1.0 s still, ~1.0 s end freeze"}
   - {id: "03", beat: 3, take: dag, note: "Dependency map (talk-dag-wide; v3: talk-dag-tight): PAY-101 fanning into PAY-104 / PAY-105. FLAG: MAO's beat 3 line claims 'eight tasks' and 'waves'; this frame shows 3 cards and no wave headings"}
   - {id: "04", beat: 4, take: rail, note: "Rail lighting (S5)"}
   - {id: "05", beat: 5, take: chips, note: "Chips (S8): Coding -> Checks -> Pushed -> PR raised (Codex)"}
