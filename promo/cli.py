@@ -375,6 +375,7 @@ def build_parser():
     mp = add("mpeek", "grid of frames: out.png clip-id:t[:x0,y0,x1,y1] ...")
     mp.add_argument("out")
     mp.add_argument("specs", nargs="+")
+    sub.add_parser("rubric", help="PASS/FAIL of a scores file (or Zen review .md) against evals/rubric.yaml (see `promo rubric -h`)")
     sub.add_parser("live2d", help="Live2D host renderer: fetch | models | render | lag (see `promo live2d -h`)")
     return ap
 
@@ -464,6 +465,9 @@ def main(argv=None):
     if argv[:1] == ["live2d"]:          # `promo live2d ...` does not need a promo.yaml
         from . import live2d
         return live2d.main(argv[1:])
+    if argv[:1] == ["rubric"]:          # `promo rubric <scores>`: PASS/FAIL against evals/rubric.yaml (no promo.yaml needed)
+        from . import rubric
+        return rubric.main(argv[1:])
     args = build_parser().parse_args(argv)
     args.project = getattr(args, "project", "promo.yaml")
     args.scale = getattr(args, "scale", None)

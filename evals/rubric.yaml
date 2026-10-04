@@ -1,0 +1,46 @@
+# Zen UX Designer's promo scoring rubric (the bar every cut is reviewed against).
+# Versioned: bump `version` and add a `changelog` line whenever a criterion, a question or the pass bar changes.
+# Read by `promo critique-pack` (BRIEF.md "Rubric" section) and by `promo rubric <scores>` / promo.rubric.evaluate().
+# Wording: the critique-pack BRIEF.md (projects/commission-ai-anime/out/critique-pack/BRIEF.md, anime v11) and Zen's
+# reviews (projects/commission-ai-anime/reviews/zen-v9.md: Hook / Legibility / Story / Pacing / Calm / Style / Polish,
+# Average, Truth).
+version: 1
+id: zen-promo-rubric
+owner: Zen UX Designer
+scale:
+  min: 1
+  max: 5
+  anchors: "5 = ship it, 3 = acceptable, 1 = broken"
+criteria:                     # order = the order reviews list them in
+  - key: hook
+    name: hook
+    question: "Do the first 2-3 s grab attention (a hit, a clear subject, a reason to keep watching)?"
+  - key: legibility
+    name: legibility
+    question: "Can every card, caption and named piece of app text be read at 1080p in the time it is on screen?"
+  - key: story
+    name: story
+    question: "Does the cut tell the script's story in order (the beats in the copy files), without gaps or wrong scenes?"
+  - key: pacing
+    name: pacing
+    question: "Do cuts and cards sit on the music (bars / hits), with holds long enough to read and no dead air?"
+  - key: calm
+    name: calm composition
+    question: "One focal point per frame; text in a consistent place; nothing fighting the app UI."
+  - key: style
+    name: style fidelity
+    question: "Does it look and move like the chosen style (preset) and the brief, not a generic template?"
+  - key: polish
+    name: polish
+    question: "No glitches: black/empty frames, ghosting, soft upscales, jitter, clipped text, stray UI chrome."
+truth:
+  key: truth
+  values: [PASS, FAIL]
+  question: "every word on screen (and in the VO) is true of the frame it sits on and of the product, per the copy files and the footage manifests."
+pass:                         # all three must hold
+  min_average: 4.2            # mean of the seven scores
+  min_score: 3                # no criterion under 3
+  truth: PASS
+  text: "truth PASS, no criterion under 3, and an average of the seven scores >= 4.2."
+changelog:
+  - "v1 (4 Oct 2026): seven 1-5 scores + truth, pass = average >= 4.2, none < 3, truth PASS (as used for hero v2-v5, anime v5-v11, talk show v5-v7)."
