@@ -31,3 +31,10 @@ Output: `out/hero-v3-1080.mp4`, copied to `/workspace/videos/commission-ai-promo
 - S15: the 'Merged' badge measures 12.7 px (INFO; nothing names it in v3).
 - S04: the card IDs and '4 tickets' measure 14.5–14.7 px (INFO; the caption rests on the 8 countable cards, as in v2).
 - 08/10/12 are unchanged and PASS. Result: 0 FAILs.
+
+## S04 follow-up (12:5x)
+After the v3 build, `shot-04-dpr2` was added to manifest.md (sha b59a7754…). I registered it as `shot-04-dpr2-v1080` but **did not cut it in**:
+- It is the `?demo=1` board: Landed PAY-102 (#413) and PAY-101 (#412), "Wave 1 · 6 tickets · 2 running · 2 need you · 2 queued", with PAY-104/105 inside.
+- That contradicts the promo run (PAY-103–110, #431–438) and doesn't show 8 tasks. "Split into 8 tasks." on it would be a Truth fail (the same reason talk-dag was dropped).
+- Its IDs measure 22 px.
+- **Quick swap:** in S04 set `source: shot-04-dpr2-v1080`, `t_in: 0`, `speed: 1`, and cam ≤1.2x. It should get a different caption (or no caption) unless it is recaptured on `?demo=promo`.
