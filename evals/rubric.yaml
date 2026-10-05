@@ -4,14 +4,20 @@
 # Wording: the critique-pack BRIEF.md (projects/commission-ai-anime/out/critique-pack/BRIEF.md, anime v11) and Zen's
 # reviews (projects/commission-ai-anime/reviews/zen-v9.md: Hook / Legibility / Story / Pacing / Calm / Style / Polish,
 # Average, Truth).
-version: 1
+version: 2
 id: zen-promo-rubric
 owner: Zen UX Designer
 scale:
   min: 1
   max: 5
   anchors: "5 = ship it, 3 = acceptable, 1 = broken"
-criteria:                     # order = the order reviews list them in
+criteria:                     # order = the order reviews list them in (the two hard gates come first: they are judged first)
+  - key: intent
+    name: intent
+    question: "Would the person who wrote the original request (intent_verbatim in brief.yaml) say this is what they asked for, in their words?"
+  - key: reference
+    name: reference
+    question: "Does it feel like the supplied reference(s) in narrative, people/performance, motion, light, sound/voice/music and pacing, not just in look?"
   - key: hook
     name: hook
     question: "Do the first 2-3 s grab attention (a hit, a clear subject, a reason to keep watching)?"
@@ -37,10 +43,12 @@ truth:
   key: truth
   values: [PASS, FAIL]
   question: "every word on screen (and in the VO) is true of the frame it sits on and of the product, per the copy files and the footage manifests."
-pass:                         # all three must hold
-  min_average: 4.2            # mean of the seven scores
+pass:                         # all four must hold
+  min_average: 4.2            # mean of the scores given (nine in v2)
   min_score: 3                # no criterion under 3
+  hard_min: {intent: 4, reference: 4}     # hard gates: cannot be averaged away; a missing score is "not evaluated" = not a pass
   truth: PASS
-  text: "truth PASS, no criterion under 3, and an average of the seven scores >= 4.2."
+  text: "truth PASS, intent >= 4 AND reference >= 4 (hard gates, judged against the user's verbatim request and the reference dossiers), no criterion under 3, and an average of the nine scores >= 4.2."
 changelog:
+  - "v2 (5 Oct 2026): adds `intent` and `reference` criteria with pass.hard_min {intent: 4, reference: 4} (not averaged away). Cause: two promos passed every gate and a 4-lens council (~3.4/5) yet 'missed the mark completely', because the council judged against the agent's own summary of the reference and against stills, never the user's words or the reference's story/people/dialogue/sound. v1 review files (seven scores) still parse; the missing gates are reported as not evaluated and the verdict is INCOMPLETE, not PASS."
   - "v1 (4 Oct 2026): seven 1-5 scores + truth, pass = average >= 4.2, none < 3, truth PASS (as used for hero v2-v5, anime v5-v11, talk show v5-v7)."

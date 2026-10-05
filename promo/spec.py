@@ -133,10 +133,11 @@ class Spec:
         res_scale = {1080: 1, 2160: 2}.get(int(out.get("resolution", 1080)))
         if res_scale is None:
             raise SpecError("output.resolution must be 1080 or 2160")
-        self.scale = int(scale or env_scale or res_scale)
-        if self.scale not in (1, 2):
-            raise SpecError("scale must be 1 or 2")
-        self.OW, self.OH = 1920 * self.scale, 1080 * self.scale
+        sc = float(scale or env_scale or res_scale)
+        if sc not in (0.5, 1, 2):
+            raise SpecError("scale must be 0.5 (draft, 960x540), 1 or 2")
+        self.scale = int(sc) if sc >= 1 else sc          # 0.5 = draft: review rounds render at 540p (render budget rule)
+        self.OW, self.OH = int(1920 * sc), int(1080 * sc)
         paths = raw.get("paths", {})
         self.build = self.resolve(paths.get("build", "build"))
         self.out = self.resolve(paths.get("out", "out"))

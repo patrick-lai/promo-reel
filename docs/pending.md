@@ -1,4 +1,12 @@
-# Pending / open items (as of 2026-10-04)
+# Pending / open items (as of 2026-10-05)
+
+## 5 Oct 2026 session (video-quality uplift)
+- Built: `promo watch` (watch any video: sheets, cuts, transcript, audio metrics), `promo gen` + `promo needs` (agent-supplied generated non-UI plates and the capture/generate handoff), presets `cinematic-story` and `horizon`, draft scale `--scale 0.5`, original scores `promo.score`.
+- Two new promos: projects/commission-ai-night-shift (dots-style) and projects/commission-ai-horizon (Opus-style); council notes in each `rounds/` and `docs/review.md`. Council mean ~3.4/5, pass bar 4.2 not reached after the 3-round cap: human decides.
+- 48 tests fail on this Mac and on the untouched base commit (Linux fonts under /usr/share/fonts/..., /workspace paths); none are new.
+- `promo watch` under-detects dissolves/dark cuts (use ffmpeg scene detection at 0.12 for dark UI footage).
+- Owner sign-off still needed on "Wake up to merged PRs." (demo shows a human merge step).
+
 
 - **Merge PR #1** (capture scripts): https://github.com/patrick-lai/promo-reel/pull/1 (approved, 16/16 tests).
   It is already merged *locally* into integrate/v1 (the talk show needs its hero footage manifest); the PR itself is untouched.

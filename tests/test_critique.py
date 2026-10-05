@@ -265,7 +265,7 @@ def test_plan_stills_one_mid_per_shot_and_grouped_cards():
 
 
 def test_brief_has_rubric_rules_and_ask():
-    assert [n for n, _ in CR.RUBRIC] == ["hook", "legibility", "story", "pacing", "calm composition", "style fidelity", "polish"]
+    assert [n for n, _ in CR.RUBRIC] == ["intent", "reference", "hook", "legibility", "story", "pacing", "calm composition", "style fidelity", "polish"]
     p, _ = still_project(tempfile.mkdtemp())
     s = load_spec(p)
     md = CR.brief_md(s, "anime", "/x/t.mp4", [], dict(copy=[("/m/c.md", "copy/c.md")], footage=[], reviews=[("/z/R.md", None)]),

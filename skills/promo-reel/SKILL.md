@@ -1,6 +1,6 @@
 ---
 name: promo-reel
-description: Make or update a product promo / demo video from real app footage with the promo-reel repo (declarative promo.yaml, beat-locked edit, music + SFX + VO mix, QA gates). Use when asked to build, re-cut, caption, re-capture or check a promo reel, hero video or demo video.
+description: Make or update a product promo / demo video from real app footage with the promo-reel repo (declarative promo.yaml, beat-locked edit, music + SFX + VO mix, QA gates), watch a reference video, and generate image/video plates (backgrounds, transitions). Use when asked to build, re-cut, caption, re-capture or check a promo reel, hero video or demo video, to copy the style of a video link, or to make a background / transition / b-roll image or clip.
 ---
 
 # promo-reel
@@ -8,12 +8,38 @@ description: Make or update a product promo / demo video from real app footage w
 Everything lives in `projects/<name>/` (promo.yaml, assets.yaml, footage/manifest.yaml, shots.py plugin). Run commands from the repo root:
 `promo -p projects/<name>/promo.yaml <cmd>` (venv python: `python -m promo ...`).
 
+## The handoff: promo-reel asks, YOU deliver (it never decides how)
+Run `promo -p projects/<n>/promo.yaml needs [--json]` at the start and after every change. It lists what is still missing and the exact command that
+ingests each answer: `capture` (real footage the spec references but the manifest lacks, or a placeholder slate), `generate` (a `broll:` plate with a
+ready-to-use guard prompt), `review` (HUMAN look at generated plates). Fulfil each with whatever you are harnessed with: your own image/video tools,
+grok, codex/GPT, a person with a recorder. promo-reel only specifies, ingests and gates. Footage must be real; plates must be text- and UI-free.
+
+## Eyes and hands: watch references, generate plates (use these before you design anything)
+- **Watch any video (file or URL, e.g. YouTube):** `promo watch <url|file> [--out DIR]` downloads (yt-dlp), then writes `build/watch/<id>/`:
+  time-stamped `sheets/sheet-NN.png` (READ THESE FIRST: open them as images), one still per cut, `WATCH.md` (shot table: length, palette, words),
+  cut-rate curve per fifth, shot-length stats, loudness, tempo guess, transcript. Set `PROMO_WATCH_ASR=0` to skip the (slow) transcript ONLY for your own drafts; for a REFERENCE the transcript is mandatory (`promo refs add`).
+  Do this for the reference AND for your own draft, then compare numbers (median shot length, cut-rate curve, LUFS) as well as how it looks.
+  Write what you learn to `docs/reference-study/<date>-<name>.md`; presets come from measurements, not vibes.
+- **Generated images / video for NON-UI plates (YOU generate, promo-reel ingests):** the calling agent makes the asset with whatever it has
+  (its own image/video tool, `grok -p "..."`, `codex exec "..."`, a person) and hands the file down:
+  1. Declare what you need in `promo.yaml`: `broll: [{id, kind: video|image, prompt, seconds, aspect}]`; `promo gen plan [--json]` lists the open
+     requests with the full guard-prefixed prompt (no people / text / UI / logos), target path and size.
+  2. Generate each one yourself and save it to the `out` path (video 4 s, 16:9, >= 720p; a corner logo is fine, see `--watermark br`).
+  3. `promo gen register <file> -p projects/<n>/promo.yaml --id bg-night --prompt "..." --provider <who made it> --shots 03 [--watermark br]`
+     probes it, crops a Grok corner logo + upscales to 1080p (raw kept), writes the `.gen.json` sidecar and the footage-manifest entry with `generated:`.
+  4. Reference it as `source: bg-night` on a shot with `ui: false`. `promo gen detect` shows which built-in runners exist here; `promo gen video|image "..." --out F`
+     and `promo gen plan --run` are the optional fallback that drives those CLIs headless (one-shot, ~1 min each) when you have no generator of your own.
+  USE FOR: backgrounds, scenery, macro textures, light leaks / bokeh overlays, dawn/night skies, transition plates between real shots.
+  NEVER FOR: app UI, anything that reads as the product, text, logos, people-as-users. `promo check` FAILs a generated clip on a UI shot
+  (`generated-plates`) and WARNs for human review (`generated-review`). Image-to-video / reference images are not wired; describe the look in words.
+
 ## Pick a style preset first (do not write your own renderer)
 Every look is a **style preset**: pacing rules, a caption/card band, typography, transitions and the `promo check` gates
 for them. `promo styles` lists them. Scaffold with the one that matches the brief:
 - `promo new <name> --style hero`: calm product hero (VO, dark pills in the 9:16-safe zone, cuts on beats). Example: `projects/commission-ai-hero/`.
 - `promo new <name> --style anime-opening`: kinetic anime-opening cards on real footage. Example: `projects/commission-ai-anime/`.
 - `promo new <name> --style livestream`: talk-show/livestream composite (long holds, lower-left chyron, no flashes).
+- `promo new <name> --style horizon`: 20-25 s horizon film (rapid cuts of real surfaces, each shot `type: horizon` with `anchor: {src: [x, y], out_y: 0.58}` putting a real edge on the horizon; show-level `horizon_text: [{words, beats}]` is the ONE serif line that persists across cuts; end with `type: dawn`). A burst (half beats ok) must be followed by a hold >= 3 s. Template: `templates/styles/horizon/promo.yaml`.
 
 If the brief says "anime", "opening", "kinetic titles", "J-rock", "speed lines" or "title cards", it is **anime-opening**:
 - `timeline: {grid: <music JSON>, beats: N}` loads tempo, bars and markers from the music analysis JSON; `promo grid` prints the bar table. Plan cuts on bar lines; `qa.cut_markers: [intro_hit, ...]` must land on cuts.
@@ -30,8 +56,31 @@ If the brief says "anime", "opening", "kinetic titles", "J-rock", "speed lines" 
 - A shot that is not captured yet is `placeholder: {id, label, expects}` (a labelled slate). Swapping in the real take = replace it with `source:` + `cam:`.
 Need something the preset can't do? Extend the preset or the `anime` shot type in `promo/` (with a test), not a one-off renderer in the project.
 
+## STEP 0: Lock the brief and study the references (before any shot list or spec)
+A cut that passes every gate can still miss what the person asked for, because it was judged against the agent's OWN summary of the
+reference. Structurally prevent that:
+1. `promo brief init --project projects/<name> --intent "<the user's request, pasted EXACTLY, never paraphrased>"`. Then fill `must_have` /
+   `must_not` / `deliverables` from their words only. `promo brief show` re-prints it: re-read it at the start of every round.
+2. For EVERY reference they gave: `promo refs add <url|file> --project projects/<name> --id <id> --why "<their words about it>"`.
+   It watches with the transcript (do NOT set `PROMO_WATCH_ASR=0`; without ASR `refs check` FAILs) into `reference/<id>/` and scaffolds `DOSSIER.md`.
+3. Fill each dossier by actually reading: every contact sheet, the whole `transcript.json`, the audio metrics (and listen if you can), N full-res cut
+   stills. Replace every `TODO:` line with timestamps and quotes; tick the Evidence boxes only for what you did. Sections: narrative beats, people &
+   performance, dialogue/VO verbatim, music & sound design, camera & motion, grade & light, on-screen text, pacing numbers, THE one thing that makes
+   it work, what is transferable, what is NOT transferable and why. A live-action short with people, voices and sound design is not a "look".
+4. **Surface every NOT-transferable item and every clash with the team rules (AGENTS.md: real footage only, no invented claims, ...) to the user as an
+   explicit question, and record their answer BEFORE any spec**: `promo brief conflict add --project ... --ref <id> --what ... --rule ...`, ask, then
+   `promo brief conflict decide N --decision "<their words>" --by <their name>`. Never decide a conflict yourself, never pick the "closest we can do"
+   silently.
+5. A human confirms the brief: `promo brief confirm --by <name> --hash <hash from brief show>`. **An agent must never run `confirm` (or `conflict decide`)
+   on its own behalf**; ask the person to read the brief and confirm.
+6. `promo brief check --project projects/<name>` and `promo refs check --project projects/<name>` must have no FAIL. `promo check` runs the same gates
+   (`brief`, `references`, `intent-review`) for every project that has a brief.yaml (WARN without one; FAIL if `style.require_brief: true`).
+7. Each draft: `promo compare-ref out/<name>-1080.mp4 --project projects/<name>` (reference row above draft row, speech / LUFS / tempo / cut-rate
+   table). The Intent & Reference lens of `evals/council.md` reads it and writes the `intent-check:` line into `rounds/<n>/decision.md`.
+   Rubric v2 hard gates: `intent >= 4` and `reference >= 4`.
+
 ## Workflow
-1. **Brief**: audience, length, claims, tone. Only claims the footage shows. Write it in `projects/<name>/docs/`.
+1. **Brief** (after STEP 0): audience, length, claims, tone. Only claims the footage shows. Write it in `projects/<name>/docs/`.
 2. **Shot list**: one line per shot with beats (BPM grid), what the UI shows, caption (short: fits the 608 px 9:16-safe column at 32 px, ~35 chars), SFX/VO. Cuts on beats.
 3. **Capture handoff**: give the capturing agent the shot ids + app commit; they follow `capture/README.md` and register each take with
    `promo footage add` (sha256, commit, URL params, dpr). Reference clips by id; never by path.
@@ -55,6 +104,7 @@ Need something the preset can't do? Extend the preset or the `anime` shot type i
 - `promo styles`; `promo new <name> --style hero|anime-opening|livestream`; `promo grid` (bars, beats, markers of `timeline.grid`)
 - `promo status [--json]` what is up-to-date / stale / missing; `promo timeline`, `promo assets`, `promo footage list|verify|add`
 - `promo build [--shots 05 06] [--force] [--scale 2]`; `promo shot <id...>`; `promo sfx|vo|music|events|mix|assemble|contact`
+- `promo brief init|show|check|confirm|conflict --project projects/<name>`; `promo refs add|check|show`; `promo compare-ref <draft.mp4> --project projects/<name>` (STEP 0)
 - `promo critique-pack [projects/<name>] [--out DIR] [--no-check] [--video]` (review folder for a reviewer model; holds the lock)
 - `promo check [--json]`; `promo compare <ref.mp4> [--json]` (per-shot PSNR + audio diff vs a reference)
 - `promo peek <clip-id> <t> [x0 y0 x1 y1]`, `promo segpeek <shot> [t...]`, `promo mpeek out.png clip:t[:box] ...` (output in build/peek/)
@@ -71,6 +121,7 @@ Need something the preset can't do? Extend the preset or the `anime` shot type i
 - **Licensed audio only**, declared in `assets.yaml` with licence + source_url. `promo build/mix/check` refuse otherwise.
 - **Footage is never committed** (no LFS). Provenance lives in `footage/manifest.yaml`; a sha256 mismatch is a stop, not a warning.
 - Captions hold >= 2.0 s inside the safe zone (hero); anime cards hold >= 1 bar in the fixed band. No per-caption overrides to make a gate pass: retime it.
+- **The user's words and references outrank the agent's summary of them**: brief.yaml `intent_verbatim`, dossiers read from transcript + audio + sheets; conflicts with team rules are the user's call.
 - **A human approves before anything is published.**
 - Render one shot at a time (ffmpeg `-threads 2`); never two renders at once. No git commit/push unless asked.
 

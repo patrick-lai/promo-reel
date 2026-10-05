@@ -6,6 +6,7 @@ Per-shot `sfx:` entries:
     {sfx: typing, src_runs: [{start, step, count}, ...], [db: ...]} every key time mapped through src_to_out; event t = first time
 Global time = round(round(shot_t0 + out, 3) + offset, 3) exactly like the legacy `add(name, g(...) - 0.12)`.
 VO times come from `vo.lines[].at` (shot-local) via the same g().
+Clip audio (`shot.audio`, promo/shot_audio.py) lands in `clips`: [{id, shot, t, bus, db, lufs, file (relative to build/), text}].
 """
 from __future__ import annotations
 
@@ -58,7 +59,12 @@ def compute_events(spec):
     vo = {}
     for line in spec.raw.get("vo", {}).get("lines", []):
         vo[str(line.get("id", line["shot"]))] = spec.g(line["shot"], line.get("at", 0.0))
-    return dict(sfx=sorted(sfx, key=lambda e: e["t"]), vo=vo)
+    ev = dict(sfx=sorted(sfx, key=lambda e: e["t"]), vo=vo)
+    from . import shot_audio
+    clips = shot_audio.event_rows(spec)         # per-shot `audio:` lines (clip soundtrack), placed like VO lines
+    if clips:
+        ev["clips"] = clips
+    return ev
 
 
 def events_path(spec):

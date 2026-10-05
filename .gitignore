@@ -21,3 +21,9 @@ live2d/media/
 live2d/node_modules/
 *.moc3
 *.zip
+# reference studies: the media and derived stills stay on the box; the dossier, transcript and watch report are the record
+projects/*/reference/*/*
+!projects/*/reference/*/DOSSIER.md
+!projects/*/reference/*/WATCH.md
+!projects/*/reference/*/watch.json
+!projects/*/reference/*/transcript.json

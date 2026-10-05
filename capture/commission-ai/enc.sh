@@ -15,7 +15,7 @@ total=$((10#${last%.png} + 1))
 frames=${5:-$((total - start))}
 [ "$frames" -gt 0 ] || { echo "nothing to encode (start=$start, total=$total)" >&2; exit 1; }
 # fit inside 1920x1080 without stretching, pad the rest (identical to VF in rec.mjs)
-VF="scale=1920:1080:force_original_aspect_ratio=decrease:flags=lanczos,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1"
+W=${OUT_W:-1920}; H=$((W*9/16)); VF="scale=$W:$H:force_original_aspect_ratio=decrease:flags=lanczos,pad=$W:$H:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1"
 ffmpeg -v error -y -i "$d/$(printf %05d "$pf").png" -vf "$VF" "$n-poster.png"
 nice -n 5 ffmpeg -y -loglevel error -framerate 60 -start_number "$start" -i "$d/%05d.png" -frames:v "$frames" -vf "$VF" -c:v libx264 -preset medium -qp 0 -pix_fmt yuv444p -threads 4 -r 60 -movflags +faststart "$n.mov"
 nice -n 10 ffmpeg -y -loglevel error -i "$n.mov" -c:v libx264 -preset medium -crf 16 -pix_fmt yuv420p -threads 4 -movflags +faststart "$n-preview.mp4"

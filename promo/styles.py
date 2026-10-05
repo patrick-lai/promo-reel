@@ -17,6 +17,16 @@ Presets:
                  Shot type `anime` (promo/shots/anime.py) renders it.
   livestream     talk-show / livestream composite: long holds (>= 4 s), lower-left chyron band, cuts and
                  dissolves only (no flashes / speed lines), captions >= 2.5 s.
+  cinematic-story  short-film look ("dots"): UI as contained depth-of-field panels over a blurred copy of themselves,
+                 warm low-key grade / bloom / vignette / grain on the backdrop only (UI pixels are never graded), slow
+                 eased camera, shots >= 0.8 s (UI >= 2.5 s), cut rate calm -> busier -> calm, fades from / to black,
+                 sparse serif title + lower-third copy, no flashes. Shot type `cinema` (promo/shots/cinema.py), look in
+                 promo/grade.py.
+  horizon        Opus-5.5-style horizon film: rapid cuts (1/2 beat allowed in the burst, shots >= 0.3 s hard / 0.4 s soft)
+                 of real surfaces, each framed so one real edge forms a horizon (`anchor`), ONE serif sentence on the
+                 horizon whose words change while the picture keeps cutting (show-level `horizon_text`, each word spans
+                 >= 2 shots or >= 1.2 s), burst followed by a hold >= 3 s, held `dawn` sunrise end card, cuts only.
+                 Shot types `horizon` and `dawn` (promo/shots/horizon.py).
 """
 from __future__ import annotations
 
@@ -27,6 +37,11 @@ import os
 FONT_DIR = "/usr/share/fonts/truetype/sand-box/google"
 INTER = f"{FONT_DIR}/Inter/Inter-VariableFont_opsz,wght.ttf"
 BARLOW = f"{FONT_DIR}/Barlow Condensed"
+SERIF_FONTS = ["/System/Library/Fonts/NewYork.ttf", "/System/Library/Fonts/Supplemental/Georgia.ttf",
+               "/System/Library/Fonts/Supplemental/Times New Roman.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
+               "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf"]
+
+from . import grade as _grade  # noqa: E402  (look defaults for cinematic-story; numpy + PIL only)
 
 PRESETS = {
     "hero": dict(
@@ -74,6 +89,27 @@ PRESETS = {
                 "claims", "named", "markers", "placeholders"],
         qa=dict(min_caption_hold=2.0, beat_subdivision=2),
     ),
+    "cinematic-story": dict(
+        description="Cinematic short film on real screen recordings: contained depth-of-field panels, warm low-key grade on the backdrop only, slow camera, fades, sparse serif copy.",
+        pacing=dict(
+            snap="beat",
+            min_shot_s=0.8,             # nothing cuts faster than 0.8 s
+            ui_min_hold_s=2.5,          # shots that show app UI hold >= 2.5 s (FAIL; a spec may lower it, e.g. 1.5)
+            ui_short_hold_s=2.0,        # a UI shot under this with a camera move over max_camera_rate WARNs (ui-hold-short)
+            min_caption_hold_s=2.0,     # title / lower-third copy visible >= 2 s
+            cut_rate=dict(thirds=[0.3, 0.6, 0.3], tol=0.2),   # cuts/s in each third of the runtime (WARN): calm, build, calm
+            max_camera_rate=dict(zoom=0.25, pan=0.10),       # slow eased camera only (WARN): |d ln w| / s and |d centre| / s
+        ),
+        # `look:` is the preset default of promo/grade.py (DEFAULT_LOOK); the spec's style.look and each shot's look: merge over it.
+        # protect_ui: grade / bloom / grain / vignette only on the backdrop (and on ui: false footage), never on UI pixels.
+        look=_grade.DEFAULT_LOOK,
+        caption=dict(cx=960, cy=905, size=32, max_w=608, zone=dict(x0=656, x1=1264, y0=860, y1=950)),   # unused (no pills); engine contract
+        typography=dict(serif_fonts=SERIF_FONTS, color=[244, 236, 224]),
+        transitions=dict(allowed=["cut", "fade"]),        # fade_in / fade_out from / to black; no flashes, no speed lines
+        checks=["shot-hold", "ui-hold", "ui-hold-short", "no-fx", "cinema-keys", "ui-protect", "copy-hold", "copy-clear", "copy-size", "claims",
+                "cut-curve", "slow-camera", "fades", "serif-font", "screen-quad", "screen-ui"],
+        qa=dict(min_caption_hold=2.0, beat_subdivision=1),
+    ),
     "livestream": dict(
         description="Talk-show / livestream composite: long holds, lower-left chyron, cuts and dissolves only.",
         pacing=dict(snap="beat", min_shot_s=4.0, min_caption_hold_s=2.5),
@@ -82,6 +118,43 @@ PRESETS = {
         transitions=dict(allowed=["cut"]),          # dissolves: not rendered by the engine yet
         checks=["caption-hold", "caption-zone", "beat-grid", "shot-hold", "no-fx"],
         qa=dict(min_caption_hold=2.5, beat_subdivision=1),
+    ),
+    "horizon": dict(
+        description="Horizon film (Opus 5.5 look): rapid cuts of real surfaces each framed on a real edge, ONE serif line on the horizon whose words change across cuts, a held dawn end card.",
+        pacing=dict(
+            snap="beat",                # cuts on whole beats ...
+            burst_snap=0.5,             # ... or half beats inside the burst window
+            min_shot_s=0.3,             # hard FAIL under this
+            soft_min_shot_s=0.4,        # WARN under this
+            burst_below_s=1.0,          # auto burst window = consecutive shots shorter than this (style.burst: [beat0, beat1] overrides)
+            burst_min_shots=3,
+            hold_after_burst_s=3.0,     # the burst must be followed by a single shot held at least this long
+            text_min_shots=2,           # a horizon word spans >= 2 shots ...
+            text_min_s=1.2,             # ... or >= this many seconds
+            word_min_s=0.5,             # and is never shorter than this
+            max_dips_per_s=3,           # flash_dip photosensitivity (only when allowed below)
+            wordless_open_frac=0.40,    # no horizon word starts before this fraction of the burst (the reference keeps ~45 % wordless)
+        ),
+        caption=dict(cx=960, cy=905, size=32, max_w=608, zone=dict(x0=656, x1=1264, y0=860, y1=950)),    # unused (no per-shot captions); the generic caption gates need it
+        # the persistent serif line (global, composited over every horizon shot): ~10 % of the frame height (the reference
+        # film's words), baseline kissing the horizon, no pill / box. Override with style.horizon_text_style: {size_frac,
+        # gap_frac, shadow: {blur, alpha, dy}} (all fractions of the frame height; shadow: false = off).
+        horizon_text=dict(size_frac=0.10, gap_frac=0.004, fallback_y=0.58, top_margin_frac=0.05, x=0.5, fade_frames=3,
+                          color_light=[255, 255, 255], color_dark=[17, 19, 24], lum_threshold=0.6,
+                          shadow=dict(blur=0.012, alpha=0.55, dy=0.002), max_w_frac=0.8, max_words=12),
+        typography=dict(serif=SERIF_FONTS, sans=[INTER, "/System/Library/Fonts/Helvetica.ttc"]),
+        # flat gradient above a footage edge that sits low in the frame (never fake UI): top colour -> `bottom` (auto = the footage's top row)
+        sky=dict(top=[10, 14, 30], bottom="auto", max_frac=0.6, warn_frac=0.08),   # FAIL above max_frac, WARN (horizon-sky) above warn_frac of the frame height
+        # dawn: a thin navy -> teal rim (reach) that turns amber only in the last 0.6 s (amber_at seconds; default = shot dur - 0.6);
+        # name only by default (wordmark / tagline have no default text). Old tall amber card: reach [0.12, 0.80], amber_at 0,
+        # name_frac 0.11, name_y 0.40.
+        dawn=dict(rise_s=3.0, reach=[0.05, 0.22], name_at=0.3, tagline_at=1.0, fade_s=0.7, name_frac=0.065, wordmark_frac=0.024,
+                  tagline_frac=0.034, name_y=0.47, wordmark_y=0.545, tagline_y=0.60, min_hold_s=3.0, amber_s=0.45,
+                  stops=[[0.0, [255, 186, 100]], [0.2, [226, 130, 86]], [0.45, [28, 92, 110]], [0.7, [14, 52, 78]], [1.0, [7, 10, 30]]]),
+        transitions=dict(allowed=["cut"], flash_dip=dict(frames=3, alpha=0.7, color=[255, 244, 224])),   # flash_dip: opt in via allowed: [cut, flash_dip]
+        checks=["horizon-shot-hold", "horizon-cuts", "horizon-burst-hold", "horizon-text", "horizon-text-fit", "horizon-edge",
+                "horizon-transitions", "horizon-dawn", "horizon-text-ui", "horizon-wordless-open", "horizon-sky", "caption-hold", "beat-grid"],
+        qa=dict(min_caption_hold=2.0, beat_subdivision=2),
     ),
 }
 

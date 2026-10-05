@@ -1,0 +1,79 @@
+# Horizon film (style preset `horizon`, the look of Anthropic's 20 s "Claude Opus 5.5" film): rapid cuts of REAL surfaces,
+# each framed so one real edge (panel top edge, skyline, ground line, card edge) forms a horizon; ONE serif sentence sits on
+# that line and its words change while the picture keeps cutting; a held `dawn` end card. Real footage only: the horizon is
+# an edge that is already in the recording, placed by the camera (anchor), never drawn.
+# Run:  promo timeline | promo assets | promo build | promo check     (see skills/promo-reel/SKILL.md)
+project: {name: my-promo, title: "My horizon film"}
+output: {name: my-promo, resolution: 1080, fps: 30, duration: 12.5}     # 20 beats at 96 BPM = 12.5 s
+paths: {build: build, out: out}
+assets: assets.yaml
+footage: footage/manifest.yaml
+
+style:
+  preset: horizon              # cuts only, shots >= 0.3 s (WARN < 0.4 s), burst then a hold >= 3 s, serif line persists across cuts
+  # burst: [4, 12]             # optional explicit burst window in beats (default: auto = consecutive shots under 1 s)
+  # transitions: {allowed: [cut, flash_dip]}   # opt in to `cut_in: flash_dip` on a shot
+  # typography: {serif: [/path/to/Tiempos.otf]}   # default /System/Library/Fonts/NewYork.ttf, Georgia, DejaVu Serif
+  # horizon_text_style: {size_frac: 0.10, gap_frac: 0.004, shadow: {blur: 0.012, alpha: 0.55, dy: 0.002}}   # defaults (fractions of frame height)
+
+music:
+  asset: music-track
+  bpm: 96
+  track_beat: 0.625
+  track_offset: 0.0
+  edit: {segments: [[0, 0, 20]], crossfade: 0.030, gains: [], silence_from_beat: 20}
+
+timeline: {bpm: 96, beats: 20}      # whole beats everywhere; half beats only inside the burst window
+
+# The ONE sentence, show-level (global beats). Each word must span >= 2 shots or >= 1.2 s; words never overlap; they only
+# draw over `horizon` shots (not over the dawn card). Every word is a claim: it must be true of the footage underneath.
+# Words must not sit over real app footage (gate horizon-text-ui): put them over generated plates / scenery, or set
+# `text_over_ui: true` on that shot after a visual check. THE TEMPLATE shots below set it only because the scaffold manifest
+# has no generated plates: delete it from every shot once the words sit over generated plates / scenery. Keep the first 40 % of the burst wordless (WARN horizon-wordless-open).
+horizon_text:
+  - {words: "Say it",    beats: [8, 10]}      # the burst is beats 4-12: its first 40 % (to beat 7.2) stays wordless
+  - {words: "at night.", beats: [10, 12]}
+
+shots:
+  - id: "01"                       # opening hold on one slow horizon (2.5 s)
+    beats: [0, 4]
+    type: horizon
+    source: my-clip                # footage clip id (footage/manifest.yaml)
+    t_in: 0.0
+    anchor: {src: [0.5, 0.33], out_y: 0.58}     # normalised SOURCE point (a real edge) -> OUTPUT height 0.58
+    w: [0.70, 0.60]                # camera box width / source width, eased push-in
+    text_over_ui: true             # TEMPLATE ONLY (see horizon_text above)
+    sky: true                      # the edge is high in the source: a flat gradient fills the few rows above the footage (WARN horizon-sky above 8 % of the frame height)
+  # --- burst: 1 beat = 0.625 s, a few half beats (0.3125 s)
+  - {id: "02", beats: [4, 5],     type: horizon, source: my-clip, t_in: 1.0, anchor: {src: [0.5, 0.33], out_y: 0.58}, w: 0.55, text_over_ui: true}
+  - {id: "03", beats: [5, 6],     type: horizon, source: my-clip, t_in: 2.0, anchor: {src: [0.5, 0.20], out_y: 0.60}, w: 0.50, sky: true, text_over_ui: true}
+  - {id: "04", beats: [6, 6.5],   type: horizon, source: my-clip, t_in: 3.0, anchor: {src: [0.5, 0.12], out_y: 0.58}, w: 0.50, sky: true}   # edge near the source top: flat sky above i, text_over_ui: true}
+  - {id: "05", beats: [6.5, 7],   type: horizon, source: my-clip, t_in: 3.5, anchor: {src: [0.4, 0.33], out_y: 0.55}, w: 0.45, text_over_ui: true}
+  - {id: "06", beats: [7, 8],     type: horizon, source: my-clip, t_in: 4.0, anchor: {src: [0.5, 0.33], out_y: 0.58}, w: [0.55, 0.50], hold_to_beat: 0.15, text_over_ui: true}
+  - {id: "07", beats: [8, 9],     type: horizon, source: my-clip, t_in: 5.0, anchor: {src: [0.6, 0.20], out_y: 0.62}, w: 0.50, sky: true, text_over_ui: true}
+  - {id: "08", beats: [9, 10],    type: horizon, source: my-clip, t_in: 6.0, anchor: {src: [0.5, 0.33], out_y: 0.58}, w: 0.55, text_over_ui: true}
+  - {id: "09", beats: [10, 11],   type: horizon, source: my-clip, t_in: 7.0, anchor: {src: [0.5, 0.20], out_y: 0.58}, w: 0.50, sky: true, text_over_ui: true}
+  - {id: "10", beats: [11, 12],   type: horizon, source: my-clip, t_in: 8.0, anchor: {src: [0.5, 0.33], out_y: 0.58}, w: 0.55, text_over_ui: true}
+  # --- the hold: a thin navy -> teal rim rises over 3 s and turns amber in the last 0.6 s (amber_at: seconds); the name fades in.
+  #     wordmark / tagline are OPTIONAL (no default text); tagline fades in at +1.0 s. Held >= 3 s
+  - id: "11"
+    beats: [12, 20]
+    type: dawn
+    name: "My product"
+    # wordmark: "my-promo"         # optional, small tracked caps under the name
+    # tagline: "One true line."    # optional; only what the footage shows / the product does today
+    # amber_at: 2.4                # optional; default = card duration - 0.6 s
+    # reach: [0.05, 0.22]          # optional; the old tall glow was [0.12, 0.80] with name_frac 0.11, name_y 0.40, amber_at 0
+
+sfx: {library: {tick: {asset: sfx-tick}}}
+
+mix:
+  sr: 48000
+  bus_db: {music: -5.0, sfx: -8.0, vo: 1.5}
+  vo_line_lufs: -16.0
+  duck: {db: 7.0, attack: 0.12, release: 0.35, pre: 0.12, post: 0.1}
+  fade_out: 0.03
+  masters:
+    - {name: web, suffix: "", lufs: -14.0, ceiling: -1.2, max_true_peak: -1.0}
+
+qa: {lufs_tolerance: 0.5}          # beat_subdivision 2 (half beats) comes from the preset

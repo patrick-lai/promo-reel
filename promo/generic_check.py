@@ -51,6 +51,9 @@ WARN_RULES = {
     "anime-opening": dict(
         long_hold=dict(max_s=2.8),                # ~2 bars at 177 BPM; holds longer than that read as a stall
     ),
+    "cinematic-story": dict(
+        long_hold=dict(max_s=5.0),                # slow camera on a UI panel; the story holds 3-6 s, longer than 5 s reads as a stall
+    ),
     "livestream": dict(
         long_hold=dict(max_s=6.0),                # talk show: long holds are the format; > 6 s of a frozen screen is dead air
     ),
@@ -80,6 +83,12 @@ def viewport(spec, s, t_global=None):
     if s.type == "anime":
         from .shots.anime import viewport as avp
         return [float(v) for v in avp(spec, s)]
+    if s.type == "cinema":              # the contained DoF panel (the rest is a blurred backdrop, not footage)
+        from .shots.cinema import viewport as cvp
+        return cvp(spec, s, 0.0 if t_global is None else max(0.0, t_global - s.t0))     # a pullback shrinks the panel
+    if s.type == "screen":              # the tracked monitor's bounding box (the UI is warped into the quad on a generated plate)
+        from .shots.screen import viewport as svp
+        return svp(spec, s, 0.0 if t_global is None else max(0.0, t_global - s.t0))
     if is_livestream(spec) and s.type == "livestream":
         try:
             from . import livestream as LS
@@ -607,15 +616,20 @@ def frame_gates(spec, rules=None, clipped_named=()):
             continue
         k = max(int(te.get("samples", 3)), int(ef.get("samples", 3)))
         hits, fracs = [], []
+        te_s = te
+        if s.type == "cinema":                  # rounded panel corners are not text: widen the corner guard to the radius
+            from .shots import cinema as CN
+            rad = float((CN.look_of(spec, s).get("panel") or {}).get("radius") or 0.0)
+            te_s = {**te, "corner_px": max(int(te.get("corner_px", 0)), int(rad) + 4)}
         for t in sample_times(s, k):
             g = grab(out, s.t0 + t)
             vpt = viewport(spec, s, s.t0 + t)
             if te.get("on", True) and is_ui_shot(spec, s, rules):
-                hits.append(edge_hits(g, vpt, te))
+                hits.append(edge_hits(g, vpt, te_s))
             if ef.get("on", True) and is_ui_shot(spec, s, rules):
                 fracs.append((t,) + empty_fraction(g, vpt, ef))
         for e, pos, n in persistent_edges(hits, te):
-            edge_msgs.append(f"shot {s.id} {e} edge: text-like ink cut by the {'crop' if list(vp) != [0, 0, 1920, 1080] else 'frame'} edge "
+            edge_msgs.append(f"shot {s.id} {e} edge: text-like ink cut by the {('panel (panel-cutoff)' if s.type == 'cinema' else 'crop') if list(vp) != [0, 0, 1920, 1080] else 'frame'} edge "
                              f"on {n}/{len(hits)} sampled frames at {'y' if e in ('left', 'right') else 'x'}~{pos}")
         if fracs:
             med = sorted(f for _, f, _ in fracs)[len(fracs) // 2]

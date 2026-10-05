@@ -11,6 +11,8 @@ Writes (default <project>/out/critique-pack/, wiped and rewritten each run):
     stills/index.json     all sidecars in one list
     contact-sheet.png     the build's contact sheet
     CHECK.txt / CHECK.json   the full `promo check` output (run now, or the last saved report with --no-check)
+    brief/brief.yaml, reference/<id>/{DOSSIER.md,WATCH.md,transcript.json,sheets/}, compare/   the user's verbatim request, the reference
+                          dossiers and `promo compare-ref` output (BRIEF.md lists intent + reference as HARD gates)
     VO-TRANSCRIPT.md      whisper transcript of each VO stem vs its script line (projects with VO only)
     copy/                 marketing copy files       } configurable in promo.yaml:
     footage/              footage manifest.md files  }   critique: {kind, copy: [...], reviews: [...], footage_md: [...], out}
@@ -388,9 +390,10 @@ def build(spec, out=None, reuse_check=False, video=False, log=print):
         shutil.copy2(master, os.path.join(root, os.path.basename(master)))
     missing = [p for v in copied.values() for p, rel in v if rel is None]
 
+    binfo = brief_inputs(spec, root)
     open(os.path.join(root, "TEXT-LINES.md"), "w").write(text_lines_md(index))
     open(os.path.join(root, "BRIEF.md"), "w").write(brief_md(spec, kind, master, index, copied, payload, have_contact, vo is not None,
-                                                            video, missing))
+                                                            video, missing, brief_info=binfo))
     return dict(ok=True, path=root, stills=len(index), missing=missing, check="FAILED" if payload.get("failed") else "OK",
                 files=sorted(os.path.relpath(os.path.join(d, f), root) for d, _, fs in os.walk(root) for f in fs))
 
@@ -416,7 +419,86 @@ def text_lines_md(index):
     return "\n".join(rows) + "\n"
 
 
-def brief_md(spec, kind, master, index, copied, payload, have_contact, have_vo, video, missing):
+def brief_inputs(spec, root):
+    """Copy the locked brief, the reference dossiers (+ WATCH.md, transcript.json) and the `promo compare-ref` output into the
+    pack. Returns dict(intent, intent_sha, must_have, must_not, references[{id, why, dossier, transcript, watch}], compare[files],
+    compare_stale) or None when the project has no brief.yaml."""
+    from . import brief as BR
+    d = spec.root
+    if not BR.exists(d):
+        return None
+    b = BR.load(d)
+    bd = os.path.join(root, "brief")
+    os.makedirs(bd, exist_ok=True)
+    shutil.copy2(BR.brief_path(d), os.path.join(bd, "brief.yaml"))
+    info = dict(intent=b.get("intent_verbatim") or "", intent_sha=BR.intent_sha(b), must_have=b.get("must_have") or [],
+                must_not=b.get("must_not") or [], conflicts=b.get("conflicts") or [], references=[], compare=[], compare_stale=False)
+    for r in b.get("references") or []:
+        rid = r.get("id")
+        src = os.path.join(d, "reference", str(rid))
+        dst = os.path.join(root, "reference", str(rid))
+        os.makedirs(dst, exist_ok=True)
+        got = {}
+        for name in ("DOSSIER.md", "WATCH.md", "transcript.json", "watch.json"):
+            if os.path.isfile(os.path.join(src, name)):
+                shutil.copy2(os.path.join(src, name), os.path.join(dst, name))
+                got[name] = f"reference/{rid}/{name}"
+        sheets = os.path.join(src, "sheets")
+        if os.path.isdir(sheets):
+            shutil.copytree(sheets, os.path.join(dst, "sheets"), dirs_exist_ok=True)
+        info["references"].append(dict(id=rid, why=r.get("why") or "", url=r.get("url") or r.get("path"), files=got,
+                                       sheets=f"reference/{rid}/sheets/" if os.path.isdir(sheets) else None))
+    cmp_ = os.path.join(d, "out", "compare")
+    if os.path.isdir(cmp_):
+        os.makedirs(os.path.join(root, "compare"), exist_ok=True)
+        master = spec.output_path(spec.masters[0].get("suffix", "")) if spec.masters else spec.output_path()
+        for f in sorted(os.listdir(cmp_)):
+            shutil.copy2(os.path.join(cmp_, f), os.path.join(root, "compare", f))
+            info["compare"].append(f"compare/{f}")
+            if os.path.exists(master) and os.path.getmtime(os.path.join(cmp_, f)) < os.path.getmtime(master):
+                info["compare_stale"] = True
+    return info
+
+
+def intent_section(rb, info):
+    """BRIEF.md lines: the hard gates, the user's verbatim words, references, compare-ref output."""
+    hard = (rb.get("pass") or {}).get("hard_min") or {}
+    L = ["## Intent and reference: HARD GATES, judged first", "",
+         "Judge the cut against **the person's own words** and **the actual reference(s)**, never against a style summary an agent",
+         "wrote. A look that matches while the story, people, dialogue, sound and pacing do not is a FAIL of `reference`.", ""]
+    if hard:
+        L += [f"- Hard gates (cannot be averaged away): " + ", ".join(f"**{k} >= {v}**" for k, v in hard.items()) + "."]
+    L += ["- A gate you did not or could not evaluate (no brief, no dossier, no transcript/audio comparison) scores **1** and the cut is "
+          "INCOMPLETE, never a pass.", ""]
+    if info is None:
+        L += ["**No `brief.yaml` for this project: intent and reference cannot be judged. Score both 1 and say so.**", ""]
+        return L
+    L += [f"### The request, verbatim (intent_sha `{info['intent_sha']}`)", ""] + [f"> {ln}" if ln.strip() else ">" for ln in info["intent"].splitlines()] + [""]
+    for k, t in (("must_have", "Must have"), ("must_not", "Must not")):
+        if info[k]:
+            L += [f"{t}:"] + [f"- {x}" for x in info[k]] + [""]
+    if info["conflicts"]:
+        L += ["Decided conflicts (a decision is binding; a 'pending' one is a FAIL):"]
+        L += [f"- {c.get('what')} [{c.get('rule')}] -> {c.get('decision')} ({c.get('decided_by') or 'nobody'})" for c in info["conflicts"]]
+        L += [""]
+    for r in info["references"]:
+        L += [f"### Reference `{r['id']}` ({r['url']})", "", f"The user's words about it: > {r['why'] or '(none recorded: FAIL)'}", ""]
+        L += [f"- `{rel}`" for rel in r["files"].values()] + ([f"- `{r['sheets']}` (contact sheets)"] if r["sheets"] else [])
+        L += [""]
+    if info["compare"]:
+        L += ["### Draft vs reference (`promo compare-ref`)", ""] + [f"- `{f}`" for f in info["compare"]]
+        if info["compare_stale"]:
+            L += ["", "**The compare-ref output is older than the render: re-run `promo compare-ref` before scoring.**"]
+        L += [""]
+    else:
+        L += ["**No compare-ref output in this pack: run `promo compare-ref <draft> --project ...` (sheet rows + speech/LUFS/tempo metrics).**", ""]
+    L += ["Return an `intent-check:` line for decision.md exactly as", "",
+          f"    intent-check: intent_sha={info['intent_sha']} verdict=<YES|PARTIAL|NO> intent=<1-5> reference=<1-5> lens=intent-reference", "",
+          "plus 'would they say yes?' with quoted evidence: the person's words, the reference transcript lines and timestamps, the draft's.", ""]
+    return L
+
+
+def brief_md(spec, kind, master, index, copied, payload, have_contact, have_vo, video, missing, brief_info=None, with_intent=True):
     from . import rubric as RB
     rb = rubric_for(spec)
     sc = rb.get("scale") or {}
@@ -431,8 +513,10 @@ def brief_md(spec, kind, master, index, copied, payload, have_contact, have_vo, 
          f"- `promo check`: **{'FAILED' if payload.get('failed') else 'OK'}** "
          f"({sum(1 for r in payload['results'] if r['status'] == 'FAIL')} FAIL, {sum(1 for r in payload['results'] if r['status'] == 'WARN')} WARN): see `CHECK.txt`",
          "- Placeholder slates (labelled 'PLACEHOLDER', yellow frame) mark shots not captured yet: judge the cut around them, list them, do not score them as footage.",
-         "",
-         "## Rubric", "", f"Score each criterion {sc.get('min', 1)}-{sc.get('max', 5)} ({sc.get('anchors', '5 = ship it, 3 = acceptable, 1 = broken')}):", ""]
+         ""]
+    if with_intent:
+        L += intent_section(rb, brief_info)
+    L += ["## Rubric", "", f"Score each criterion {sc.get('min', 1)}-{sc.get('max', 5)} ({sc.get('anchors', '5 = ship it, 3 = acceptable, 1 = broken')}):", ""]
     L += [f"{i}. **{n}**: {d}" for i, (n, d) in enumerate(RB.criteria(rb), 1)]
     L += ["", f"Plus **truth: {' / '.join(rb['truth'].get('values', ['PASS', 'FAIL']))}**: {rb['truth']['question']}", "",
           f"**Passing needs:** {RB.pass_text(rb)}", "",
@@ -441,7 +525,7 @@ def brief_md(spec, kind, master, index, copied, payload, have_contact, have_vo, 
           "## Hard rules (any break = FAIL of that line / frame, and truth FAIL where it is a claim)", ""]
     L += [f"- {r}" for r in HARD_RULES]
     L += ["", "## What to return", "",
-          "1. **Verdict block**: the seven scores, truth PASS/FAIL, average, and PASS/FAIL overall, as a table.",
+          "1. **Verdict block**: every rubric score (intent and reference first, the hard gates), truth PASS/FAIL, average, and PASS/FAIL overall, as a table.",
           "2. **Caption check, line by line**: for every row of `TEXT-LINES.md` (and every VO line in `VO-TRANSCRIPT.md` if present):"
           " the line, its still, whether it matches the copy, whether the frame shows what it claims, size >= 18 px for named text,"
           " band placement, and a one-line fix if it fails.",
@@ -458,6 +542,8 @@ def brief_md(spec, kind, master, index, copied, payload, have_contact, have_vo, 
           f"- `contact-sheet.png`: {'one frame per shot' if have_contact else 'MISSING (no contact sheet built)'}.",
           "- `CHECK.txt` / `CHECK.json`: full automatic QA output (gates, loudness, timing, named-element sizes, claims, placeholders).",
           ]
+    if brief_info is not None:
+        L.append("- `brief/brief.yaml`, `reference/<id>/` (DOSSIER.md, WATCH.md, transcript.json, sheets/), `compare/` (compare-ref sheets + metrics): see the hard-gates section.")
     if have_vo:
         L.append("- `VO-TRANSCRIPT.md`: whisper transcript of each VO stem vs its script line.")
     for key, title in (("copy", "Copy (source of truth for words)"), ("footage", "Footage manifests (what each take really shows)"),

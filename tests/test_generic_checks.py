@@ -26,41 +26,45 @@ ZEN_V9 = os.path.join(ROOT, "projects", "commission-ai-anime", "reviews", "zen-v
 # ---------------------------------------------------------------- rubric
 def test_rubric_file_is_versioned_and_complete():
     r = RB.load()
-    assert r["version"] >= 1 and r["_path"].endswith(os.path.join("evals", "rubric.yaml"))
-    assert [c["key"] for c in r["criteria"]] == ["hook", "legibility", "story", "pacing", "calm", "style", "polish"]
-    assert r["pass"] == dict(r["pass"], min_average=4.2, min_score=3, truth="PASS")
+    assert r["version"] >= 2 and r["_path"].endswith(os.path.join("evals", "rubric.yaml"))
+    assert [c["key"] for c in r["criteria"]] == ["intent", "reference", "hook", "legibility", "story", "pacing", "calm", "style", "polish"]
+    assert r["pass"] == dict(r["pass"], min_average=4.2, min_score=3, truth="PASS", hard_min={"intent": 4, "reference": 4})
     assert r["scale"]["min"] == 1 and r["scale"]["max"] == 5
 
 
 def test_rubric_pass_fail_rules():
     r = RB.load()
-    good = dict(hook=4, legibility=5, story=4, pacing=5, calm=4, style=4, polish=4, truth="PASS")
+    good = dict(intent=4, reference=4, hook=4, legibility=5, story=4, pacing=5, calm=4, style=4, polish=4, truth="PASS")
     v = RB.evaluate(r, good)
-    assert v["ok"] and v["average"] == 4.29 and v["verdict"] == "PASS"
+    assert v["ok"] and v["average"] == 4.22 and v["verdict"] == "PASS"
+    v1 = RB.evaluate(r, {k: x for k, x in good.items() if k not in ("intent", "reference")})     # a v1 file: gates not evaluated
+    assert not v1["ok"] and v1["verdict"] == "INCOMPLETE" and v1["average"] == 4.29 and RB.evaluate(r, {k: x for k, x in good.items() if k not in ("intent", "reference")}, legacy=True)["ok"]
     assert not RB.evaluate(r, dict(good, truth="FAIL"))["ok"]                       # truth FAIL fails whatever the scores
-    low = RB.evaluate(r, dict(good, polish=2, hook=5, story=5, calm=5, style=5))       # avg 4.43 but one score < 3
+    low = RB.evaluate(r, dict(good, polish=2, hook=5, story=5, calm=5, style=5))       # avg 4.33 but one score < 3
     assert not low["ok"] and any("under 3" in p for p in low["problems"]) and low["average"] >= 4.2
-    avg = RB.evaluate(r, dict(hook=4, legibility=4, story=4, pacing=4, calm=4, style=4, polish=5, truth="PASS"))  # 4.14
-    assert not avg["ok"] and any("average 4.14 < 4.2" in p for p in avg["problems"])
-    edge = RB.evaluate(r, dict(hook=4, legibility=4, story=4, pacing=4, calm=5, style=4, polish=4.4, truth="PASS"))  # exactly 4.2
+    avg = RB.evaluate(r, dict(intent=4, reference=4, hook=4, legibility=4, story=4, pacing=4, calm=4, style=4, polish=5, truth="PASS"))  # 4.11
+    assert not avg["ok"] and any("average 4.11 < 4.2" in p for p in avg["problems"])
+    edge = RB.evaluate(r, dict(intent=4, reference=4, hook=4, legibility=4, story=4, pacing=4, calm=5, style=4, polish=4.8, truth="PASS"))  # exactly 4.2
     assert edge["ok"], edge
     miss = RB.evaluate(r, {k: v for k, v in good.items() if k != "story"})
     assert not miss["ok"] and "missing score: story" in miss["problems"]
-    names = RB.evaluate(r, {"Hook": 4, "Legibility": 5, "Story": 4, "Pacing": 5, "calm composition": 4, "Style fidelity": 4, "Polish": 4, "Truth": "pass"})
+    names = RB.evaluate(r, {"Intent": 4, "Reference": 4, "Hook": 4, "Legibility": 5, "Story": 4, "Pacing": 5, "calm composition": 4, "Style fidelity": 4, "Polish": 4, "Truth": "pass"})
     assert names["ok"]                                                                 # BRIEF names / Zen's capitalisation
 
 
 def test_rubric_reads_zen_review_markdown_and_cli():
     sc = RB.read_scores(ZEN_V9)
     assert sc["truth"] == "PASS" and sc["Hook"] == 4 and sc["Average"] == 4.29
-    v = RB.evaluate(RB.load(), sc)
-    assert v["ok"] and v["average"] == 4.29
+    v = RB.evaluate(RB.load(), sc, legacy=True)                                        # zen-v9 is a v1 review: no intent/reference scores
+    assert v["ok"] and v["average"] == 4.29 and v["not_evaluated"] == ["intent", "reference"]
+    assert not RB.evaluate(RB.load(), sc)["ok"]
     d = tempfile.mkdtemp()
     p = os.path.join(d, "s.yaml")
-    yaml.safe_dump(dict(scores=dict(hook=3, legibility=3, story=3, pacing=3, calm=3, style=3, polish=3, truth="PASS")), open(p, "w"))
+    yaml.safe_dump(dict(scores=dict(intent=3, reference=3, hook=3, legibility=3, story=3, pacing=3, calm=3, style=3, polish=3, truth="PASS")), open(p, "w"))
     from promo import cli
     assert cli.main(["rubric", p]) == 1                                                # avg 3.0 -> FAIL exit 1
-    assert cli.main(["rubric", ZEN_V9]) == 0
+    assert cli.main(["rubric", ZEN_V9]) == 3                                           # v1 review: INCOMPLETE (exit 3)
+    assert cli.main(["rubric", ZEN_V9, "--legacy"]) == 0
 
 
 def test_critique_brief_reads_the_rubric_file():
@@ -70,7 +74,8 @@ def test_critique_brief_reads_the_rubric_file():
     d = tempfile.mkdtemp()
     alt = copy.deepcopy({k: v for k, v in r.items() if k != "_path"})
     alt["version"] = 99
-    alt["criteria"][0]["question"] = "Does second one land?"
+    hook = next(c for c in alt["criteria"] if c["key"] == "hook")
+    hook["question"] = "Does second one land?"
     alt["pass"]["min_average"] = 4.5
     alt["pass"]["text"] = "truth PASS, nothing under 3, average >= 4.5."
     p = os.path.join(d, "rubric.yaml")
@@ -83,8 +88,8 @@ def test_critique_brief_reads_the_rubric_file():
                          True, False, False, [])
     finally:
         del os.environ["PROMO_RUBRIC"]
-    assert "1. **hook**: Does second one land?" in md and "average >= 4.5" in md and "v99" in md
-    assert RB.evaluate(RB.load(p), dict(hook=4, legibility=5, story=4, pacing=5, calm=4, style=4, polish=4, truth="PASS"))["verdict"] == "FAIL"
+    assert "3. **hook**: Does second one land?" in md and "average >= 4.5" in md and "v99" in md
+    assert RB.evaluate(RB.load(p), dict(intent=4, reference=4, hook=4, legibility=5, story=4, pacing=5, calm=4, style=4, polish=4, truth="PASS"))["verdict"] == "FAIL"
 
 
 # ---------------------------------------------------------------- per-preset config

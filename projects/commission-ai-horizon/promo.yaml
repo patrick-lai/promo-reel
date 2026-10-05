@@ -1,0 +1,370 @@
+# commission-ai "Horizon": the Opus-5.5-style film (docs/reference-study/2026-10-05-two-new-references.md, section B).
+# Rapid cuts of surfaces, each framed so one edge is the horizon; one serif line sits on it; a held dawn card.
+# Surfaces are generated NON-UI plates (ui: false semantics: no app UI in them); the three app shots are real recordings.
+project: {name: commission-ai-horizon, title: "Commission-ai: Horizon"}
+output: {name: horizon, resolution: 1080, fps: 30, duration: 20.0}        # 32 beats at 96 BPM
+paths: {build: build, out: out}
+assets: assets.yaml
+footage: ../commission-ai-shared/footage/manifest.yaml
+broll:
+  - {id: hz-dawn,    kind: video, seconds: 4, prompt: "a planet-like curved horizon seen from orbit, thin deep blue to orange sunrise glow band above a black foreground, extremely slow camera tilt up, photoreal"}
+  - {id: hz-denim,   kind: video, seconds: 4, prompt: "macro of blue denim fabric above a red floral brocade textile, a curved seam forming a horizon, slow push-in, photoreal, warm light"}
+  - {id: hz-lace,    kind: video, seconds: 4, prompt: "macro of white lace doily edge curving like a planet horizon against black, slow drift, photoreal, shallow depth of field"}
+  - {id: hz-sand,    kind: video, seconds: 4, prompt: "macro of rippled sand dune crest at golden hour forming a curved horizon against a dark sky, slow camera glide, photoreal"}
+  - {id: hz-ink,     kind: video, seconds: 4, prompt: "macro of dark blue ink spreading in water with a curved glowing edge like an atmosphere horizon, slow motion, photoreal"}
+  - {id: hz-moss,    kind: video, seconds: 4, prompt: "macro of green moss cushion edge curving like a hill horizon against a soft pale sky, slow drift, photoreal"}
+  - {id: hz-agate,   kind: video, seconds: 4, prompt: "macro of a polished agate slice with a curved edge, magenta and teal banding, backlit, slow camera slide, photoreal"}
+  - {id: hz-tomato,  kind: video, seconds: 4, prompt: "slow camera glide along the curved edge of a ripe tomato skin against pure black, shallow depth of field, photoreal macro"}
+
+style:
+  preset: horizon
+  burst: [4, 26]
+  horizon_text_style: {gap_frac: 0.012, shadow: {blur: 0.012, alpha: 0.6, dy: 0.002}}
+  typography: {serif: [/Users/patricklai/promo-footage/fonts/SourceSerif4.ttf]}
+
+music:
+  asset: music-horizon-rise
+  bpm: 96
+  track_beat: 0.625
+  track_offset: 0.0
+  edit: {segments: [[0, 0, 32]], crossfade: 0.030, gains: [], silence_from_beat: 32}
+
+timeline: {bpm: 96, beats: 32}
+
+# One sentence across the cuts, wordless for the first 40% of the burst (reference), text only over generated plates (gate horizon-text-ui).
+horizon_text:
+  - {words: "Tell it",     beats: [14, 16]}
+  - {words: "at night.",   beats: [16, 18]}
+  - {words: "Wake up to",  beats: [18, 20]}
+  - {words: "merged PRs.", beats: [20, 26]}
+
+
+shots:
+- id: '01'
+  beats: [0, 4]
+  type: horizon
+  source: hz-dawn
+  t_in: 0.0
+  anchor:
+    src: [0.5, 0.52]
+    out_y: 0.47
+  w: [0.888, 0.799]
+- id: '02'
+  beats: [4.0, 5.0]
+  type: horizon
+  source: hz-sand
+  t_in: 0.4
+  anchor:
+    src: [0.5, 0.289]
+    out_y: 0.47
+  w: [0.602, 0.566]
+- id: '03'
+  beats: [5.0, 5.5]
+  type: horizon
+  source: hz2-citrus
+  t_in: 0.4
+  anchor:
+    src: [0.5, 0.559]
+    out_y: 0.47
+  w: [0.8, 0.752]
+- id: '04'
+  beats: [5.5, 6.0]
+  type: horizon
+  source: hz2-felt
+  t_in: 0.4
+  anchor:
+    src: [0.5, 0.511]
+    out_y: 0.47
+  w: [0.8, 0.752]
+- id: '05'
+  beats: [6.0, 7.0]
+  type: horizon
+  source: shot-10b-4k
+  t_in: 1.8
+  anchor:
+    src: [0.6, 0.775]
+    out_y: 0.47
+  w: [0.32, 0.304]
+- id: '06'
+  beats: [7.0, 7.5]
+  type: horizon
+  source: hz2-honeycomb
+  t_in: 0.4
+  anchor:
+    src: [0.5, 0.504]
+    out_y: 0.47
+  w: [0.8, 0.752]
+- id: '07'
+  beats: [7.5, 8.5]
+  type: horizon
+  source: hz2-leaf
+  t_in: 0.4
+  anchor:
+    src: [0.5, 0.456]
+    out_y: 0.47
+  w: [0.8, 0.752]
+- id: 08
+  beats: [8.5, 9.0]
+  type: horizon
+  source: hz2-ceramic
+  t_in: 0.4
+  anchor:
+    src: [0.5, 0.459]
+    out_y: 0.47
+  w: [0.8, 0.752]
+- id: 09
+  beats: [9.0, 10.0]
+  type: horizon
+  source: hz-ink
+  t_in: 0.4
+  anchor:
+    src: [0.5, 0.715]
+    out_y: 0.47
+  w: [0.527, 0.495]
+- id: '10'
+  beats: [10.0, 11.0]
+  type: horizon
+  source: shot-merged-drawer-dpr2
+  t_in: 0.8
+  anchor:
+    src: [0.76, 0.28]
+    out_y: 0.47
+  w: [0.46, 0.437]
+- id: '11'
+  beats: [11.0, 11.5]
+  type: horizon
+  source: hz3-plum
+  t_in: 0.4
+  anchor:
+    src: [0.5, 0.293]
+    out_y: 0.47
+  w: [0.61, 0.573]
+- id: '12'
+  beats: [11.5, 12.5]
+  type: horizon
+  source: hz3-peach
+  t_in: 0.4
+  anchor:
+    src: [0.5, 0.515]
+    out_y: 0.47
+  w: [0.8, 0.752]
+- id: '13'
+  beats: [12.5, 13.0]
+  type: horizon
+  source: hz3-mushroom
+  t_in: 0.4
+  anchor:
+    src: [0.5, 0.274]
+    out_y: 0.47
+  w: [0.571, 0.537]
+- id: '14'
+  beats: [13.0, 14.0]
+  type: horizon
+  source: hz3-blueberry
+  t_in: 0.4
+  anchor:
+    src: [0.5, 0.311]
+    out_y: 0.47
+  w: [0.649, 0.61]
+- id: '15'
+  beats: [14.0, 15.0]
+  type: horizon
+  source: hz2-marble
+  t_in: 0.4
+  anchor:
+    src: [0.5, 0.448]
+    out_y: 0.47
+  w: [0.8, 0.752]
+- id: '16'
+  beats: [15.0, 15.5]
+  type: horizon
+  source: hz2-bark
+  t_in: 0.4
+  anchor:
+    src: [0.5, 0.467]
+    out_y: 0.47
+  w: [0.8, 0.752]
+- id: '17'
+  beats: [15.5, 16.0]
+  type: horizon
+  source: hz2-salt
+  t_in: 0.4
+  anchor:
+    src: [0.5, 0.407]
+    out_y: 0.47
+  w: [0.8, 0.752]
+- id: '18'
+  beats: [16.0, 16.5]
+  type: horizon
+  source: hz2-copper
+  t_in: 0.4
+  anchor:
+    src: [0.5, 0.47]
+    out_y: 0.47
+  w: [0.8, 0.752]
+- id: '19'
+  beats: [16.5, 17.0]
+  type: horizon
+  source: hz3-plum
+  t_in: 2.6
+  anchor:
+    src: [0.5, 0.289]
+    out_y: 0.47
+  w: [0.602, 0.566]
+- id: '20'
+  beats: [17.0, 17.5]
+  type: horizon
+  source: hz3-obsidian
+  t_in: 0.4
+  anchor:
+    src: [0.5, 0.556]
+    out_y: 0.47
+  w: [0.8, 0.752]
+- id: '21'
+  beats: [17.5, 18.0]
+  type: horizon
+  source: hz3-brass
+  t_in: 0.4
+  anchor:
+    src: [0.5, 0.285]
+    out_y: 0.47
+  w: [0.595, 0.559]
+- id: '22'
+  beats: [18.0, 19.0]
+  type: horizon
+  source: hz-dawn
+  t_in: 2.2
+  anchor:
+    src: [0.5, 0.62]
+    out_y: 0.47
+  w: [0.703, 0.661]
+- id: '23'
+  beats: [19.0, 19.5]
+  type: horizon
+  source: hz3-blueberry
+  t_in: 2.8
+  anchor:
+    src: [0.5, 0.311]
+    out_y: 0.47
+  w: [0.649, 0.61]
+- id: '24'
+  beats: [19.5, 20.0]
+  type: horizon
+  source: hz2-honeycomb
+  t_in: 2.8
+  anchor:
+    src: [0.5, 0.504]
+    out_y: 0.47
+  w: [0.8, 0.752]
+- id: '25'
+  beats: [20.0, 20.5]
+  type: horizon
+  source: hz3-plum
+  t_in: 3.2
+  anchor:
+    src: [0.5, 0.289]
+    out_y: 0.47
+  w: [0.602, 0.566]
+- id: '26'
+  beats: [20.5, 21.0]
+  type: horizon
+  source: hz-sand
+  t_in: 2.8
+  anchor:
+    src: [0.5, 0.293]
+    out_y: 0.47
+  w: [0.61, 0.573]
+- id: '27'
+  beats: [21.0, 21.5]
+  type: horizon
+  source: hz3-mushroom
+  t_in: 2.8
+  anchor:
+    src: [0.5, 0.274]
+    out_y: 0.47
+  w: [0.571, 0.537]
+- id: '28'
+  beats: [21.5, 22.0]
+  type: horizon
+  source: hz2-copper
+  t_in: 2.8
+  anchor:
+    src: [0.5, 0.47]
+    out_y: 0.47
+  w: [0.8, 0.752]
+- id: '29'
+  beats: [22.0, 22.5]
+  type: horizon
+  source: hz-ink
+  t_in: 2.8
+  anchor:
+    src: [0.5, 0.326]
+    out_y: 0.47
+  w: [0.68, 0.639]
+- id: '30'
+  beats: [22.5, 23.0]
+  type: horizon
+  source: hz2-citrus
+  t_in: 2.8
+  anchor:
+    src: [0.5, 0.559]
+    out_y: 0.47
+  w: [0.8, 0.752]
+- id: '31'
+  beats: [23.0, 23.5]
+  type: horizon
+  source: hz2-salt
+  t_in: 2.8
+  anchor:
+    src: [0.5, 0.278]
+    out_y: 0.47
+  w: [0.579, 0.544]
+- id: '32'
+  beats: [23.5, 24.0]
+  type: horizon
+  source: hz3-brass
+  t_in: 2.8
+  anchor:
+    src: [0.5, 0.285]
+    out_y: 0.47
+  w: [0.595, 0.559]
+- id: '33'
+  beats: [24.0, 24.5]
+  type: horizon
+  source: hz2-bark
+  t_in: 2.8
+  anchor:
+    src: [0.5, 0.467]
+    out_y: 0.47
+  w: [0.8, 0.752]
+- id: '34'
+  beats: [24.5, 26.0]
+  type: horizon
+  source: shot-merged-drawer-dpr2
+  t_in: 4.2
+  anchor:
+    src: [0.76, 0.225]
+    out_y: 0.47
+  w: [0.46, 0.437]
+  text_over_ui: true
+- id: '35'
+  beats: [26, 32]
+  type: dawn
+  name: commission-ai
+  name_frac: 0.11
+  name_at: 0.3
+  name_y: 0.42
+  amber_at: 2.0
+  amber_s: 0.9
+  reach: [0.05, 0.32]
+
+sfx: {library: {}}
+
+mix:
+  sr: 48000
+  bus_db: {music: -3.0, sfx: -8.0, vo: 1.5}
+  vo_line_lufs: -16.0
+  duck: {db: 7.0, attack: 0.12, release: 0.35, pre: 0.12, post: 0.1}
+  fade_out: 0.03
+  masters:
+    - {name: web, suffix: "", lufs: -14.0, ceiling: -1.2, max_true_peak: -1.0}

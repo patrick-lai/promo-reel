@@ -19,6 +19,7 @@ from .cache import PKG, Stamps, code_hash, digest, file_sig
 from .spec import SpecError, load_spec
 
 QA_ONLY_KEYS = ("named", "contact_at")
+AUDIO_KEYS = ("audio",)         # shot `audio:` lines only change the clip-audio / events / mix steps, never the rendered picture
 SHOT_CODE = ["render", "overlays", "spec", "footage", "shots/__init__", "shots/clip", "shots/card", "shots/livestream", "livestream", "live2d"]
 
 
@@ -32,10 +33,17 @@ def shot_digest(spec, shot):
     clips = {cid: FT.verified_sha(spec, cid) for cid in sorted(FT.referenced(spec, {shot.id})) if os.path.exists(FT.clip_path(spec, cid))}
     plates = {k: v for k, v in (spec.raw.get("plates") or {}).items()}
     code = SHOT_CODE + (["shots/anime", "styles", "claims"] if shot.type == "anime" else [])
-    extra = []
+    if shot.type == "cinema":       # look defaults / serif fonts / claims come from the resolved preset
+        code = code + ["shots/cinema", "grade", "styles", "claims"]
+    if shot.type == "screen":       # cinema's copy / look code + the monitor tracker + the warp
+        code = code + ["shots/screen", "screentrack", "shots/cinema", "grade", "styles", "claims"]
+    extra = [spec.style, spec.raw.get("claims")] if shot.type in ("cinema", "screen") else []
     if shot.type == "anime":        # card text can come from claims tables; the band/typography from the resolved preset
         extra = [spec.style, spec.raw.get("claims"), spec.timeline.bpm]
-    cfg = {k: v for k, v in shot.cfg.items() if k not in QA_ONLY_KEYS}      # QA-only keys never force a re-render
+    if shot.type in ("horizon", "dawn"):    # the show-level horizon_text layer (drawn into every horizon shot) + the resolved preset
+        code = code + ["shots/horizon", "styles"]
+        extra = [spec.style, spec.raw.get("horizon_text"), spec.timeline.bpm]
+    cfg = {k: v for k, v in shot.cfg.items() if k not in QA_ONLY_KEYS + AUDIO_KEYS}      # QA-only / audio-only keys never force a re-render
     return digest(cfg, shot.n, spec.raw.get("style"), plates, spec.scale, spec.fps, clips, spec.raw.get("livestream"),
                   os.environ.get("PROMO_DEBUG") == "1",
                   code_hash(*code, extra_files=spec.plugins), *extra)
@@ -70,6 +78,10 @@ def plan(spec):
             models = {k: file_sig(A.asset_path(spec, cfg[k], man)) for k in ("model_asset", "voices_asset")}
             return digest(cfg, models, code_hash("vo"))
         add("vo", "vo", vo_dig, [vo.vo_json_path(spec)], lambda a: vo.run(spec))
+    from . import shot_audio
+    if shot_audio.has_lines(spec):                  # shot `audio:` lines: clip soundtrack extracted + normalised (cheap; picture untouched)
+        add("clip-audio", "clip_audio", lambda: digest(shot_audio.digest_parts(spec), code_hash("shot_audio")),
+            shot_audio.outputs(spec), lambda a: shot_audio.run(spec))
     if spec.raw.get("music"):                       # optional (a talk show may run without a music bed)
         add("music", "music", lambda: digest(spec.raw["music"], spec.raw.get("timeline"), file_sig(A.asset_path(spec, spec.raw["music"]["asset"])), code_hash("music")),
             [music_path(spec)], lambda a: music.run(spec))
@@ -88,7 +100,7 @@ def plan(spec):
     qa_free_shots = lambda: [{k: v for k, v in sh.items() if k not in QA_ONLY_KEYS} if isinstance(sh, dict) else sh
                              for sh in (spec.raw.get("shots") or [])] if spec.raw.get("shots") is not None else None
     add("events", "events", lambda: digest(qa_free_shots(), spec.raw.get("vo", {}).get("lines"), spec.raw.get("timeline"), spec.fps,
-                                          code_hash("events", "spec", "shots/clip", extra_files=spec.plugins)),
+                                          code_hash("events", "spec", "shots/clip", "shot_audio", extra_files=spec.plugins)),
         [events_path(spec)], lambda a: events.write_events(spec))
 
     def mix_dig():
@@ -97,11 +109,12 @@ def plan(spec):
         sfx_sigs = {n: file_sig(A.asset_path(spec, e["asset"], man)) for n, e in lib.items() if e.get("asset")}
         vj = os.path.join(spec.vo_dir, "vo.json")
         vo_sigs = {l["file"]: file_sig(os.path.join(spec.vo_dir, l["file"])) for l in json.load(open(vj))["lines"]} if os.path.exists(vj) else {}
-        return digest(spec.raw.get("mix"), spec.raw.get("sfx"), spec.duration, file_sig(events_path(spec)),
+        clip_sigs = {l["id"]: file_sig(l["file"]) for l in shot_audio.lines(spec)}
+        return digest(spec.raw.get("mix"), spec.raw.get("sfx"), spec.duration, file_sig(events_path(spec)), clip_sigs,
                       file_sig(music_path(spec)) if spec.raw.get("music") else None,
                       file_sig(vj), vo_sigs, sfx_sigs, code_hash("mix"))
     add("mix", "mix", mix_dig, [mix.master_path(spec, m["name"]) for m in spec.masters], lambda a: mix.run(spec),
-        deps=["sfx", "vo", "events"] + (["music"] if spec.raw.get("music") else []))
+        deps=["sfx", "vo", "events"] + (["clip-audio"] if shot_audio.has_lines(spec) else []) + (["music"] if spec.raw.get("music") else []))
     outs = [spec.output_path(m.get("suffix", "")) for m in spec.masters]
     add("assemble", f"assemble_{spec.OW}",
         lambda: digest({s.id: file_sig(spec.seg_path(s.id)) for s in spec.shots}, {m["name"]: file_sig(mix.master_path(spec, m["name"])) for m in spec.masters},
@@ -306,7 +319,7 @@ def build_parser():
     common = argparse.ArgumentParser(add_help=False)
     S = argparse.SUPPRESS
     common.add_argument("-p", "--project", default=S, help="path to promo.yaml (default ./promo.yaml)")
-    common.add_argument("--scale", type=int, choices=(1, 2), default=S, help="1 = 1080p, 2 = 2160p (also PROMO_SCALE)")
+    common.add_argument("--scale", type=float, choices=(0.5, 1, 2), default=S, help="0.5 = 540p draft for review rounds, 1 = 1080p, 2 = 2160p (also PROMO_SCALE)")
     common.add_argument("--force", action="store_true", default=S, help="ignore stamps, redo the step")
     common.add_argument("-v", "--verbose", action="store_true", default=S)
     common.add_argument("--debug", action="store_true", default=S, help="debug overlays (e.g. livestream keep-clear boxes); never for delivery")
@@ -321,9 +334,10 @@ def build_parser():
     n = add("new", "scaffold projects/<name>/ (or --dir)")
     n.add_argument("name")
     n.add_argument("--dir", help="explicit destination directory")
-    n.add_argument("--style", default="hero", help="style preset: hero | anime-opening | livestream (see `promo styles`)")
+    n.add_argument("--style", default="hero", help="style preset: hero | anime-opening | livestream | cinematic-story | horizon (see `promo styles`)")
     sub.add_parser("styles", help="list style presets (pacing, band, typography, transitions, checks)", parents=[common]).add_argument("--json", action="store_true")
     add("grid", "bar/beat table of the music grid (timeline.grid) with markers and phrase starts", True)
+    add("needs", "the handoff: what promo-reel still needs from the calling agent (footage to capture, plates to generate, human review)", False).add_argument("--json", action="store_true")
     add("assets", "validate the assets manifest and print a table", True)
     add("fetch", "download missing assets (sha256 verified)")
     ft = sub.add_parser("footage", help="footage manifest: verify | list | add", parents=[common])
@@ -345,6 +359,7 @@ def build_parser():
     q.add_argument("--json", action="store_true")
     add("sfx", "synthesise SFX wavs")
     add("vo", "render VO lines with Kokoro")
+    add("clip-audio", "extract + normalise the soundtrack of clips used by shot `audio:` lines")
     add("music", "edit the music on the beat grid")
     add("shot", "render shots").add_argument("ids", nargs="+")
     add("events", "write build/audio/events.json")
@@ -378,6 +393,12 @@ def build_parser():
     mp = add("mpeek", "grid of frames: out.png clip-id:t[:x0,y0,x1,y1] ...")
     mp.add_argument("out")
     mp.add_argument("specs", nargs="+")
+    sub.add_parser("watch", help="watch a video (file/URL): contact sheets, cut stills, transcript, audio + pacing metrics (see `promo watch -h`)")
+    sub.add_parser("gen", help="generated images/video for non-UI plates (backgrounds, transitions): detect | image | video | plan (see `promo gen -h`)")
+    sub.add_parser("brief", help="the locked brief (the user's exact words + references): init | show | check | confirm | conflict (see `promo brief -h`)")
+    sub.add_parser("screen-quad", help="track the monitor quad of a generated plate (clip id or file): per-second quads + debug PNG (see `promo screen-quad -h`)")
+    sub.add_parser("refs", help="study references for real: add (watch WITH transcript + scaffold DOSSIER.md) | check | show (see `promo refs -h`)")
+    sub.add_parser("compare-ref", help="draft vs each reference: sheet rows + metrics incl. speech/LUFS/tempo (see `promo compare-ref -h`)")
     sub.add_parser("rubric", help="PASS/FAIL of a scores file (or Zen review .md) against evals/rubric.yaml (see `promo rubric -h`)")
     sub.add_parser("live2d", help="Live2D host renderer: fetch | models | render | lag (see `promo live2d -h`)")
     return ap
@@ -392,6 +413,10 @@ def dispatch(spec, args):
     if c == "assets":
         r = cmd_assets(spec, args)
         return r, lambda r_: print_assets(r_, spec), 0 if r["ok"] else 1
+    if c == "needs":
+        from . import needs
+        needs.main(spec, getattr(args, "json", False))
+        return None, None, 0
     if c == "footage":
         r = cmd_footage(spec, args)
         return r, lambda r_: print_footage(args, r_), 0 if r["ok"] else 1
@@ -440,7 +465,7 @@ def dispatch(spec, args):
     if c == "grid":
         r = cmd_grid(spec, args)
         return r, print_grid, 0 if r["ok"] else 1
-    if c in ("sfx", "vo", "music", "mix", "build", "events", "shot", "assemble", "contact"):
+    if c in ("sfx", "vo", "clip-audio", "music", "mix", "build", "events", "shot", "assemble", "contact"):
         from .lock import heavy_lock
         with heavy_lock(f"promo {c}"):          # shared with Commission-ai cargo test gates: never overlap a render and a test gate
             return _dispatch_heavy(spec, args, c)
@@ -448,7 +473,7 @@ def dispatch(spec, args):
 
 
 def _dispatch_heavy(spec, args, c):
-    if c in ("sfx", "vo", "music", "mix", "build", "events", "shot"):
+    if c in ("sfx", "vo", "clip-audio", "music", "mix", "build", "events", "shot"):
         A.gate(spec)          # licence gate: music/vo_model/sfx must carry licence + source_url
     if c == "shot":
         FT.gate(spec, set(args.ids))      # clips used by these shots exist and match their sha256
@@ -458,7 +483,11 @@ def _dispatch_heavy(spec, args, c):
             _step(spec, args, f"shot {sid}")
     elif c == "build":
         do_build(spec, args)
-    elif c in ("sfx", "vo", "music", "events", "mix", "assemble", "contact"):
+    elif c in ("sfx", "vo", "clip-audio", "music", "events", "mix", "assemble", "contact"):
+        if c == "clip-audio" and not any(st["name"] == c for st in plan(spec)):
+            raise SpecError("no shot has an `audio:` key")
+        if c == "mix" and any(st["name"] == "clip-audio" for st in plan(spec)):
+            _step(spec, args, "clip-audio")          # the mix places the clip WAVs: make sure they are current
         _step(spec, args, c)
     return None, None, 0
 
@@ -468,6 +497,34 @@ def main(argv=None):
     if argv[:1] == ["live2d"]:          # `promo live2d ...` does not need a promo.yaml
         from . import live2d
         return live2d.main(argv[1:])
+    if argv[:1] == ["watch"]:           # `promo watch <url|file> [--out DIR]`: frames, cuts, transcript, audio metrics of any video
+        from . import watch
+        import argparse as _ap
+        w = _ap.ArgumentParser(prog="promo watch", description=watch.__doc__, formatter_class=_ap.RawDescriptionHelpFormatter)
+        w.add_argument("src", help="video file or URL (yt-dlp)")
+        w.add_argument("--out", help="output dir (default build/watch/<id>)")
+        w.add_argument("--thresh", type=float, default=0.28, help="scene-cut threshold (0-1, lower = more cuts)")
+        a = w.parse_args(argv[1:])
+        rep = watch.run(a.src, a.out, a.thresh)
+        print(f"{rep['out']}/WATCH.md  ({rep['n_cuts']} cuts, {rep['duration']:.1f}s)")
+        return 0
+    if argv[:1] == ["screen-quad"]:     # `promo screen-quad <plate-clip-id|file> [-p promo.yaml]`: track a plate's monitor quad, print it, draw a debug PNG
+        from . import screentrack
+        return screentrack.main(argv[1:])
+    if argv[:1] == ["gen"]:             # `promo gen detect|image|video|plan`: generated NON-UI plates via the logged-in grok / codex CLIs
+        from . import genvideo as G
+        return G.main(argv[1:])
+    if argv[:1] == ["brief"]:           # `promo brief init|show|check|confirm|conflict --project projects/<name>` (no promo.yaml needed)
+        from . import brief
+        return brief.main(argv[1:])
+    if argv[:1] == ["refs"]:            # `promo refs add|check|show --project projects/<name>`
+        from . import refs
+        return refs.main(argv[1:])
+    if argv[:1] == ["compare-ref"]:     # `promo compare-ref <draft.mp4> --project projects/<name>`
+        from . import compare_ref
+        from .lock import heavy_lock
+        with heavy_lock("promo compare-ref"):       # ffmpeg frame grabs, cut detection, whisper
+            return compare_ref.main(argv[1:])
     if argv[:1] == ["rubric"]:          # `promo rubric <scores>`: PASS/FAIL against evals/rubric.yaml (no promo.yaml needed)
         from . import rubric
         return rubric.main(argv[1:])

@@ -85,10 +85,15 @@ def _anime_effective_dpr(spec, warns, limit=1.5):
     for w in warns:
         sid = w.split(":")[0].replace("shot ", "")
         s = next((x for x in spec.shots if x.id == sid), None)
-        if s is None or s.type != "anime":
+        if s is None or s.type not in ("anime", "cinema", "screen"):
             out.append(w)
             continue
-        from .shots.anime import viewport
+        if s.type == "cinema":
+            from .shots.cinema import viewport
+        elif s.type == "screen":
+            from .shots.screen import viewport
+        else:
+            from .shots.anime import viewport
         vp = viewport(spec, s)
         mag = FT.max_magnification(s) * (vp[2] - vp[0]) / 1920
         if mag > limit:
@@ -213,6 +218,9 @@ def run(spec):
     rep.add("caption-zone", "FAIL" if zones else "PASS", "; ".join(zones) if zones else "all caption pills inside the safe zone")
 
     # 7b. style-preset gates (anime-opening: bar cuts, holds, band, UI-clear cards, fx at cuts, claims, markers ...)
+    from . import genvideo
+    for g, st_, msg in genvideo.plate_gate(spec):
+        rep.add(g, st_, msg)
     from . import style_check
     for g, st_, msg in style_check.run(spec):
         rep.add(g, st_, msg)
@@ -226,6 +234,11 @@ def run(spec):
     # (folded in from the hero's per-project tools), plus the WARN-only text-edge / empty-frame / caption-truth / long-hold
     from . import generic_check as GC
     for gate, status, msg in GC.run(spec, ctx):
+        rep.add(gate, status, msg)
+
+    # 7d. project-level: the locked brief, reference dossiers, intent review of the newest round (promo/brief.py, promo/refs.py)
+    from . import brief as BRIEF
+    for gate, status, msg in BRIEF.gates(spec):
         rep.add(gate, status, msg)
 
     # 8. contact sheet
@@ -281,6 +294,11 @@ def run(spec):
                 if w > maxw_:
                     bad.append(f"{sid}: WER {w:.2f} (heard {txt!r})")
             rep.add("vo-script", "FAIL" if bad else "PASS", "; ".join(bad) if bad else f"{len(lines)} lines match the script (WER <= {maxw_})")
+
+    # 9b. shot audio (clip soundtrack lines, promo/shot_audio.py): clips present with sound, vo-bus overlaps, ASR read-back
+    from . import shot_audio
+    for gate, status, msg in shot_audio.check(spec, stamps, qa):
+        rep.add(gate, status, msg)
 
     # 10. stale check: steps whose stamped input digest no longer matches (same logic as `promo status`)
     from .cli import cmd_status

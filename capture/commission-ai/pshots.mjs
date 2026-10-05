@@ -8,6 +8,7 @@ const NO_TOASTS = CSS.NO_TOASTS; // every pshots take hides the Sonner toaster (
 const log = (o) => fs.appendFileSync(`${FOOT}/capture-log.jsonl`, JSON.stringify({ at: new Date().toISOString(), commit: COMMIT, ...o }) + "\n");
 const b = await launch();
 async function start(opts = {}) {
+  if (process.env.DPR) opts = { ...opts, dpr: Number(process.env.DPR) }; // host-load fallback: force DPR (e.g. 1)
   const r = await open(b, { clock: "paused", q: "?demo=promo", css: NO_TOASTS, ...opts });
   r.page.setDefaultTimeout(240000); r.page.on("pageerror", (e) => console.log("PAGEERR", String(e).slice(0, 200)));
   await r.page.waitForTimeout(9000); await dismiss(r.page);
@@ -327,6 +328,31 @@ Object.assign(shots, {
     const m = await rec.record("shot-12-dpr2" + SFX, F(5.5), async () => {}, { poster: F(3) });
     log({ shot: "shot-12-dpr2" + SFX, frames: m, url: "?demo=promo", startMs: clicked + 300, prefs: { conversationWidth: 940 }, framing: "DPR2, clip x290 y0 960x540 CSS (2x) on the conversation pane", scenario: "reviewer thread for PAY-104 / PR #432 opened from the drawer's 'Review thread' at 26.6 s: 'Approved. Cart summary uses the pricing engine matches the plan...' + '1 task approved'" });
     log({ shot: "shot-12-dpr2-pre" + SFX, frames: n, url: "?demo=promo", startMs: s, framing: "DPR2 full frame (no clip)", scenario: "PAY-104 drawer, In review, before the Review thread click (25.2-26.6 s)" });
+  },
+
+  // merged-drawer: PAY-104 drawer opened at 9 s (as shot 08), held until the stepper reaches Merged (~31-32 s); DPR2, CLIP env = CSS rect (16:9)
+  async "merged-drawer"() {
+    const { p, rec } = await start({ dpr: 2 });
+    await rec.skip(9000);
+    await clickAt(p, p.locator("[aria-label^='PAY-104 ']:not([data-session-navigation])").first());
+    await rec.skip(Number(process.env.T0 || 29500) - rec.ms);
+    if (DRY) { for (const t of [29500, 30500, 31000, 31500, 32000, 33000, 35000]) { await rec.skip(t - rec.ms); await snap(p, rec, "dmd-" + t); } return; }
+    const C = process.env.CLIP ? JSON.parse(process.env.CLIP) : { x: 960, y: 0, width: 960, height: 540 }; const OUT = process.env.OUT || "shot-merged-drawer-dpr2";
+    rec.clip = { ...C, scale: 1920 / C.width };
+    const s = rec.ms;
+    const n = await rec.record(OUT, F(Number(process.env.SECS || 6)), async () => {}, { poster: F(4) });
+    log({ shot: OUT, frames: n, url: "?demo=promo", startMs: s, framing: `DPR2, clip ${JSON.stringify(C)} CSS (${(1920 / C.width).toFixed(2)}x)`, scenario: "PAY-104 drawer opened by clicking its node at 9.0 s; recording across PAY-104 PR #432 merge (stepper -> Merged)" });
+  },
+  // merged-board: board with at least one ticket Merged / '1 of 8 done' (PAY-103 lands ~29 s, PAY-104 ~32 s); DPR2, CLIP env
+  async "merged-board"() {
+    const { p, rec } = await start({ dpr: 2 });
+    await rec.skip(Number(process.env.T0 || 28500) - rec.ms);
+    if (DRY) { for (const t of [28500, 29500, 31000, 33000, 35000]) { await rec.skip(t - rec.ms); await snap(p, rec, "dmb-" + t); } return; }
+    const C = process.env.CLIP ? JSON.parse(process.env.CLIP) : { x: 0, y: 0, width: 1920, height: 1080 }; const OUT = process.env.OUT || "shot-merged-board-dpr2";
+    rec.clip = { ...C, scale: 1920 / C.width };
+    const s = rec.ms;
+    const n = await rec.record(OUT, F(Number(process.env.SECS || 6)), async () => {}, { poster: F(4) });
+    log({ shot: OUT, frames: n, url: "?demo=promo", startMs: s, framing: `DPR2, clip ${JSON.stringify(C)} CSS (${(1920 / C.width).toFixed(2)}x)`, scenario: "board across PAY-103 / PAY-104 landing (done count 1/8 -> 2/8)" });
   },
 
   // talk-dag: ?demo=1&still=1 Board graph, full window, in-app zoom, DPR2 tight clip on PAY-101..104 + wave headings; 6 s hold with a slow pan

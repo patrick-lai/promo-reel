@@ -22,7 +22,7 @@ DEFAULT_FONT = "/usr/share/fonts/truetype/sand-box/google/Inter/Inter-VariableFo
 
 @dataclass
 class RenderContext:
-    K: int = 1
+    K: float = 1
     fps: int = 30
     font_path: str = DEFAULT_FONT
     font_fallbacks: list = field(default_factory=list)
@@ -32,11 +32,11 @@ class RenderContext:
 
     @property
     def OW(self):
-        return 1920 * self.K
+        return int(1920 * self.K)
 
     @property
     def OH(self):
-        return 1080 * self.K
+        return int(1080 * self.K)
 
     def with_scale(self, k):
         c = RenderContext(**{**self.__dict__})

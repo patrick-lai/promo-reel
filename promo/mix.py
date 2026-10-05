@@ -4,7 +4,9 @@ Inputs: build/audio/events.json, build/audio/music-edit.wav, SFX wavs (assets), 
 Spec (mix:): sr, bus_db {music, sfx, vo}, vo_line_lufs, duck {db, attack, release, pre, post}, fade_out, masters [...]
 SFX library entries may carry `duck_music: {db, dur}` (music dips under that SFX); `typing` entries use
 {variants, gain_jitter [lo, hi], pan_jitter, seed} with ONE seeded rng consumed in event order (same as legacy).
-Outputs: build/audio/mix-<master>.wav, build/audio/stems/{music,sfx,vo}.wav, build/audio/mix-report.json
+Clip audio (events.json `clips`, promo/shot_audio.py): bus vo is placed in the vo stem and ducks music (+ sfx by duck.clip_sfx_db);
+bus amb is gain only (bus_db.amb, own stem). mix-report.json `clips` lists each line's measured lufs / peak after its db.
+Outputs: build/audio/mix-<master>.wav, build/audio/stems/{music,sfx,vo[,amb]}.wav, build/audio/mix-report.json
 """
 from __future__ import annotations
 
@@ -47,6 +49,11 @@ def smooth(gain, att, rel, SR):
         s = tgt + (s - tgt) * (c ** 48)
         out[i:i + 48] = s
     return out
+
+
+def _lufs(x, sr):
+    from .shot_audio import lufs_of
+    return lufs_of(x, sr)
 
 
 def true_peak(x):
@@ -149,13 +156,29 @@ def run(spec, force=False):
             x = np.repeat(x, 2, 1)
         place(vo, x, t)
         vo_marks.append((t, t + len(x) / SR, str(line.get("id", line["shot"])), line["text"]))
+    # clip audio (shot `audio:` lines, promo/shot_audio.py): bus vo = like a VO line (ducks music + sfx, vo stem), bus amb = gain only
+    amb = np.zeros((N, 2))
+    clip_marks, clip_log = [], []
+    for c in ev.get("clips", []):
+        x = load(os.path.join(spec.build, c["file"]), SR) * db(c.get("db", 0.0))
+        if c["bus"] == "amb":
+            place(amb, x, c["t"])
+        else:
+            place(vo, x, c["t"])
+            clip_marks.append((c["t"], c["t"] + len(x) / SR))
+        clip_log.append(dict(id=c["id"], shot=c.get("shot"), bus=c["bus"], t=c["t"], dur=round(len(x) / SR, 3), db=c.get("db", 0.0),
+                             lufs=round(float(_lufs(x[:, :1], SR)), 2), peak_db=round(float(20 * np.log10(np.abs(x).max() + 1e-12)), 2)))
     # music ducking under VO (and under SFX with duck_music)
     dk = cfg.get("duck", {})
     duck_db, att, rel = dk.get("db", 7.0), dk.get("attack", 0.12), dk.get("release", 0.35)
     pre, post = dk.get("pre", 0.12), dk.get("post", 0.1)
     g = np.zeros(N)
+    gs = np.zeros(N)                                 # sfx duck under clip dialogue (mix.duck.clip_sfx_db, default 4 dB)
     for t0, t1, *_ in vo_marks:
         g[int(max(0, t0 - pre) * SR): int(min(dur, t1 + post) * SR)] = duck_db
+    for t0, t1 in clip_marks:
+        g[int(max(0, t0 - pre) * SR): int(min(dur, t1 + post) * SR)] = duck_db
+        gs[int(max(0, t0 - pre) * SR): int(min(dur, t1 + post) * SR)] = dk.get("clip_sfx_db", 4.0)
     for e in ev["sfx"]:
         d = (lib.get(e["sfx"]) or {}).get("duck_music")
         if d:
@@ -163,12 +186,17 @@ def run(spec, force=False):
             g[a:b] = np.maximum(g[a:b], d["db"])
     duck = smooth(g, att, rel, SR)
     music_d = music * db(-duck)[:, None]
-    BUS = {"music": -5.0, "sfx": -8.0, "vo": 1.5}
+    if clip_marks:
+        sfx = sfx * db(-smooth(gs, att, rel, SR))[:, None]
+    BUS = {"music": -5.0, "sfx": -8.0, "vo": 1.5, "amb": 0.0}
     BUS.update(cfg.get("bus_db", {}))
-    mix = music_d * db(BUS["music"]) + sfx * db(BUS["sfx"]) + vo * db(BUS["vo"])
+    mix = music_d * db(BUS["music"]) + sfx * db(BUS["sfx"]) + vo * db(BUS["vo"]) + amb * db(BUS["amb"])
     sd = os.path.join(spec.audio_dir, "stems")
     os.makedirs(sd, exist_ok=True)
-    for nm, x in [("music", music_d), ("sfx", sfx * db(BUS["sfx"])), ("vo", vo * db(BUS["vo"]))]:
+    stems = [("music", music_d), ("sfx", sfx * db(BUS["sfx"])), ("vo", vo * db(BUS["vo"]))]
+    if any(c["bus"] == "amb" for c in ev.get("clips", [])):
+        stems.append(("amb", amb * db(BUS["amb"])))
+    for nm, x in stems:
         sf.write(os.path.join(sd, f"{nm}.wav"), x.astype(np.float32), SR, subtype="FLOAT")
     out = {}
     fade = cfg.get("fade_out", 0.03)
@@ -180,5 +208,5 @@ def run(spec, force=False):
         out[m["name"]] = dict(lufs=round(float(L), 2), dbtp=round(float(tp), 2))
         print("master", m["name"], out[m["name"]], flush=True)
     with open(os.path.join(spec.audio_dir, "mix-report.json"), "w") as f:
-        json.dump(dict(master=out, sfx=log, vo=vo_marks, bus_db=BUS, duck_db=duck_db), f, indent=1)
+        json.dump(dict(master=out, sfx=log, vo=vo_marks, bus_db=BUS, duck_db=duck_db, **(dict(clips=clip_log) if clip_log else {})), f, indent=1)
     return out

@@ -1,0 +1,18 @@
+# Every asset needs a licence. music / vo_model / sfx also need source_url (hard gate for build/mix/check).
+assets:
+  - id: music-track
+    kind: music
+    path: media/music/track.mp3
+    # fetch_url: https://...        # `promo fetch` downloads it when missing
+    # sha256: ...                   # verified after download
+    licence: "FILL ME IN (e.g. Pixabay Content License)"
+    source_url: "https://FILL-ME-IN"
+    redistributable: false
+    notes: never commit the audio file; a soft pulse around 120 BPM suits this style
+  - id: font-serif
+    kind: font
+    path: /System/Library/Fonts/NewYork.ttf
+    licence: "FILL ME IN: Apple New York ships with macOS; confirm it may appear in a published video, or point style.typography.serif_fonts at an OFL serif (Source Serif, EB Garamond)"
+    source_url: "https://FILL-ME-IN"
+    redistributable: false
+    notes: title and lower-third copy (promo/shots/cinema.py falls back to Georgia / Times New Roman / DejaVu Serif)

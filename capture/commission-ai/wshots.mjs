@@ -7,7 +7,7 @@ const F = (s) => Math.round(s * 60);
 const q = `?demo=promo&view=workshop&workshop=fast&workshopHour=${hour}${extra}`;
 const b = await launch();
 try {
-  const { page: p } = await open(b, { q, clock: true, seed: true, time: "2026-10-01T22:40:00+10:00", prefsExtra: { workshopQuality: "hd" } });
+  const { page: p } = await open(b, { q, clock: true, seed: true, time: "2026-10-01T22:40:00+10:00", prefsExtra: { workshopQuality: "hd" }, dpr: Number(process.env.DPR || 1) });
   p.setDefaultTimeout(240000); p.on("pageerror", (e) => console.log("PAGEERR", String(e).slice(0, 200)));
   await p.waitForTimeout(Number(settle)); await dismiss(p);
   const rec = new Recorder(p); await rec.begin();

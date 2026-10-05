@@ -33,7 +33,7 @@ tests/                    fast unit tests (.venv/bin/python tests/test_<name>.py
 
 ## CLI
 ```
-promo new <name> [--style hero|anime-opening|livestream]   scaffold projects/<name>/ for a style preset
+promo new <name> [--style hero|anime-opening|livestream|cinematic-story|horizon]   scaffold projects/<name>/ for a style preset
 promo styles                             list style presets (pacing, band, typography, transitions, checks)
 promo -p projects/<name>/promo.yaml <cmd>
   status [--json]                        what is up to date, stale or missing, step by step
@@ -50,7 +50,10 @@ promo -p projects/<name>/promo.yaml <cmd>
   compare <ref.mp4> [--json]             per-shot PSNR + audio diff against a reference render
   peek <clip> <t> [box] | segpeek <shot> [t..] | mpeek out.png clip:t[:box] ...   framing helpers (build/peek/)
   --scale 2                              3840x2160 from the same spec (needs DPR2 sources to be sharp)
-promo rubric <scores.yaml|review.md> [--json]   PASS/FAIL of a review against evals/rubric.yaml (exit 1 on FAIL)
+promo brief init|show|check|confirm|conflict --project projects/<name>   the locked brief: the user's verbatim request, references + why, must-have/must-not, conflicts and their decisions (STEP 0)
+promo refs add <url|file> --project projects/<name> [--id ID --why "..."] | check | show   watch a reference WITH transcript + audio, scaffold DOSSIER.md; check = dossier complete
+promo compare-ref <draft.mp4> --project projects/<name>   reference row above draft row + metrics (cuts/s, median shot, LUFS, tempo, speech) -> out/compare/
+promo rubric <scores.yaml|review.md> [--json] [--legacy]   PASS/FAIL of a review against evals/rubric.yaml (exit 1 FAIL, 3 INCOMPLETE = hard gates intent/reference not scored)
 promo live2d fetch | models | render --model hiyori --wav a.wav --out a.mov | lag    Live2D hosts (prototype, live2d/README.md)
 ```
 
@@ -77,6 +80,12 @@ With `--json`, only JSON goes to stdout and it always has `ok`; logs go to stder
 
 Builds are **idempotent**. Each step stamps a hash of its inputs (spec subtree, input files, code, scale) and is skipped when nothing has changed. Editing one shot re-renders only that shot, then re-runs events, mix and assemble only if their inputs changed.
 
+## Watch, ask, generate (agent tools)
+- `promo watch <url|file>`: download (yt-dlp) and "watch" any video: time-stamped contact sheets, a still per cut, shot table, cut-rate curve, loudness/tempo, optional transcript (`PROMO_WATCH_ASR=0` skips it). Use it on the reference AND on your own draft, compare the numbers.
+- `promo -p <promo.yaml> needs [--json]`: the handoff. promo-reel lists what it still needs (real footage to capture, plates to generate, human review) and the command that ingests each answer; the calling agent decides how (its own tools, grok, codex, a human).
+- `promo gen plan|register|detect|image|video`: generated images/video for NON-UI plates only (backgrounds, transitions, textures). `register` ingests an agent-supplied file (corner-watermark crop, `generated:` manifest entry); `promo check` fails a generated clip on a UI shot.
+- `--scale 0.5` renders a 540p draft for review rounds; `python -m promo.score <name> out.wav` makes the original (CC0) scores. Council loop: `evals/council.md`.
+
 ## Style presets
 `style: {preset: <name>}` in promo.yaml (or `promo new <name> --style <name>`) pulls in a named bundle of editorial
 rules; anything the spec sets under `style:` wins (deep merge). `promo styles` prints them (`promo/styles.py`).
@@ -86,6 +95,7 @@ rules; anything the spec sets under `style:` wins (deep merge). `promo styles` p
 | (none) / `hero` | calm product hero: eased push-ins on real UI, dark caption pills in one fixed lower-middle zone held >= 2 s, cuts on beats | the base gates + the generic gates below |
 | `anime-opening` | kinetic title cards on real footage: cuts on bar lines from a music grid (`timeline.grid`), UI shots >= 1 bar, cards >= 1 bar in ONE fixed lower band (`band.frac`, 15 %) that never covers app text, flashes / speed lines only at cuts; shot type `anime` | grid, bar-cuts, shot-hold, card-hold, card-band, card-ui-clear, fx-between, flash-rate, claims, named, markers, placeholders |
 | `livestream` | talk show / livestream composite (shot type `livestream`, Live2D hosts beside the app screen): long holds, chyron band, cuts only | shot-hold (>= 4 s), no-fx + the `livestream-*` gates |
+| `horizon` | Opus-5.5-style horizon film (shot types `horizon`, `dawn`): rapid cuts of real surfaces each framed on a real edge (`anchor`), ONE serif line on the horizon (show-level `horizon_text`) whose words change across cuts, a burst then a hold >= 3 s, a held dawn end card; cuts only | horizon-shot-hold, horizon-cuts, horizon-burst-hold, horizon-text, horizon-text-fit, horizon-edge, horizon-transitions, horizon-dawn, horizon-text-ui, horizon-wordless-open, horizon-sky |
 
 Claim tables (`claims:`, `promo/claims.py`) pick a card / caption line from the legibility record of the evidence shot,
 so a number on screen can never outrun the frame (`text_from: claims.<table>`; `confirm: <who>` marks provisional copy).
@@ -118,12 +128,17 @@ so it may wait for other heavy jobs. Talk-show tests and specs read the hero foo
 | freshness | WARN if an output is stale against its inputs |
 | style: anime-opening | grid (music JSON present, no drift); bar-cuts (cuts on bar lines, half bars only beside text-free shots; cards start on bars); shot-hold (UI >= 1 bar, text-free >= 1/2 bar, `ui:` set); card-hold (>= 1 bar, words >= 0.6 s); card-band (one fixed band, no per-card positions or free overlays); card-ui-clear (no card over `ui_text`, UI shots framed above the band); fx-between (fx_in/fx_out only, <= 6 frames, never full-frame on UI shots); flash-rate (<= 3/s); claims (numbers come from claim tables or cite evidence); named (app text a card names, `named:` boxes, renders >= 18 px cap height at 1080p; `named-upscale` WARNs above 1.0x); markers (listed grid markers land on cuts); placeholders (WARN) |
 | style: livestream | shot-hold (>= 4 s), no-fx |
+| style: horizon | horizon-shot-hold (each shot >= 0.3 s FAIL, < 0.4 s WARN); horizon-cuts (whole beats, half beats only inside the burst window); horizon-burst-hold (the burst is followed by one shot held >= 3 s); horizon-text (each word spans >= 2 shots or >= 1.2 s, >= 0.5 s, never overlapping, only over horizon shots, no per-shot overlays); horizon-text-fit; horizon-edge (anchored camera box stays inside the source, sky only above the top edge and < 60 %); horizon-transitions (cut only unless `transitions.allowed` lists flash_dip); horizon-dawn (end card held >= 3 s, has a name); horizon-text-ui (FAIL: no word over real app footage unless the shot sets `text_over_ui: true`); horizon-wordless-open (WARN: no word in the first 40 % of the burst); horizon-sky (WARN: flat sky > 8 % of the frame height) |
 | named (every project) | text a caption / card / VO line names (`named:` boxes on the shot, QA-only: never forces a re-render) renders under 18 px cap height at 1080p or is not fully in frame; `named-upscale` WARNs above 1.0x. Anime shots use the anime gate, livestream shots `livestream-named`; clip / plugin shots (the hero) use the generic one (`t` may be a list of shot-local times; `info: true` rows are reported, not gated). Folded in from the hero's `tools/named_v5.py` |
 | claims (every project) | projects whose preset does not run it (no preset = the hero): `promo.claims.audit` on the claim tables, every `text_from` resolves, and a literal caption that is a claim-table row must be the row the table selects. Folded in from the hero's `tools/claims_v5.py` |
 | text-edge (WARN) | text or cards clipped by the output frame / crop edge: a `named` box crossing the crop, or, on UI shots, glyph-sized ink touching the left / right footage viewport edge (the anime band, the livestream screen; 32 px corners ignored) at the same spot on >= 2 of 3 sampled frames. More than 3 spots on one edge = a push-in cropping a whole pane, treated as framing. `edges: [top, bottom]` opts in to the stroke test on those edges |
 | empty-frame (WARN) | a UI shot whose largest flat region (blurred blocks, so dotted canvas counts) of one background level, not counting blocks next to content, is over `max_frac` (40 %) of the footage viewport. Scenery captures (`non_ui_capture`: Workshop / Outside views), shots with no footage and `ui: false` shots are skipped |
 | caption-truth (WARN) | a caption / card count claim ('8 TASKS', 'ALL LANDED', '3 AGENTS') disagrees with the claim table it selects from or with the footage manifest notes of the clip on screen, or nothing backs it |
 | long-hold (WARN) | the footage viewport does not change (<= 0.05 % of pixels move > 10 levels at 384 px wide, so typing and badge flips count as change) for longer than `max_s` (hero 3.5 s, anime-opening 2.8 s, livestream 6 s; specs with a `livestream:` block and no preset use livestream). Cards, credits and blank screens are skipped |
+
+| brief (every project with `brief.yaml`) | `brief.yaml` is missing, `intent_verbatim` is empty, a reference has no `why`, a conflict is still `pending` or has no `decided_by`. WARN when not human-confirmed (or edited since). A project without `brief.yaml` WARNs, and FAILs when `style.require_brief: true` |
+| references | a reference listed in the brief has no `reference/<id>/DOSSIER.md`, a `TODO:` remains, a section is empty, contact sheets / transcript.json / audio metrics are missing, an Evidence read box is unticked, or a NOT-transferable item has no `conflicts` entry (`ref: <id>`) |
+| intent-review | the newest `rounds/<n>/decision.md` lacks the `intent-check: intent_sha=<hash> verdict=YES|PARTIAL|NO intent=<n> reference=<n>` line from the Intent & Reference lens, quotes another intent hash, or says NO / a score under the rubric's hard_min (PARTIAL WARNs) |
 
 The four WARN rules are configured per preset in `promo/generic_check.py` (`WARN_RULES`) and per project with
 `qa: {warn_rules: {long_hold: {max_s: 5}, text_edge: {on: false}, ...}}`. Frame sampling (ffmpeg `-threads 2`) runs
@@ -138,13 +153,20 @@ inside `promo check`'s hold of the shared cargo lock.
 transcript, and the copy / footage manifests / Zen reviews named under `critique:` in promo.yaml. It calls no model.
 
 The rubric is **Zen UX Designer's**, versioned in [`evals/rubric.yaml`](evals/rubric.yaml) (BRIEF.md reads it; override
-with `critique.rubric:` or `$PROMO_RUBRIC`): seven 1-5 scores (hook, legibility, story, pacing, calm, style, polish)
-plus Truth PASS/FAIL. **Pass bar:** average >= 4.2, no score under 3, Truth PASS. `promo rubric <scores>` computes
+with `critique.rubric:` or `$PROMO_RUBRIC`): nine 1-5 scores (intent, reference, hook, legibility, story, pacing, calm, style, polish)
+plus Truth PASS/FAIL. **Pass bar:** intent >= 4 and reference >= 4 (hard gates), average >= 4.2, no score under 3, Truth PASS. `promo rubric <scores>` computes
 the verdict from a YAML/JSON scores file or a review in Zen's markdown format (e.g. `projects/commission-ai-anime/reviews/zen-v9.md`
 -> 4.29 PASS); `promo.rubric.evaluate()` is the same in code. Bump `version` (+ changelog) when the rubric changes.
+
+**Rubric v2 (hard gates).** `intent` ("would the person who wrote the request say this is what they asked for, in their words?") and
+`reference` ("does it feel like the supplied references in narrative, people, motion, light, sound and pacing, not just look?") come first.
+`pass.hard_min: {intent: 4, reference: 4}` cannot be averaged away. A v1 review (seven scores) still parses; its missing gates are reported as
+"not evaluated" and the verdict is INCOMPLETE (exit 3), never PASS (`--legacy` for archived reviews). The council's first lens
+(`evals/council.md`) judges these two against `projects/<name>/brief.yaml`, the reference dossiers and `promo compare-ref`; `promo critique-pack`
+copies all three into the pack and lists both as hard gates in BRIEF.md.
 
 ## Licences
 Music is **never committed**: for example, the Pixabay Content License forbids redistributing the file standalone. `assets.yaml` holds the track page, licence, `fetch_url` and `sha256`; run `promo fetch`. The Kokoro VO model is Apache-2.0 and fetched the same way. SFX are synthesised by `promo sfx` (no samples). Raw footage stays on the box and is tracked by sha256 in the footage manifest. It never goes in git, including Git LFS.
 
 ## Team rules
-Real footage only. Never edit the app's UI in post; reshoot instead. No invented claims. Licensed audio only. A human approves before anything is published. See [`AGENTS.md`](AGENTS.md).
+Real footage only. Never edit the app's UI in post; reshoot instead. No invented claims. Licensed audio only. The user's verbatim brief and references (dossiers read from transcript + audio) outrank an agent's summary. A human approves before anything is published. See [`AGENTS.md`](AGENTS.md).

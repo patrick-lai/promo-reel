@@ -8,7 +8,9 @@ import { COMMIT, capInfo } from "./lib.mjs";
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 export const FOOT = path.resolve(process.env.FOOTAGE_DIR || path.join(REPO, "..", "videos/commission-ai-promo/footage/v1-1080"));
 // Output is always 1920x1080: fit inside (no stretch) and pad, so a non-16:9 clip is letterboxed instead of distorted. Same string in enc.sh.
-export const VF = "scale=1920:1080:force_original_aspect_ratio=decrease:flags=lanczos,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1";
+// OUT_W (default 1920; 3840 = native 4K): output width, 16:9. Clip scales are multiplied by OUT_W/1920 so the browser re-rasterises at that size (no upscale).
+export const OUT_W = Number(process.env.OUT_W || 1920), OUT_H = Math.round(OUT_W * 9 / 16), K = OUT_W / 1920;
+export const VF = `scale=${OUT_W}:${OUT_H}:force_original_aspect_ratio=decrease:flags=lanczos,pad=${OUT_W}:${OUT_H}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1`;
 const stable = (v) => (Array.isArray(v) ? `[${v.map(stable).join(",")}]` : v && typeof v === "object" ? `{${Object.keys(v).sort().map((k) => JSON.stringify(k) + ":" + stable(v[k])).join(",")}}` : JSON.stringify(v ?? null));
 export const paramsHash = (params) => crypto.createHash("sha256").update(stable(params)).digest("hex").slice(0, 16);
 // Frames on disk are only reused when meta.json's params hash matches this take; anything else (other clip/duration/commit/viewport/dpr/
@@ -29,7 +31,8 @@ const SEEK = `(() => { const T = window.__capT || 0; for (const a of document.ge
   if (Number.isFinite(end) && target >= end) { if (a.playState !== "finished") a.finish(); continue; }
   if (a.playState !== "paused") a.pause();
   a.currentTime = target; } catch (e) {} } })()`;
-const timeout = (p, ms, what) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error("timeout " + what)), ms))]);
+const TSCALE = Number(process.env.TIMEOUT_SCALE || 1); // raise on a contended box
+const timeout = (p, ms, what) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error("timeout " + what)), ms * TSCALE))]);
 function run(cmd, args) { return new Promise((res, rej) => { const p = spawn(cmd, args, { stdio: "inherit" }); p.on("close", (c) => (c === 0 ? res() : rej(new Error(cmd + " " + c)))); }); }
 // <FOOT>/<name>.meta.json: the take's params (injected css flags, cursor overlay, dpr, clip, ...) kept after .frames is removed; register.py reads it.
 export function writeClipMeta(dir, name, extra = {}) {
@@ -65,7 +68,7 @@ export class Recorder {
     if (!this.cdp) this.cdp = await this.page.context().newCDPSession(this.page);
     for (let k = 0; k < 3; k++) {
       if (this.crashed) throw new Error("page crashed");
-      try { const { data } = await timeout(this.cdp.send("Page.captureScreenshot", { format: "png", optimizeForSpeed: true, clip: this.clip || { x: 0, y: 0, width: 1920, height: 1080, scale: 1 } }), 150000, "screenshot"); return Buffer.from(data, "base64"); }
+      try { const { data } = await timeout(this.cdp.send("Page.captureScreenshot", { format: "png", optimizeForSpeed: true, clip: this.clip ? { ...this.clip, scale: (this.clip.scale || 1) * K } : { x: 0, y: 0, width: 1920, height: 1080, scale: K } }), 150000, "screenshot"); return Buffer.from(data, "base64"); }
       catch (e) { console.log("shot retry", k, String(e.message).slice(0, 80)); await new Promise((r) => setTimeout(r, 2000)); }
     }
     throw new Error("screenshot failed");
@@ -82,7 +85,7 @@ export class Recorder {
   params(name, frames, extra = {}) {
     const info = capInfo(this.page);
     return { name, frames, startFrame: this.t, url: this.page.url(), commit: COMMIT, viewport: info.viewport, dpr: info.dpr, clip: this.clip || null,
-      css: info.cssFlags, cssSha: crypto.createHash("sha256").update(info.css || "").digest("hex").slice(0, 12), cursorHidden: info.cursorHidden, cursorOverlay: info.cursorOverlay, ...extra };
+      css: info.cssFlags, cssSha: crypto.createHash("sha256").update(info.css || "").digest("hex").slice(0, 12), cursorHidden: info.cursorHidden, cursorOverlay: info.cursorOverlay, ...(OUT_W !== 1920 ? { outW: OUT_W } : {}), ...extra };
   }
   frameDir(name, frames, extra = {}) { const dir = `${FOOT}/.frames/${name}`; prepareFrames(dir, this.params(name, frames, extra)); return dir; }
   async record(name, frames, onFrame = async () => {}, { poster = Math.floor(frames / 2), startFn = null } = {}) {

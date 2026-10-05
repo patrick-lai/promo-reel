@@ -1,0 +1,150 @@
+# Cinematic-story promo (style preset `cinematic-story`; see promo/styles.py, promo/grade.py, promo/shots/cinema.py and
+# skills/promo-reel/SKILL.md). Look of a short film made ONLY from real screen recordings:
+#   * every UI shot is the real recording as a contained 16:9 panel over a blurred, darkened copy of itself (depth of field);
+#   * the warm low-key grade, bloom, vignette and film grain are laid on the BACKDROP only (look.protect_ui, default true):
+#     UI pixels inside the panel are never graded, retouched or covered (team rule: never edit the app's UI);
+#   * slow eased camera, fades from / to black, sparse serif copy in the margin under the panel, no flashes / speed lines.
+# Do NOT write your own renderer: shot type `cinema` does all of it and `promo check` enforces the style rules.
+#   promo -p projects/my-promo/promo.yaml timeline   # shot table
+#   promo -p projects/my-promo/promo.yaml shot 02    # iterate on one shot (keep renders tiny; the box is shared)
+project: {name: my-promo, title: "My promo (cinematic story)"}
+output: {name: my-promo, resolution: 1080, fps: 30, duration: 60.0}      # 16:9 master; --scale 2 for 3840x2160
+paths: {build: build, out: out}
+assets: assets.yaml
+footage: footage/manifest.yaml
+
+style:
+  preset: cinematic-story      # pacing (min shot 0.8 s, UI >= 2.5 s, cut rate 0.3 -> 0.6 -> 0.3 cuts/s), look, serif fonts, checks
+  # look:                      # optional project-wide overrides of the preset look (every shot may also set its own `look:`)
+  #   grade: {gain: [1.08, 1.0, 0.9], saturation: 0.9}
+  #   grain: {amount: 0.02}
+  #   bloom: false             # any effect block may be false
+  #   panel: {w: 0.80, cy: 0.455}    # panel width (fraction of the frame) and centre y; the margin below holds the copy
+  #   # Depth of the panel (defaults ON; every block may be false). It is all drawn OUTSIDE the panel: the UI pixels are never
+  #   # edited (only the 4 antialiased corner blocks blend with what is behind them).
+  #   panel:
+  #     radius: 22                  # rounded corners, 1920 canvas px (scales with the output); 0 / false = square
+  #     shadow: {layers: [{alpha: 0.50, blur: 0.005, dy: 0.004}, {alpha: 0.55, blur: 0.034, dy: 0.020, spread: 0.004}]}   # tight + wide
+  #     rim: {alpha: 0.18, width: 1}        # 1 px warm-white line just outside the border
+  #     glow: {alpha: 0.25}                 # light spill: blurred, enlarged, warm copy of the panel behind it
+  #     in: {dur: 0.35, from_scale: 0.97, fade: true}   # optional entrance ease (off by default: cuts stay hard)
+  #   # The world behind the panel. Default: a dim blur of the panel crop lifted by a cool-indigo (top) to warm-amber (bottom)
+  #   # gradient (`warm`, 0.35), drifting at 35% of the camera motion (`parallax`). Or a film-world plate shared across the film
+  #   # (a footage clip id, one still at `t`, or an image / video path) so every UI panel floats in the same night -> dawn world:
+  #   backdrop: {plate: bg-night, t: 1.0, blur: 0.03, dim: 0.8, warm: 0.12, parallax: 0.35}   # per shot: look: {backdrop: {plate: dawn-plate}}
+
+music:
+  asset: music-track
+  bpm: 120
+  track_beat: 0.5              # seconds per beat in the file (measure it!)
+  track_offset: 0.0
+  edit: {segments: [[0, 0, 120]], crossfade: 0.030, gains: []}
+
+timeline: {bpm: 120, beats: 120}   # 120 beats at 120 BPM = 60.000 s. Cuts on beats.
+
+# The story is a night shift: dark -> light. EXAMPLE SHOTS: replace `my-clip` with real takes registered with `promo footage add`;
+# a 60 s cut wants about 24 shots (about 6 in the first 20 s, 12 in the middle 20 s, 6 in the last 20 s). Every caption / copy
+# line must be true for the footage on screen: write the evidence next to it in `notes:`.
+shots:
+  - id: "01"                   # open from darkness: night scene (ui: false = scenery, fully graded), title blooms in
+    beats: [0, 10]
+    type: cinema
+    ui: false
+    source: my-clip
+    t_in: 0.0
+    cam: [[0, 0.5, 0.5, 1.0], [end, 0.5, 0.5, 0.94]]
+    look: {backdrop: none}
+    fade_in: 1.5
+    title_bloom: {text: "commission-ai", at: 1.2, dur: 3.2}
+    notes: "evidence: night Workshop capture, commit <sha>"
+  - id: "02"                   # UI panel, 8 s, slow push-in; copy sits in the margin below the panel
+    beats: [10, 26]
+    type: cinema
+    source: my-clip
+    t_in: 2.0
+    cam: [[0, 0.5, 0.5, 1.0], [end, 0.5, 0.5, 0.86]]
+    lower_copy:
+      - {text: "Tell it at night.", at: 0.6, dur: 3.0}
+    notes: "evidence: composer message typed in the recorded run"
+  - id: "03"
+    beats: [26, 40]
+    type: cinema
+    source: my-clip
+    t_in: 8.0
+    cam: [[0, 0.5, 0.5, 0.9], [end, 0.5, 0.5, 0.8]]
+  - id: "04"
+    beats: [40, 52]
+    type: cinema
+    source: my-clip
+    t_in: 14.0
+    cam: [[0, 0.5, 0.5, 1.0], [end, 0.5, 0.5, 0.9]]
+  - id: "05"
+    beats: [52, 62]
+    type: cinema
+    source: my-clip
+    t_in: 20.0
+    cam: [[0, 0.5, 0.5, 0.8], [end, 0.5, 0.5, 0.72]]
+  # OPTIONAL: the app on the actress's monitor (shot type `screen`, promo/shots/screen.py). A GENERATED plate (promo gen video; a locked or slowly
+  # drifting shot of a large, flat, evenly lit pale monitor, e.g. the over-the-shoulder "ots" plate) is tracked frame by frame and a REAL UI
+  # recording is perspective-warped into the monitor's quad. The UI is only resampled (never graded / blurred / tinted); the bezel fill, the light
+  # spill and the optional grade / grain are drawn on the PLATE, outside the quad. Check the whole monitor stays inside the frame first:
+  #   promo screen-quad ots-plate -p promo.yaml        # per-second quads + a debug PNG with the quad drawn
+  # Gates: screen-quad (FAIL if the monitor is cut off by the frame border in > 10 % of the frames, or not found in > 15 %), screen-ui.
+  # - id: "05b"
+  #   beats: [52, 62]
+  #   type: screen
+  #   plate: ots-plate                 # footage clip id of the generated plate (registered with `promo footage add ... --generated`)
+  #   plate_t_in: 0.0                  # where in the plate to start, seconds
+  #   plate_speed: 1.0                 # plate seconds per output second (0.5 stretches a 6 s plate to 12 s)
+  #   source: my-clip                  # the REAL UI recording
+  #   t_in: 20.0
+  #   cam: [[0, 0.5, 0.5, 0.9], [end, 0.5, 0.5, 0.8]]    # crop of the UI recording that lands on the monitor (slow eased camera)
+  #   fade_in: 0.4
+  #   screen:
+  #     thr: 0.62                      # monitor = pixels brighter than thr x the frame's 99.5th-percentile luminance (and low-saturation)
+  #     inset: 0.004                   # shrink the quad by this fraction of the frame width (kills the bright / blurred edge pixels)
+  #     smooth: 0.6                    # temporal smoothing of the tracked corners (0 = raw)
+  #     # quad: [[0.50, 0.28], [0.92, 0.21], [0.92, 0.83], [0.50, 0.77]]   # manual quad TL TR BR BL (normalised): no detection
+  #     glow: {alpha: 0.30, blur: 0.04, lift: 1.5}   # light spill of the UI onto the room (outside the quad); false = off
+  #     bezel: true                    # the plate's blank-screen fringe next to the UI becomes bezel-dark
+  #     grade: true                    # warm grade + grain on the PLATE only (never inside the quad)
+  #   lower_copy:
+  #     - {text: "It never sleeps.", at: 0.6, dur: 3.0, x: 120, cy: 1000}    # must clear the monitor (copy-clear)
+  - id: "06"                   # dawn: scenery, full-bleed, graded
+    beats: [62, 78]
+    type: cinema
+    ui: false
+    source: my-clip
+    t_in: 30.0
+    look: {backdrop: none}
+    cam: [[0, 0.5, 0.5, 1.0], [end, 0.5, 0.5, 0.94]]
+  - id: "07"                   # end pull-back: the panel shrinks while the camera widens, then the world is shown whole
+    beats: [78, 108]
+    type: cinema
+    source: my-clip
+    t_in: 36.0
+    cam: [[0, 0.5, 0.5, 0.7], [end, 0.5, 0.5, 1.0]]
+    pullback: {w: 0.62, start: 0.15}
+    lower_copy:
+      - {text: "Wake up to merged PRs.", at: 1.0, dur: 4.0}
+    notes: "evidence: merged board in the recorded run"
+  - id: "08"                   # end card on a dark plate (no source): name, tagline, fade to black
+    beats: [108, 120]
+    type: cinema
+    ui: false
+    look: {backdrop: none}
+    fade_out: 1.5
+    title_bloom: {text: "commission-ai", at: 0.2, dur: 4.5, cy: 0.46}
+    lower_copy:
+      - {text: "Tell it at night. Wake up to merged PRs.", at: 1.2, dur: 3.5, align: center, cy: 640}
+
+sfx: {library: {}}
+
+mix:
+  sr: 48000
+  bus_db: {music: -3.0, sfx: -8.0, vo: 1.5}
+  vo_line_lufs: -16.0
+  duck: {db: 7.0, attack: 0.12, release: 0.35, pre: 0.12, post: 0.1}
+  fade_out: 1.5
+  masters:
+    - {name: web, suffix: "", lufs: -16.0, ceiling: -1.2, max_true_peak: -1.0}      # quiet and dynamic, like the reference (about -19.6 LUFS)
