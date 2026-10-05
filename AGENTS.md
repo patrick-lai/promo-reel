@@ -6,6 +6,9 @@ This file is the operating manual for any AI agent (or human) picking up a promo
 Read it top to bottom before touching footage. The pipeline is mechanical; taste and truth are not.
 Where a step needs a human, it says **HUMAN**.
 
+> **New videos run through `promo flow`** (gated: discover, scripts, pick, storyboard, asset plan, keyframes, confirm, drafts, <= 5 council rounds, final; the person
+> approves every gate). See `skills/promo-reel/SKILL.md` THE FLOW and `evals/council-flow.md`. Sections 1-8 below are the details behind its stages.
+
 ## 0. Team rules (non-negotiable)
 1. **Real footage only.** Every UI frame comes from a real screen recording of the product (a real run, or the product's built-in demo mode, labelled internally as demo). No mock-ups, no AI-generated UI, no generative video of the product.
    **Carve-out (Patrick, 5 Oct 2026):** AI-generated *non-UI plates* (backgrounds, transitions, scenery, macro textures; no text, logos, screens or anything that reads as the product) are allowed via `promo gen` (logged-in grok / codex CLIs, headless one-shot). They sit only on shots marked `ui: false`, carry `generated:` in the footage manifest, are flagged for human review by `promo check` (`generated-plates` FAIL on a UI shot, `generated-review` WARN), and are never described in captions as the product.

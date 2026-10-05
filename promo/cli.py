@@ -400,6 +400,7 @@ def build_parser():
     sub.add_parser("screen-quad", help="track the monitor quad of a generated plate (clip id or file): per-second quads + debug PNG (see `promo screen-quad -h`)")
     sub.add_parser("refs", help="study references for real: add (watch WITH transcript + scaffold DOSSIER.md) | check | show (see `promo refs -h`)")
     sub.add_parser("compare-ref", help="draft vs each reference: sheet rows + metrics incl. speech/LUFS/tempo (see `promo compare-ref -h`)")
+    sub.add_parser("flow", help="the gated production flow with the person in the loop: init | status | discover | script | council | approve | asset | needs | advance | draft | round | final | revise | board (see `promo flow -h`)")
     sub.add_parser("config", help="user config: `promo config projects-dir [PATH]` (projects may live outside this repo)")
     sub.add_parser("projects", help="list the projects in the projects dir (PROMO_PROJECTS / config / <repo>/projects)")
     sub.add_parser("rubric", help="PASS/FAIL of a scores file (or Zen review .md) against evals/rubric.yaml (see `promo rubric -h`)")
@@ -528,6 +529,9 @@ def main(argv=None):
         from .lock import heavy_lock
         with heavy_lock("promo compare-ref"):       # ffmpeg frame grabs, cut detection, whisper
             return compare_ref.main(argv[1:])
+    if argv[:1] == ["flow"]:            # `promo flow ...`: the gated production flow (scripts -> storyboard -> assets -> drafts -> council rounds)
+        from . import flow
+        return flow.main(argv[1:])
     if argv[:1] == ["config"]:          # `promo config projects-dir [PATH]`
         from . import home
         return home.main(argv[1:])

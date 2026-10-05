@@ -5,8 +5,30 @@ description: Make or update a product promo / demo video from real app footage w
 
 # promo-reel
 
-Everything lives in `projects/<name>/` (promo.yaml, assets.yaml, footage/manifest.yaml, shots.py plugin). Run commands from the repo root:
+Start with THE FLOW (below). Everything lives in `<projects dir>/<name>/` (default `projects/`, see `promo config`) (promo.yaml, assets.yaml, footage/manifest.yaml, shots.py plugin). Run commands from the repo root:
 `promo -p projects/<name>/promo.yaml <cmd>` (venv python: `python -m promo ...`).
+
+## THE FLOW (default: use it for every new video; the person stays in the loop)
+`promo flow` is a gated state machine (`<project>/flow/flow.json`). It refuses to skip a stage; human gates are approved only by the person's name
+(`approve ... --by NAME`, an agent name is refused; an approval goes stale if the thing approved changes). Start: `promo flow init <name> --intent "<their words, exact>"`
+(also locks the brief). Every turn: `promo flow status --json` -> do `next`, make what `needs` lists, and put `ask` to the person with AskUserQuestion.
+
+| # | stage | you do | the person decides |
+|---|---|---|---|
+| 1 | **discover** | ask style + references (`promo flow discover`, `promo refs add`) | style, refs |
+| 2 | **scripts** | write 3+ different scripts; council spars 1-2 rounds (`evals/council-flow.md`); `promo flow script add`, `council scripts` | |
+| 3 | **pick** | present the ranked scripts | which 1-2 go on (`approve scripts-picked`) |
+| 4 | **storyboard** | per story `flow/boards/<id>/board.json`: every scene with beat, time, action, caption/VO/sound/camera/proof and a **START and END frame** (generate them); `promo flow board`, SHOW the page | iterate until `approve storyboard-approved` |
+| 5 | **assets** | show ALL assets the cut will use: screenshots, pictures, recordings, music, voice, sfx (mocks allowed, marked MOCK): `promo flow asset add`, board, plan it out together | `approve assets-approved` |
+| 6 | **keyframes** | generate the remaining keyframes, replace every mock (`promo flow needs`) | |
+| 7 | **confirm** | summary of board + assets | the explicit go (`approve final-confirmation`) |
+| 8 | **drafts** | build first drafts, `promo flow draft add`, SHOW them (SendUserFile) | |
+| 9 | **review** | <= 5 rounds: `round start --feedback "<verbatim>"`, council (lens 0 intent + web research of the topic and examples of good videos), one batch, one draft, `round close` | feedback or `approve draft-approved` |
+| 10 | **final** | `final add`; further feedback = `promo flow revise` (new cycle, council again) | |
+
+Session UI: `status --json` carries the `ask` payload (question + options) for AskUserQuestion; `promo flow board` writes the dashboard HTML (stepper, scripts, storyboards with
+start->end frames, the asset gallery, drafts, rounds): publish it as an Artifact or show it as a widget so the person SEES the plan. Slash command: `/promo-flow` (`.claude/commands/promo-flow.md`).
+Projects can live outside the repo: `promo config projects-dir`. The older STEP 0 / Workflow sections below are the details behind stages 1, 6-9.
 
 ## The handoff: promo-reel asks, YOU deliver (it never decides how)
 Run `promo -p projects/<n>/promo.yaml needs [--json]` at the start and after every change. It lists what is still missing and the exact command that
