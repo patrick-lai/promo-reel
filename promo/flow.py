@@ -828,13 +828,13 @@ def make_frames(pd, story, scene, which, force, provider, jobs, limit=None):
     return _report("frames", made, failed)
 
 
-def make_assets(pd, ids, force, provider):
+def make_assets(pd, ids, force, provider, jobs=3):
     st = load(pd)
     plan = AP.load(fdir(pd))
     if ids and (unknown := set(ids) - {x["id"] for x in plan}):
         raise FlowError(f"no such asset: {', '.join(sorted(unknown))}")
     _note(pd, "Making a sample of every asset: stills, short clips, voices, music", "voice")
-    made, failed = PV.make_samples(plan, pd, boards(pd, st), ids, force, provider)
+    made, failed = PV.make_samples(plan, pd, boards(pd, st), ids, force, provider, jobs=jobs)
     _note(pd, f"Made {len(made)} asset samples" + (f", {len(failed)} failed" if failed else ""), "voice", True)
     return _report("asset samples", made, failed)
 
@@ -891,7 +891,7 @@ def main(argv=None):
     p = P("approve"); p.add_argument("gate"); p.add_argument("--by", required=True); p.add_argument("--picks", nargs="*"); p.add_argument("--note", default="")
     p = P("asset"); p.add_argument("action", choices=["add", "list", "make"]); p.add_argument("--id", action="append"); p.add_argument("--kind"); p.add_argument("--scenes", default="")
     p.add_argument("--source"); p.add_argument("--how", default=""); p.add_argument("--path"); p.add_argument("--licence"); p.add_argument("--note"); p.add_argument("--label")
-    p.add_argument("--fetch-url"); p.add_argument("--sha256"); p.add_argument("--force", action="store_true"); p.add_argument("--provider", default="auto")
+    p.add_argument("--fetch-url"); p.add_argument("--sha256"); p.add_argument("--force", action="store_true"); p.add_argument("--provider", default="auto"); p.add_argument("--jobs", type=int, default=3)
     p = P("frames"); p.add_argument("--story"); p.add_argument("--scene"); p.add_argument("--which", nargs="+", default=["start", "end"], choices=["start", "end", "frames"])
     p.add_argument("--force", action="store_true"); p.add_argument("--jobs", type=int, default=3); p.add_argument("--provider", default="auto"); p.add_argument("--limit", type=int)
     p = P("make"); p.add_argument("--which", nargs="+", default=["start", "end"], choices=["start", "end", "frames"]); p.add_argument("--jobs", type=int, default=3)
@@ -934,7 +934,7 @@ def main(argv=None):
                 for x in AP.load(fdir(pd)):
                     print(f"{x['id']:<20} {x['kind']:<10} {x['source']:<9} {AP.state(x, pd):<6} scenes {','.join(x['scenes'])}  {x['how']}")
             elif a.action == "make":
-                return make_assets(pd, a.id, a.force, a.provider)
+                return make_assets(pd, a.id, a.force, a.provider, a.jobs)
             else:
                 if not (a.id and len(a.id) == 1 and a.kind and a.source):
                     raise FlowError("asset add needs one --id and --kind --source --scenes --how")
@@ -950,7 +950,7 @@ def main(argv=None):
             return make_frames(pd, a.story, a.scene, tuple(a.which), a.force, a.provider, a.jobs, a.limit)
         elif a.cmd == "make":
             frames_rc = make_frames(pd, None, None, tuple(a.which), a.force, a.provider, a.jobs)
-            return make_assets(pd, None, a.force, a.provider) or frames_rc          # a failed frame must not stop the audio samples
+            return make_assets(pd, None, a.force, a.provider, a.jobs) or frames_rc          # a failed frame must not stop the audio samples
         elif a.cmd == "draft":
             add_draft(pd, a.file, a.note)
         elif a.cmd == "round":

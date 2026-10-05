@@ -18,6 +18,7 @@ import datetime
 import hashlib
 import json
 import os
+import threading
 import re
 import shutil
 import subprocess
@@ -273,22 +274,29 @@ def make_sample(a, pd, bds, provider="auto"):
     return dict(path=rel, note=note, at=_now())
 
 
-def make_samples(plan, pd, bds, ids=None, force=False, provider="auto", say=print):
-    """Make the missing samples (all with force). Returns (made, failed) like make_frames; writes flow/samples.json."""
+def make_samples(plan, pd, bds, ids=None, force=False, provider="auto", say=print, jobs=3):
+    """Make the missing samples (all with force), `jobs` at a time. Returns (made, failed) like make_frames; writes flow/samples.json."""
     flow_dir = os.path.join(pd, "flow")
     samples = load_samples(flow_dir)
+    todo = [a for a in plan if not ((ids and a["id"] not in ids) or (not force and has_sample(a, pd, samples)))]
     made, failed = [], []
-    for a in plan:
-        if (ids and a["id"] not in ids) or (not force and has_sample(a, pd, samples)):
-            continue
+    lock = threading.Lock()
+
+    def run(a):
         try:
-            samples[a["id"]] = make_sample(a, pd, bds, provider)
+            res = make_sample(a, pd, bds, provider)
         except (PreviewError, RuntimeError, OSError, subprocess.CalledProcessError) as e:
-            failed.append((a["id"], str(e)))
-            say(f"  FAILED sample {a['id']}: {str(e)[:200]}")
-        else:
+            with lock:
+                failed.append((a["id"], str(e)))
+                say(f"  FAILED sample {a['id']}: {str(e)[:200]}")
+            return
+        with lock:
+            samples[a["id"]] = res
             made.append(a["id"])
-            say(f"  made   sample {a['id']} -> {samples[a['id']]['path']}")
+            say(f"  made   sample {a['id']} -> {res['path']}")
             with open(samples_path(flow_dir), "w") as f:
                 json.dump(samples, f, indent=2)
+
+    with ThreadPoolExecutor(max_workers=max(1, jobs)) as ex:
+        list(ex.map(run, todo))
     return made, failed

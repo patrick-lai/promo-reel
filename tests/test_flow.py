@@ -582,3 +582,18 @@ def test_activity_is_capped(pd):
     for i in range(F.ACTIVITY_MAX + 20):
         F.note(pd, f"step {i}")
     assert len(F.load(pd)["activity"]) == F.ACTIVITY_MAX
+
+
+def test_samples_are_made_in_parallel_and_all_recorded(pd, monkeypatch):
+    import threading
+    seen, gate = set(), threading.Barrier(3, timeout=5)
+
+    def fake(a, pd_, bds, provider):
+        gate.wait()                       # only passes when three run at once
+        seen.add(a["id"])
+        return dict(path=f"samples/{a['id']}.png", note="")
+    monkeypatch.setattr(PV, "make_sample", fake)
+    plan = [dict(id=f"a{i}", kind="still", source="real", scenes=[], how="x") for i in range(3)]
+    made, failed = PV.make_samples(plan, pd, [], jobs=3, say=lambda *_: None)
+    assert sorted(made) == ["a0", "a1", "a2"] and not failed and seen == {"a0", "a1", "a2"}
+    assert sorted(PV.load_samples(os.path.join(pd, "flow"))) == ["a0", "a1", "a2"]

@@ -26,6 +26,14 @@ Start with THE FLOW (below). Everything lives in `<projects dir>/<name>/` (defau
 | 9 | **review** | <= 5 rounds: `round start --feedback "<verbatim>"`, council (lens 0 intent + web research of the topic and examples of good videos), one batch, one draft, `round close` | feedback or `approve draft-approved` |
 | 10 | **final** | `final add`; further feedback = `promo flow revise` (new cycle, council again) | |
 
+### Fan out: spec once, build in parallel, agents review, then the person
+The loop is **spec -> parallel build -> agent review -> (repeat) -> person**; the person chooses whether to go round again. Do not do these one at a time.
+1. **Spec up front (one batch).** Collect everything in a single `commissionctl ask` / AskUserQuestion: style, references, must-show, must-not-claim, length, platforms, end card. Do not drip questions across stages. Then run reference study (`promo refs add`, one sub-agent per reference) in parallel with writing scripts.
+2. **Build in parallel.** Spawn independent sub-agents in ONE message: one script writer per angle; one board per picked story; per-asset-kind makers (stills, clips, voices, music, sfx). `promo flow make --jobs N` already draws frames and asset samples N at a time (default 3). Captures of the real app are the person's: ask for the whole list at once, and keep generating everything else while they record. Renders are different: ffmpeg shots run one at a time under the heavy lock, but prepare sfx, VO and music alongside shot renders.
+3. **Agent review before the person sees it.** Run the council lenses as parallel sub-agents, merge into ONE batch, rebuild, re-check. Repeat up to 2 internal passes (they do not use the person's 5 rounds) until no high-severity finding is left and `promo check` passes. Post `promo flow note` lines for each pass.
+4. **Person review.** Show the draft. They approve, or send feedback: that starts `promo flow round start` and goes back to step 2 for the changed parts only. Never start another loop on your own.
+Post a `promo flow note` at every fan-out and fan-in so the Stage shows what is running.
+
 **Never ask for a decision on a placeholder.** `promo flow make` makes everything the person has to see (frames, then asset samples) in one go via the logged-in grok / codex CLIs (`promo gen detect`; ~25 s per image, 3 at a time); `promo flow needs` lists what is still missing. Samples are planning material, labelled SAMPLE in the Stage, and never enter the footage manifest. If the person clicks "Ask the agent to make them" you get `[mod:promo-flow] ... wants the real thing made`: run `promo flow make`, publish.
 
 Session UI: `status --json` carries the `ask` payload (question + options) for AskUserQuestion; `promo flow board` writes the dashboard HTML (stepper, scripts, storyboards with
