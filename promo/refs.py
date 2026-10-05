@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import json
 import os
+
+from .home import resolve as _resolve
 import re
 import sys
 
@@ -267,15 +269,15 @@ def main(argv=None):
     sub = ap.add_subparsers(dest="cmd", required=True)
     a_ = sub.add_parser("add", help="watch a reference (with transcript) and scaffold its dossier")
     a_.add_argument("src")
-    a_.add_argument("--project", required=True)
+    a_.add_argument("--project", type=_resolve, required=True)
     a_.add_argument("--id")
     a_.add_argument("--why", default="", help="the user's own words about this reference")
     a_.add_argument("--force", action="store_true")
     c_ = sub.add_parser("check", help="dossier completeness for every reference in brief.yaml")
-    c_.add_argument("--project", required=True)
+    c_.add_argument("--project", type=_resolve, required=True)
     c_.add_argument("--json", action="store_true")
     s_ = sub.add_parser("show", help="print the dossier(s)")
-    s_.add_argument("--project", required=True)
+    s_.add_argument("--project", type=_resolve, required=True)
     s_.add_argument("--id")
     a = ap.parse_args(argv)
     try:

@@ -264,7 +264,8 @@ def cmd_new(args):
     if not os.path.isdir(src):
         raise SystemExit(f"template not found: {src}")
     name = os.path.basename(os.path.normpath(args.name))
-    dest = args.dir or (args.name if os.sep in args.name else os.path.join(root, "projects", args.name))
+    from . import home as _home
+    dest = args.dir or (args.name if os.sep in args.name else os.path.join(_home.projects_dir(), args.name))
     if os.path.exists(dest) and os.listdir(dest):
         raise SystemExit(f"{dest} exists and is not empty")
     shutil.copytree(src, dest, dirs_exist_ok=True)
@@ -399,6 +400,8 @@ def build_parser():
     sub.add_parser("screen-quad", help="track the monitor quad of a generated plate (clip id or file): per-second quads + debug PNG (see `promo screen-quad -h`)")
     sub.add_parser("refs", help="study references for real: add (watch WITH transcript + scaffold DOSSIER.md) | check | show (see `promo refs -h`)")
     sub.add_parser("compare-ref", help="draft vs each reference: sheet rows + metrics incl. speech/LUFS/tempo (see `promo compare-ref -h`)")
+    sub.add_parser("config", help="user config: `promo config projects-dir [PATH]` (projects may live outside this repo)")
+    sub.add_parser("projects", help="list the projects in the projects dir (PROMO_PROJECTS / config / <repo>/projects)")
     sub.add_parser("rubric", help="PASS/FAIL of a scores file (or Zen review .md) against evals/rubric.yaml (see `promo rubric -h`)")
     sub.add_parser("live2d", help="Live2D host renderer: fetch | models | render | lag (see `promo live2d -h`)")
     return ap
@@ -525,11 +528,26 @@ def main(argv=None):
         from .lock import heavy_lock
         with heavy_lock("promo compare-ref"):       # ffmpeg frame grabs, cut detection, whisper
             return compare_ref.main(argv[1:])
+    if argv[:1] == ["config"]:          # `promo config projects-dir [PATH]`
+        from . import home
+        return home.main(argv[1:])
+    if argv[:1] == ["projects"]:        # `promo projects`: list the projects in the projects dir
+        from . import home
+        print(f"projects dir: {home.projects_dir()}")
+        for p in home.list_projects():
+            print(f"  {p['name']:<28} brief={'yes' if p['brief'] else 'no ':<3} rounds={p['rounds']}  {p['path']}")
+        return 0
     if argv[:1] == ["rubric"]:          # `promo rubric <scores>`: PASS/FAIL against evals/rubric.yaml (no promo.yaml needed)
         from . import rubric
         return rubric.main(argv[1:])
     args = build_parser().parse_args(argv)
+    from . import home as _home
     args.project = getattr(args, "project", "promo.yaml")
+    if args.project != "promo.yaml":                 # a bare project name / legacy `projects/<name>` resolves in the projects dir
+        _r = _home.resolve(args.project)
+        args.project = os.path.join(_r, "promo.yaml") if os.path.isdir(_r) else _r
+    if getattr(args, "project_dir", None):
+        args.project_dir = _home.resolve(args.project_dir)
     args.scale = getattr(args, "scale", None)
     args.force = getattr(args, "force", False)
     args.verbose = getattr(args, "verbose", False)

@@ -30,6 +30,8 @@ import datetime
 import hashlib
 import json
 import os
+
+from .home import resolve as _resolve
 import re
 import sys
 
@@ -278,7 +280,7 @@ def main(argv=None):
 
     def add(name, h):
         p = sub.add_parser(name, help=h)
-        p.add_argument("--project", required=True, help="project dir, e.g. projects/<name>")
+        p.add_argument("--project", type=_resolve, required=True, help="project dir, e.g. projects/<name>")
         return p
     i = add("init", "create brief.yaml with the user's exact words")
     i.add_argument("--intent", default="", help="the user's request, verbatim")
@@ -293,12 +295,12 @@ def main(argv=None):
     cf = sub.add_parser("conflict", help="record / decide a conflict (team rule vs reference vs request)")
     cs = cf.add_subparsers(dest="ccmd", required=True)
     ca = cs.add_parser("add")
-    ca.add_argument("--project", required=True)
+    ca.add_argument("--project", type=_resolve, required=True)
     ca.add_argument("--what", required=True)
     ca.add_argument("--rule", required=True, help="the team rule / constraint it collides with, e.g. 'AGENTS.md 0.1 real footage only'")
     ca.add_argument("--ref", help="reference id it came from")
     cd = cs.add_parser("decide")
-    cd.add_argument("--project", required=True)
+    cd.add_argument("--project", type=_resolve, required=True)
     cd.add_argument("n", type=int)
     cd.add_argument("--decision", required=True, help="what the user decided, in their words")
     cd.add_argument("--by", required=True, help="the human who decided")

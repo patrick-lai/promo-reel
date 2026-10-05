@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import json
 import os
+
+from .home import resolve as _resolve
 import statistics
 import sys
 import tempfile
@@ -183,7 +185,7 @@ def main(argv=None):
     import argparse
     ap = argparse.ArgumentParser(prog="promo compare-ref", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("draft")
-    ap.add_argument("--project", required=True)
+    ap.add_argument("--project", type=_resolve, required=True)
     ap.add_argument("--id")
     ap.add_argument("--n", type=int, default=10)
     ap.add_argument("--draft-people", choices=("yes", "no"))
