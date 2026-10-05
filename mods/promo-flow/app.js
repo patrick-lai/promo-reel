@@ -789,6 +789,7 @@
     const cnt = h("div", { class: "counter", role: "group", "aria-label": "Filter by state", "data-total": String(m.total) });
     parts.forEach((p, i) => { if (i) cnt.append(h("span", { class: "sep", "aria-hidden": "true", text: "·" })); cnt.append(p); });
     box.append(cnt);
+    if (m.total) box.append(h("div", { class: "stackbar", "aria-hidden": "true" }, ["ready", "mock", "todo", "missing"].filter((k) => m.n[k]).map((k) => h("i", { class: "s-" + k, style: "flex:" + m.n[k] + " 1 0", title: m.n[k] + " " + k }))));
     const miss = missingAll(), here = m.n.missing, other = miss - here;
     if (miss) box.append(h("div", { class: "warnline", role: "alert" }, ic("alert"), h("span", { text: (here ? here + " " + plural(here, "file is", "files are") + " missing." : "No files missing in this story.") + (other > 0 ? " " + other + " " + plural(other, "file is", "files are") + " missing (other story)." : "") })));
     const bare = arr(d.assets).filter((a) => !PF.hasPreview(a)).length;
@@ -815,8 +816,38 @@
         h("div", { class: "kind" }, h("span", { class: "chip", text: (KIND_LABEL[a.kind] || a.kind) + " \u00b7 " + a.source }), a.source === "licensed" && !a.licence ? h("span", { class: "chip warn", text: "No licence on file" }) : null, h("span", { class: "chip bad", text: x.eff === "missing" ? "File missing" : "To make" }))),
       a.how && a.source === "generated" ? h("details", { class: "prompt rw-how" }, h("summary", { text: "View prompt" }), h("p", { text: scrubPaths(a.how) })) : null);
   }
-  function audioControl(u) {
+  /* Peaks of the sample, drawn as bars that fill as it plays; the strip itself seeks. */
+  function waveform(u, a, host) {
+    const cv = h("canvas", { class: "wave", "aria-hidden": "true" });
+    host.replaceChildren(cv);
+    let peaks = null;
+    const draw = () => {
+      const w = cv.clientWidth, ht = cv.clientHeight, dpr = window.devicePixelRatio || 1;
+      if (!w || !ht) return;
+      cv.width = w * dpr; cv.height = ht * dpr;
+      const g = cv.getContext("2d"), n = Math.floor(w / 4), cs = getComputedStyle(cv);
+      const dim = cs.getPropertyValue("--k").trim() || "#888", cur = a.duration ? a.currentTime / a.duration : 0;
+      g.scale(dpr, dpr);
+      for (let i = 0; i < n; i++) {
+        const v = peaks ? peaks[Math.floor(i * peaks.length / n)] : 0.15 + 0.1 * Math.sin(i / 3);
+        const bh = Math.max(3, v * (ht - 6));
+        g.globalAlpha = i / n <= cur ? 1 : 0.38; g.fillStyle = dim;
+        g.beginPath(); g.roundRect(i * 4, (ht - bh) / 2, 2.4, bh, 1.2); g.fill();
+      }
+    };
+    fetch(u).then((r) => r.arrayBuffer()).then((buf) => new (window.AudioContext || window.webkitAudioContext)().decodeAudioData(buf)).then((ab) => {
+      const ch = ab.getChannelData(0), n = 120, step = Math.floor(ch.length / n), out = [];
+      for (let i = 0; i < n; i++) { let m = 0; for (let j = i * step; j < (i + 1) * step; j += 16) m = Math.max(m, Math.abs(ch[j] || 0)); out.push(m); }
+      const mx = Math.max(...out, 0.01); peaks = out.map((v) => v / mx); draw();
+    }).catch(() => {});
+    cv.addEventListener("click", (e) => { if (!a.duration) return; const r = cv.getBoundingClientRect(); a.currentTime = a.duration * (e.clientX - r.left) / r.width; draw(); });
+    a.addEventListener("timeupdate", draw);
+    new ResizeObserver(draw).observe(cv);
+    draw();
+  }
+  function audioControl(u, waveHost) {
     const a = new Audio(u);
+    if (waveHost) waveform(u, a, waveHost);
     a.preload = "metadata";
     const pp = h("button", { class: "pp", type: "button", "aria-label": "Play" }, ic("play", "ic-play"), ic("pause", "ic-pause"));
     const rg = h("input", { type: "range", min: "0", max: "1000", value: "0", step: "1", "aria-label": "Seek" });
@@ -849,7 +880,7 @@
     else if (isAudio) {
       slot.append(h("div", { class: "mid" }, glyphFor("audio")));
       prow = h("div", { class: "prow" });
-      lazyInto(prow, src, (u) => audioControl(u), { manual: src.size > BIG_AUDIO, manualText: "Load audio (" + fmtSize(src.size) + ")" });
+      lazyInto(prow, src, (u) => audioControl(u, slot), { manual: src.size > BIG_AUDIO, manualText: "Load audio (" + fmtSize(src.size) + ")" });
     } else if (kind === "image") lazyInto(slot, src, (u) => h("img", { src: u, alt: a.label || a.id, draggable: "false" }), { compact: true });
     else if (kind === "video") {
       const build = (u) => {
@@ -867,13 +898,14 @@
     const lic = [a.licence ? "Licence: " + a.licence : "", a.note && !/^https?:/i.test(a.note) ? a.note : ""].filter(Boolean).join(" · ");
     const url = a.note && /^https:\/\//i.test(a.note) ? a.note : "";
     const sc_ = stateChip(eff, sampled);
-    return h("article", { class: "card asset" + (isAudio ? " a-audio" : "") }, pv, h("div", { class: "bd" }, h("div", { class: "nm", title: a.id, text: a.label || a.id }),
+    const more = [sampled && a.sample_note ? h("div", { class: "how", text: "Sample: " + a.sample_note }) : null,
+      how ? (a.source === "generated" ? h("details", { class: "prompt" }, h("summary", { text: "View prompt" }), h("p", { text: how })) : h("div", { class: "how" }, showMore(how, 90, "c2"))) : null,
+      lic || url ? h("div", { class: "lic" }, lic, lic && url ? " \u00b7 " : "", url ? h("button", { type: "button", text: host(url), title: url, onclick: () => post({ type: "open-url", url }) }) : null) : null].filter(Boolean);
+    return h("article", { class: "card asset" + (isAudio ? " a-audio" : ""), "data-kind": a.kind }, pv, h("div", { class: "bd" }, h("div", { class: "nm", title: a.id, text: a.label || a.id }),
       h("div", { class: "kind" }, h("span", { class: "chip", text: (KIND_LABEL[a.kind] || a.kind) + (eff === "ready" ? " · " + a.source : "") }), sc_ ? h("span", { class: "chip " + sc_[1], text: sc_[0] }) : null,
         a.source === "licensed" && !a.licence ? h("span", { class: "chip warn", text: "No licence on file" }) : null),
       sc.length ? h("div", { class: "sc", text: (sc.length === 1 ? "Scene " : "Scenes ") + sceneRange(sc) }) : null,
-      sampled && a.sample_note ? h("div", { class: "how", text: "Sample: " + a.sample_note }) : null,
-      how ? (a.source === "generated" ? h("details", { class: "prompt" }, h("summary", { text: "View prompt" }), h("p", { text: how })) : h("div", { class: "how" }, showMore(how, 90, "c2"))) : null,
-      lic || url ? h("div", { class: "lic" }, lic, lic && url ? " · " : "", url ? h("button", { type: "button", text: host(url), title: url, onclick: () => post({ type: "open-url", url }) }) : null) : null), prow);
+      more.length ? h("details", { class: "more" }, h("summary", { text: "Details" }), ...more) : null), prow);
   }
 
   /* ----- draft ----- */
