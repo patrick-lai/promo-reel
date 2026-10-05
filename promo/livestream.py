@@ -610,7 +610,7 @@ def edge_rows(spec, c, min_runs=4):
     """Check note livestream-edges (WARN only): app-footage crops whose left/right edge cuts through text (half-words
     such as "ummary" at the panel edge, UX review v2 V5). Sampled on the shot's named-element frame (else its first
     frame), on the outermost source column inside the crop, or just inside a `matte` band. Opt out per shot with
-    `edge_check: false` (e.g. the Workshop scenes, which have no UI text at the edges)."""
+    `edge_check: false` (e.g. scenery scenes, which have no UI text at the edges)."""
     from . import render as R
     warn, n = [], 0
     for s in [s for s in spec.shots if s.type == "livestream"]:

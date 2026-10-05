@@ -2,7 +2,10 @@
 
     PROMO_PROJECTS=~/promo-projects         env var (wins)
     promo config projects-dir ~/promo-projects   writes ~/.config/promo-reel/config.yaml (or $PROMO_CONFIG)
-    <repo>/projects                         default (the worked examples)
+    <repo>/projects                         default (local, gitignored)
+
+The same config file holds `heavy_lock:` (path of the box-wide heavy-work lock, see promo/lock.py;
+`promo config heavy-lock [PATH]`; $PROMO_HEAVY_LOCK overrides).
 
 `promo new <name>` scaffolds into the projects dir; every command that takes a project (`-p`, `--project`, critique-pack's
 positional) accepts a path (a dir, or a promo.yaml) OR a bare project name, which is looked up in the projects dir.
@@ -73,11 +76,22 @@ def list_projects() -> list[dict]:
 
 def main(argv):
     import argparse
-    ap = argparse.ArgumentParser(prog="promo config", description="promo-reel user config (where projects live)")
+    ap = argparse.ArgumentParser(prog="promo config", description="promo-reel user config (where projects live, the heavy-work lock)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("projects-dir", help="show, or set, the directory projects live in")
     p.add_argument("path", nargs="?")
+    h = sub.add_parser("heavy-lock", help="show, or set, the path of the box-wide heavy-work lock (default /tmp/promo-reel-heavy.lock; $PROMO_HEAVY_LOCK overrides)")
+    h.add_argument("path", nargs="?")
     a = ap.parse_args(argv)
+    if a.cmd == "heavy-lock":
+        from . import lock
+        if a.path:
+            cfg = load_config()
+            cfg["heavy_lock"] = os.path.abspath(os.path.expanduser(a.path))
+            print(f"heavy lock = {cfg['heavy_lock']}  (saved in {save_config(cfg)}; $PROMO_HEAVY_LOCK overrides)")
+        else:
+            print(lock.lock_path())
+        return 0
     if a.cmd == "projects-dir":
         if a.path:
             d = os.path.abspath(os.path.expanduser(a.path))

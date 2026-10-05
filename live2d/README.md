@@ -17,8 +17,8 @@ promo live2d lag build/hiyori.mouth.npy host_a.wav
 - **Output:** `.mov` = ProRes 4444 with alpha, `.webm` = VP9 with alpha, a directory or `%05d.png` = PNG
   sequence, and `--bg green` gives an opaque green-screen H.264.
 - **Shared box:** node and ffmpeg run under `nice -n 10`, ffmpeg uses `-threads 2`, and every render holds the
-  box-wide heavy-work lock `flock /tmp/commission-ai-cargo.lock` for its whole run (the lock Commission-ai's
-  pre-merge cargo test gates use; replaces the old `/tmp/promo-live2d-render.lock`). It blocks until the lock is
+  box-wide heavy-work lock for its whole run (a lock other heavy jobs on the machine can share: set `PROMO_HEAVY_LOCK` to the same path as e.g. your test gates;
+  default `/tmp/promo-reel-heavy.lock`; replaces the old `/tmp/promo-live2d-render.lock`). It blocks until the lock is
   free and logs every 30 s while waiting. See `../promo/lock.py`.
 - **Lip sync:** 10 ms envelope with a centred 43 ms window, a fast attack (12 ms), a 60 ms in-speech release and
   a 20 ms close ease. The follower's delay is measured and removed. Each frame samples its own display interval

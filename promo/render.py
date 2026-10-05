@@ -294,7 +294,7 @@ def vgrad(ctx, top, bottom, size=None):
 
 
 def dark_plate(ctx):
-    """Tasteful dark gradient plate (fallback when no Workshop plate was captured): deep navy with a soft radial glow."""
+    """Tasteful dark gradient plate (fallback when no scenery plate was captured): deep navy with a soft radial glow."""
     w, h = ctx.OW, ctx.OH
     y, x = np.mgrid[0:h, 0:w].astype(np.float32)
     base = np.array([10, 12, 18], np.float32)

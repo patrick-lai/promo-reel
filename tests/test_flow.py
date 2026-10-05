@@ -9,7 +9,7 @@ from promo import brief as BR
 from promo import flow as F
 from promo import storyboard as SB
 
-INTENT = "Make a 60s promo for commission-ai: tell it at night, wake up to merged PRs."
+INTENT = "Make a 60s promo for Acme Tasks: tell it at night, wake up to merged PRs."
 
 
 def img(p, c=(40, 40, 40)):

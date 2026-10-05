@@ -401,9 +401,9 @@ def build_parser():
     sub.add_parser("refs", help="study references for real: add (watch WITH transcript + scaffold DOSSIER.md) | check | show (see `promo refs -h`)")
     sub.add_parser("compare-ref", help="draft vs each reference: sheet rows + metrics incl. speech/LUFS/tempo (see `promo compare-ref -h`)")
     sub.add_parser("flow", help="the gated production flow with the person in the loop: init | status | discover | script | council | approve | asset | needs | advance | draft | round | final | revise | board (see `promo flow -h`)")
-    sub.add_parser("config", help="user config: `promo config projects-dir [PATH]` (projects may live outside this repo)")
+    sub.add_parser("config", help="user config: `promo config projects-dir [PATH]` (projects may live outside this repo), `promo config heavy-lock [PATH]`")
     sub.add_parser("projects", help="list the projects in the projects dir (PROMO_PROJECTS / config / <repo>/projects)")
-    sub.add_parser("rubric", help="PASS/FAIL of a scores file (or Zen review .md) against evals/rubric.yaml (see `promo rubric -h`)")
+    sub.add_parser("rubric", help="PASS/FAIL of a scores file (or a review .md) against evals/rubric.yaml (see `promo rubric -h`)")
     sub.add_parser("live2d", help="Live2D host renderer: fetch | models | render | lag (see `promo live2d -h`)")
     return ap
 
@@ -471,7 +471,7 @@ def dispatch(spec, args):
         return r, print_grid, 0 if r["ok"] else 1
     if c in ("sfx", "vo", "clip-audio", "music", "mix", "build", "events", "shot", "assemble", "contact"):
         from .lock import heavy_lock
-        with heavy_lock(f"promo {c}"):          # shared with Commission-ai cargo test gates: never overlap a render and a test gate
+        with heavy_lock(f"promo {c}"):          # box-wide lock: never overlap two heavy jobs
             return _dispatch_heavy(spec, args, c)
     return None, None, 0
 
@@ -532,7 +532,7 @@ def main(argv=None):
     if argv[:1] == ["flow"]:            # `promo flow ...`: the gated production flow (scripts -> storyboard -> assets -> drafts -> council rounds)
         from . import flow
         return flow.main(argv[1:])
-    if argv[:1] == ["config"]:          # `promo config projects-dir [PATH]`
+    if argv[:1] == ["config"]:          # `promo config projects-dir|heavy-lock [PATH]`
         from . import home
         return home.main(argv[1:])
     if argv[:1] == ["projects"]:        # `promo projects`: list the projects in the projects dir

@@ -23,7 +23,7 @@ Spec keys (per shot):
         glow: {alpha: 0.25, scale, blur, lift, warm}        light spill: a blurred, enlarged, lifted, warm copy of the panel behind it
         in: {dur: 0.35, from_scale: 0.97, fade: true}       entrance ease (off by default: cuts stay hard)
     look.backdrop: {plate, t, blur, dim, warm, parallax}    the world behind the panel. plate = a footage clip id (a still frame at t,
-                                default 0) or an image / video path: a film-world plate (night sky, dawn, the Workshop), blurred and
+                                default 0) or an image / video path: a film-world plate (night sky, dawn, a scenic view), blurred and
                                 graded, so panels float in the same world across the film. Without a plate: the dim blur of the
                                 panel crop. `warm` = weight of the cool-indigo (top) to warm-amber (bottom) gradient lift (default
                                 0.35 on the blurred copy, 0.12 on a plate; false = off). `parallax` (0.35) = fraction of the panel

@@ -16,10 +16,9 @@ import yaml
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
-# the talk show reads its clips from the hero manifest (`${HERO_FOOTAGE_MANIFEST:-/workspace/promo-reel/...}`); in a worktree,
-# default to this checkout's manifest so the gates see the same registrations as the code under test
-os.environ.setdefault("HERO_FOOTAGE_MANIFEST", os.path.join(ROOT, "projects", "commission-ai-hero", "footage", "manifest.yaml"))
-DEMO = os.path.join(ROOT, "projects", "live2d-demo", "promo.yaml")
+sys.path.insert(0, os.path.join(ROOT, "tests"))
+# a local talk-show project (see tests/localproj.py) reads its clips from the local hero project's manifest (HERO_FOOTAGE_MANIFEST)
+from localproj import DEMO, TALK, TALK_MAKE_SPEC, TALK_PLAN  # noqa: E402
 
 from promo import live2d as L2  # noqa: E402
 from promo import livestream as LS  # noqa: E402
@@ -286,7 +285,7 @@ def test_heavy_lock_reentrant_and_exclusive():
     finally:
         os.environ.pop("PROMO_HEAVY_LOCK", None)
         shutil.rmtree(d)
-    assert LK.DEFAULT == "/tmp/commission-ai-cargo.lock" and not hasattr(L2, "LOCK")   # old live2d-only lock is gone
+    assert LK.DEFAULT == "/tmp/promo-reel-heavy.lock" and not hasattr(L2, "LOCK")   # old live2d-only lock is gone
 
 
 def test_credits_card_text_and_centring():
@@ -435,7 +434,6 @@ def test_render_deterministic():
     shutil.rmtree(d)
 
 
-TALK = os.path.join(ROOT, "projects", "commission-ai-talkshow", "promo.yaml")
 
 
 def test_measure_text_rows():
@@ -551,7 +549,7 @@ def test_credit_gate_accepts_split_cards():
 def test_talkshow_time_of_day_dissolve_source():
     """09b dissolve: on only when the take changes time of day; the manifest field wins over the plan profile."""
     import importlib.util
-    mp = os.path.join(ROOT, "projects", "commission-ai-talkshow", "make_spec.py")
+    mp = TALK_MAKE_SPEC
     if not os.path.exists(mp):
         return
     spec_ = importlib.util.spec_from_file_location("talk_make_spec_tod", mp)
@@ -668,7 +666,7 @@ def test_vo_files_engine_pins_sha():
         return
     from promo import vo as VO
     raw = expand_env(yaml.safe_load(open(TALK)))
-    p0 = os.path.join(expand_env("${TALKSHOW_VO_DIR:-/workspace/videos/commission-ai-promo/talkshow}"), raw["vo"]["lines"][0]["file"])
+    p0 = os.path.join(expand_env("${TALKSHOW_VO_DIR:-/nonexistent/talkshow-vo}"), raw["vo"]["lines"][0]["file"])
     if not os.path.exists(p0):
         return
     d = tempfile.mkdtemp()
@@ -692,8 +690,8 @@ def test_talkshow_auto_take_follows_text_height():
     """Beat 7: full MAO line when shot 12's 'Approved...' line measures >= min_px, else trimmed at the silence after
     '...tells you why it passes.' (prefix text, short fade). Skips off-box (VO / footage absent)."""
     import importlib.util
-    mp = os.path.join(ROOT, "projects", "commission-ai-talkshow", "make_spec.py")
-    vo_dir = expand_env("${TALKSHOW_VO_DIR:-/workspace/videos/commission-ai-promo/talkshow}")
+    mp = TALK_MAKE_SPEC
+    vo_dir = expand_env("${TALKSHOW_VO_DIR:-/nonexistent/talkshow-vo}")
     if not (os.path.exists(mp) and os.path.exists(os.path.join(vo_dir, "lines.json"))):
         return
     spec_ = importlib.util.spec_from_file_location("talk_make_spec", mp)
@@ -728,7 +726,7 @@ def test_talkshow_auto_take_follows_text_height():
 
 def _load_make_spec():
     import importlib.util
-    mp = os.path.join(ROOT, "projects", "commission-ai-talkshow", "make_spec.py")
+    mp = TALK_MAKE_SPEC
     sp = importlib.util.spec_from_file_location("talk_make_spec2", mp)
     MS = importlib.util.module_from_spec(sp)
     sp.loader.exec_module(MS)
@@ -898,13 +896,13 @@ def test_style_presets_frame_never_covers_footage():
 
 
 def test_talkshow_segment_from_absolute_time():
-    mp = os.path.join(ROOT, "projects", "commission-ai-talkshow", "make_spec.py")
+    mp = TALK_MAKE_SPEC
     src = open(mp).read()
     assert 'frm["t"]' in src                                           # `from: {t: X}` = absolute show time
-    plan = yaml.safe_load(open(os.path.join(ROOT, "projects", "commission-ai-talkshow", "plan.yaml")))
+    plan = yaml.safe_load(open(TALK_PLAN))
     assert "style" in plan                                             # style is a plan option (null = plain)
     assert "fit_clip" in src                                           # a short clip slows down rather than freezing
-    spec = yaml.safe_load(open(os.path.join(ROOT, "projects", "commission-ai-talkshow", "promo.yaml")))
+    spec = yaml.safe_load(open(TALK))
     s03 = next(s for s in spec["shots"] if str(s["id"]) == "03")
     if "speed" in s03["screen"]:
         assert 0.5 <= s03["screen"]["speed"] < 1.0 and "hold_in" not in s03["screen"]
@@ -931,9 +929,9 @@ def test_partial_matte_band_only_covers_its_span():
 
 
 def test_talkshow_speeds_at_least_min():
-    mp = os.path.join(ROOT, "projects", "commission-ai-talkshow", "make_spec.py")
+    mp = TALK_MAKE_SPEC
     assert "MIN_SPEED = 0.7" in open(mp).read()
-    spec = yaml.safe_load(open(os.path.join(ROOT, "projects", "commission-ai-talkshow", "promo.yaml")))
+    spec = yaml.safe_load(open(TALK))
     for s in spec["shots"]:
         sc = s.get("screen") or {}
         assert float(sc.get("speed", 1.0)) >= 0.7 - 1e-9, s["id"]

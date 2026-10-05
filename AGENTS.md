@@ -1,6 +1,6 @@
 # AGENTS.md: how to make a product promo video with promo-reel
 
-Short version for agents: `skills/promo-reel/SKILL.md`. Capture-script contract: `capture/README.md`. Worked example: `projects/commission-ai-hero/`.
+Short version for agents: `skills/promo-reel/SKILL.md`. Capture-script contract: `capture/README.md`. Start a project from `templates/new-project` or `promo new <name> --style X` (example projects live in your projects dir, not in this repo).
 
 This file is the operating manual for any AI agent (or human) picking up a promo-video job.
 Read it top to bottom before touching footage. The pipeline is mechanical; taste and truth are not.
@@ -28,7 +28,7 @@ Get or write a one-page brief (its source of truth is `brief.yaml`, the user's e
 Draft it yourself from the product README/repo if needed, then get the app owner to confirm the claims list.
 
 ## 2. Shot list
-Write `shot-list.md`: one row per shot with time, beats, the real screen to capture, the on-screen caption, the camera move, the music moment, and **the evidence** for any claim. See `projects/commission-ai-hero/docs/shot-list-60s-v2.md` and `promo-template-zen.md`.
+Write `shot-list.md`: one row per shot with time, beats, the real screen to capture, the on-screen caption, the camera move, the music moment, and **the evidence** for any claim. Start from `templates/new-project` / `promo new <name> --style X`; a finished project's `docs/` in your projects dir is the best worked example.
 - Plan cuts on the music's beat grid (pick the track first, or pick a BPM: 98 BPM -> 0.612 s per beat; 60 s = 98 beats).
 - Captions: short (<= ~35 characters so they fit the 9:16-safe 608 px column at 32 px), each held >= 2 s, one fixed lower-middle zone; dark see-through pill on UI shots, white pill over scenic/illustrative shots.
 - Mark every caption/VO line with what proves it.
@@ -76,11 +76,11 @@ Look at the contact sheet and watch the whole video with sound before asking for
 - Legibility: is UI text sharp enough at the push-in used (upscale softness)? Do captions cover anything important?
 - Pacing and taste: does each cut land on a musical moment, does VO sit clear of the music, is the SFX tasteful, does the story read with the sound off?
 - Colour/brand: fonts, colours, end card text and URL.
-Write a short review note (open items, what's demo footage, what's old footage) like `projects/commission-ai-hero/docs/hero-v1.md`.
+Write a short review note (open items, what's demo footage, what's old footage) like the `docs/` review notes of an earlier project in your projects dir.
 For a reviewer model (e.g. Claude in Cursor), `promo critique-pack projects/<name>` writes `out/critique-pack/`: BRIEF.md (rubric:
 hook, legibility, story, pacing, calm composition, style fidelity, polish 1-5 + truth pass/fail; pass = truth pass, nothing under 3,
 average >= 4.2; the hard rules), TEXT-LINES.md, full-res stills per shot and per text card with sidecar JSON (measured cap-height px
-and effective scale of every card and `named:` element), the contact sheet, copy files, footage manifest.md, Zen's reviews, the full
+and effective scale of every card and `named:` element), the contact sheet, copy files, footage manifest.md, earlier reviews, the full
 `promo check` output and the VO whisper transcript. The agent prepares the pack; it does not run the reviewer.
 
 ## 8. Deliver
@@ -98,9 +98,9 @@ Hand over: `out/<name>-1080.mp4` (web, -14 LUFS), `out/<name>-1080-social.mp4` (
 | QA gates, contact sheet | Final approval to publish |
 
 ## Operational notes for agents on the shared box
-- Heavy steps take the box-wide lock `/tmp/commission-ai-cargo.lock` (`promo/lock.py`, shared with Commission-ai's cargo test gates) and wait while it is held. Never SIGCONT or kill a render that something else paused.
-- Use the project venv (`/workspace/videos/commission-ai-promo/.venv` on Patrick's box has every dependency; `pip install -e .[vo,asr]` elsewhere).
+- Heavy steps take a box-wide lock other heavy jobs on the machine can share (set `PROMO_HEAVY_LOCK` to the same path as e.g. your test gates, or `promo config heavy-lock PATH`; default `/tmp/promo-reel-heavy.lock`) (`promo/lock.py`) and wait while it is held. Never SIGCONT or kill a render that something else paused.
+- Use the project venv (`pip install -e .[vo,asr]` installs every dependency).
 - Render one shot at a time (ffmpeg `-threads 2`); never run two renders at once. Heavy renders hold
-  `flock /tmp/commission-ai-cargo.lock` (shared with Commission-ai's cargo test gates; `promo` takes it itself). A full 1080 build takes ~15-25 min on 8 cores.
+  the box-wide heavy lock (`promo` takes it itself; see above). A full 1080 build takes ~15-25 min on 8 cores.
 - Do not commit media, builds or the music file; `.gitignore` covers `media/`, `build/`, `out/`, `*.mov`, `*.mp4`, `*.wav`, `*.mp3`, models.
 - Do not git push or publish unless the human asked for that specific action.

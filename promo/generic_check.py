@@ -1,6 +1,6 @@
 """Generic `promo check` gates that run on EVERY project (with or without a style preset).
 
-Folded in from the hero's per-project audits (projects/commission-ai-hero/tools/named_v5.py, claims_v5.py):
+Folded in from per-project audits (the named-text and claims audits every hero-style project used to carry):
   named          (clip / plugin shots; anime shots keep style_check.named_gates, livestream shots livestream-named)
                  FAIL if text a caption / VO line names renders under min_px (18 px cap height at 1080p) or is not fully
                  in frame; `named-upscale` WARN above 1.0x. Same `named:` contract as anime shots (promo/named.py), with
@@ -43,9 +43,9 @@ WARN_RULES = {
         empty_frame=dict(on=True, max_frac=0.40, samples=3, block_px=24, blur_px=12, flat_std=2.0, halo_blocks=1, lum_tol=4),
         caption_truth=dict(on=True, unsupported="WARN"),
         long_hold=dict(on=True, max_s=3.5, pix_delta=10, max_changed=0.0005, width=384),
-        # captures that show scenery, not app UI (the Workshop / Outside / Street views): not judged as UI shots by
+        # captures that show scenery, not app UI (scenery views of the app; extend the markers per project): not judged as UI shots by
         # empty-frame (a night sky is not empty canvas). Shots with an explicit `ui:` key use that instead.
-        non_ui_capture=["view=workshop", "workshopHour=", "town="],
+        non_ui_capture=[],
     ),
     "hero": {},
     "anime-opening": dict(

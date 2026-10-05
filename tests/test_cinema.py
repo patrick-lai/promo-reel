@@ -441,7 +441,7 @@ def test_cinema_fades_and_title_and_pullback():
     ctx, shot, comp, out = compose_all(extra=dict(fade_in=0.5), t=0.5)
     assert np.asarray(out).max() > 100
     spec = fake_spec()
-    shot = mk_shot(dict(type="cinema", ui=False, title_bloom=dict(text="commission-ai", at=0.2, dur=0.8, fade=0.3, fade_out=0.1)))
+    shot = mk_shot(dict(type="cinema", ui=False, title_bloom=dict(text="Acme Tasks", at=0.2, dur=0.8, fade=0.3, fade_out=0.1)))
     comp = CN.Composer(tiny_ctx(spec, tempfile.mkdtemp()), shot)
     dark = np.asarray(comp.compose(None, None, 0.0, 0)).astype(int)
     lit = np.asarray(comp.compose(None, None, 0.5, 6)).astype(int)
@@ -473,7 +473,7 @@ def test_cinema_tiny_render_480p():
                                    "stream=width,height,nb_read_frames", "-of", "csv=p=0", p]).decode().strip()
     assert out == "854,480,12", out
     # dark-plate title shot (no source)
-    t = mk_shot(dict(type="cinema", ui=False, title_bloom=dict(text="commission-ai", at=0.1, dur=0.8, fade=0.3), fade_out=0.25), sid="02")
+    t = mk_shot(dict(type="cinema", ui=False, title_bloom=dict(text="Acme Tasks", at=0.1, dur=0.8, fade=0.3), fade_out=0.25), sid="02")
     CN.Cinema().render(ctx, t)
     assert os.path.exists(os.path.join(d, "segs", "02.mp4"))
     assert CN.Cinema().src_to_out(shot, 0.5) == 0.5 and [c["text"] for c in CN.Cinema().captions(ctx, shot)] == ["Tell it at night."]
@@ -601,7 +601,7 @@ def test_style_cinematic_story_copy_gates():
     st, msg = gate(cinema_project(sh), "copy-clear")
     assert st == "FAIL" and "overlaps the UI panel" in msg
     sh = good_shots()
-    sh[1]["title_bloom"] = dict(text="commission-ai", at=0.2, dur=3.0)           # title on a UI shot
+    sh[1]["title_bloom"] = dict(text="Acme Tasks", at=0.2, dur=3.0)           # title on a UI shot
     assert gate(cinema_project(sh), "copy-clear")[0] == "FAIL"
     sh = good_shots()
     sh[1]["lower_copy"] = [dict(text="8 tasks landed.", at=0.5, dur=3.0)]        # number without evidence
@@ -639,10 +639,10 @@ def test_cinema_copy_and_title_size_are_multipliers_with_a_cap():
     assert width(size=76) == w2, "a value above 4 is the legacy absolute canvas px (38 * 2)"
     assert CN.size_px({}, 38.0) == 38.0 and CN.size_px(dict(size=1.5), 132.0) == 198.0 and CN.size_px(dict(size=9), 132.0) == 9
     ctx = tiny_ctx(spec, tempfile.mkdtemp())
-    t1 = CN.Composer(ctx, mk_shot(dict(type="cinema", ui=False, title_bloom=dict(text="commission-ai"))))
-    t2 = CN.Composer(ctx, mk_shot(dict(type="cinema", ui=False, title_bloom=dict(text="commission-ai", size=1.5, cy=0.3))))
+    t1 = CN.Composer(ctx, mk_shot(dict(type="cinema", ui=False, title_bloom=dict(text="Acme Tasks Cloud"))))
+    t2 = CN.Composer(ctx, mk_shot(dict(type="cinema", ui=False, title_bloom=dict(text="Acme Tasks Cloud", size=1.5, cy=0.3))))
     assert 1.3 < t2.title[1].w / t1.title[1].w < 1.6
-    assert abs(t2.title[2][1] + CN._text_size(CN.serif_font(spec, 132 * 1.5 * ctx.OW / 1920), "commission-ai")[1] / 2 - 0.3 * ctx.OH) < 1
+    assert abs(t2.title[2][1] + CN._text_size(CN.serif_font(spec, 132 * 1.5 * ctx.OW / 1920), "Acme Tasks Cloud")[1] / 2 - 0.3 * ctx.OH) < 1
     # the gate warns about a capped multiplier
     sh = good_shots()
     sh[1]["lower_copy"] = [dict(text="Tell it at night.", at=0.5, dur=3.0, size=3.0)]

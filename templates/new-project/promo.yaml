@@ -68,3 +68,9 @@ mix:
     - {name: social, suffix: "-social", lufs: -9.0, ceiling: -1.8, max_true_peak: -1.0, aac_cutoff: 18000}   # aac_cutoff keeps AAC under -1 dBTP
 
 qa: {min_caption_hold: 2.0, lufs_tolerance: 0.5, beat_subdivision: 1, vo_max_wer: 0.0, asr_model: small.en}
+
+# Optional: files `promo critique-pack` copies into the reviewer folder (project-relative; no defaults).
+# critique:
+#   copy: [docs/captions.md, docs/vo-script.md]
+#   reviews: [reviews/round-1.md]
+#   footage_md: [footage/manifest.md]

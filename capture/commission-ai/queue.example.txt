@@ -1,5 +1,0 @@
-node wshots.mjs shot-15-morning 07:00 9
-node pshots.mjs 10b
-FULL=1 ZOOM=130 ID=talk-dag-tight UNION=PAY-101,PAY-104 node pshots.mjs talk-dag
-OUT=shot-05-rail CLIP='{"x":0,"y":90,"width":640,"height":360}' node pshots.mjs 05
-HOUR=19:30 CLOSE_EARNED=1 STREET_AT=4.2 SECS=8.5 OUT=shot-14b-dusk node w14b.mjs

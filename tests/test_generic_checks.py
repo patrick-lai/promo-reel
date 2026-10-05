@@ -12,15 +12,22 @@ from PIL import Image, ImageDraw, ImageFont
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
-os.environ.setdefault("HERO_FOOTAGE_MANIFEST", os.path.join(ROOT, "projects", "commission-ai-hero", "footage", "manifest.yaml"))
+sys.path.insert(0, os.path.join(ROOT, "tests"))
 
 from promo import generic_check as G  # noqa: E402
 from promo import rubric as RB  # noqa: E402
 
 FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-HERO = os.path.join(ROOT, "projects", "commission-ai-hero", "promo.yaml")
-ANIME = os.path.join(ROOT, "projects", "commission-ai-anime", "promo.yaml")
-ZEN_V9 = os.path.join(ROOT, "projects", "commission-ai-anime", "reviews", "zen-v9.md")
+from localproj import ANIME, HERO  # noqa: E402  (local example projects; tests skip without them)
+
+
+def v1_review(d):
+    """A reviewer's v1 markdown review (seven scores, no intent/reference): `| Rubric | Score |` table + `**Truth:** PASS`."""
+    rows = [("Hook", 4), ("Legibility", 5), ("Story", 4), ("Pacing", 5), ("Calm", 4), ("Style", 4), ("Polish", 4)]
+    txt = "| Rubric | Score |\n|---|---|\n" + "".join(f"| {k} | {v} |\n" for k, v in rows) + "| **Average** | **4.29** |\n\n**Truth:** PASS.\n"
+    p = os.path.join(d, "review-v1.md")
+    open(p, "w").write(txt)
+    return p
 
 
 # ---------------------------------------------------------------- rubric
@@ -49,16 +56,17 @@ def test_rubric_pass_fail_rules():
     miss = RB.evaluate(r, {k: v for k, v in good.items() if k != "story"})
     assert not miss["ok"] and "missing score: story" in miss["problems"]
     names = RB.evaluate(r, {"Intent": 4, "Reference": 4, "Hook": 4, "Legibility": 5, "Story": 4, "Pacing": 5, "calm composition": 4, "Style fidelity": 4, "Polish": 4, "Truth": "pass"})
-    assert names["ok"]                                                                 # BRIEF names / Zen's capitalisation
+    assert names["ok"]                                                                 # BRIEF names / reviewers' capitalisation
 
 
-def test_rubric_reads_zen_review_markdown_and_cli():
+def test_rubric_reads_review_markdown_and_cli():
+    d = tempfile.mkdtemp()
+    ZEN_V9 = v1_review(d)
     sc = RB.read_scores(ZEN_V9)
     assert sc["truth"] == "PASS" and sc["Hook"] == 4 and sc["Average"] == 4.29
-    v = RB.evaluate(RB.load(), sc, legacy=True)                                        # zen-v9 is a v1 review: no intent/reference scores
+    v = RB.evaluate(RB.load(), sc, legacy=True)                                        # a v1 review: no intent/reference scores
     assert v["ok"] and v["average"] == 4.29 and v["not_evaluated"] == ["intent", "reference"]
     assert not RB.evaluate(RB.load(), sc)["ok"]
-    d = tempfile.mkdtemp()
     p = os.path.join(d, "s.yaml")
     yaml.safe_dump(dict(scores=dict(intent=3, reference=3, hook=3, legibility=3, story=3, pacing=3, calm=3, style=3, polish=3, truth="PASS")), open(p, "w"))
     from promo import cli

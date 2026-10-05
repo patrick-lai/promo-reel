@@ -55,8 +55,8 @@ shots:
     cam: [[0, 0.5, 0.5, 1.0], [end, 0.5, 0.5, 0.94]]
     look: {backdrop: none}
     fade_in: 1.5
-    title_bloom: {text: "commission-ai", at: 1.2, dur: 3.2}
-    notes: "evidence: night Workshop capture, commit <sha>"
+    title_bloom: {text: "Product name", at: 1.2, dur: 3.2}
+    notes: "evidence: night-scene capture, commit <sha>"
   - id: "02"                   # UI panel, 8 s, slow push-in; copy sits in the margin below the panel
     beats: [10, 26]
     type: cinema
@@ -134,7 +134,7 @@ shots:
     ui: false
     look: {backdrop: none}
     fade_out: 1.5
-    title_bloom: {text: "commission-ai", at: 0.2, dur: 4.5, cy: 0.46}
+    title_bloom: {text: "Product name", at: 0.2, dur: 4.5, cy: 0.46}
     lower_copy:
       - {text: "Tell it at night. Wake up to merged PRs.", at: 1.2, dur: 3.5, align: center, cy: 640}
 

@@ -64,6 +64,16 @@ shots:
     # tagline: "One true line."    # optional; only what the footage shows / the product does today
     # amber_at: 2.4                # optional; default = card duration - 0.6 s
     # reach: [0.05, 0.22]          # optional; the old tall glow was [0.12, 0.80] with name_frac 0.11, name_y 0.40, amber_at 0
+    #
+    # Animated brand lockup instead of the plain texts (all keys optional; promo/shots/brand.py documents them):
+    # name_style: brand
+    # wordmark:                    # parts laid out on one line, each with its own colour / weight (default: one part from `name`)
+    #   - {text: "My", color: [236, 232, 223], weight: 330}
+    #   - {text: "-", color: [255, 188, 108], weight: 330}
+    #   - {text: "product", color: [159, 152, 246], weight: 480}
+    # emblem_path: brand/emblem.png   # project-relative transparent PNG shown above the wordmark; no default (+ optional emblem.json {"centre": [x, y]})
+    # mark: builtin                # a plain generic ring + four-point-star glyph when you have no emblem; false (default) draws none
+    # col_name: [236, 232, 223]    # text colour; col_accent: the hairline rule; col_glow: aura / bloom
 
 sfx: {library: {tick: {asset: sfx-tick}}}
 

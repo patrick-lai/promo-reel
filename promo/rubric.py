@@ -1,4 +1,4 @@
-"""Zen's scoring rubric, read from the versioned file `evals/rubric.yaml` (never hardcoded).
+"""The UX reviewer's scoring rubric, read from the versioned file `evals/rubric.yaml` (never hardcoded).
 
     promo rubric <scores.yaml|.json|review.md> [--rubric evals/rubric.yaml] [--json]
 
@@ -6,8 +6,8 @@
 under `pass.min_score`, every `pass.hard_min` gate (intent, reference) met and an average of the scores >= `pass.min_average`.
 Exit codes: 0 PASS, 1 FAIL, 3 INCOMPLETE (hard gates not scored; `--legacy` for archived v1 files). A scores file is YAML/JSON
     {intent: 4, reference: 4, hook: 4, legibility: 5, story: 4, pacing: 5, calm: 4, style: 4, polish: 4, truth: PASS}
-(keys = criterion `key` or `name`, case-insensitive) or a review markdown in Zen's format (a `| Rubric | Score |` table
-plus a `**Truth:** PASS` line, e.g. projects/commission-ai-anime/reviews/zen-v9.md).
+(keys = criterion `key` or `name`, case-insensitive) or a review markdown (a `| Rubric | Score |` table, one `| Criterion | 4 |` row
+per criterion, plus a `**Truth:** PASS` line).
 Rubric path: an explicit argument, else $PROMO_RUBRIC, else <repo>/evals/rubric.yaml.
 """
 from __future__ import annotations
@@ -62,7 +62,7 @@ def _norm(k):
 
 
 def parse_review_md(text):
-    """Scores + truth from a review in Zen's markdown format."""
+    """Scores + truth from a review in the review markdown format."""
     out = {}
     for m in re.finditer(r"^\|\s*\**([A-Za-z][A-Za-z ]*?)\**\s*\|\s*\**([0-9.]+)\**\s*\|", text, flags=re.M):
         out[m.group(1).strip()] = float(m.group(2))
@@ -131,7 +131,7 @@ def evaluate(r, scores, legacy=False):
 def main(argv=None):
     import argparse
     ap = argparse.ArgumentParser(prog="promo rubric", description="PASS/FAIL of a scores file against evals/rubric.yaml")
-    ap.add_argument("scores", help="scores .yaml/.json, or a review .md in Zen's format")
+    ap.add_argument("scores", help="scores .yaml/.json, or a review .md in the review markdown format")
     ap.add_argument("--rubric", default=None)
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--legacy", action="store_true", help="archived v1 reviews (seven scores): hard gates intent/reference may be absent")

@@ -11,7 +11,8 @@ import yaml
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
-EXAMPLE = os.path.join(ROOT, "projects", "commission-ai-hero", "promo.yaml")
+sys.path.insert(0, os.path.join(ROOT, "tests"))
+from localproj import HERO as EXAMPLE  # noqa: E402  (a local example project; tests skip without one)
 
 from promo import claims as C  # noqa: E402
 from promo import style_check, styles  # noqa: E402
@@ -51,7 +52,7 @@ def ph(sid, beats, ui=True, **kw):
     return dict(id=sid, beats=beats, type="anime", ui=ui, placeholder=dict(id=f"shot-{sid}", label="x"), **kw)
 
 
-GOOD = [ph("01", [0, 4], ui=False, cards=[dict(row="title", text="commission-ai", bars=[0, 1])], fx_in=[dict(kind="flash", frames=3), dict(kind="speed_lines", frames=6)]),
+GOOD = [ph("01", [0, 4], ui=False, cards=[dict(row="title", text="Acme Tasks", bars=[0, 1])], fx_in=[dict(kind="flash", frames=3), dict(kind="speed_lines", frames=6)]),
         ph("02", [4, 10], ui=True, cards=[dict(row="title", text="ONE ASK.", bars=[0, 1])], fx_in=dict(kind="flash", frames=3)),
         ph("03", [10, 12], ui=False),                       # text-free half-bar shot: cuts at 10 (half bar) next to it are fine
         ph("04", [12, 16], ui=True, cards=[dict(row="title", text="MERGED.", bars=[0, 1])]),
@@ -460,12 +461,12 @@ def test_heavy_commands_take_the_lock():
 
 
 # ---------------------------------------------------------------- anime project: S03 (the ask), Marketing copy v9
-ANIME = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "projects", "commission-ai-anime", "promo.yaml")
-SCRIPT = "/workspace/promo/marketing/scripts-3-directions-v1.md"
+from localproj import ANIME  # noqa: E402
+SCRIPT = os.environ.get("PROMO_TEST_ANIME_SCRIPT", "")             # optional copy-script record of the local anime project
 
 
 def test_anime_s03_ask_cards_match_marketing_copy():
-    """Marketing Lead (4 Oct, anime v10, Zen v9 condition): 'ONE ASK.' 4.07-8.14 s from the first UI frame while the ask
+    """Copy record (anime v10, reviewer v9 condition): 'ONE ASK.' 4.07-8.14 s from the first UI frame while the ask
     types, 'TONIGHT.' 8.14-12.20 s from the first bar after 'tonight' starts typing, to the cut; 3 bars each, in the band;
     the script record carries the same windows."""
     from promo.shots.anime import card_times
@@ -482,7 +483,7 @@ def test_anime_s03_ask_cards_match_marketing_copy():
 
 
 def test_anime_s03_typing_never_faster_than_captured_and_holds_short():
-    """Zen A7: no 4 s still stretch. Every S03 segment plays at <= the captured speed (keystrokes at exactly 1x), the
+    """Reviewer A7: no 4 s still stretch. Every S03 segment plays at <= the captured speed (keystrokes at exactly 1x), the
     segments tile the source without gaps, and each slowed (still) segment adds at most ~1 s on screen."""
     spec = load_spec(ANIME)
     s03 = next(s for s in spec.shots if s.id == "03")

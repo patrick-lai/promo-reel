@@ -24,7 +24,7 @@ from promo import assetplan as AP  # noqa: E402
 from promo import brief as BR  # noqa: E402
 from promo import flow as F  # noqa: E402
 
-INTENT = "Make a 60 second promo for CommissionAI: tell it what you want at night, wake up to merged pull requests. Calm, real product footage, no hype."
+INTENT = "Make a 60 second promo for Acme Tasks: tell it what you want at night, wake up to merged pull requests. Calm, real product footage, no hype."
 FONTS = ["/System/Library/Fonts/HelveticaNeue.ttc", "/System/Library/Fonts/Helvetica.ttc", "/Library/Fonts/Arial.ttf"]
 HUES = [(26, 38, 80), (60, 40, 90), (20, 70, 90), (90, 50, 40), (30, 80, 70), (80, 60, 30), (40, 40, 70), (100, 50, 70)]
 
@@ -110,7 +110,7 @@ def sc(i, t0, t1, beat, action, **kw):
 
 BOARD_A = dict(story="A", title="Wake up to merged PRs", logline="One request at night, and by morning the work is merged: calm, real footage, no hype.", aspect="16:9", scenes=[
     sc("01", 0, 5, "It's night", "A quiet desk at 11:48 pm. The laptop is the only light in the room.", source="generated", proof="", caption="", camera="slow push-in", sound="room tone, a distant fan"),
-    sc("02", 5, 11, "Tell it", "The person types one sentence into CommissionAI and presses return.", caption="Tell it what you want", vo="Before bed, I tell it what I want built.", sound="soft key clicks", camera="static, over the shoulder",
+    sc("02", 5, 11, "Tell it", "The person types one sentence into Acme Tasks and presses return.", caption="Tell it what you want", vo="Before bed, I tell it what I want built.", sound="soft key clicks", camera="static, over the shoulder",
        proof="Footage take 02: composer with the request typed"),
     sc("03", 11, 18, "Agents spin up", "The board fills with tickets as agents pick them up, one by one.", caption="8 tasks, 3 agents", vo="It splits the work and gets going.", sound="gentle rise", camera="push-in to the board",
        proof="Footage take 03: 8 tickets, 3 agent chips visible", frames=[dict(t=14.5, image="frames/03-mid.png", prompt="Mid frame: half the tickets claimed"), dict(t=16.5, image="frames/03-mid2.png", prompt="Mid frame: all tickets claimed")]),
@@ -185,7 +185,7 @@ def gen_assets(pd, stage):
     wav(p("audio", "bed.wav"), 196, 3.0)
     wav(p("audio", "vo.wav"), 330, 2.0)
     wav(p("audio", "chime.wav"), 880, 1.0)
-    still(p("assets", "title-mock.png"), "CommissionAI (mock title)", (240, 214, 190))
+    still(p("assets", "title-mock.png"), "Acme Tasks (mock title)", (240, 214, 190))
     plan = copy.deepcopy(ASSETS)
     if stage == "ready":
         for a in plan:
@@ -232,7 +232,7 @@ def build(keep=None):
     F.add_council(pd, "scripts", cf)
     F.advance(pd)
     snap("pick")
-    F.approve(pd, "scripts-picked", "Patrick", ["A", "B"])
+    F.approve(pd, "scripts-picked", "Sam", ["A", "B"])
     F.advance(pd)
     gen_boards(pd)
     snap("storyboard")
@@ -242,7 +242,7 @@ def build(keep=None):
     snap("storyboard-partial")
     for fp in frames:
         os.rename(fp + ".bak", fp)
-    F.approve(pd, "storyboard-approved", "Patrick")
+    F.approve(pd, "storyboard-approved", "Sam")
     F.advance(pd)
     gen_assets(pd, "plan")
     snap("assets")
@@ -256,15 +256,15 @@ def build(keep=None):
     broken = copy.deepcopy(out["assets"])
     broken["assets"][0]["path"] = {"$file": os.path.join(pd, "footage", "missing-capture.png")}
     out["assets-error"] = broken
-    F.approve(pd, "assets-approved", "Patrick")
+    F.approve(pd, "assets-approved", "Sam")
     F.advance(pd)
     snap("keyframes")
     gen_mids(pd)
     gen_assets(pd, "ready")
-    F.approve(pd, "assets-approved", "Patrick")
+    F.approve(pd, "assets-approved", "Sam")
     F.advance(pd)
     snap("confirm")
-    F.approve(pd, "final-confirmation", "Patrick")
+    F.approve(pd, "final-confirmation", "Sam")
     F.advance(pd)
     snap("drafts")
     d1 = os.path.join(pd, "out", "draft-1.mp4")
@@ -294,7 +294,7 @@ def build(keep=None):
     long["assets"] = copy.deepcopy(out["assets"]["assets"])
     long["assets"][0]["id"] = "ui-ticket-list-with-a-very-long-descriptive-identifier-that-wraps"
     long["assets"][0]["how"] = "Full-resolution capture of the ticket list, " * 8
-    long["summary"]["title"] = "Make a 60 second promo for CommissionAI: tell it what you want at night, wake up to merged PRs"[:80]
+    long["summary"]["title"] = "Make a 60 second promo for Acme Tasks: tell it what you want at night, wake up to merged PRs"[:80]
     out["long-content"] = long
     for n in (3, 4, 5):
         F.round_start(pd, f"Round {n} feedback: tighten the end card.")
@@ -304,9 +304,9 @@ def build(keep=None):
         co, re_ = round_files(tmp, pd, n, "YES")
         F.round_close(pd, co, re_)
     snap("review-maxed")
-    F.approve(pd, "draft-approved", "Patrick")
+    F.approve(pd, "draft-approved", "Sam")
     F.advance(pd)
-    fin = os.path.join(pd, "out", "commissionai-hero-1080.mp4")
+    fin = os.path.join(pd, "out", "acme-hero-1080.mp4")
     mp4(fin, "smptebars", 2, "1920x1080")
     F.add_final(pd, fin)
     snap("final")

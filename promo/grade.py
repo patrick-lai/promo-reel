@@ -11,7 +11,7 @@ space AROUND the UI, not an edit of it:
     corners (the 4 corner blocks blend the real pixels with what is behind them; the interior is byte-identical to the
     resampled source), a layered soft drop shadow, a 1 px light rim just outside the border, and a faint light spill
     (a blurred, enlarged, lifted, warm copy of the panel behind it). The backdrop can be a film-world `plate` (night sky,
-    dawn, the Workshop) instead of a blurred copy of the UI, always lifted with a cool-to-warm gradient so it is never flat
+    dawn, a scenic view) instead of a blurred copy of the UI, always lifted with a cool-to-warm gradient so it is never flat
     black, and it drifts at a fraction (default 0.35) of the camera motion for parallax.
   * `protect_ui: true` (the default of the cinematic-story preset) means grade / bloom / grain / vignette are applied to
     the backdrop (and to non-UI footage such as scenery) only. The only things that may touch UI pixels are a fade to /

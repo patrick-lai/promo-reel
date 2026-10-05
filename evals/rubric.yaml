@@ -1,12 +1,11 @@
-# Zen UX Designer's promo scoring rubric (the bar every cut is reviewed against).
+# UX reviewer's promo scoring rubric (the bar every cut is reviewed against).
 # Versioned: bump `version` and add a `changelog` line whenever a criterion, a question or the pass bar changes.
 # Read by `promo critique-pack` (BRIEF.md "Rubric" section) and by `promo rubric <scores>` / promo.rubric.evaluate().
-# Wording: the critique-pack BRIEF.md (projects/commission-ai-anime/out/critique-pack/BRIEF.md, anime v11) and Zen's
-# reviews (projects/commission-ai-anime/reviews/zen-v9.md: Hook / Legibility / Story / Pacing / Calm / Style / Polish,
-# Average, Truth).
+# Review format (read by `promo rubric <review.md>`): a markdown table `| Rubric | Score |` with one row per criterion
+# (Hook / Legibility / Story / Pacing / Calm / Style / Polish, plus Intent / Reference), an Average row, and a `**Truth:** PASS|FAIL` line.
 version: 2
-id: zen-promo-rubric
-owner: Zen UX Designer
+id: promo-rubric
+owner: UX reviewer
 scale:
   min: 1
   max: 5

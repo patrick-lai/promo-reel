@@ -9,9 +9,9 @@ Pipeline (one host = one layer):
 
 Models and the Cubism Core come from `live2d/assets.yaml` and are fetched from live2d.com (sha256-pinned) into
 `live2d/media/` (gitignored, never redistributed). Only Live2D Original Characters are accepted. Renders take a
-the box-wide heavy-work lock (/tmp/commission-ai-cargo.lock, shared with Commission-ai's cargo test gates).
+the box-wide heavy-work lock (promo.lock: a lock other heavy jobs on the machine can share; $PROMO_HEAVY_LOCK).
 
-The lip envelope follows /workspace/ai-interview-host/src/audio/vowel.ts (LipSync: level vs a decaying peak,
+The lip envelope follows the vowel-level LipSync approach (LipSync: level vs a decaying peak,
 smoothstep, attack/release) and viseme-timeline.ts (10 ms steps, centred look-ahead window, 20 ms close ease);
 `lip_lag` is a port of lip-lag.ts.
 """
@@ -379,7 +379,7 @@ def host_tracks(model, n, fps, seed, wav=None, partner_wav=None, gaze=0.0, sr=No
 
 # ---------------------------------------------------------------- render
 def render_lock(log=print):
-    """The shared heavy-work lock (/tmp/commission-ai-cargo.lock, see promo.lock); replaces the old live2d-only lock."""
+    """The shared heavy-work lock (see promo.lock); replaces the old live2d-only lock."""
     from .lock import heavy_lock
     return heavy_lock("live2d host render", log=lambda *a: log(*a))
 

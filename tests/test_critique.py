@@ -237,10 +237,9 @@ def test_kind_and_default_sources():
     s = load_spec(p)
     assert CR.kind_of(s) == "anime"
     copy, reviews, fmd = CR.sources(s)
-    assert copy == [os.path.abspath(f"{CR.MARKETING}/scripts-3-directions-v1.md")] and reviews == []
+    assert copy == [] and reviews == []                                 # generic defaults are empty: per-project `critique:` only
     assert any(x.endswith(os.path.join("footage", "manifest.md")) for x in fmd)
-    assert CR.DEFAULT_COPY["hero"][0].endswith("captions-v1-cut.md") and CR.DEFAULT_COPY["hero"][1].endswith("vo-script-v1.md")
-    assert CR.DEFAULT_REVIEWS["talkshow"] == ["/workspace/commission-ai-routines/ux-review/2026-10-04/talkshow-preview/REVIEW.md"]
+    assert not CR.DEFAULT_COPY and not CR.DEFAULT_REVIEWS
     raw = yaml.safe_load(open(p))
     raw["critique"] = dict(kind="talkshow", copy=["copy.md"], reviews=["zen.md"])
     yaml.safe_dump(raw, open(p, "w"), sort_keys=False)
@@ -252,14 +251,14 @@ def test_kind_and_default_sources():
 def test_plan_stills_one_mid_per_shot_and_grouped_cards():
     p, _ = still_project(tempfile.mkdtemp())
     raw = yaml.safe_load(open(p))
-    raw["shots"][0]["cards"].append(dict(row="sub", text="Your AI dev crew", bars=[0, 1]))   # shares the title's span
+    raw["shots"][0]["cards"].append(dict(row="sub", text="Plan it, ship it", bars=[0, 1]))   # shares the title's span
     yaml.safe_dump(raw, open(p, "w"), sort_keys=False)
     s = load_spec(p)
     plan, _ = CR.plan_stills(s)
     mids = [x for x in plan if x[1] == "shot-mid"]
     cards = [x for x in plan if x[1] == "card"]
     assert len(mids) == len(s.shots)
-    assert [x[0] for x in cards][0] == "s01-card1" and cards[0][5] == ["commission-ai", "Your AI dev crew"]
+    assert [x[0] for x in cards][0] == "s01-card1" and cards[0][5] == ["Acme Tasks", "Plan it, ship it"]
     assert len(cards) == 4                                              # 01 (grouped), 02, 04, 05
     assert all(0 <= x[4] < s.total_frames() for x in plan)
 
@@ -271,7 +270,7 @@ def test_brief_has_rubric_rules_and_ask():
     md = CR.brief_md(s, "anime", "/x/t.mp4", [], dict(copy=[("/m/c.md", "copy/c.md")], footage=[], reviews=[("/z/R.md", None)]),
                      dict(failed=False, results=[]), True, False, False, ["/z/R.md"])
     for want in ("truth: PASS / FAIL", "4.2", "18 px", "DPR 2", "No chat asides", "only between shots", "ONE fixed lower-third band",
-                 "Street notice", ">= 0.5 s", "Real footage only", "line by line", "Frame check", "MISSING: `/z/R.md`"):
+                 "on-screen notice", ">= 0.5 s", "Real footage only", "line by line", "Frame check", "MISSING: `/z/R.md`"):
         assert want in md, want
 
 

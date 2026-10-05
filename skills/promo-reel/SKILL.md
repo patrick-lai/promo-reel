@@ -41,7 +41,7 @@ grok, codex/GPT, a person with a recorder. promo-reel only specifies, ingests an
   time-stamped `sheets/sheet-NN.png` (READ THESE FIRST: open them as images), one still per cut, `WATCH.md` (shot table: length, palette, words),
   cut-rate curve per fifth, shot-length stats, loudness, tempo guess, transcript. Set `PROMO_WATCH_ASR=0` to skip the (slow) transcript ONLY for your own drafts; for a REFERENCE the transcript is mandatory (`promo refs add`).
   Do this for the reference AND for your own draft, then compare numbers (median shot length, cut-rate curve, LUFS) as well as how it looks.
-  Write what you learn to `docs/reference-study/<date>-<name>.md`; presets come from measurements, not vibes.
+  Write what you learn to the project's `docs/reference-study/<date>-<name>.md`; presets come from measurements, not vibes.
 - **Generated images / video for NON-UI plates (YOU generate, promo-reel ingests):** the calling agent makes the asset with whatever it has
   (its own image/video tool, `grok -p "..."`, `codex exec "..."`, a person) and hands the file down:
   1. Declare what you need in `promo.yaml`: `broll: [{id, kind: video|image, prompt, seconds, aspect}]`; `promo gen plan [--json]` lists the open
@@ -58,8 +58,8 @@ grok, codex/GPT, a person with a recorder. promo-reel only specifies, ingests an
 ## Pick a style preset first (do not write your own renderer)
 Every look is a **style preset**: pacing rules, a caption/card band, typography, transitions and the `promo check` gates
 for them. `promo styles` lists them. Scaffold with the one that matches the brief:
-- `promo new <name> --style hero`: calm product hero (VO, dark pills in the 9:16-safe zone, cuts on beats). Example: `projects/commission-ai-hero/`.
-- `promo new <name> --style anime-opening`: kinetic anime-opening cards on real footage. Example: `projects/commission-ai-anime/`.
+- `promo new <name> --style hero`: calm product hero (VO, dark pills in the 9:16-safe zone, cuts on beats). Example projects live in your projects dir.
+- `promo new <name> --style anime-opening`: kinetic anime-opening cards on real footage.
 - `promo new <name> --style livestream`: talk-show/livestream composite (long holds, lower-left chyron, no flashes).
 - `promo new <name> --style horizon`: 20-25 s horizon film (rapid cuts of real surfaces, each shot `type: horizon` with `anchor: {src: [x, y], out_y: 0.58}` putting a real edge on the horizon; show-level `horizon_text: [{words, beats}]` is the ONE serif line that persists across cuts; end with `type: dawn`). A burst (half beats ok) must be followed by a hold >= 3 s. Template: `templates/styles/horizon/promo.yaml`.
 
@@ -109,17 +109,16 @@ reference. Structurally prevent that:
 4. **Spec**: `promo new <name>` scaffolds `projects/<name>/`. Fill `promo.yaml` (timeline, shots, overlays, sfx, vo, mix, qa) and
    `assets.yaml` (music/vo/sfx/font with licence + source_url). Custom shot types go in the project `shots.py` via `@shot_type`.
 5. **Build**: `promo build` (idempotent; only changed shots re-render). Iterate on one shot with `promo shot 05`, look with `promo segpeek 05`.
-   Heavy steps (build/shot/sfx/music/mix/assemble/contact/check) take the box-wide lock `/tmp/commission-ai-cargo.lock`
-   themselves (`promo/lock.py`) and wait while a Commission-ai cargo test gate holds it. Run them niced (`nice -n 10 python -m promo ...`);
+   Heavy steps (build/shot/sfx/music/mix/assemble/contact/check) take a box-wide lock other heavy jobs on the machine can share (set `PROMO_HEAVY_LOCK` to the same path as e.g. your test gates, or `promo config heavy-lock PATH`; default `/tmp/promo-reel-heavy.lock`)
+   themselves (`promo/lock.py`) and wait while another job holds it. Run them niced (`nice -n 10 python -m promo ...`);
    do not wrap them in another `flock` and never SIGCONT a paused render.
 6. **Check**: `promo check` (exit 1 on FAIL). Fix FAILs; read WARNs (soft upscale, demo footage, short labels) and decide.
 7. **Review**: open `out/<name>-1080-contact.png` and the mp4. A human watches every frame that has text, captions or pushes.
    For the final reviewer model, run `promo critique-pack projects/<name>` and hand over the folder it prints
    (`out/critique-pack/`: BRIEF.md with the rubric + hard rules, stills with size sidecars, contact sheet, copy, footage
-   manifest.md, Zen's reviews, full check output, VO transcript). Do not run or impersonate the reviewer yourself.
-   Per-project sources: `critique: {copy: [...], reviews: [...], footage_md: [...]}` in promo.yaml (defaults by kind:
-   hero = captions-v1-cut.md + vo-script-v1.md; anime / talk show = scripts-3-directions-v1.md; talk show also gets Zen's
-   talkshow-preview REVIEW.md).
+   manifest.md, earlier reviews, full check output, VO transcript). Do not run or impersonate the reviewer yourself.
+   Per-project sources: `critique: {copy: [...], reviews: [...], footage_md: [...]}` in promo.yaml (project-relative paths; no defaults,
+   so list the caption / VO-script files and any earlier reviews yourself).
 8. **Deliver**: only after human approval. Re-render at 4K with `--scale 2` if asked. Never publish or upload on your own.
 
 ## CLI cheat-sheet
@@ -133,7 +132,7 @@ reference. Structurally prevent that:
 - `promo live2d fetch|render|lag`: offline Live2D hosts for the `livestream` shot type (hosts on one side, screen >= 55 %,
   chat <= 4 lines of host asides only, neutral EP tag, no LIVE/viewer counts, keep-clear rects, `live2d_credits` end card).
   Only Live2D Original Characters; notice + licence rules in `docs/live2d-licences.md`. Heavy renders hold
-  `/tmp/commission-ai-cargo.lock` (shared with Commission-ai cargo test gates); `--debug` draws keep-clear outlines.
+  the box-wide heavy lock; `--debug` draws keep-clear outlines.
 - `--json` prints only JSON on stdout (always has `ok`), logs go to stderr. `promo fetch` downloads licensed assets (sha256 checked).
 
 ## Team rules

@@ -9,7 +9,7 @@ a project only writes what it changes.
     timeline: {grid: music/edit-v1.json, beats: 225}   # beat grid from a music JSON (tempo, bars, markers)
 
 Presets:
-  hero           calm product hero (the commission-ai-hero look): beat grid, dark pills in the 9:16-safe lower-middle
+  hero           calm product hero (the hero look): beat grid, dark pills in the 9:16-safe lower-middle
                  zone held >= 2 s, eased push-ins, cuts only. Same defaults the engine always had.
   anime-opening  kinetic title cards on real footage: cuts snapped to bar lines from a music grid, UI shots hold
                  >= 1 bar, text-free shots >= 1/2 bar, cards held >= 1 bar in ONE fixed lower-third band that never

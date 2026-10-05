@@ -4,7 +4,7 @@ A declarative, agent-runnable pipeline for **product promo videos made from real
 
 - **Agents start here:** [`skills/promo-reel/SKILL.md`](skills/promo-reel/SKILL.md) (short) and [`AGENTS.md`](AGENTS.md) (the full workflow, team rules, and what still needs a human).
 - **Capture handoff:** [`capture/README.md`](capture/README.md) and `projects/<name>/footage/manifest.yaml`.
-- **Worked example:** [`projects/commission-ai-hero/`](projects/commission-ai-hero/), the commission-ai 60 s hero v1. `examples/commission-ai-hero` is a symlink to it.
+- **Starting a project:** [`templates/new-project/`](templates/new-project/) or `promo new <name> --style hero|anime-opening|livestream|horizon|cinematic-story`. Example projects live in your projects dir (`promo config projects-dir`; by default the gitignored `projects/`), not in this repo.
 
 ## Install
 ```
@@ -24,10 +24,10 @@ projects/<name>/
   shots.py                optional project plugin: bespoke shot types (@shot_type)
   docs/                   brief, shot list, VO script, captions, review notes
   media/ build/ out/      gitignored: fetched assets, intermediates, deliverables
-capture/                  capture-script contract (product repos PR their capture scripts here)
+capture/                  capture-script contract (product-specific capture scripts live in your projects dir)
 skills/promo-reel/        agent skill
 templates/new-project/    scaffold used by `promo new`
-evals/rubric.yaml         Zen UX Designer's scoring rubric (versioned): read by `promo critique-pack` and `promo rubric`
+evals/rubric.yaml         UX reviewer's scoring rubric (versioned): read by `promo critique-pack` and `promo rubric`
 tests/                    fast unit tests (.venv/bin/python tests/test_<name>.py; needs the deps above, incl. pyyaml)
 ```
 
@@ -73,9 +73,8 @@ this. The Cubism Core and the sample models are fetched from live2d.com and neve
 required notice are in [`docs/live2d-licences.md`](docs/live2d-licences.md). Example: `projects/live2d-demo/`.
 
 **Shared heavy-work lock:** `promo build|shot|vo|music|sfx|mix|events|assemble|contact`, Live2D host renders and the
-livestream compositor hold `flock /tmp/commission-ai-cargo.lock` for their whole run (the lock Commission-ai's
-pre-merge cargo test gates use), so a render and a test gate never overlap. They block until it is free and log
-every 30 s while waiting (`promo/lock.py`; re-entrant within one process).
+livestream compositor hold a box-wide lock other heavy jobs on the machine can share (set `PROMO_HEAVY_LOCK` to the same path as e.g. your test gates, or `promo config heavy-lock PATH`; default `/tmp/promo-reel-heavy.lock`) for their whole run, so two heavy jobs never overlap. They block until it is free and log
+every 30 s while waiting (`promo/lock.py`; re-entrant within one process). Path: `$PROMO_HEAVY_LOCK`, else `heavy_lock:` in the user config, else the default.
 With `--json`, only JSON goes to stdout and it always has `ok`; logs go to stderr. This keeps the CLI ready to wrap as an MCP server later.
 
 Builds are **idempotent**. Each step stamps a hash of its inputs (spec subtree, input files, code, scale) and is skipped when nothing has changed. Editing one shot re-renders only that shot, then re-runs events, mix and assemble only if their inputs changed.
@@ -108,9 +107,9 @@ for t in tests/test_*.py; do nice -n 10 $PY "$t" || echo "FAILED: $t"; done   # 
 $PY -m promo -p projects/<name>/promo.yaml check     # QA gates on the existing render (no re-render); exit 1 on any FAIL
 ```
 
-`promo check` samples frames with ffmpeg (`-threads 2`) under the shared cargo lock (`/tmp/commission-ai-cargo.lock`),
+`promo check` samples frames with ffmpeg (`-threads 2`) under the shared heavy-work lock (`promo config heavy-lock`),
 so it may wait for other heavy jobs. Talk-show tests and specs read the hero footage manifest via
-`HERO_FOOTAGE_MANIFEST` (defaults to this checkout's `projects/commission-ai-hero/footage/manifest.yaml` in tests).
+`HERO_FOOTAGE_MANIFEST` (tests that need a local example project skip when it is absent).
 
 ## QA gates (`promo check`)
 | Gate | FAIL when |
@@ -142,7 +141,7 @@ so it may wait for other heavy jobs. Talk-show tests and specs read the hero foo
 
 The four WARN rules are configured per preset in `promo/generic_check.py` (`WARN_RULES`) and per project with
 `qa: {warn_rules: {long_hold: {max_s: 5}, text_edge: {on: false}, ...}}`. Frame sampling (ffmpeg `-threads 2`) runs
-inside `promo check`'s hold of the shared cargo lock.
+inside `promo check`'s hold of the shared heavy-work lock.
 
 | livestream-* | (livestream specs only) `licence`: a host is not a Live2D Original Character, or there is no `live2d_credits` end card with text >= 28 px held >= 2 s at full opacity; `screen`: under 55 % of the frame; `chat`: `max_lines` > 4; `chat-truth`: a chat author is not a host and no `chat.scripted_label` is set; `lint`: on-screen text says LIVE or shows a viewer count; `side`: `hosts_side` not left/right, `slot_gap` < 12, more than one move, a move shorter than 0.5 s or off a beat change, or a per-shot side flip; `keep-clear`: anything drawn (hosts, header, chat strip, overlays) covers a `keep_clear` rectangle on any frame |
 
@@ -150,13 +149,12 @@ inside `promo check`'s hold of the shared cargo lock.
 `promo critique-pack [project]` writes one self-contained folder for a final reviewer (default `out/critique-pack/`):
 `BRIEF.md` (rubric, hard rules, what to return, shot table), `TEXT-LINES.md`, full-res stills with size sidecars
 (cards, captions, `named` app text: cap px at 1080p, effective scale), the contact sheet, `CHECK.txt/json`, the VO
-transcript, and the copy / footage manifests / Zen reviews named under `critique:` in promo.yaml. It calls no model.
+transcript, and the copy / footage manifests / earlier reviews named under `critique:` in promo.yaml. It calls no model.
 
-The rubric is **Zen UX Designer's**, versioned in [`evals/rubric.yaml`](evals/rubric.yaml) (BRIEF.md reads it; override
+The rubric is **the UX reviewer's**, versioned in [`evals/rubric.yaml`](evals/rubric.yaml) (BRIEF.md reads it; override
 with `critique.rubric:` or `$PROMO_RUBRIC`): nine 1-5 scores (intent, reference, hook, legibility, story, pacing, calm, style, polish)
 plus Truth PASS/FAIL. **Pass bar:** intent >= 4 and reference >= 4 (hard gates), average >= 4.2, no score under 3, Truth PASS. `promo rubric <scores>` computes
-the verdict from a YAML/JSON scores file or a review in Zen's markdown format (e.g. `projects/commission-ai-anime/reviews/zen-v9.md`
--> 4.29 PASS); `promo.rubric.evaluate()` is the same in code. Bump `version` (+ changelog) when the rubric changes.
+the verdict from a YAML/JSON scores file or a review in markdown (a `| Rubric | Score |` table plus a `**Truth:** PASS` line); `promo.rubric.evaluate()` is the same in code. Bump `version` (+ changelog) when the rubric changes.
 
 **Rubric v2 (hard gates).** `intent` ("would the person who wrote the request say this is what they asked for, in their words?") and
 `reference` ("does it feel like the supplied references in narrative, people, motion, light, sound and pacing, not just look?") come first.

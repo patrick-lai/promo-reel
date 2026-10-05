@@ -1,5 +1,5 @@
 "use strict";
-/* Plays the CommissionAI host for mods/promo-flow: sandbox="allow-scripts" iframe, bridge protocol v1, canned states from serve.py. */
+/* Plays a bridge-protocol host for mods/promo-flow: sandbox="allow-scripts" iframe, bridge protocol v1, canned states from serve.py. */
 (() => {
   const q = new URLSearchParams(location.search);
   const $ = (id) => document.getElementById(id);
@@ -31,7 +31,7 @@
 
   async function onAction(m) {
     const a = H.manifest && H.manifest.actions[m.name];
-    const by = "Patrick";
+    const by = "Sam";
     if (!a) { post({ type: "result", id: m.id, ok: false, error: "Unknown action " + m.name }); return log("action " + m.name + " REJECTED 404"); }
     const d = await stageDoc(H.stage);
     if (a.guard && String(ptr(d.state, a.guard.state)) !== String(m.payload[a.guard.payload])) {

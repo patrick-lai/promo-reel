@@ -12,8 +12,9 @@ import yaml
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
-EXAMPLE = os.path.join(ROOT, "projects", "commission-ai-hero", "promo.yaml")
-LEGACY_EVENTS = "/workspace/videos/commission-ai-promo/audio/mix/events.json"
+sys.path.insert(0, os.path.join(ROOT, "tests"))
+from localproj import HERO as EXAMPLE, HERO_MANIFEST  # noqa: E402  (a local example project; tests skip without one)
+LEGACY_EVENTS = os.environ.get("PROMO_TEST_LEGACY_EVENTS", "")        # optional reference events.json of an earlier cut
 
 from promo import assets as A  # noqa: E402
 from promo.events import compute_events  # noqa: E402
@@ -29,7 +30,7 @@ def test_timeline_frames_sum_to_1800():
 
 
 def test_events_match_legacy():
-    if not os.path.exists(LEGACY_EVENTS):
+    if not (LEGACY_EVENTS and os.path.exists(LEGACY_EVENTS)):
         return
     spec = load_spec(EXAMPLE)
     if spec.raw["output"]["name"] != "hero-v1":      # the legacy events.json is the v1 cut; later cuts re-time the edit
@@ -101,12 +102,6 @@ def test_caption_geometry_inside_zone():
                 n += 1
                 assert b[0] >= z["x0"] and b[2] <= z["x1"] and b[1] >= z["y0"] and b[3] <= z["y1"], (s.id, b)
     assert n == 6, n          # hero v5: 01, 04, 06, 12, 11, 14b (v1 had 9)
-
-
-def test_examples_symlink_still_works():
-    link = os.path.join(ROOT, "examples", "commission-ai-hero")
-    assert os.path.islink(link) and os.path.realpath(link) == os.path.join(ROOT, "projects", "commission-ai-hero")
-    assert load_spec(os.path.join(link, "promo.yaml"), plugins=False).total_frames() == 1800
 
 
 def test_footage_manifest_covers_spec_and_verifies():
@@ -214,104 +209,8 @@ def test_status_and_other_json_parse():
     rc, f = _cli_json("footage", "verify", "--json")
     assert f["ok"] and rc == 0
     rc, f = _cli_json("footage", "list", "--json")
-    n = len(yaml.safe_load(open(os.path.join(ROOT, "projects", "commission-ai-hero", "footage", "manifest.yaml")))["clips"])
+    n = len(yaml.safe_load(open(HERO_MANIFEST))["clips"])
     assert f["ok"] and len(f["clips"]) == n >= 51 and len({c["id"] for c in f["clips"]}) == n
-
-
-# ---------------------------------------------------------------- capture/commission-ai helpers (mk_manifest.py, register.py)
-CAPTURE = os.path.join(ROOT, "capture", "commission-ai")
-
-
-def _capmod(name):
-    import importlib.util
-    sys.path.insert(0, CAPTURE)
-    spec = importlib.util.spec_from_file_location(f"cap_{name}", os.path.join(CAPTURE, f"{name}.py"))
-    m = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(m)
-    return m
-
-
-def _cap_fixture(tmp):
-    """Footage dir with 2 fake clips (+1 missing): 'a' has a meta.json (HIDE_MONEY + overlay), 'b' relies on notes.json inject."""
-    fdir = os.path.join(tmp, "v1-1080")
-    os.makedirs(fdir)
-    for f in ("a", "b"):
-        open(os.path.join(fdir, f + ".mov"), "wb").write(b"x")
-    json.dump({"hash": "h", "params": {"css": ["HIDE_MONEY"], "cursorOverlay": True}}, open(os.path.join(fdir, "a.meta.json"), "w"))
-    open(os.path.join(fdir, "capture-log.jsonl"), "w").write(json.dumps({"at": "2026-10-03T00:00:00Z", "shot": "b"}) + "\n"
-                                                             + json.dumps({"at": "2026-10-03T01:00:00Z", "shot": "b", "correction": True}) + "\n")
-    clip = dict(url="`?demo=promo`", beat="beat `x`", framing="DPR2 clip", notes="n", dpr=2)
-    notes = {"header": ["- head"], "stills": [], "footer": [], "clips": [
-        dict(clip, shot="A", file="a", id="a-v1080", shots=["01"], url="`?demo=promo` (node clicked at 9.0 s)"),
-        dict(clip, shot="B", file="b", id="b-v1080", shots=["02"], inject={"css": ["NO_TOASTS"], "cursor_overlay": False}),
-        dict(clip, shot="C", file="missing", id="c-v1080", shots=["03"], inject={"css": []})]}
-    np = os.path.join(tmp, "notes.json")
-    json.dump(notes, open(np, "w"))
-    return fdir, notes, np
-
-
-def test_capture_notes_record_injected_css_and_cursor():
-    cm = _capmod("capmeta")
-    notes = cm.load_notes()
-    assert "capture/commission-ai/" in " ".join(notes["header"]) and "capture/v1-1080/" not in " ".join(notes["header"])
-    by = {c["file"]: c for c in notes["clips"]}
-    for c in notes["clips"]:
-        assert set(c["inject"]["css"]) <= set(cm.CSS_DESC), c["file"]
-    assert {f for f, c in by.items() if c["inject"]["cursor_overlay"]} == {"shot-10", "shot-10-dpr2"}
-    assert by["shot-14b-dusk"]["inject"]["css"] == ["HIDE_MONEY"] and by["shot-12"]["inject"]["css"] == ["NO_TOASTS"]
-    assert cm.REPO == ROOT   # derived from __file__, not hardcoded
-
-
-def test_capture_mk_manifest_build_and_splice():
-    mk = _capmod("mk_manifest")
-    with tempfile.TemporaryDirectory() as tmp:
-        fdir, notes, np = _cap_fixture(tmp)
-        sec, loc, n = mk.build(notes, fdir, probe=lambda f: "1920x1080 @ 60 fps, 60 frames", dur=lambda f: 1.0, sha=lambda f: "s" * 64)
-        assert n == 2 and sec[0] == mk.BEGIN and sec[-2] == mk.END
-        rows = [l for l in sec if l.startswith("| A ") or l.startswith("| B ")]
-        assert "HIDE_MONEY" in rows[0] and "capture-overlay arrow" in rows[0]
-        assert "NO_TOASTS" in rows[1] and "cursor overlay: none" in rows[1] and "missing" not in "\n".join(sec)
-        assert any("**Capture:** injected CSS" in l for l in loc)
-        md = "top\n" + mk.BEGIN + "\nold\n" + mk.END + "\nbottom\n"
-        out = mk.splice(md, "\n".join(sec))
-        assert out.startswith("top\n") and out.endswith("bottom\n") and "old" not in out and out.count(mk.BEGIN) == 1
-        assert mk.splice("x\n", "B").startswith("B\nx")
-        # main(): CLI paths only, writes <footage>/manifest.md and --manifest-md
-        mk.probe, mk.dur = (lambda f: "1920x1080 @ 60 fps, 60 frames"), (lambda f: 1.0)
-        mdp = os.path.join(tmp, "manifest.md")
-        open(mdp, "w").write(md)
-        assert mk.main(["--footage-dir", fdir, "--notes", np, "--manifest-md", mdp]) == 0
-        assert "| B |" in open(mdp).read() and os.path.exists(os.path.join(fdir, "manifest.md"))
-
-
-def test_capture_register_dry_run_writes_nothing():
-    import contextlib
-    import io
-    reg = _capmod("register")
-    with tempfile.TemporaryDirectory() as tmp:
-        fdir, notes, np = _cap_fixture(tmp)
-        before = sorted(os.listdir(tmp)) + sorted(os.listdir(fdir))
-        man = os.path.join(ROOT, "projects", "commission-ai-hero", "footage", "manifest.yaml")
-        mt = os.path.getmtime(man)
-        orig, reg.subprocess.run = reg.subprocess.run, lambda *a, **k: (_ for _ in ()).throw(AssertionError("ran a command in --dry-run"))
-        buf = io.StringIO()
-        try:
-            with contextlib.redirect_stdout(buf):
-                rc = reg.main(["--dry-run", "--footage-dir", fdir, "--notes", np, "--python", "PY"])
-        finally:
-            reg.subprocess.run = orig
-        out = buf.getvalue()
-        assert rc == 0 and "2 clip(s); nothing written" in out and "c-v1080" not in out
-        assert sorted(os.listdir(tmp)) + sorted(os.listdir(fdir)) == before and os.path.getmtime(man) == mt
-        cmds = dict(reg.build_commands(notes, fdir, "PY", (), reg.read_log(fdir)))
-        a, b = cmds["a-v1080"], cmds["b-v1080"]
-        cap, fr = a[a.index("--capture") + 1], a[a.index("--framing") + 1]
-        assert "`" not in cap and cap.startswith("?demo=promo (node clicked at 9.0 s) ; ")   # inner backticks stripped too
-        assert "HIDE_MONEY" in cap and "capture-overlay" in cap and "HIDE_MONEY" in fr and "capture-overlay cursor" in fr
-        assert "NO_TOASTS" in b[b.index("--capture") + 1] and b[b.index("--framing") + 1] == "DPR2 clip"
-        assert b[-2:] == ["--captured-at", "2026-10-03T00:00:00Z"] and "--captured-at" not in a
-        only = reg.build_commands(notes, fdir, "PY", ["b-v1080"])
-        assert [c for c, _ in only] == ["b-v1080"]
 
 
 if __name__ == "__main__":

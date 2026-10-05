@@ -460,7 +460,7 @@ class Livestream(ShotType):
         K = ctx.K
         hosts = c.get("hosts") or []
         from ..lock import heavy_lock
-        with heavy_lock(f"livestream shot {shot.id}"):        # whole render holds /tmp/commission-ai-cargo.lock (re-entrant)
+        with heavy_lock(f"livestream shot {shot.id}"):        # whole render holds the box-wide heavy lock, promo.lock (re-entrant)
             return self._render(ctx, shot, c, hosts, K)
 
     def _render(self, ctx, shot, c, hosts, K):

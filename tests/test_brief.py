@@ -61,7 +61,7 @@ def test_check_fails_on_missing_empty_whyless_and_pending():
     assert BR.check(d)[0][1] == "WARN"                                           # structurally fine, unconfirmed
     n = BR.add_conflict(d, "reference has actors, team rule says real footage only", "AGENTS.md 0.1", ref="short")
     assert n == 1 and BR.check(d)[0][1] == "FAIL" and "pending" in BR.check(d)[0][2]
-    BR.decide_conflict(d, 1, "use real screen recordings of people using the product; no actors", "Patrick")
+    BR.decide_conflict(d, 1, "use real screen recordings of people using the product; no actors", "Sam")
     assert BR.check(d)[0][1] == "WARN"
     b = BR.load(d)
     b["conflicts"][0]["decided_by"] = None
@@ -75,15 +75,15 @@ def test_confirm_needs_matching_hash_and_a_human():
     b["references"] = [dict(id="r", url="https://example.org/v", why="their words")]
     BR.save(d, b)
     h = BR.content_hash(BR.load(d))
-    for by, hh in (("claude", h), ("Patrick", "deadbeef"), ("Patrick", None), ("", h), ("my-agent", h)):
+    for by, hh in (("claude", h), ("Sam", "deadbeef"), ("Sam", None), ("", h), ("my-agent", h)):
         try:
             BR.confirm(d, by, hh)
             raise AssertionError(f"confirmed with by={by!r} hash={hh!r}")
         except BR.BriefError:
             pass
     assert BR.check(d)[0][1] == "WARN"
-    cf = BR.confirm(d, "Patrick", h)
-    assert cf["hash"] == h and cf["by"] == "Patrick" and BR.check(d)[0][1] == "PASS"
+    cf = BR.confirm(d, "Sam", h)
+    assert cf["hash"] == h and cf["by"] == "Sam" and BR.check(d)[0][1] == "PASS"
     b = BR.load(d)
     b["must_not"] = ["no actors"]                                               # edited after confirmation
     BR.save(d, b)
@@ -92,7 +92,7 @@ def test_confirm_needs_matching_hash_and_a_human():
     # not confirmable while a structural FAIL exists
     BR.add_conflict(d, "x", "y")
     try:
-        BR.confirm(d, "Patrick", BR.content_hash(BR.load(d)))
+        BR.confirm(d, "Sam", BR.content_hash(BR.load(d)))
         raise AssertionError("confirmed with a pending conflict")
     except BR.BriefError as e:
         assert "pending" in str(e)
@@ -162,13 +162,14 @@ def test_rubric_v2_hard_gates_cannot_be_averaged_away():
 
 
 def test_rubric_cli_and_v1_review_markdown_still_parse():
-    zen = os.path.join(ROOT, "projects", "commission-ai-anime", "reviews", "zen-v9.md")
-    if os.path.exists(zen):
-        sc = RB.read_scores(zen)
-        assert sc["truth"] == "PASS" and sc["Hook"] == 4
-        assert cli.main(["rubric", zen]) == 3                                     # INCOMPLETE: intent/reference not scored
-        assert cli.main(["rubric", zen, "--legacy"]) == 0
     d = tempfile.mkdtemp()
+    zen = os.path.join(d, "review-v1.md")
+    open(zen, "w").write("| Rubric | Score |\n|---|---|\n" + "".join(f"| {k} | {v} |\n" for k, v in (("Hook", 4), ("Legibility", 5), ("Story", 4), ("Pacing", 5), ("Calm", 4), ("Style", 4), ("Polish", 4)))
+                         + "\n**Truth:** PASS.\n")
+    sc = RB.read_scores(zen)
+    assert sc["truth"] == "PASS" and sc["Hook"] == 4
+    assert cli.main(["rubric", zen]) == 3                                         # INCOMPLETE: intent/reference not scored
+    assert cli.main(["rubric", zen, "--legacy"]) == 0
     p = os.path.join(d, "s.yaml")
     yaml.safe_dump(dict(scores=dict(intent=5, reference=5, hook=4, legibility=4, story=4, pacing=4, calm=4, style=4, polish=4, truth="PASS")), open(p, "w"))
     assert cli.main(["rubric", p]) == 0
@@ -212,9 +213,9 @@ def test_cli_roundtrip():
     assert cli.main(["brief", "conflict", "add", "--project", d, "--what", "w", "--rule", "r"]) == 0
     assert cli.main(["brief", "check", "--project", d]) == 1                      # pending conflict FAILs
     assert cli.main(["brief", "confirm", "--project", d, "--by", "claude", "--hash", "x"]) == 2
-    assert cli.main(["brief", "conflict", "decide", "--project", d, "1", "--decision", "ok", "--by", "Patrick"]) == 0
+    assert cli.main(["brief", "conflict", "decide", "--project", d, "1", "--decision", "ok", "--by", "Sam"]) == 0
     h = BR.content_hash(BR.load(d))
-    assert cli.main(["brief", "confirm", "--project", d, "--by", "Patrick", "--hash", h]) == 0
+    assert cli.main(["brief", "confirm", "--project", d, "--by", "Sam", "--hash", h]) == 0
 
 
 if __name__ == "__main__":

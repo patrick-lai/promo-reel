@@ -1,7 +1,9 @@
 # promo-flow mod
 
-The promo flow (`promo flow ...`, see `promo/flow.py`) as a CommissionAI mod: a sandboxed web app that CommissionAI shows in its Stage (right pane, about 380 to 900 px wide, full height),
-with a short summary card in the chat. The agent publishes state; the person's clicks come back to the agent as `[mod:promo-flow] ...` messages. Spec: CommissionAI `docs/mods.md`.
+**Host-agnostic by design:** this mod speaks the bridge protocol (v1, `postMessage`) described in the host's own docs (`docs/mods.md` of the host), and `mod-dev/` plays a minimal host for it. CommissionAI was the first host.
+
+The promo flow (`promo flow ...`, see `promo/flow.py`) as a mod: a sandboxed web app that the host shows in its Stage (right pane, about 380 to 900 px wide, full height),
+with a short summary card in the chat. The agent publishes state; the person's clicks come back to the agent as `[mod:promo-flow] ...` messages. In CommissionAI the agent publishes with `commissionctl mod publish promo-flow --file F`.
 
     mod.json        manifest: slash command, activation message, actions approve | pick | changes | feedback, agent skill
     index.html      shell (header + stepper, tabs, content, sticky gate bar, lightbox)

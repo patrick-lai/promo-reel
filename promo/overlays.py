@@ -4,7 +4,7 @@ Spec form (all optional keys have defaults):
     {type: caption, text: "...", style: dark|light, size: 32, cx/cy: (defaults to style.caption), t: [t0, t1],
      fade_in: 0.18, fade_out: 0.12}
     {type: pill,    text: "macOS alpha", style: light, cy: 690, size: 32, ...}       # free pill, not zone-checked
-    {type: text,    text: "commission-ai", cy: 500, size: 132, weight: Bold, color: [255,255,255], shadow: true, ...}
+    {type: text,    text: "Product name", cy: 500, size: 132, weight: Bold, color: [255,255,255], shadow: true, ...}
     {type: scrim,   ellipse: [0.18, 0.22, 0.82, 0.70], fill: 120, blur: 120, color: [8, 10, 16]}  # always on unless `t` given
 `t` is shot-local output seconds (default [0, 99]); fades are `alpha_at` params. Role "caption" overlays are QA-checked
 (safe zone + minimum hold); other roles are not.

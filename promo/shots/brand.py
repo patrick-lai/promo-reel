@@ -1,16 +1,28 @@
-"""Animated brand lockup for the dawn end card (`type: dawn`, `name_style: brand`).
+"""Generic animated brand lockup for the dawn end card (`type: dawn`, `name_style: brand`).
 
-Brand cues come from the product itself: the four-point star inside a ring is the web app's favicon (indigo / lavender,
-`clients/web/public/favicon.svg`), the amber is the Workshop's lamp. The lockup is
+Product-agnostic: the wordmark, colours and emblem all come from the shot's spec. The lockup is
 
-    [star in ring]                       rotates in out of a 60 degree turn, scales up, blooms, then flares once
-    commission - ai                      light high-optical-size serif; letters rise out of blur with a tightening tracking;
-                                         "commission" warm white, the hyphen lamp-amber, "ai" brand lavender (a touch heavier)
-    ------ hairline horizon ------       grows from the centre, fades at both ends
-    + one diagonal sheen across the letters as the amber dawn arrives
+    [emblem or builtin glyph]        optional; rotates in out of a small turn, scales up, blooms, then flares once
+    wordmark                         light high-optical-size serif; letters rise out of blur with a tightening tracking.
+                                     One part from `name`, or several parts with their own colour / weight
+    ------ hairline horizon ------   grows from the centre, fades at both ends
+    + one diagonal sheen across the letters
 
 Pure framing and typography on a generated gradient card: it never touches app footage. All sizes are fractions of the frame height, so it
-renders identically at 540p, 1080p and 2160p. Per-shot overrides (all optional) are the keys in `DEFAULTS`.
+renders identically at 540p, 1080p and 2160p.
+
+Per-shot keys (all optional; the keys of `DEFAULTS`):
+
+    name: "Product"                      the wordmark text when no `wordmark:` parts are given (drawn in `col_name` / `weight`)
+    wordmark: [{text, color, weight}]    parts laid out on one line, no gap between them (put spaces or hyphens inside `text`);
+                                         `color` is [r,g,b] or "#rrggbb" (default `col_name`), `weight` the serif's variable weight (default `weight`)
+    emblem_path: brand/emblem.png        project-relative transparent PNG shown above the wordmark; a sidecar `emblem.json` with
+                                         {"centre": [x, y]} (normalised) says where its optical centre is (default: the box centre)
+    mark: false | builtin                `builtin` draws a plain ring + four-point-star glyph when there is no emblem; false (default) draws none
+    col_name, col_accent, col_glow       text colour, rule colour, aura/bloom colour ([r,g,b])
+    tagline: "One verifiable line"       small serif line under the rule
+    mark_frac, mark_y, name_y, name_frac, weight, aura, sparkles, track, track_start, rule, rule_y, rule_half,
+    tagline_frac, t_tagline, tagline_y, t_mark, t_name, t_rule, t_flare, t_sheen, spin      sizes (frame fractions), weights and timings (s)
 """
 from __future__ import annotations
 
@@ -21,19 +33,20 @@ from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 
 DEFAULTS = dict(
     name_style="brand",
-    emblem_path=None,             # PNG of the current product emblem (transparent); else the favicon-style star-in-ring drawn here
-    mark=True,                    # the star-in-ring above the name
-    mark_frac=0.17,               # star diameter / frame height
+    wordmark=None,                # [{text, color, weight}, ...]; default: one part from `name`
+    emblem_path=None,             # transparent PNG shown as the mark (resolved by the caller, project-relative in specs)
+    mark=False,                   # False: no glyph (an emblem_path still shows); "builtin": the generic ring + four-point-star glyph
+    mark_frac=0.17,               # mark diameter / frame height
     mark_y=0.265,                 # mark centre y (frame fraction)
     name_y=0.50,                  # name centre y (frame fraction)
     name_frac=0.175,              # name font size / frame height
-    weight=330, ai_weight=480,    # serif weights (variable font); falls back to the font's default
-    aura=0.20, sparkles=16,       # lavender aura behind the lockup (alpha), and drifting twinkles around it
+    weight=330,                   # serif weight (variable font); falls back to the font's default
+    aura=0.20, sparkles=16,       # soft aura behind the lockup (alpha), and drifting twinkles around it
     track=0.02, track_start=0.14,  # letter spacing in em: final, and where the reveal starts
     rule=True, rule_y=0.625, rule_half=0.20,
     tagline=None, tagline_frac=0.042, t_tagline=1.0, tagline_y=0.69,   # one small serif line under the rule (verifiable claims only)
     t_mark=0.15, t_name=0.45, t_rule=0.95, t_flare=1.35, t_sheen=1.9,
-    col_name=(236, 232, 223), col_dash=(255, 188, 108), col_ai=(159, 152, 246), col_glow=(130, 120, 240),
+    col_name=(236, 232, 223), col_accent=(200, 206, 226), col_glow=(130, 140, 205),
     spin=26.0,                    # degrees the mark turns through while it arrives
 )
 
@@ -80,7 +93,7 @@ def _bez(p0, p1, p2, n=14):
              (1 - t) ** 2 * p0[1] + 2 * (1 - t) * t * p1[1] + t * t * p2[1]) for t in [i / n for i in range(n + 1)]]
 
 
-# the favicon's eight facets: (tip control point, tip) per quadrant side, lit and shaded halves (units of the 24-unit favicon box)
+# the builtin glyph's eight facets: (tip control point, tip) per quadrant side, lit and shaded halves (units of a 24-unit box)
 _FACETS = [
     ("lit", (-2.12, -2.12), (-0.85, -4.37), (0.0, -10.4)), ("shade", (2.12, -2.12), (0.85, -4.37), (0.0, -10.4)),
     ("lit", (2.12, -2.12), (4.37, -0.85), (10.4, 0.0)), ("shade", (2.12, 2.12), (4.37, 0.85), (10.4, 0.0)),
@@ -89,8 +102,13 @@ _FACETS = [
 ]
 
 
-def mark_tile(S, ss=4):
-    """RGBA tile (2.4 S square) with the favicon mark of diameter S, drawn at ss x and returned at that size (caller downsamples)."""
+GLYPH_COLS = dict(ring=(220, 224, 236), lit=(255, 255, 255), shade=(160, 168, 190))
+
+
+def mark_tile(S, ss=4, cols=None):
+    """RGBA tile (2.4 S square) with the builtin glyph (ring + four-point star) of diameter S, drawn at ss x and returned at that size
+    (caller downsamples). `cols`: optional {ring, lit, shade} RGB overrides."""
+    cols = {**GLYPH_COLS, **(cols or {})}
     T = int(S * 2.4) * ss
     u = S * ss / 21.0
     c = T / 2
@@ -107,18 +125,18 @@ def mark_tile(S, ss=4):
         poly = [(c + x * u, c + y * u) for x, y in pts]
         sd.polygon(poly, fill=255)
         (ImageDraw.Draw(lit) if kind == "lit" else ImageDraw.Draw(shade)).polygon(poly, fill=255)
-    # the ring is cut away around the star (the favicon masks it with a 1.6-unit stroke)
+    # the ring is cut away around the star (a 1.6-unit stroke)
     knock = star_all.filter(ImageFilter.MaxFilter(max(3, int(1.6 * u) | 1)))
     ring = ImageChops.multiply(ring, ImageChops.invert(knock))
     out = Image.new("RGBA", (T, T), (0, 0, 0, 0))
-    out.paste(Image.new("RGBA", (T, T), (216, 212, 250, 255)), (0, 0), ring)       # ring: dark-mode favicon #d8d4fa
-    out.paste(Image.new("RGBA", (T, T), (255, 255, 255, 255)), (0, 0), lit)         # lit facets #ffffff
-    out.paste(Image.new("RGBA", (T, T), (156, 149, 216, 255)), (0, 0), shade)       # shade facets #9c95d8
+    out.paste(Image.new("RGBA", (T, T), tuple(cols["ring"]) + (255,)), (0, 0), ring)
+    out.paste(Image.new("RGBA", (T, T), tuple(cols["lit"]) + (255,)), (0, 0), lit)
+    out.paste(Image.new("RGBA", (T, T), tuple(cols["shade"]) + (255,)), (0, 0), shade)
     return out
 
 
 def emblem_tile(path, S, ss=4):
-    """RGBA tile (2.4 S square, at ss x) with the product emblem PNG scaled so its bounding box is S wide, centred on the emblem's own
+    """RGBA tile (2.4 S square, at ss x) with the emblem PNG scaled so its bounding box is S wide, centred on the emblem's own
     centre (the ring), read from emblem.json next to the PNG ({"centre": [x, y]} normalised; default the box centre)."""
     import json
     import os
@@ -167,26 +185,50 @@ def _clip_paste(out, layer, x, y):
         out.alpha_composite(layer.crop((lx0, ly0, lx1, ly1)), (x + lx0, y + ly0))
 
 
-def _layout(name, font_a, font_b, track_px):
-    """[(char, font, colour_key, advance)] with the dash and the tail ('ai') styled apart from the head."""
-    head, dash, tail = name, "", ""
-    if "-" in name:
-        i = name.rindex("-")
-        head, dash, tail = name[:i], "-", name[i + 1:]
-    seq = [(ch, font_a, "col_name") for ch in head] + [(ch, font_a, "col_dash") for ch in dash] + [(ch, font_b, "col_ai") for ch in tail]
+def _rgb(v, default):
+    """[r,g,b] / (r,g,b) / "#rrggbb" -> (r,g,b); anything else -> default."""
+    if isinstance(v, str) and v.startswith("#") and len(v) == 7:
+        try:
+            return tuple(int(v[i:i + 2], 16) for i in (1, 3, 5))
+        except ValueError:
+            return tuple(default)
+    if isinstance(v, (list, tuple)) and len(v) >= 3:
+        return tuple(int(x) for x in v[:3])
+    return tuple(default)
+
+
+def _parts(name, c):
+    """The wordmark as [(text, rgb, weight)]: the `wordmark:` parts, else one part from `name`."""
+    wm = c.get("wordmark")
+    parts = []
+    if isinstance(wm, (list, tuple)):
+        for p in wm:
+            if isinstance(p, str):
+                p = {"text": p}
+            if isinstance(p, dict) and str(p.get("text", "")) != "":
+                parts.append((str(p["text"]), _rgb(p.get("color"), c["col_name"]), p.get("weight", c["weight"])))
+    if not parts and name:
+        parts = [(str(name), tuple(c["col_name"]), c["weight"])]
+    return parts
+
+
+def _layout(parts, fonts, track_px=0):
+    """[(char, font, rgb, advance)] for the wordmark parts (`fonts`: weight -> font)."""
+    seq = [(ch, fonts[w], col) for text, col, w in parts for ch in text]
     d = ImageDraw.Draw(Image.new("L", (8, 8)))
     return [(ch, f, col, d.textlength(ch, font=f)) for ch, f, col in seq]
 
 
 def lockup(OW, OH, t, name, serif_paths, cfg=None):
-    """RGBA full-frame layer of the brand lockup at card time t (seconds)."""
+    """RGBA full-frame layer of the brand lockup at card time t (seconds). `name` is the wordmark text unless cfg has `wordmark` parts."""
     c = {**DEFAULTS, **(cfg or {})}
     path = _pick(serif_paths)
     px = c["name_frac"] * OH
-    fa, fb = _font(path, px, c["weight"]), _font(path, px, c["ai_weight"])
+    parts = _parts(name, c)
+    fonts = {w: _font(path, px, w) for w in {w for _, _, w in parts}}
     out = Image.new("RGBA", (OW, OH), (0, 0, 0, 0))
 
-    # ---- aura: a soft lavender bloom the lockup sits in, breathing in with the mark
+    # ---- aura: a soft bloom the lockup sits in, breathing in with the mark
     ak = _ease((t - c["t_mark"]) / 1.8)
     if c["aura"] and ak > 0:
         key = ("aura", OW, OH)
@@ -195,7 +237,7 @@ def lockup(OW, OH, t, name, serif_paths, cfg=None):
             d = ((xx - OW / 2) / (0.42 * OW)) ** 2 + ((yy - 0.46 * OH) / (0.36 * OH)) ** 2
             _CACHE[key] = np.exp(-d * 1.6)
         al = (_CACHE[key] * c["aura"] * ak * 255).astype(np.uint8)
-        au = Image.new("RGBA", (OW, OH), c["col_glow"] + (0,))
+        au = Image.new("RGBA", (OW, OH), tuple(c["col_glow"]) + (0,))
         au.putalpha(Image.fromarray(al))
         out.alpha_composite(au)
 
@@ -225,13 +267,13 @@ def lockup(OW, OH, t, name, serif_paths, cfg=None):
     cy = c["name_y"] * OH
     t_name = c["t_name"]
     tr = c["track"] + (c["track_start"] - c["track"]) * (1 - _ease((t - t_name) / 1.7))
-    chars = _layout(name, fa, fb, 0)
+    chars = _layout(parts, fonts)
     track_px = tr * px
     total = sum(w for *_, w in chars) + track_px * (len(chars) - 1)
     x = OW / 2 - total / 2
     text = Image.new("RGBA", (OW, OH), (0, 0, 0, 0))
     amask = Image.new("L", (OW, OH), 0)
-    for i, (ch, f, ck, w) in enumerate(chars):
+    for i, (ch, f, rgb, w) in enumerate(chars):
         p = _ease((t - t_name - i * 0.04) / 0.75)
         if p > 0 and ch.strip():
             pad = int(px * 0.5)
@@ -242,13 +284,13 @@ def lockup(OW, OH, t, name, serif_paths, cfg=None):
                 tile = tile.filter(ImageFilter.GaussianBlur(blur))
             tile = tile.point(lambda v, p=p: int(v * p))
             ox, oy = int(x - pad), int(cy - tile.height / 2 + (1 - p) * 0.014 * OH)
-            col = Image.new("RGBA", tile.size, c[ck] + (255,))
+            col = Image.new("RGBA", tile.size, tuple(rgb) + (255,))
             text.paste(col, (ox, oy), tile)
             amask.paste(ImageChops.lighter(amask.crop((ox, oy, ox + tile.width, oy + tile.height)), tile), (ox, oy))
         x += w + track_px
     g_all = _ease((t - t_name) / 1.2)
     if g_all > 0:
-        out.alpha_composite(_glow(amask, 0.02 * OH, c["col_glow"], 0.9 * g_all))
+        out.alpha_composite(_glow(amask, 0.02 * OH, tuple(c["col_glow"]), 0.9 * g_all))
     out.alpha_composite(text)
 
     # ---- sheen: one diagonal highlight sweeping across the letters
@@ -280,7 +322,7 @@ def lockup(OW, OH, t, name, serif_paths, cfg=None):
         layer = Image.new("RGBA", (OW, OH), (0, 0, 0, 0))
         ld = ImageDraw.Draw(layer)
         for ch in txt:
-            ld.text((x, c["tagline_y"] * OH), ch, font=tf, fill=c["col_name"] + (int(255 * tp * 0.92),), anchor="lm")
+            ld.text((x, c["tagline_y"] * OH), ch, font=tf, fill=tuple(c["col_name"]) + (int(255 * tp * 0.92),), anchor="lm")
             x += d.textlength(ch, font=tf) + trk
         out.alpha_composite(layer)
 
@@ -294,12 +336,12 @@ def lockup(OW, OH, t, name, serif_paths, cfg=None):
             xs = np.linspace(-1, 1, n)
             al = (np.clip(1 - np.abs(xs), 0, 1) ** 0.7 * 0.9 * 255).astype(np.uint8)
             th = max(2, int(round(0.0035 * OH)))
-            line = Image.new("RGBA", (n, th), c["col_ai"] + (0,))
+            line = Image.new("RGBA", (n, th), tuple(c["col_accent"]) + (0,))
             line.putalpha(Image.fromarray(np.tile(al, (th, 1))))
             out.alpha_composite(line, (int(OW / 2 - n / 2), ry))
 
-    # ---- the star-in-ring mark: spins in, blooms, flares once
-    if c["mark"]:
+    # ---- the mark (emblem PNG, or the builtin glyph when `mark: builtin`): spins in, blooms, flares once
+    if c["emblem_path"] or c["mark"]:
         S = c["mark_frac"] * OH
         mp = _ease((t - c["t_mark"]) / 1.5)
         if mp > 0:
@@ -314,7 +356,7 @@ def lockup(OW, OH, t, name, serif_paths, cfg=None):
             tile = tile.resize((max(2, side), max(2, side)), Image.LANCZOS)
             mx, my = OW / 2, c["mark_y"] * OH
             al = tile.split()[3]
-            _paste(out, _glow(al.resize(tile.size), 0.035 * OH, c["col_glow"], 0.5 * mp), mx, my)
+            _paste(out, _glow(al.resize(tile.size), 0.035 * OH, tuple(c["col_glow"]), 0.5 * mp), mx, my)
             _paste(out, tile, mx, my, mp)
             tf = t - c["t_flare"]
             if 0 <= tf <= 1.1:

@@ -6,7 +6,7 @@ pass:
   none_below: 3
   hard_min: {next_step: 4, truth: 4}
 context: >
-  The widget fills CommissionAI's Stage (right pane, 380-900 px wide, full height) beside a chat. It is used all day by one person who must
+  The widget fills the host's Stage (right pane, 380-900 px wide, full height) beside a chat. It is used all day by one person who must
   stay in control of a video production: see where they are, see what is planned (storyboard start/end frames, every asset incl. audio, drafts),
   approve or redirect. Host principles: calm charcoal ground, few colours, one accent, one primary button per surface, low cognitive effort,
   design every state, only opacity/transform animation, keyboard reachable, honest data only.

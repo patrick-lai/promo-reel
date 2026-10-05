@@ -14,10 +14,10 @@ Writes (default <project>/out/critique-pack/, wiped and rewritten each run):
     brief/brief.yaml, reference/<id>/{DOSSIER.md,WATCH.md,transcript.json,sheets/}, compare/   the user's verbatim request, the reference
                           dossiers and `promo compare-ref` output (BRIEF.md lists intent + reference as HARD gates)
     VO-TRANSCRIPT.md      whisper transcript of each VO stem vs its script line (projects with VO only)
-    copy/                 marketing copy files       } configurable in promo.yaml:
+    copy/                 copy files (captions, VO script) } configurable in promo.yaml:
     footage/              footage manifest.md files  }   critique: {kind, copy: [...], reviews: [...], footage_md: [...], out}
-    reviews/              Zen's review files         }   defaults by kind (hero | anime | talkshow) below
-Nothing here calls a reviewer model. Heavy steps (frame extraction, check, whisper) run under the shared cargo lock
+    reviews/              earlier review files       }   no defaults: list them per project, in `critique:`
+Nothing here calls a reviewer model. Heavy steps (frame extraction, check, whisper) run under the shared heavy-work lock
 (the CLI wraps the whole command in promo.lock.heavy_lock).
 """
 from __future__ import annotations
@@ -29,19 +29,14 @@ import shutil
 import subprocess
 from contextlib import redirect_stdout
 
-MARKETING = os.environ.get("PROMO_MARKETING", "/workspace/promo/marketing")
-DEFAULT_COPY = {
-    "hero": [f"{MARKETING}/captions-v1-cut.md", f"{MARKETING}/vo-script-v1.md"],
-    "anime": [f"{MARKETING}/scripts-3-directions-v1.md"],
-    "talkshow": [f"{MARKETING}/scripts-3-directions-v1.md"],
-}
-DEFAULT_REVIEWS = {
-    "talkshow": ["/workspace/commission-ai-routines/ux-review/2026-10-04/talkshow-preview/REVIEW.md"],
-}
+# Generic defaults are empty: copy and review files are named per project in promo.yaml (`critique: {copy: [...], reviews: [...]}`,
+# project-relative paths), by kind (hero | anime | talkshow) only if a preset or project fills these in.
+DEFAULT_COPY: dict = {}
+DEFAULT_REVIEWS: dict = {}
 MIN_NAMED_PX = 18
 
 def rubric_for(spec=None):
-    """Zen's rubric from the versioned evals/rubric.yaml (or `critique.rubric:` in promo.yaml / $PROMO_RUBRIC)."""
+    """The reviewer rubric from the versioned evals/rubric.yaml (or `critique.rubric:` in promo.yaml / $PROMO_RUBRIC)."""
     from . import rubric as RB
     p = ((spec.raw.get("critique") or {}).get("rubric") if spec is not None else None)
     return RB.load(spec.resolve(p) if p else None)
@@ -52,7 +47,7 @@ HARD_RULES = [
     "Text a line names (a card, caption or VO line points at it) renders at >= 18 px cap height at 1080p, from a DPR 2 take where one exists (see each still's sidecar: elements[].cap_px, effective_scale; > 1.0 = upscaled).",
     "No chat asides: no on-screen chatter, jokes or commentary that is not in the copy.",
     "Effects (flashes, speed lines, whooshes, dissolves) only between shots, at the cut; never over app UI text inside a shot.",
-    "Cards stay in ONE fixed lower-third band, off app text and off the Street notice.",
+    "Cards stay in ONE fixed lower-third band, off app text and off any on-screen notice (credit, legal).",
     "Hosts (talk show) move at most once, as a slide of >= 0.5 s.",
     "Real footage only: no painted or edited UI pixels; no claim (number, name, state) beyond what the frame itself shows.",
 ]
@@ -547,7 +542,7 @@ def brief_md(spec, kind, master, index, copied, payload, have_contact, have_vo, 
     if have_vo:
         L.append("- `VO-TRANSCRIPT.md`: whisper transcript of each VO stem vs its script line.")
     for key, title in (("copy", "Copy (source of truth for words)"), ("footage", "Footage manifests (what each take really shows)"),
-                       ("reviews", "Zen's UX reviews")):
+                       ("reviews", "Earlier reviews")):
         got = copied[key]
         if not got:
             L.append(f"- {title}: none configured.")

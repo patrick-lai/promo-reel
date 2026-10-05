@@ -43,6 +43,10 @@ at +1.0 s) are optional and have NO default text: omit them and only `name` rend
     amber_at: 2.4                   seconds into the card where the amber starts (default: shot duration - 0.6)
     reach: [0.12, 0.80]             the old tall glow; with `amber_at: 0` and name_frac 0.11 / name_y 0.40 this restores the
                                     previous card exactly
+    name_style: brand               animated brand lockup instead of the plain texts (promo/shots/brand.py documents its keys):
+                                    `wordmark: [{text, color, weight}, ...]` (a list; parts on one line) or `name`, optional
+                                    `emblem_path:` (project-relative PNG; no default, an emblem shows only when named), `mark: builtin`,
+                                    `col_name`, `col_accent`, `col_glow`, `tagline`
 """
 from __future__ import annotations
 
@@ -515,6 +519,13 @@ def dawn_array(OW, OH, t, cfg):
     return np.clip(arr, 0, 255).astype(np.uint8)
 
 
+def _wm_text(wm):
+    """The wordmark as plain text (a string, or the concatenated `text` of lockup parts)."""
+    if isinstance(wm, (list, tuple)):
+        return "".join(str(p.get("text", "")) if isinstance(p, dict) else str(p) for p in wm)
+    return str(wm)
+
+
 def _tracked(d, cx, cy, text, font, track, fill):
     widths = [d.textlength(ch, font=font) for ch in text]
     total = sum(widths) + track * (len(text) - 1)
@@ -548,8 +559,9 @@ class Dawn(ShotType):
             f = load_font(serif, cfg["name_frac"] * OH)
             put(lambda d: d.text((OW / 2, cfg["name_y"] * OH), shot.cfg["name"], font=f, fill=(244, 241, 234, 255), anchor="mm"), cfg["name_at"])
         if shot.cfg.get("wordmark"):
+            wm = _wm_text(shot.cfg["wordmark"])         # lockup parts without `name_style: brand` draw as plain text
             f = load_font(sans, cfg["wordmark_frac"] * OH)
-            put(lambda d: _tracked(d, OW / 2, cfg["wordmark_y"] * OH, shot.cfg["wordmark"], f, cfg["wordmark_frac"] * OH * 0.45, (214, 219, 228, 255)), cfg["name_at"])
+            put(lambda d: _tracked(d, OW / 2, cfg["wordmark_y"] * OH, wm, f, cfg["wordmark_frac"] * OH * 0.45, (214, 219, 228, 255)), cfg["name_at"])
         if shot.cfg.get("tagline"):
             f = load_font(serif, cfg["tagline_frac"] * OH)
             put(lambda d: d.text((OW / 2, cfg["tagline_y"] * OH), shot.cfg["tagline"], font=f, fill=(226, 228, 232, 255), anchor="mm"), cfg["tagline_at"])
@@ -558,22 +570,26 @@ class Dawn(ShotType):
     def render(self, ctx, shot):
         spec = ctx.spec
         cfg = self._cfg(spec, shot)
-        brand = shot.cfg.get("name_style") == "brand" and shot.cfg.get("name")
+        wm_parts = isinstance(shot.cfg.get("wordmark"), (list, tuple))      # `wordmark:` as a list of {text, color, weight} = brand lockup parts
+        brand = shot.cfg.get("name_style") == "brand" and (shot.cfg.get("name") or wm_parts)
         layers = [] if brand else self._texts(ctx, shot, cfg)
         fade = float(cfg.get("fade_s", 0.7))
         if brand:
             from . import brand as BR
             bcfg = {k: shot.cfg[k] for k in BR.DEFAULTS if k in shot.cfg}
             import os as _os
-            em = ctx.spec.resolve(shot.cfg.get("emblem", "../commission-ai-shared/brand/emblem.png"))
-            if _os.path.exists(em):
-                bcfg["emblem_path"] = em                    # the product's current emblem (clients/web/src/design/Emblem.tsx, rendered)
+            em_rel = shot.cfg.get("emblem_path") or shot.cfg.get("emblem")      # no default: an emblem shows only when the spec names one
+            bcfg.pop("emblem_path", None)
+            if em_rel:
+                em = ctx.spec.resolve(em_rel)
+                if _os.path.exists(em):
+                    bcfg["emblem_path"] = em                # project-relative transparent PNG (+ optional emblem.json centre)
             serif = font_candidates(style_of(ctx.spec), "serif")
 
         def f(i, t):
             out = Image.fromarray(dawn_array(ctx.OW, ctx.OH, t, cfg)).convert("RGBA")
             if brand:                                       # animated brand lockup (promo/shots/brand.py)
-                out.alpha_composite(BR.lockup(ctx.OW, ctx.OH, t, shot.cfg["name"], serif, bcfg))
+                out.alpha_composite(BR.lockup(ctx.OW, ctx.OH, t, shot.cfg.get("name"), serif, bcfg))
             for lay, t_on in layers:
                 a = R.ease((t - t_on) / fade, "out") if t > t_on else 0.0
                 out = _composite(out, lay, a, 0, 0)
@@ -582,7 +598,7 @@ class Dawn(ShotType):
         R.run_shot(ctx, shot, f)
         return dict(src="dawn gradient", inout="generated",
                     move=f"sunrise rim rises over {cfg['rise_s']:g} s (navy -> teal; amber from {cfg['amber_at']:.2f} s)",
-                    caption=" / ".join(f"'{shot.cfg[k]}'" for k in ("name", "wordmark", "tagline") if shot.cfg.get(k)) or "none",
+                    caption=" / ".join(f"'{_wm_text(shot.cfg[k]) if k == 'wordmark' else shot.cfg[k]}'" for k in ("name", "wordmark", "tagline") if shot.cfg.get(k)) or "none",
                     notes=shot.cfg.get("notes", ""))
 
     def captions(self, ctx, shot):
