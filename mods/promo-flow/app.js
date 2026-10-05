@@ -969,7 +969,7 @@
       left.append(h("div", null, player, meta, it.note ? h("p", { class: "sub", style: "margin-top:4px", text: it.note }) : null));
       if (d.stage === "final" && PF.finalState(d).ok) {
         const credits = arr(d.assets).filter((x) => x.licence && (x.kind === "music" || x.kind === "voice" || x.kind === "sfx")).map((x) => (KIND_LABEL[x.kind] || x.kind) + ": " + x.licence);
-        left.prepend(h("div", { class: "card done-card" }, h("div", { class: "ring" }, ic("check")), h("div", null, h("b", { text: "Your promo is ready" }),
+        left.prepend(h("div", { class: "card done-card" }, h("div", { class: "done-ic" }, ic("check")), h("div", null, h("b", { text: "Your promo is ready" }),
           h("p", { text: "Nothing has been published. Watch it once more with sound, then post it yourself. To change something, send feedback and the agent starts another round." }),
           credits.length ? h("p", { class: "tl-note", text: "Credits to keep: " + credits.join(" \u00b7 ") }) : null)));
       }

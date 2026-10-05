@@ -679,7 +679,7 @@ button.fr:hover { border-color: var(--c-accent); }
 .watch-list{list-style:none;display:grid;gap:4px;margin:10px 0 0;padding:10px 12px;border-radius:var(--r-md);background:var(--c-well);font-size:13px;color:var(--c-dim)}
 .watch-list li::before{content:"\2713";color:var(--c-accent);margin-right:8px;font-weight:700}
 .done-card{display:flex;gap:14px;align-items:flex-start;border-color:color-mix(in srgb,var(--c-ok) 45%,var(--c-line))}
-.done-card .ring{flex:none;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:color-mix(in srgb,var(--c-ok) 18%,transparent);color:var(--c-ok)}
+.done-card .done-ic{flex:none;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:color-mix(in srgb,var(--c-ok) 18%,transparent);color:var(--c-ok)}.done-card .done-ic svg{width:18px;height:18px}.done-card>div:last-child{min-width:0;flex:1}.done-card p{overflow-wrap:anywhere}
 .done-card b{font-size:16px}.done-card p{font-size:13px;color:var(--c-dim);margin-top:4px}
 .choice .id{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;padding:0;background:var(--c-tint);color:var(--c-accent)}
 .choice .logline{color:var(--c-ink);font-size:14px}
@@ -716,3 +716,4 @@ button.fr:hover { border-color: var(--c-accent); }
 .council.fold summary{cursor:pointer;font-weight:650;list-style:none;min-height:28px;display:flex;align-items:center}.council.fold summary::-webkit-details-marker{display:none}
 .council.fold p{font-size:13px;color:var(--c-dim);margin-top:6px}
 .drawing,.council.fold{padding:12px 14px}.council.fold summary::after{content:"\25BE";margin-left:auto;color:var(--c-dim)}.council.fold[open] summary::after{content:"\25B4"}
+.done-card{padding:14px 16px}
