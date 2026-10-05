@@ -19,7 +19,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   const $ = (id) => ctx.root.getElementById(id);
   const root = ctx.root.host;
   const el = { sc: $("scroller"), app: $("app"), stepNo: $("stepNo"), badge: $("badge"), badgeText: $("badgeText"), stageName: $("stageName"), stepsBtn: $("stepsBtn"), stateLine: $("stateLine"),
-    stepper: $("stepper"), curLab: $("curLab"), stepsList: $("stepsList"), banners: $("banners"), tabs: $("tabs"), content: $("content"), gate: $("gate"), gateNote: $("gateNote"),
+    stepper: $("stepper"), curLab: $("curLab"), stepsList: $("stepsList"), banners: $("banners"), working: $("working"), tabs: $("tabs"), content: $("content"), gate: $("gate"), gateNote: $("gateNote"),
     compose: $("compose"), note: $("note"), noteLabel: $("noteLabel"), noteHint: $("noteHint"), gateErr: $("gateErr"), btn2: $("btnSecondary"), btn1: $("btnPrimary"),
     lb: $("lightbox"), toast: $("toast"), live: $("live") };
 
@@ -268,6 +268,61 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     el.stepsList.hidden = !S.stepsOpen || !hasDoc();
     const title = clip("Promo flow: " + el.stageName.textContent, 40);
     if (title !== S.title) { S.title = title; post({ type: "title", text: title }); }
+  }
+
+  /* ---------------- working: what the agent is doing, and the history as dots ---------------- */
+  const ACT_KIND = { capture: "Real app", render: "Rendering", voice: "Voices and sound", music: "Music", check: "Checks", plan: "Planning", other: "Other", milestone: "Flow step" };
+  const ago = (iso) => {
+    const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000);
+    if (!(s >= 0)) return "";
+    if (s < 60) return "just now";
+    if (s < 3600) return Math.round(s / 60) + " min ago";
+    return Math.floor(s / 3600) + " h " + (Math.round(s / 60) % 60) + " min ago";
+  };
+  const clock = (iso) => { const d = new Date(iso); return isNaN(d) ? "" : d.toTimeString().slice(0, 5); };
+  const DOTS = 60, STALE_MIN = 12;
+  function renderWorking() {
+    const sm = S.summary || {};
+    const on = hasDoc() && !isStarting() && !S.readonly && !(S.noState && !hasDoc()) && sm.badge === "working";
+    el.working.hidden = !on;
+    clearInterval(S.agoTimer); S.agoTimer = 0;
+    if (!on) { el.working.dataset.key = ""; return; }
+    const act = arr(S.doc.activity).filter((x) => x && x.text && x.at);
+    const key = JSON.stringify([act.slice(-DOTS), sm.status, S.doc.stage_since]);
+    if (el.working.dataset.key !== key) {
+      el.working.dataset.key = key;
+      const last = act[act.length - 1];
+      const shown = act.slice(-DOTS);
+      const dots = shown.map((x, i) => {
+        const live = i === shown.length - 1 && !x.done && x.kind !== "milestone";
+        return h("i", { class: "dt k-" + (ACT_KIND[x.kind] ? x.kind : "other") + (x.done ? " done" : "") + (live ? " live" : ""), title: clock(x.at) + " · " + x.text });
+      });
+      for (let i = shown.length; i < Math.min(DOTS, 24); i++) dots.push(h("i", { class: "dt empty", "aria-hidden": "true" }));
+      const kinds = [...new Set(shown.map((x) => x.kind))].filter((k) => ACT_KIND[k]);
+      const feed = act.filter((x) => x.kind !== "milestone").slice(-3).reverse();
+      el.working.replaceChildren(
+        h("div", { class: "wk-head" }, h("i", { class: "wk-pulse", "aria-hidden": "true" }),
+          h("div", { class: "wk-main" },
+            h("div", { class: "wk-now", text: last ? last.text : "Starting to work on this step" }),
+            h("div", { class: "wk-sub", id: "wkAgo" }))),
+        act.length ? h("div", { class: "wk-map", role: "img", "aria-label": act.length + " steps so far. Hover a dot for what it was." }, dots) : null,
+        kinds.length ? h("div", { class: "wk-legend" }, kinds.map((k) => h("span", null, h("i", { class: "dt k-" + k + " done" }), ACT_KIND[k]))) : null,
+        feed.length > 1 ? h("ul", { class: "wk-feed" }, feed.map((x) => h("li", null, h("span", { class: "t", text: clock(x.at) }), h("span", { text: x.text })))) : null,
+        h("p", { class: "wk-note", id: "wkNote" }));
+    }
+    const tick = () => {
+      const act = arr(S.doc.activity).filter((x) => x && x.at);
+      const last = act[act.length - 1];
+      const sub = ctx.root.getElementById("wkAgo"), note = ctx.root.getElementById("wkNote");
+      if (!sub || !note) return;
+      const since = S.doc.stage_since ? ago(S.doc.stage_since) : "";
+      sub.textContent = (last ? "Updated " + ago(last.at) : "No update yet") + (since ? " · step started " + since : "");
+      const quiet = last ? (Date.now() - Date.parse(last.at)) / 60000 : 0;
+      note.textContent = quiet >= STALE_MIN ? "No update for " + Math.round(quiet) + " min. It may be on one long job. Ask the agent if you want to know." : "A fresh update appears every few minutes.";
+      note.classList.toggle("warn", quiet >= STALE_MIN);
+    };
+    tick();
+    S.agoTimer = setInterval(tick, 20000);
   }
 
   /* ---------------- banners ---------------- */
@@ -1188,6 +1243,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     if (!S.userTab || !list.some((t) => t.id === S.tab)) S.tab = list.some((t) => t.id === cur) ? cur : list.length ? list[list.length - 1].id : null;
     if (!list.length) S.tab = null;
     renderHeader();
+    renderWorking();
     renderBanners();
     renderTabs(list);
     renderContent(list, force);
@@ -1252,7 +1308,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     }
   }
   function unmount() {
-    clearTimeout(S.bootTimer); clearTimeout(S.stallTimer);
+    clearTimeout(S.bootTimer); clearTimeout(S.stallTimer); clearInterval(S.agoTimer);
     if (S.sending) clearTimeout(S.sending.timer);
     for (const id of [...M.cache.keys()]) revoke(id);
   }

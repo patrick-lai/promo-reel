@@ -543,3 +543,42 @@ def test_keyframes_asks_the_person_for_missing_recordings(pd):
     assert s["badge"] == "waiting" and s["status"].startswith("Your turn: 1 recording to capture")
     AP.save(os.path.join(pd, "flow"), [dict(id="m", kind="music", source="mock", scenes=["01"], how="h")])
     assert F.snapshot(pd)["summary"]["badge"] == "working"
+
+
+def to_drafts(pd):
+    st = F.load(pd)
+    st["stage"] = "drafts"
+    F.save(pd, st)
+
+
+def test_notes_are_history_dots_and_drive_the_working_status(pd):
+    to_drafts(pd)
+    before = F.snapshot(pd)["summary"]["status"]
+    F.note(pd, "Taking snapshots of the real app", "capture", True)
+    F.note(pd, "Rendering screenshots for scene 4", "render")
+    snap = F.snapshot(pd)
+    dots = [a for a in snap["activity"] if a["kind"] != "milestone"]
+    assert [(a["text"], a["kind"], a["done"]) for a in dots] == [("Taking snapshots of the real app", "capture", True), ("Rendering screenshots for scene 4", "render", False)]
+    assert snap["summary"]["badge"] == "working" and snap["summary"]["status"] == "Now: Rendering screenshots for scene 4" != before
+    F.note(pd, "Rendered scene 4", "render", True)
+    assert F.snapshot(pd)["summary"]["status"] == "Done: Rendered scene 4"
+    with pytest.raises(F.FlowError):
+        F.note(pd, "  ")
+    with pytest.raises(F.FlowError):
+        F.note(pd, "x", "nonsense")
+
+
+def test_a_note_older_than_the_last_stage_move_is_not_the_status(pd):
+    to_drafts(pd)
+    F.note(pd, "Old news", "plan")
+    st = F.load(pd)
+    st["activity"][-1]["at"] = "2000-01-01T00:00:00+00:00"
+    F.log(st, "advance -> scripts")
+    F.save(pd, st)
+    assert "Old news" not in F.snapshot(pd)["summary"]["status"]
+
+
+def test_activity_is_capped(pd):
+    for i in range(F.ACTIVITY_MAX + 20):
+        F.note(pd, f"step {i}")
+    assert len(F.load(pd)["activity"]) == F.ACTIVITY_MAX

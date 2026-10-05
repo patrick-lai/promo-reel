@@ -23,6 +23,11 @@ Never edit the JSON by hand. The first publish activates the mod in this thread.
 
 **Before you ask for a decision**, `promo flow make`: the person decides by looking and listening, so every frame must be an image and every asset needs its real file or a sample. A text slate or an empty MOCK tile is not a preview, and the Approve button stays disabled while any exist.
 
+**While you work (anything over ~2 minutes: captures, renders, voices, builds).** The person is waiting and cannot see your tools. Every ~3 minutes, and at each new sub-step:
+`promo flow note "Rendering screenshots for scene 4" --kind render` (kinds: capture | render | voice | music | check | plan | other; add `--done` when that sub-step is finished), then publish.
+Write it as plain words about the video ("Taking snapshots of the real app", "Designing the voice for the opening line"), never a command or a path. `promo flow make` notes itself.
+The Stage shows the latest note, how long ago it was, and one dot per past note; the chat card status reads "Now: <note>".
+
 **Never approve yourself** (an agent name is refused). Never send an action for them. If `commissionctl mod status promo-flow` shows nothing new, wait.
 A thread that is archived shows the last state read only; nothing more to do.
 

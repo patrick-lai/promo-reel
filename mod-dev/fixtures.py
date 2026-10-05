@@ -273,6 +273,10 @@ def build(keep=None):
     snap("confirm")
     F.approve(pd, "final-confirmation", "Sam")
     F.advance(pd)
+    for text, kind, done in [("Taking snapshots of the real app", "capture", True), ("Rendering screenshots for scene 2", "render", True), ("Rendering screenshots for scene 3", "render", True),
+                             ("Designing the voice for the opening line", "voice", True), ("Cutting the music to 60 s on bar lines", "music", True),
+                             ("Checking every cut lands on the beat", "check", True), ("Rendering scene 4 of 9", "render", False)]:
+        F.note(pd, text, kind, done)
     snap("drafts")
     d1 = os.path.join(pd, "out", "draft-1.mp4")
     mp4(d1, "testsrc2", 4)

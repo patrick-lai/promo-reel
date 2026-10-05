@@ -91,6 +91,40 @@ def log(st, what):
     st.setdefault("log", []).append(dict(at=now(), what=what))
 
 
+NOTE_KINDS = ("capture", "render", "voice", "music", "check", "plan", "other")
+ACTIVITY_MAX = 200
+
+
+def note(pd, text, kind="other", done=False):
+    """One plain line about what the agent is doing right now ("Rendering screenshots for scene 4"). Shown in the Stage and on the chat card
+    while a stage is working; every note is one dot in the activity heatmap (`done` = a finished step, drawn solid)."""
+    text = " ".join((text or "").split())
+    if not text:
+        raise FlowError("a note needs text, e.g. `promo flow note \"Taking snapshots of the real app\" --kind capture`")
+    if kind not in NOTE_KINDS:
+        raise FlowError(f"kind must be one of {', '.join(NOTE_KINDS)}")
+    st = load(pd)
+    st.setdefault("activity", []).append(dict(at=now(), text=_clip(text, 120), kind=kind, done=bool(done)))
+    del st["activity"][:-ACTIVITY_MAX]
+    save(pd, st)
+
+
+def _note(pd, text, kind, done=False):
+    """Best-effort note from inside a long step: never fails the step."""
+    try:
+        note(pd, text, kind, done)
+    except (FlowError, OSError, ValueError):
+        pass
+
+
+def _activity(st):
+    """History dots, oldest first: the agent's notes plus the flow's own milestones (stage moves, approvals, drafts, rounds)."""
+    out = [dict(at=x["at"], text=x["what"], kind="milestone", done=True) for x in st.get("log") or [] if x["what"] != "init"]
+    out += [dict(at=x["at"], text=x["text"], kind=x.get("kind", "other"), done=bool(x.get("done"))) for x in st.get("activity") or []]
+    out.sort(key=lambda x: x["at"])
+    return out[-ACTIVITY_MAX:]
+
+
 def init(pd, intent, force=False):
     p = os.path.join(fdir(pd), "flow.json")
     if os.path.exists(p) and not force:
@@ -620,6 +654,9 @@ def _summary(pd, st, gate, pc, rounds_used):
         primary = "Approve again" if gate.get("stale") else GATE_CARD.get(gate["gate"]) or GATE_PRIMARY.get(gate["kind"])
     else:
         status, badge = _clip(_status(pd, st, pc), 140), "working"
+        last = (st.get("activity") or [{}])[-1]
+        if last.get("text") and last["at"] >= (st.get("log") or [{}])[-1].get("at", ""):
+            status = _clip(("Done: " if last.get("done") else "Now: ") + last["text"], 140)
         cap = [x for x in AP.load(os.path.join(pd, "flow")) if x.get("kind") in ("recording", "screenshot") and AP.state(x, pd) in ("mock", "todo")] if stage == "keyframes" else []
         if cap:
             status, badge = f"Your turn: {len(cap)} {'recording' if len(cap) == 1 else 'recordings'} to capture from the real app. See the Assets tab, then send them to the agent.", "waiting"
@@ -752,7 +789,7 @@ def snapshot(pd):
                 stale_steps=stale,
                 style=(st.get("discover") or {}) and dict(style=st["discover"].get("style"), refs=st["discover"].get("refs", []), no_refs=st["discover"].get("no_refs", False)) or None,
                 scripts=scripts, councils=councils, boards=bl, assets=assets, to_make=to_make, drafts=drafts, finals=finals, rounds=rounds,
-                checks=[dict(ok=o, text=t) for o, t in pc], gate=gate,
+                checks=[dict(ok=o, text=t) for o, t in pc], gate=gate, activity=_activity(st),
                 approvals={k: dict(by=v["by"], at=v["at"], fresh=gate_ok(pd, st, k)) for k, v in st["gates"].items()})
 
 
@@ -783,8 +820,11 @@ def make_frames(pd, story, scene, which, force, provider, jobs, limit=None):
     if not bds:
         raise FlowError(f"no board{' ' + story if story else ''} to make frames for")
     look = (st.get("discover") or {}).get("style") or ""
-    print(f"making {len(PV.frame_targets(bds, scene, which, force)[:limit])} frames with the generator CLI ({jobs} at a time, ~25 s each)")
+    n = len(PV.frame_targets(bds, scene, which, force)[:limit])
+    print(f"making {n} frames with the generator CLI ({jobs} at a time, ~25 s each)")
+    _note(pd, f"Drawing {n} storyboard frames" + (f" for scene {scene}" if scene else ""), "render")
     made, failed = PV.make_frames(bds, look, scene, which, force, provider, jobs, limit)
+    _note(pd, f"Drew {len(made)} storyboard frames" + (f", {len(failed)} failed" if failed else ""), "render", True)
     return _report("frames", made, failed)
 
 
@@ -793,7 +833,9 @@ def make_assets(pd, ids, force, provider):
     plan = AP.load(fdir(pd))
     if ids and (unknown := set(ids) - {x["id"] for x in plan}):
         raise FlowError(f"no such asset: {', '.join(sorted(unknown))}")
+    _note(pd, "Making a sample of every asset: stills, short clips, voices, music", "voice")
     made, failed = PV.make_samples(plan, pd, boards(pd, st), ids, force, provider)
+    _note(pd, f"Made {len(made)} asset samples" + (f", {len(failed)} failed" if failed else ""), "voice", True)
     return _report("asset samples", made, failed)
 
 
@@ -858,6 +900,7 @@ def main(argv=None):
     p = P("round"); p.add_argument("action", choices=["start", "close"]); p.add_argument("--feedback", default=""); p.add_argument("--council"); p.add_argument("--research"); p.add_argument("--note", default="")
     p = P("final"); p.add_argument("action", choices=["add"]); p.add_argument("file")
     P("revise").add_argument("--feedback", required=True)
+    p = P("note"); p.add_argument("text"); p.add_argument("--kind", default="other", choices=NOTE_KINDS); p.add_argument("--done", action="store_true")
     p = P("board"); p.add_argument("--out")
     p = P("snapshot"); p.add_argument("--out")
     a = ap.parse_args(argv)
@@ -928,6 +971,8 @@ def main(argv=None):
                 print(a.out)
             else:
                 print(doc)
+        elif a.cmd == "note":
+            note(pd, a.text, a.kind, a.done)
         elif a.cmd == "board":
             print(dashboard(pd, a.out))
     except (FlowError, BR.BriefError) as e:
