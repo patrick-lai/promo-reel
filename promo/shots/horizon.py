@@ -407,6 +407,19 @@ class Horizon(ShotType):
         sky = sky_of(st, cfg)
         text = HorizonText(ctx, spec)
         aspect = (ctx.OW, ctx.OH)
+        pane_cfg, pane_bg = None, None
+        if cfg.get("pane"):
+            from .. import pane3d as P3
+            pane_cfg = dict(cfg["pane"]) if isinstance(cfg["pane"], dict) else {}
+            pane_cfg.setdefault("enter", min(0.8, max(0.25, total * 0.5)))
+            pane_bg = None
+            bp = pane_cfg.pop("backdrop_plate", None)               # {id, t, dim, blur, mix}: the pane sits in the colour of its neighbouring specimen
+            if bp:
+                _src = R.Source(spec.footage_path(bp["id"]), bp.get("t", 0.5), bp.get("t", 0.5) + 0.2)
+                try:
+                    pane_bg = P3.plate_world(_src.frame(bp.get("t", 0.5), blur=0), ctx.OW, ctx.OH, bp.get("dim", 0.45), bp.get("blur", 0.035), bp.get("mix", 0.22))
+                finally:
+                    _src.close()
 
         def f(i, t):
             te = min(t, max(total - hold, 0.0)) if hold else t
@@ -416,7 +429,21 @@ class Horizon(ShotType):
             u = min(1.0, (te - a) / max(b - a, 1e-6))
             im = srcs[k].frame(s["t_in"] + (s["t_out"] - s["t_in"]) * u, blur=blur)
             cam = cam_for(cfg, te, total, im.size, aspect, s)
-            out = frame_free(ctx, im, cam, sky).convert("RGBA")
+            if pane_cfg is not None:                        # real UI as a floating 3D pane (promo/pane3d.py): framing only, UI pixels just warped
+                pw = int(ctx.OW * float(pane_cfg.get("w", P3.DEFAULTS["w"])) * 1.4)
+                cr = pane_cfg.get("crop")
+                if cr:                                      # an exact window of the recording (normalised cx, cy, w, h): whole elements, any aspect
+                    SW, SH = im.size
+                    bw, bh = cr["w"] * SW, cr["h"] * SH
+                    x0 = min(max(cr["cx"] * SW - bw / 2, 0), SW - bw)
+                    y0 = min(max(cr["cy"] * SH - bh / 2, 0), SH - bh)
+                    crop = im.resize((pw, max(2, int(pw * bh / bw))), Image.LANCZOS, box=(x0, y0, x0 + bw, y0 + bh))
+                else:
+                    crop = R.frame_cam(ctx, im, cam[0], cam[1], cam[2], out=(pw, int(pw * ctx.OH / ctx.OW)))
+                out = P3.compose(crop, pane_bg if pane_bg is not None else P3.world(ctx.OW, ctx.OH), t, total, pane_cfg,
+                                 (ctx.OW, ctx.OH)).convert("RGBA")
+            else:
+                out = frame_free(ctx, im, cam, sky).convert("RGBA")
             out = text.apply(out, shot.f0 + i, horizon_at(cfg, te, total, s))
             da, col = dip_alpha(st, cfg, i)
             if da > 0:
@@ -531,11 +558,22 @@ class Dawn(ShotType):
     def render(self, ctx, shot):
         spec = ctx.spec
         cfg = self._cfg(spec, shot)
-        layers = self._texts(ctx, shot, cfg)
+        brand = shot.cfg.get("name_style") == "brand" and shot.cfg.get("name")
+        layers = [] if brand else self._texts(ctx, shot, cfg)
         fade = float(cfg.get("fade_s", 0.7))
+        if brand:
+            from . import brand as BR
+            bcfg = {k: shot.cfg[k] for k in BR.DEFAULTS if k in shot.cfg}
+            import os as _os
+            em = ctx.spec.resolve(shot.cfg.get("emblem", "../commission-ai-shared/brand/emblem.png"))
+            if _os.path.exists(em):
+                bcfg["emblem_path"] = em                    # the product's current emblem (clients/web/src/design/Emblem.tsx, rendered)
+            serif = font_candidates(style_of(ctx.spec), "serif")
 
         def f(i, t):
             out = Image.fromarray(dawn_array(ctx.OW, ctx.OH, t, cfg)).convert("RGBA")
+            if brand:                                       # animated brand lockup (promo/shots/brand.py)
+                out.alpha_composite(BR.lockup(ctx.OW, ctx.OH, t, shot.cfg["name"], serif, bcfg))
             for lay, t_on in layers:
                 a = R.ease((t - t_on) / fade, "out") if t > t_on else 0.0
                 out = _composite(out, lay, a, 0, 0)

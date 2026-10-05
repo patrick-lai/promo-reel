@@ -68,7 +68,12 @@ def edit(spec, src_path):
         g[a:b] *= v
         if gn.get("ramp"):
             r = int(gn["ramp"] * SR)
-            g[a - r:a] *= np.linspace(1, v, r)
+            lo = max(a - r, 0)
+            g[lo:a] *= np.linspace(1, v, r)[r - (a - lo):]            # fade INTO the region (clamped at the start of the track)
+        if gn.get("ramp_out"):
+            r = int(gn["ramp_out"] * SR)
+            hi = min(b + r, N)
+            g[b:hi] *= np.linspace(v, 1, r)[:hi - b]                  # fade back OUT of the region: a quiet open that rises into the bed
     out *= g[:, None]
     if e.get("silence_from_beat") is not None:
         out[T(e["silence_from_beat"]):] = 0

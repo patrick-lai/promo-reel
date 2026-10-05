@@ -430,6 +430,17 @@ class Composer:
         W, H = self.W, self.H
         if src is None:                                                # dark opening plate (no footage)
             return G.to_img(G.apply_look_arr(G.to_f(Image.new("RGB", (W, H), (8, 7, 9))), self._plain_look(), self._i, soft=True))
+        if self.panel and self.look["panel"].get("pane3d") not in (None, False):
+            # look.panel.pane3d: {...}: the UI as a floating, tilted 3D pane (promo/pane3d.py); the backdrop gets the usual look
+            from .. import pane3d as P3
+            wf, cyf, dim = panel_params(self.look, self.shot, t, self.dur)
+            box = G.panel_box((W, H), wf, cyf)
+            pw, ph = box[2] - box[0], box[3] - box[1]
+            panel = R.frame_cam(self.ctx, src, *cam, out=(int(pw * 1.4), int(ph * 1.4)))
+            bd = self._backdrop_fx(dim)(self._backdrop(src, cam, dim))
+            p3 = self.look["panel"]["pane3d"]
+            p3 = {**(p3 if isinstance(p3, dict) else {}), "w": pw / W, "cy": (box[1] + box[3]) / 2.0 / H}
+            return P3.compose(panel, bd, t, self.dur, p3, (W, H))
         if self.panel:
             box, dim, op = self._box(t)
             pw, ph = box[2] - box[0], box[3] - box[1]
