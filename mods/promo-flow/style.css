@@ -689,3 +689,23 @@ button.fr:hover { border-color: var(--c-accent); }
 .choice .strip{display:flex;gap:2px;height:56px;border-radius:var(--r-sm);overflow:hidden;margin-bottom:8px;background:var(--c-well)}
 .choice .strip img{flex:1 1 0;min-width:0;height:100%;object-fit:cover;position:static;opacity:1}
 @media (min-width:640px){.choices.scripts{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}}
+
+/* style samples */
+.sty{position:relative;flex:none;width:96px;height:60px;border-radius:var(--r-sm);overflow:hidden;display:grid;place-items:center;border:1px solid var(--c-line);color:#fff}
+.sty i,.sty em{position:absolute;display:block;font-style:normal}
+.sty-hero{background:linear-gradient(160deg,#1c2230,#0d1017)}
+.sty-hero .win{inset:9px 14px 20px;border-radius:4px;background:#e9e6df}.sty-hero .pill{left:50%;bottom:6px;width:46px;height:8px;margin-left:-23px;border-radius:99px;background:rgba(255,255,255,.7)}
+.sty-dialogue{background:linear-gradient(160deg,#3a2f2a,#1e1816)}
+.sty-dialogue .who{bottom:6px;width:20px;height:28px;border-radius:50% 50% 4px 4px;background:#d8b89a}.sty-dialogue .a{left:14px}.sty-dialogue .b{right:14px;background:#9ab4d8}
+.sty-dialogue .bub{top:7px;left:30px;width:36px;height:12px;border-radius:8px;background:rgba(255,255,255,.85)}
+.sty-horizon{background:linear-gradient(#26324f,#e08a5a 78%,#f5c98a)}
+.sty-horizon .sun{left:50%;bottom:14px;width:20px;height:20px;margin-left:-10px;border-radius:50%;background:#ffe3b0}.sty-horizon .hz{left:0;right:0;bottom:13px;height:1px;background:rgba(255,255,255,.8)}
+.sty-horizon em{top:6px;font:italic 11px Georgia,serif;color:#fff}
+.sty-kinetic{background:#14110f}
+.sty-kinetic .ray{inset:-20px;background:repeating-conic-gradient(from 0deg at 50% 50%,#e5532d 0 6deg,#14110f 6deg 14deg);opacity:.75}
+.sty-kinetic em{font:900 18px/1 var(--b-font);letter-spacing:.04em;color:#fff;text-shadow:0 0 6px #000,2px 2px 0 #e5532d}
+.sty-own{background:var(--c-well);color:var(--c-dim)}.sty-own svg{width:22px;height:22px}
+.choice .box{width:22px;height:22px;border-color:var(--c-dim)}
+.choice:not(.static):hover{border-color:color-mix(in srgb,var(--c-accent) 55%,var(--c-line))}
+.choice:has(input:checked)::after{content:"Selected";position:absolute;top:8px;right:10px;font-size:11px;font-weight:650;color:var(--c-accent)}
+.pane{padding-bottom:24px}

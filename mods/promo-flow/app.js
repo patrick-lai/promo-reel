@@ -407,6 +407,13 @@
       h("p", { text: "Steps appear here as the agent publishes them." }));
   }
 
+  /* A small drawn sample of each look, so the choice is not just a name. It is a hint of the style, not a frame of the video. */
+  function styleArt(label) {
+    const k = /hero/i.test(label) ? "hero" : /dialogue/i.test(label) ? "dialogue" : /horizon/i.test(label) ? "horizon" : /anime|kinetic/i.test(label) ? "kinetic" : "own";
+    const inner = { hero: [h("i", { class: "win" }), h("i", { class: "pill" })], dialogue: [h("i", { class: "who a" }), h("i", { class: "who b" }), h("i", { class: "bub" })],
+      horizon: [h("i", { class: "sun" }), h("i", { class: "hz" }), h("em", { text: "One line" })], kinetic: [h("i", { class: "ray" }), h("em", { text: "BOLD" })], own: [ic("film")] }[k];
+    return h("div", { class: "sty sty-" + k, "aria-hidden": "true" }, ...inner);
+  }
   function viewOverview() {
     const d = S.doc, g = gate();
     const box = h("div", { class: "stack" });
@@ -415,7 +422,7 @@
       box.append(h("div", null, h("h2", { class: "h2", text: "Pick a style" }),
         h("div", { class: "choices", role: "radiogroup", "aria-label": "Style", style: "margin-top:10px" }, arr(g.options).map((o) => {
           const th = o.thumb && mref(o.thumb);
-          const tslot = th && !th.error ? h("div", { class: "thumb", style: "position:relative" }) : h("div", { class: "glyph" }, ic("film"));
+          const tslot = th && !th.error ? h("div", { class: "thumb", style: "position:relative" }) : styleArt(o.label);
           if (th && !th.error) lazyInto(tslot, th, (u) => h("img", { src: u, alt: "" }), { compact: true });
           const inp = h("input", { type: "radio", name: "style", value: o.label, checked: S.style === o.label, disabled: !!S.pending, onchange: () => { S.style = o.label; S.ownStyle = ""; const oi = $("own"); if (oi) oi.value = ""; renderGate(); } });
           return h("label", { class: "card choice radio" }, inp, h("div", { class: "row" }, h("span", { class: "box" }, ic("check")), tslot, h("div", { class: "body" }, h("div", { class: "t" }, h("b", { text: o.label })), h("p", { class: "logline", text: o.description || "" }))));
@@ -1012,7 +1019,7 @@
       return m;
     }
     m.changes = g.kind === "draft" && used < max ? "feedback" : "changes";
-    m.secondary = g.kind === "draft" && used >= max ? "Restate direction" : g.kind === "style" ? "" : g.changes_label || "Send changes";
+    m.secondary = g.kind === "draft" && used >= max ? "Restate direction" : g.kind === "style" ? "" : g.kind === "pick" ? "Ask for other stories" : g.changes_label || "Send changes";
     m.sendLabel = g.kind === "draft" ? (used >= max ? "Send direction" : "Send feedback") : g.kind === "style" ? "Send style" : "Send changes";
     m.placeholder = { style: "Describe the style you want, or paste a reference link.", approve: "What should change? Name the scene or asset if you can.", confirm: "What needs to happen before drafts?",
       draft: used >= max ? "All " + max + " rounds are used. Say what direction you want instead." : "What should change in the draft?" }[g.kind] || "What should change?";
@@ -1021,11 +1028,12 @@
       draft: used >= max ? "All " + max + " rounds are used." : "Approve it, or send feedback for the next round.", pick: "" }[g.kind] || "";
     if (g.kind === "pick") {
       const n = S.picks.size;
-      m.primary = n ? "Continue with " + n : "Continue";
+      m.primary = n ? "Storyboard " + (n === 1 ? "this story" : "these " + n) : "Storyboard";
       m.primaryDisabled = n === 0;
-      m.note = n ? n + " picked" + (g.picks_max ? ". You can take up to " + g.picks_max + "." : ".") : "Pick at least one script";
+      const lim = g.picks_max;
+      m.note = !n ? (lim && lim > 1 ? "Pick 1 or " + lim + " stories to turn into storyboards." : "Pick a story to turn into a storyboard.") : lim && n >= lim ? n + " picked. That is the limit: untick one to swap." : n + " picked." + (lim ? " You can pick " + (lim - n) + " more." : "");
     } else if (g.kind === "style") {
-      m.primary = g.approve_label || "Use this style"; m.primaryDisabled = !(S.style || S.ownStyle.trim());
+      m.primary = g.approve_label || "Use this style and write scripts"; m.primaryDisabled = !(S.style || S.ownStyle.trim());
       if (m.primaryDisabled) m.note = "Choose a style, or describe your own";
     } else m.primary = g.approve_label || "Approve";
     const mr = PF.missingRule(d, g.gate) || PF.previewRule(d, g.gate);

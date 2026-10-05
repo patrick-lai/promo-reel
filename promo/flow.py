@@ -48,8 +48,8 @@ GATE_OF = dict(pick="scripts-picked", storyboard="storyboard-approved", assets="
 MAX_ROUNDS = 5
 MIN_SCRIPTS = 3
 URL_RE = re.compile(r"https?://[^\s)>\]\"']+")
-STYLES = [("Calm product hero", "hero: VO-led, dark pill captions, cuts on the beat"), ("Dialogue film", "people scenes with real speech, the app on their screens"),
-          ("Horizon film", "rapid cuts of real surfaces building to one proof moment, dawn end card"), ("Kinetic anime opening", "title cards, speed lines, bar-snapped cuts")]
+STYLES = [("Calm product hero", "A steady voice-over walks through the real app. Simple captions, cuts that land on the beat."), ("Dialogue film", "People talking, with the app on their screens. Real speech carries the story."),
+          ("Horizon film", "Fast cuts of the real app building to one proof moment, ending on a calm dawn card."), ("Kinetic anime opening", "Bold title cards and quick, punchy cuts timed to the music.")]
 
 
 class FlowError(Exception):
