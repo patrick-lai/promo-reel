@@ -431,7 +431,7 @@ def ask(pd, st):
         return dict(header="Storyboard", multiSelect=False, question="Happy with the storyboard (each scene's start and end frame), or want changes?",
                     options=[dict(label="Approve storyboard", description="go on to the asset plan"), dict(label="Changes", description="say what to change per scene")])
     if stage == "assets" and all(o for o, t in checks(pd, st) if "approved" not in t):
-        return dict(header="Assets", multiSelect=False, question="Reviewed every asset (screenshots, pictures, audio, recordings; mocks are marked)? Approve the plan?",
+        return dict(header="Assets", multiSelect=False, question="Looked at and listened to every asset sample (pictures, clips, music, voice, sounds)? Approve the plan?",
                     options=[dict(label="Approve asset plan", description="generate the remaining keyframes"), dict(label="Changes", description="swap, add or drop assets")])
     if stage == "confirm":
         return dict(header="Go?", multiSelect=False, question="Generate the first drafts now?",
@@ -568,8 +568,8 @@ def plain_checks(pd, st, stage=None):
         R.append((not miss, f"All stories: all {tot} keyframes made" if not miss else f"All stories: {tot - miss} of {tot} keyframes made, {miss} left"))
         sts = [AP.state(x, pd) for x in AP.load(f)]
         m, t = sts.count("mock"), sts.count("todo")
-        left = [x for x in (f"{m} mock" if m else "", f"{t} to make" if t else "") if x]
-        R.append((not (m or t), "Every planned asset has its file." if not (m or t) else " and ".join(left).capitalize() + (" asset still to replace" if m + t == 1 else " assets still to replace")))
+        left = [x for x in (f"{m} {'stand-in' if m == 1 else 'stand-ins'} to swap for the real thing" if m else "", f"{t} still to make" if t else "") if x]
+        R.append((not (m or t), "Every planned asset has its file." if not (m or t) else "Before the real run: " + ", ".join(left)))
     elif stage == "confirm":
         R.append((gate_ok(pd, st, "final-confirmation"), "You confirmed generation" if gate_ok(pd, st, "final-confirmation") else "You confirm generation"))
     elif stage == "drafts":
@@ -720,6 +720,7 @@ def snapshot(pd):
     drafts = [dict(id=f"d{i + 1}", label=f"Draft {i + 1}", note=d.get("note") or None, path=_media(d["file"]), name=os.path.basename(d["file"]), rel=rel(d["file"]),
                    after=after.get(i, "")) for i, d in enumerate(st["drafts"])]
     finals = [dict(id=f"f{i + 1}", label=f"Final {i + 1}", path=_media(x["file"]), name=os.path.basename(x["file"]), rel=rel(x["file"])) for i, x in enumerate(st["finals"])]
+    councils = {k: _clip(open(os.path.join(f, v[-1]["file"])).read(), 900) for k, v in st["councils"].items() if v and os.path.isfile(os.path.join(f, v[-1]["file"]))}
     pc = plain_checks(pd, st)
     gate = _gate(pd, st)
     nd = needs(pd, st)
@@ -747,7 +748,7 @@ def snapshot(pd):
                 stage=st["stage"], stage_label=LABEL[st["stage"]], stage_since=since, cycle=st["cycle"], rounds_used=used, rounds_max=MAX_ROUNDS, steps=steps,
                 stale_steps=stale,
                 style=(st.get("discover") or {}) and dict(style=st["discover"].get("style"), refs=st["discover"].get("refs", []), no_refs=st["discover"].get("no_refs", False)) or None,
-                scripts=scripts, boards=bl, assets=assets, to_make=to_make, drafts=drafts, finals=finals, rounds=rounds,
+                scripts=scripts, councils=councils, boards=bl, assets=assets, to_make=to_make, drafts=drafts, finals=finals, rounds=rounds,
                 checks=[dict(ok=o, text=t) for o, t in pc], gate=gate,
                 approvals={k: dict(by=v["by"], at=v["at"], fresh=gate_ok(pd, st, k)) for k, v in st["gates"].items()})
 

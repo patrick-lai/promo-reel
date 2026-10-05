@@ -23,6 +23,7 @@ Every path below that says `file` is `{"$file": "<absolute path>"}` (the host tu
     stale_steps [{id, gate, label}]                            approvals that went stale; the mod shows "Approved earlier, but <step> changed since."
     style      {style, refs[], no_refs} | null
     scripts    [{id, title, logline, picked, verdict, beats[<=2]}]       beats = first two list items of the script file
+    councils   {scripts?: text}                                    the latest council note per kind (<= 900 chars): shown as "What the council said" above the scripts
     boards     [{id, title, logline, aspect, duration_s, scenes: [{id, beat, start_s, end_s, action, caption, voice, sound, camera, proof,
                  source: real|generated|mock|other, generated, start: {label, path: file|null, prompt}, end: {...}, frames: [{label, path, prompt}]}]}]
                  The frames are storyboard stills, not footage. One function derives the scene chip and the timeline mark: for source=real, "Captured" only when every real asset covering the scene is ready and its file loads

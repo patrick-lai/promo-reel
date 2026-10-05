@@ -352,7 +352,7 @@ def test_plain_sentences(pd, tmp_path):
     AP.save(os.path.join(pd, "flow"), [dict(id="m", kind="music", source="mock", scenes=["01"], how="h")])
     s = F.snapshot(pd)
     assert s["summary"]["status"] == "All stories: 2 of 4 keyframes made, 2 left"
-    assert s["checks"][1]["text"] == "1 mock asset still to replace"
+    assert s["checks"][1]["text"] == "Before the real run: 1 stand-in to swap for the real thing"
     st["stage"] = "storyboard"
     F.save(pd, st)
     s2 = F.snapshot(pd)

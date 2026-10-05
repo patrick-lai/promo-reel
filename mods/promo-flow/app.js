@@ -447,8 +447,9 @@
     const list = h("div", { class: "choices scripts" });
     for (const s of arr(d.scripts)) {
       const beats = arr(s.beats).slice(0, 2);
+      const picked = s.picked || (!pickMode && S.sentPicks && S.sentPicks.has(s.id));
       const title = h("div", { class: "t" }, h("span", { class: "id", text: s.id }), h("b", { text: s.title }),
-        s.picked && !pickMode ? h("span", { class: "chip ok" }, ic("check"), "Picked") : null, s.verdict ? h("span", { class: "chip", text: s.verdict }) : null);
+        picked && !pickMode ? h("span", { class: "chip ok" }, ic("check"), "Picked") : null, s.verdict ? h("span", { class: "chip", text: s.verdict }) : null);
       const body = h("div", { class: "body" }, title, h("div", { class: "logline" }, showMore(s.logline || "", 200, "c2")),
         beats.length ? h("ol", { class: "beats", "aria-label": "First beats" }, beats.map((b) => h("li", { text: b }))) : null);
       if (pickMode) {
@@ -458,8 +459,9 @@
           renderGate();
         }, disabled: !S.picks.has(s.id) && S.picks.size >= max });
         list.append(h("label", { class: "card choice" }, inp, h("div", { class: "row" }, h("span", { class: "box" }, ic("check")), body)));
-      } else list.append(h("div", { class: "card choice static" + (s.picked ? " picked" : "") }, h("div", { class: "row" }, body)));
+      } else list.append(h("div", { class: "card choice static" + (picked ? " picked" : "") }, h("div", { class: "row" }, body)));
     }
+    if (d.councils && d.councils.scripts) box.append(h("div", { class: "card council" }, h("b", { text: "What the council said" }), h("p", null, showMore(d.councils.scripts, 260, "c3"))));
     box.append(list);
     const c = STAGE_TAB[d.stage] === "scripts" ? checksLine() : null;
     if (c) box.append(c);
@@ -467,7 +469,9 @@
   }
 
   /* ----- storyboard ----- */
-  const sceneStatus = (s) => PF.sceneStatus(s, arr(S.doc.assets));
+  /* Before the asset plan there is nothing to capture or mock yet: a scene only shows whether its frames are made, not a footage verdict. */
+  const beforeAssets = () => stageIdx() < STAGE_IDS.indexOf("assets");
+  const sceneStatus = (s) => PF.sceneStatus(beforeAssets() ? { ...s, source: "other" } : s, arr(S.doc.assets));
   const STILLS = "Frames are storyboard stills, not footage";
   function sourceChip(s) {
     const st = sceneStatus(s);
@@ -503,13 +507,14 @@
     box.append(h("div", { class: "board-row" }, boards.length > 1 ? storySwitch(boards) : h("div", { class: "ttl", text: b.title }), chips));
     const unmade = PF.previewRule(d, "storyboard-approved");
     if (unmade && !confirm) box.append(makeBanner(unmade.note.replace(/ Ask the agent.*$/, ""), "storyboard frames"));
+    if (scenes.some((x) => x.start && mref(x.start.path) && !(mref(x.start.path) || {}).error)) box.append(animatic(b, scenes));
     if (d.stage === "keyframes") box.append(keyframeGrid(b));
     if (b.logline && !confirm) box.append(h("div", { class: "sub" }, showMore(b.logline, 160, "c2")));
     if (!scenes.length) { box.append(h("div", { class: "empty card" }, h("div", { class: "ring" }, ic("scene")), h("h2", { text: "No scenes yet" }), h("p", { text: "This story has no scenes. The agent adds them when it writes the storyboard." }))); return h("div", { class: "pane" }, box); }
     const tl = h("div", { class: "tlwrap" }, h("div", { class: "tl", role: "group", "aria-label": "Timeline: jump to a scene" }, scenes.map((x) =>
       h("button", { type: "button", class: "k-" + sceneStatus(x).cls, "data-sid": x.id, style: "flex:" + Math.max((x.end_s - x.start_s), 0.5) + " 1 0", title: "Scene " + x.id + " " + x.beat + ", " + num(x.start_s) + " to " + num(x.end_s) + " s. " + STILLS,
-        "aria-label": "Scene " + x.id + ", " + x.beat, onclick: () => jumpScene(b.id, x.id) }, h("span", { class: "fill", text: x.id })))),
-      confirm ? null : h("div", { class: "tl-leg" }, [["r", "real", "All real assets ready"], ["s", "stills", "Stills only"], ["m", "mock", "Mock in plan"], ["g", "gen", "Generated"], ["t", "todo", "To capture / not made"]]
+        "aria-label": "Scene " + x.id + ", " + x.beat, onclick: () => jumpScene(b.id, x.id) }, tlThumb(x), h("span", { class: "fill", text: x.id })))),
+      confirm ? null : h("div", { class: "tl-leg" }, [["r", "real", "All real assets ready"], ["s", "stills", "Stills only"], ["m", "mock", "Mock in plan"], ["g", "gen", "Generated"], ["t", "todo", beforeAssets() ? "Frames not made yet" : "To capture / not made"]]
         .filter(([, k]) => scenes.some((x) => sceneStatus(x).cls === k)).map(([c, , label]) => h("span", null, h("i", { class: c }), label))),
       confirm ? null : h("p", { class: "tl-note", text: "Frames are storyboard stills, not footage." }));
     if (!confirm) box.append(tl);
@@ -527,6 +532,78 @@
       for (const bt of tl.querySelectorAll("button")) bt.setAttribute("aria-current", String(bt.dataset.sid === cur));
     };
     return h("div", { class: "pane" }, box);
+  }
+  /* Watch it: the storyboard stills played in order with the caption, the voice line and the music sample. A preview of the pacing, not footage. */
+  function animatic(b, scenes) {
+    const total = Math.max(b.duration_s || 0, ...scenes.map((x) => x.end_s || 0), 1);
+    const music = arr(S.doc.assets).find((a) => a.kind === "music" && a.sample && mref(a.sample) && !mref(a.sample).error);
+    const stage = h("div", { class: "an-stage", style: "--ar:" + String(b.aspect || "16:9").replace(":", "/") });
+    const layers = scenes.map(() => ({ a: h("img", { alt: "" }), b: h("img", { alt: "" }) }));
+    layers.forEach((l) => stage.append(l.a, l.b));
+    const cap = h("div", { class: "an-cap" }), say = h("div", { class: "an-say" }), tag = h("span", { class: "an-tag" });
+    const big = h("div", { class: "an-big", "aria-hidden": "true" }, ic("play"));
+    stage.append(h("div", { class: "an-shade" }), tag, cap, say, big);
+    stage.setAttribute("role", "button"); stage.tabIndex = 0; stage.setAttribute("aria-label", "Play or pause the storyboard preview");
+    const pp = h("button", { type: "button", class: "an-pp", "aria-label": "Play the storyboard" }, ic("play", "ic-play"), ic("pause", "ic-pause"));
+    const time = h("span", { class: "an-time" });
+    let sound = true;
+    const spk = h("button", { type: "button", class: "an-snd", "aria-pressed": "true", "aria-label": "Sound on", title: "Sound on or off", onclick: () => { sound = !sound; spk.setAttribute("aria-pressed", String(sound)); spk.setAttribute("aria-label", sound ? "Sound on" : "Sound off"); spk.classList.toggle("off", !sound); if (audio) audio.muted = !sound; } }, ic("music"));
+    const seg = h("div", { class: "an-seg", role: "slider", tabindex: "0", "aria-label": "Position in the storyboard", "aria-valuemin": "0", "aria-valuemax": String(Math.round(total)) },
+      scenes.map((x) => h("i", { style: "flex:" + Math.max(x.end_s - x.start_s, 0.5) + " 1 0", title: "Scene " + x.id + " " + x.beat })), h("b", { class: "an-head" }));
+    seg.setAttribute("aria-valuetext", "0:00");
+    const heads = seg.querySelector(".an-head"), segs = [...seg.querySelectorAll("i")];
+    let audio = null;
+    if (music) getMedia(mref(music.sample)).then((u) => { audio = new Audio(u); audio.loop = true; audio.volume = 0.6; audio.muted = !sound; }, () => {});
+    scenes.forEach((x, i) => {
+      for (const [k, f] of [["a", x.start], ["b", x.end]]) { const r = f && mref(f.path); if (r && !r.error) getMedia(r).then((u) => { layers[i][k].src = u; layers[i][k].classList.add("ok"); stage.classList.add("loaded"); }, () => {}); }
+      if (!(x.end && mref(x.end.path))) layers[i].b = layers[i].a;
+    });
+    let t = 0, playing = false, last = 0, raf = 0;
+    const show = () => {
+      const i = Math.max(0, scenes.findIndex((x) => t < x.end_s)), x = scenes[i === -1 ? scenes.length - 1 : i] || scenes[scenes.length - 1];
+      const idx = scenes.indexOf(x), p = Math.min(1, Math.max(0, (t - x.start_s) / Math.max(x.end_s - x.start_s, 0.1)));
+      layers.forEach((l, j) => { const on = j === idx; l.a.style.opacity = on ? String(p < 0.45 ? 1 : p > 0.65 ? 0 : 1 - (p - 0.45) / 0.2) : "0"; l.b.style.opacity = on ? String(p < 0.45 ? 0 : p > 0.65 ? 1 : (p - 0.45) / 0.2) : "0";
+        const sc = on && !reduced() ? "scale(" + (1 + 0.05 * p).toFixed(4) + ")" : "none"; l.a.style.transform = sc; l.b.style.transform = sc; });
+      cap.textContent = x.caption || ""; cap.hidden = !x.caption;
+      say.textContent = x.voice ? "\u201c" + x.voice + "\u201d" : ""; say.hidden = !x.voice;
+      tag.textContent = x.id + "/" + scenes.length + " \u00b7 " + x.beat;
+      seg.setAttribute("aria-valuetext", fmtT(t) + " of " + fmtT(total) + ", scene " + x.id);
+      stage.classList.toggle("playing", playing); stage.classList.toggle("done", t >= total);
+      segs.forEach((e, j) => e.classList.toggle("cur", j === idx));
+      time.textContent = fmtT(t) + " / " + fmtT(total);
+      heads.style.left = (t / total) * 100 + "%";
+      seg.setAttribute("aria-valuenow", String(Math.round(t)));
+    };
+    const tick = (now) => { if (!playing) return; t += (now - last) / 1000; last = now; if (t >= total) { t = total; stop(); } if (audio) audio.volume = Math.max(0, Math.min(0.6, (total - t) / 2)); show(); if (playing) raf = requestAnimationFrame(tick); };
+    function stop() { playing = false; cancelAnimationFrame(raf); pp.classList.remove("on"); pp.setAttribute("aria-label", "Play the storyboard"); if (audio) audio.pause(); }
+    function start() { if (t >= total - 0.05) t = 0; playing = true; last = performance.now(); pp.classList.add("on"); pp.setAttribute("aria-label", "Pause"); if (audio) { audio.currentTime = t % (audio.duration || total); audio.volume = 0.6; audio.play().catch(() => {}); } raf = requestAnimationFrame(tick); show(); }
+    const seek = (clientX) => { const r = seg.getBoundingClientRect(); t = Math.min(total, Math.max(0, ((clientX - r.left) / r.width) * total)); if (audio && playing) audio.currentTime = t % (audio.duration || total); if (!playing) last = performance.now(); show(); };
+    pp.addEventListener("click", () => (playing ? stop() : start()));
+    stage.addEventListener("click", () => (playing ? stop() : start()));
+    let drag = false;
+    seg.addEventListener("pointerdown", (e) => { drag = true; seg.setPointerCapture(e.pointerId); seek(e.clientX); });
+    seg.addEventListener("pointermove", (e) => { if (drag) seek(e.clientX); });
+    seg.addEventListener("pointerup", () => { drag = false; });
+    seg.addEventListener("keydown", (e) => {
+      if (e.key === " " || e.key === "Enter") { e.preventDefault(); playing ? stop() : start(); return; }
+      const d = { ArrowRight: 2, ArrowLeft: -2, PageUp: -10, PageDown: 10 }[e.key];
+      if (d == null && e.key !== "Home" && e.key !== "End") return;
+      e.preventDefault(); t = e.key === "Home" ? 0 : e.key === "End" ? total : Math.min(total, Math.max(0, t + d));
+      if (audio && playing) audio.currentTime = t % (audio.duration || total); last = performance.now(); show();
+    });
+    stage.addEventListener("keydown", (e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); playing ? stop() : start(); } });
+    show();
+    return h("section", { class: "card animatic", "aria-label": "Watch the storyboard" },
+      h("div", { class: "an-top" }, h("b", { text: "Your promo, as a preview" }), h("span", { class: "chip", text: num(total) + " s \u00b7 " + (music ? "music sample on" : "no music sample yet") })),
+      stage, h("div", { class: "an-bar" }, pp, seg, time, music ? spk : null), h("p", { class: "tl-note", text: "Paced stills with captions and voice lines. The final video uses real footage." }));
+  }
+  const fmtT = (s) => Math.floor(s / 60) + ":" + String(Math.floor(s % 60)).padStart(2, "0");
+  function tlThumb(x) {
+    const r = x.start && mref(x.start.path);
+    if (!r || r.error) return null;
+    const im = h("img", { alt: "", class: "tl-th" });
+    getMedia(r).then((u) => { im.src = u; }, () => {});
+    return im;
   }
   function jumpScene(story, id) {
     const t = document.getElementById("scene-" + story + "-" + id);
@@ -755,6 +832,7 @@
     return h("div", { class: "audio" }, pp, rg, tm);
   }
   const STATE_CHIP = { mock: ["Mock", "warn"], todo: ["To make", "bad"], missing: ["File missing", "bad"] };
+  const stateChip = (eff, sampled) => (eff === "todo" && sampled ? ["To make", "warn"] : STATE_CHIP[eff]);
   function assetTile(x) {
     const a = x.a, eff = x.eff;
     const real = x.r && !x.r.error ? x.r : null;
@@ -788,7 +866,7 @@
     const how = scrubPaths(a.how);
     const lic = [a.licence ? "Licence: " + a.licence : "", a.note && !/^https?:/i.test(a.note) ? a.note : ""].filter(Boolean).join(" · ");
     const url = a.note && /^https:\/\//i.test(a.note) ? a.note : "";
-    const sc_ = STATE_CHIP[eff];
+    const sc_ = stateChip(eff, sampled);
     return h("article", { class: "card asset" + (isAudio ? " a-audio" : "") }, pv, h("div", { class: "bd" }, h("div", { class: "nm", title: a.id, text: a.label || a.id }),
       h("div", { class: "kind" }, h("span", { class: "chip", text: (KIND_LABEL[a.kind] || a.kind) + (eff === "ready" ? " · " + a.source : "") }), sc_ ? h("span", { class: "chip " + sc_[1], text: sc_[0] }) : null,
         a.source === "licensed" && !a.licence ? h("span", { class: "chip warn", text: "No licence on file" }) : null),
@@ -1005,12 +1083,12 @@
     const g = m.g;
     if (m.reviewTab) { pickTab(m.reviewTab); return; }
     if (m.reviewStory) { const bi = arr(S.doc.boards).findIndex((x) => x.id === m.reviewStory.board); if (bi >= 0) { S.boardIdx = bi; S.tab = m.reviewStory.tab; S.userTab = true; render(true); el.sc.scrollTop = 0; } return; }
-    if (g.kind === "pick") send("pick", { gate: g.gate, picks: [...S.picks].join(" ") });
+    if (g.kind === "pick") { S.sentPicks = new Set(S.picks); send("pick", { gate: g.gate, picks: [...S.picks].join(" ") }); }
     else if (g.kind === "style") send("changes", { stage: "discover", text: "Style: " + (S.ownStyle.trim() || S.style) + refTail() });
     else send("approve", m.draftId ? { gate: g.gate, draft: m.draftId } : { gate: g.gate });
   });
 
-  const refTail = () => (/^https:\/\//i.test(S.ref.trim()) ? ". Reference: " + S.ref.trim() : "");
+  const refTail = () => (/^https:\/\//i.test(S.ref.trim()) ? ". Reference: " + S.ref.trim() : ". No reference link.");
   function startStall() { clearTimeout(S.stallTimer); S.stall = false; S.stallTimer = setTimeout(() => { S.stall = true; renderGate(); }, STALL_MS); }
   function send(name, payload, again) {
     const id = "a" + ++M.seq;
@@ -1044,7 +1122,7 @@
     el.app.dataset.boot = "ready";
     const list = tabList();
     const cur = gTab();
-    if (S.stage !== S.doc.stage) { S.stage = S.doc.stage; S.userTab = false; S.draftSel = null; S.earlier = false; S.filter = null; S.boardIdx = 0; S.seen = new Set(); }
+    if (S.stage !== S.doc.stage) { S.stage = S.doc.stage; S.userTab = false; S.sentPicks = null; S.draftSel = null; S.earlier = false; S.filter = null; S.boardIdx = 0; S.seen = new Set(); }
     if (!S.userTab || !list.some((t) => t.id === S.tab)) S.tab = list.some((t) => t.id === cur) ? cur : list.length ? list[list.length - 1].id : null;
     if (!list.length) S.tab = null;
     renderHeader();
