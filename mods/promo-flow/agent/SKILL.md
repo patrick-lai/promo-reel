@@ -25,3 +25,5 @@ Never edit the JSON by hand. The first publish activates the mod in this thread.
 
 **Never approve yourself** (an agent name is refused). Never send an action for them. If `commissionctl mod status promo-flow` shows nothing new, wait.
 A thread that is archived shows the last state read only; nothing more to do.
+
+At Keyframes, real recordings and screenshots are the person's to capture (rule 1: real footage only). While any are still `mock` or `todo`, the Stage shows "Your turn: N recordings to capture" and opens on the Assets tab with the `how` text as the shot brief. Do not advance until the person has sent the files; register each with `promo flow asset add --force --source real --path FILE --how "..."`.

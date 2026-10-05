@@ -531,3 +531,15 @@ def test_make_frames_replaces_slates_and_reports_failures(pd, monkeypatch):
     assert sorted(f[0] for f in failed) == ["A/02/end", "A/02/start"] and "no file" in failed[0][1]
     assert not SB.is_slate(os.path.join(d, "frames", "01-s.png"))               # a real image now, with its sidecar
     assert [(m["scene"], m["which"]) for m in SB.missing(SB.load(d), d)] == [("02", "start"), ("02", "end")]
+
+
+def test_keyframes_asks_the_person_for_missing_recordings(pd):
+    at_storyboard(pd)
+    st = F.load(pd)
+    st["stage"] = "keyframes"
+    F.save(pd, st)
+    AP.save(os.path.join(pd, "flow"), [dict(id="r", kind="recording", source="mock", scenes=["01"], how="h"), dict(id="m", kind="music", source="mock", scenes=["01"], how="h")])
+    s = F.snapshot(pd)["summary"]
+    assert s["badge"] == "waiting" and s["status"].startswith("Your turn: 1 recording to capture")
+    AP.save(os.path.join(pd, "flow"), [dict(id="m", kind="music", source="mock", scenes=["01"], how="h")])
+    assert F.snapshot(pd)["summary"]["badge"] == "working"

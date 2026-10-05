@@ -197,7 +197,8 @@
   const gate = () => (S.doc && S.doc.gate) || null;
   const stageIdx = () => STAGE_IDS.indexOf(S.doc.stage);
   const sceneIds = () => new Set(arr(S.doc.boards).flatMap((b) => arr(b.scenes).map((s) => String(s.id))));
-  const gTab = () => STAGE_TAB[(gate() && gate().stage) || S.doc.stage];
+  const captureNeeded = () => { const d = S.doc; return d.stage === "keyframes" && !gate() && d.summary && d.summary.badge === "waiting" ? arr(d.assets).filter((x) => (x.kind === "recording" || x.kind === "screenshot") && (x.state === "mock" || x.state === "todo")).length : 0; };
+  const gTab = () => (captureNeeded() ? "assets" : STAGE_TAB[(gate() && gate().stage) || S.doc.stage]);
   const gateKey = () => (S.doc.stage || "") + "|" + (gate() ? gate().gate + "|" + gate().kind : "-");
 
   const curBoard = () => { const bs = arr(S.doc.boards); if (S.boardIdx >= bs.length) S.boardIdx = 0; return bs[S.boardIdx] || null; };
@@ -446,12 +447,15 @@
     const box = h("div", { class: "stack" });
     const list = h("div", { class: "choices scripts" });
     for (const s of arr(d.scripts)) {
-      const beats = arr(s.beats).slice(0, 2);
+      const all = arr(s.beats), beats = all.length > 2 ? [all[0], all[all.length - 1]] : all;
+      const board = arr(d.boards).find((x) => x.id === s.id);
+      const strip = board && arr(board.scenes).some((x) => x.start && mref(x.start.path) && !(mref(x.start.path) || {}).error)
+        ? h("div", { class: "strip", "aria-hidden": "true" }, arr(board.scenes).map((x) => tlThumb(x))) : null;
       const picked = s.picked || (!pickMode && S.sentPicks && S.sentPicks.has(s.id));
       const title = h("div", { class: "t" }, h("span", { class: "id", text: s.id }), h("b", { text: s.title }),
         picked && !pickMode ? h("span", { class: "chip ok" }, ic("check"), "Picked") : null, s.verdict ? h("span", { class: "chip", text: s.verdict }) : null);
-      const body = h("div", { class: "body" }, title, h("div", { class: "logline" }, showMore(s.logline || "", 200, "c2")),
-        beats.length ? h("ol", { class: "beats", "aria-label": "First beats" }, beats.map((b) => h("li", { text: b }))) : null);
+      const body = h("div", { class: "body" }, strip, title, h("div", { class: "logline" }, showMore(s.logline || "", 200, "c2")),
+        beats.length ? h("ol", { class: "beats", "aria-label": all.length > 2 ? "Opening and closing beats" : "Beats" }, beats.map((b) => h("li", { text: b })), all.length > 2 ? h("li", { class: "more-beats", text: all.length + " beats in total" }) : null) : null);
       if (pickMode) {
         const inp = h("input", { type: "checkbox", value: s.id, checked: S.picks.has(s.id), "aria-label": s.id + ": " + s.title, onchange: () => {
           if (inp.checked) S.picks.add(s.id); else S.picks.delete(s.id);
@@ -459,7 +463,7 @@
           renderGate();
         }, disabled: !S.picks.has(s.id) && S.picks.size >= max });
         list.append(h("label", { class: "card choice" }, inp, h("div", { class: "row" }, h("span", { class: "box" }, ic("check")), body)));
-      } else list.append(h("div", { class: "card choice static" + (picked ? " picked" : "") }, h("div", { class: "row" }, body)));
+      } else list.append(h("div", { class: "card choice static" + (picked ? " picked" : arr(d.scripts).some((o) => o.picked) ? " passed" : "") }, h("div", { class: "row" }, body)));
     }
     if (d.councils && d.councils.scripts) box.append(h("div", { class: "card council" }, h("b", { text: "What the council said" }), h("p", null, showMore(d.councils.scripts, 260, "c3"))));
     box.append(list);
@@ -638,20 +642,21 @@
   }
   function confirmCard(boards) {
     const sc = boards.flatMap((b) => arr(b.scenes));
-    const gen = sc.filter((x) => x.source === "generated").length;
     const as = arr(S.doc.assets);
-    const first = boards.length > 1 ? sc.length + " scenes across " + boards.length + " stories (" + boards.map((b) => b.id + ": " + arr(b.scenes).length).join(", ") + ")" : sc.length + (sc.length === 1 ? " scene" : " scenes");
-    const parts = [first, gen + (gen === 1 ? " generated plate" : " generated plates")];
-    for (const k of ["voice", "music"]) {
-      const xs = as.filter((a) => a.kind === k);
-      if (!xs.length) continue;
-      parts.push(xs.some((a) => a.state === "todo" || (a.state === "ready" && fileBad(a))) ? k + " (to make)" : xs.some((a) => a.state === "mock") ? k + " (mock)" : k);
-    }
-    const nm = as.filter((a) => a.state === "mock").length, nt = as.filter((a) => a.state === "todo").length, nx = missingAll();
-    const kf = arr(S.doc.to_make).filter((t) => t.kind === "keyframe").length;
-    const open = [nm ? nm + " mock" : "", nt + kf ? nt + kf + " to make" : "", nx ? nx + " missing" : ""].filter(Boolean);
+    const secs = Math.max(...boards.map((b) => b.duration_s || 0), 0);
+    const real = (k) => as.filter((a) => a.kind === k && a.state === "ready").length;
+    const open = as.filter((a) => a.state === "mock" || a.state === "todo").length + missingAll();
+    const gen = sc.filter((x) => x.source === "generated").length;
+    const tile = (icon, big, small, warn) => h("div", { class: "cf-tile" + (warn ? " warn" : "") }, ic(icon), h("b", { text: big }), h("span", { text: small }));
+    const tiles = [tile("scene", String(sc.length), plural(sc.length, "scene", "scenes")), secs ? tile("film", num(secs) + " s", "runtime") : null,
+      tile("film", String(real("recording") + real("screenshot")), "real recordings", !(real("recording") + real("screenshot"))),
+      real("voice") ? tile("music", "Voice", "narration ready") : null, real("music") ? tile("music", "Music", "licensed track ready") : null, gen ? tile("image", String(gen), plural(gen, "generated plate", "generated plates")) : null].filter(Boolean);
+    const max = S.doc.rounds_max || 5;
     const q = gate() && gate().question;
-    return h("div", { class: "card confirm-card" }, h("b", { text: "Before you generate" }), h("div", { class: "what", text: parts.join(" \u00b7 ") }), h("p", { class: "tl-note", text: "Frames are storyboard stills, not footage." }), h("p", { text: open.length ? "Still open: " + open.join(" \u00b7 ") : "Every planned asset has its file." }), q ? h("p", { text: q }) : null);
+    return h("div", { class: "card confirm-card" }, h("div", { class: "cf-h" }, h("b", { text: "Before you generate" }), open ? h("span", { class: "chip warn", text: open + " not ready" }) : h("span", { class: "chip ok", text: "Everything is ready" })),
+      h("div", { class: "cf-tiles" }, tiles),
+      h("p", { class: "cf-next" }, h("b", { text: "What happens next: " }), "The agent renders the first draft video from these assets. You watch it, then ask for changes in up to " + max + " rounds until you are happy. Nothing is published."),
+      q ? h("p", { class: "cf-q", text: q }) : null);
   }
   function keyframeGrid(b) {
     const cells = [];
@@ -899,12 +904,13 @@
     const url = a.note && /^https:\/\//i.test(a.note) ? a.note : "";
     const sc_ = stateChip(eff, sampled);
     const more = [sampled && a.sample_note ? h("div", { class: "how", text: "Sample: " + a.sample_note }) : null,
-      how ? (a.source === "generated" ? h("details", { class: "prompt" }, h("summary", { text: "View prompt" }), h("p", { text: how })) : h("div", { class: "how" }, showMore(how, 90, "c2"))) : null,
+      how && !(( eff === "mock" || eff === "todo") && (a.kind === "recording" || a.kind === "screenshot")) ? (a.source === "generated" ? h("details", { class: "prompt" }, h("summary", { text: "View prompt" }), h("p", { text: how })) : h("div", { class: "how" }, showMore(how, 90, "c2"))) : null,
       lic || url ? h("div", { class: "lic" }, lic, lic && url ? " \u00b7 " : "", url ? h("button", { type: "button", text: host(url), title: url, onclick: () => post({ type: "open-url", url }) }) : null) : null].filter(Boolean);
     return h("article", { class: "card asset" + (isAudio ? " a-audio" : ""), "data-kind": a.kind }, pv, h("div", { class: "bd" }, h("div", { class: "nm", title: a.id, text: a.label || a.id }),
       h("div", { class: "kind" }, h("span", { class: "chip", text: (KIND_LABEL[a.kind] || a.kind) + (eff === "ready" ? " · " + a.source : "") }), sc_ ? h("span", { class: "chip " + sc_[1], text: sc_[0] }) : null,
         a.source === "licensed" && !a.licence ? h("span", { class: "chip warn", text: "No licence on file" }) : null),
       sc.length ? h("div", { class: "sc", text: (sc.length === 1 ? "Scene " : "Scenes ") + sceneRange(sc) }) : null,
+      how && (eff === "mock" || eff === "todo") && (a.kind === "recording" || a.kind === "screenshot") ? h("div", { class: "torec" }, h("b", { text: "To record: " }), how) : null,
       more.length ? h("details", { class: "more" }, h("summary", { text: "Details" }), ...more) : null), prow);
   }
 
@@ -940,12 +946,19 @@
       if (!r) player.append(h("div", { class: "mid" }, ic("film"), h("span", { text: "This video file is not available." })));
       else if (r.error) player.append(h("div", { class: "mid", role: "alert" }, ic("alert"), h("span", { text: r.error })));
       else lazyInto(player, r, (u) => {
-        const v = h("video", { src: u, controls: "", preload: "metadata", playsinline: "", "aria-label": it.label });
+        const v = h("video", { src: u + "#t=0.5", controls: "", preload: "metadata", playsinline: "", "aria-label": it.label });
         v.addEventListener("loadedmetadata", () => { if (v.duration && isFinite(v.duration)) dur.textContent = fmtTime(v.duration) + (v.videoWidth ? " · " + v.videoWidth + "×" + v.videoHeight : ""); });
         return v;
       }, { manual: r.size > BIG_DRAFT, manualText: "Load video (" + fmtSize(r.size) + ")" });
       const meta = h("div", { class: "filerow" }, h("span", { text: it.label + (it.after ? " · after " + it.after : "") }), dur, it.final && it.rel ? h("span", { class: "path", text: it.rel }) : null);
       left.append(h("div", null, player, meta, it.note ? h("p", { class: "sub", style: "margin-top:4px", text: it.note }) : null));
+      if (d.stage === "final" && PF.finalState(d).ok) {
+        const credits = arr(d.assets).filter((x) => x.licence && (x.kind === "music" || x.kind === "voice" || x.kind === "sfx")).map((x) => (KIND_LABEL[x.kind] || x.kind) + ": " + x.licence);
+        left.prepend(h("div", { class: "card done-card" }, h("div", { class: "ring" }, ic("check")), h("div", null, h("b", { text: "Your promo is ready" }),
+          h("p", { text: "Nothing has been published. Watch it once more with sound, then post it yourself. To change something, send feedback and the agent starts another round." }),
+          credits.length ? h("p", { class: "tl-note", text: "Credits to keep: " + credits.join(" \u00b7 ") }) : null)));
+      }
+      if (d.stage === "review") left.append(h("ul", { class: "watch-list", "aria-label": "What to check" }, ["Does it match the storyboard you approved?", "Is every caption and voice line true for what is on screen?", "Does the pacing and music feel right with the sound on?"].map((t) => h("li", { text: t }))));
     } else {
       const since = d.stage === "drafts" ? hhmm(d.stage_since) : "";
       return h("div", { class: "pane empty fill" }, h("div", { class: "ring" }, ic("film")),
@@ -992,9 +1005,10 @@
       const fin = PF.finalState(d);
       const done = d.stage === "final" && fin.ok;
       m.mode = "work"; m.done = done;
-      m.note = done ? "The final is delivered." : fin.registered ? "A final is registered, but its file is missing." : "Waiting on the agent. Nothing for you to do yet.";
-      m.secondary = done ? "Ask for changes" : "Add a note";
-      m.changes = "changes"; m.placeholder = done ? "What should change in the final?" : "Add a note for the agent."; m.sendLabel = "Send note";
+      const yours = !done && d.summary && d.summary.badge === "waiting";
+      m.note = done ? "The final is delivered." : yours ? "Your turn: record " + captureNeeded() + " " + plural(captureNeeded(), "clip", "clips") + " from the real app." : fin.registered ? "A final is registered, but its file is missing." : "Waiting on the agent. Nothing for you to do yet.";
+      m.secondary = done ? "Ask for changes" : yours ? "Send files" : "Add a note";
+      m.changes = "changes"; m.placeholder = done ? "What should change in the final?" : yours ? "Where are the recordings? Paste the file paths, or say they are attached in the chat." : "Add a note for the agent."; m.sendLabel = yours ? "Send" : "Send note";
       return m;
     }
     m.changes = g.kind === "draft" && used < max ? "feedback" : "changes";

@@ -620,6 +620,9 @@ def _summary(pd, st, gate, pc, rounds_used):
         primary = "Approve again" if gate.get("stale") else GATE_CARD.get(gate["gate"]) or GATE_PRIMARY.get(gate["kind"])
     else:
         status, badge = _clip(_status(pd, st, pc), 140), "working"
+        cap = [x for x in AP.load(os.path.join(pd, "flow")) if x.get("kind") in ("recording", "screenshot") and AP.state(x, pd) in ("mock", "todo")] if stage == "keyframes" else []
+        if cap:
+            status, badge = f"Your turn: {len(cap)} {'recording' if len(cap) == 1 else 'recordings'} to capture from the real app. See the Assets tab, then send them to the agent.", "waiting"
     return dict(title=title, status=status, badge=badge, progress=prog, **({"primary": primary[:24]} if primary else {}))
 
 
