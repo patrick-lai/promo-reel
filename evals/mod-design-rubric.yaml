@@ -1,0 +1,23 @@
+version: 1
+name: Stage widget design (promo-flow mod)
+scale: "1 (fails) .. 5 (excellent); half points allowed"
+pass:
+  mean_min: 4.2
+  none_below: 3
+  hard_min: {next_step: 4, truth: 4}
+context: >
+  The widget fills CommissionAI's Stage (right pane, 380-900 px wide, full height) beside a chat. It is used all day by one person who must
+  stay in control of a video production: see where they are, see what is planned (storyboard start/end frames, every asset incl. audio, drafts),
+  approve or redirect. Host principles: calm charcoal ground, few colours, one accent, one primary button per surface, low cognitive effort,
+  design every state, only opacity/transform animation, keyboard reachable, honest data only.
+criteria:
+  next_step:   "5-second test: where am I, what is waiting on me, what is the one thing to click? The primary action is unmistakable and nothing competes with it."
+  hierarchy:   "Scannable: clear levels (stage > section > scene/asset), consistent rhythm, no wall of equal-weight rows; the eye lands on what matters first."
+  density:     "Uses a 380-900 px pane well: no dead space, no cramped controls, no horizontal scroll; wide layout earns its extra width; frames are big enough to judge."
+  storyboard:  "Start -> end frames per scene read at a glance; timeline bar and scene numbers orient; text rows are short and aligned; frame viewer is quick and obvious."
+  assets:      "Real vs mock vs to-make is obvious without reading; images, video and audio are all previewable in place; licence/source visible but quiet; counts honest."
+  states:      "Empty, loading, partial, error, offline, stale-after-update, long content and a failed media blob all look intentional and teach the next action."
+  polish:      "Native to the host in light and dark: tokens, radii, type scale, spacing, alignment, optical balance, no clipped/orphaned elements, nothing jumps while media loads."
+  interaction: "One primary per surface, <=2 footer buttons, no split buttons; keyboard order and focus rings; Cmd+Enter sends; pending states; reduced motion; touch targets >= 36 px."
+  narrow:      "380 px: single column keeps every function; gate bar stays reachable; no truncation that hides meaning."
+  truth:       "Shows only what the state says (no invented numbers, no fake progress); stale approvals and mocks are never presented as done."

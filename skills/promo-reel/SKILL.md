@@ -27,7 +27,7 @@ Start with THE FLOW (below). Everything lives in `<projects dir>/<name>/` (defau
 | 10 | **final** | `final add`; further feedback = `promo flow revise` (new cycle, council again) | |
 
 Session UI: `status --json` carries the `ask` payload (question + options) for AskUserQuestion; `promo flow board` writes the dashboard HTML (stepper, scripts, storyboards with
-start->end frames, the asset gallery, drafts, rounds): publish it as an Artifact or show it as a widget so the person SEES the plan. Slash command: `/promo-flow` (`.claude/commands/promo-flow.md`).
+start->end frames, the asset gallery, drafts, rounds): publish it as an Artifact or show it as a widget so the person SEES the plan. Inside CommissionAI the widget is the `promo-flow` mod (`mods/promo-flow/`, README there): `promo flow snapshot --out f.json` then `commissionctl mod publish promo-flow --file f.json`; the person's clicks arrive as `[mod:promo-flow] ...` messages. Slash command: `/promo-flow` (`.claude/commands/promo-flow.md`).
 Projects can live outside the repo: `promo config projects-dir`. The older STEP 0 / Workflow sections below are the details behind stages 1, 6-9.
 
 ## The handoff: promo-reel asks, YOU deliver (it never decides how)

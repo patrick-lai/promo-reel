@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Promo flow</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app" id="app" data-boot="loading">
+  <div class="scroller" id="scroller">
+  <header class="top" id="top">
+    <div class="top-row">
+      <span class="kicker" id="stepNo">Step 1 of 10</span>
+      <span class="badge" id="badge" data-badge="working"><i class="dot"></i><span id="badgeText">Working</span></span>
+    </div>
+    <div class="title-row">
+      <h1 id="stageName">Getting started</h1>
+      <button class="icon-btn" id="stepsBtn" type="button" aria-expanded="false" aria-controls="stepsList" aria-label="Show all steps"></button>
+    </div>
+    <p class="state-line" id="stateLine"></p>
+    <ol class="stepper" id="stepper" aria-label="Progress"></ol>
+    <div class="curlab" id="curLab" aria-hidden="true"></div>
+    <ol class="steps-list" id="stepsList" hidden></ol>
+  </header>
+  <div class="banners" id="banners"></div>
+  <nav class="tabs fade-x" id="tabs" role="tablist" aria-label="Sections" hidden></nav>
+  <main class="content" id="content" tabindex="-1"></main>
+  </div>
+  <footer class="gate" id="gate" data-layout="stack">
+    <p class="gate-note" id="gateNote" role="status" tabindex="-1"></p>
+    <div class="compose" id="compose" hidden>
+      <label class="sr" for="note" id="noteLabel">Your note</label>
+      <textarea id="note" rows="4" maxlength="1500"></textarea>
+      <p class="hint" id="noteHint"></p>
+    </div>
+    <p class="gate-err" id="gateErr" role="alert" hidden></p>
+    <div class="gate-actions" id="gateActions">
+      <button class="btn ghost" id="btnSecondary" type="button" hidden></button>
+      <button class="btn primary" id="btnPrimary" type="button" hidden></button>
+    </div>
+  </footer>
+  <div class="toast" id="toast" role="status" hidden></div>
+  <div class="sr" id="live" aria-live="polite"></div>
+  <div class="lb" id="lightbox" role="dialog" aria-modal="true" aria-label="Frame" hidden></div>
+</div>
+<script src="icons.js"></script>
+<script src="logic.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

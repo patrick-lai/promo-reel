@@ -34,14 +34,14 @@ def shot_digest(spec, shot):
     plates = {k: v for k, v in (spec.raw.get("plates") or {}).items()}
     code = SHOT_CODE + (["shots/anime", "styles", "claims"] if shot.type == "anime" else [])
     if shot.type == "cinema":       # look defaults / serif fonts / claims come from the resolved preset
-        code = code + ["shots/cinema", "grade", "styles", "claims"]
+        code = code + ["shots/cinema", "grade", "pane3d", "styles", "claims"]
     if shot.type == "screen":       # cinema's copy / look code + the monitor tracker + the warp
         code = code + ["shots/screen", "screentrack", "shots/cinema", "grade", "styles", "claims"]
     extra = [spec.style, spec.raw.get("claims")] if shot.type in ("cinema", "screen") else []
     if shot.type == "anime":        # card text can come from claims tables; the band/typography from the resolved preset
         extra = [spec.style, spec.raw.get("claims"), spec.timeline.bpm]
     if shot.type in ("horizon", "dawn"):    # the show-level horizon_text layer (drawn into every horizon shot) + the resolved preset
-        code = code + ["shots/horizon", "styles"]
+        code = code + ["shots/horizon", "shots/brand", "pane3d", "styles"]
         extra = [spec.style, spec.raw.get("horizon_text"), spec.timeline.bpm]
     cfg = {k: v for k, v in shot.cfg.items() if k not in QA_ONLY_KEYS + AUDIO_KEYS}      # QA-only / audio-only keys never force a re-render
     return digest(cfg, shot.n, spec.raw.get("style"), plates, spec.scale, spec.fps, clips, spec.raw.get("livestream"),

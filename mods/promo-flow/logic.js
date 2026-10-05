@@ -1,0 +1,94 @@
+"use strict";
+/* Pure derivations for the promo-flow mod (no DOM, no bridge): what each scene's footage status is, the one derived asset model with its exclusive
+   buckets, and the gate rules. Loaded as a classic script (window.PF) and by `node --test` (module.exports). */
+(function (root) {
+  const arr = (x) => (Array.isArray(x) ? x : []);
+  const VISUAL = { screenshot: 1, image: 1, recording: 1, video: 1 };
+
+  /* The host turns {"$file"} into {"$media": {...}} or {"$media": null, "$error"}; anything else is "no file". */
+  function mref(x) {
+    if (!x || typeof x !== "object") return null;
+    if (x.$media && x.$media.upload_id) return x.$media;
+    if ("$media" in x) return { error: x.$error || "This file could not be attached." };
+    return null;
+  }
+  function fileBad(a) {
+    if (!a.path) return true;
+    const r = mref(a.path);
+    return !r || !!r.error;
+  }
+  const missingFile = (a) => a.state === "ready" && fileBad(a);
+  const missingAll = (doc) => arr(doc.assets).filter(missingFile).length;
+
+  /* Footage status of one scene, read by BOTH the chip and the timeline mark.
+     Only visual assets (screenshot, image, recording, video) count: a mock or missing music/voice/sfx file does not change what a scene looks like.
+     real:      no real asset, or any covering visual asset to make / missing  -> To capture;  any mock -> Mock in plan;
+                else Captured (screenshots and images alone: Captured stills, never footage)
+     generated: any covering visual asset to make / missing -> Plate to generate; any mock -> Mock in plan; else Generated plate */
+  function sceneStatus(s, assets) {
+    const made = !!(s.start && mref(s.start.path)) && !!(s.end && mref(s.end.path));
+    const id = String(s.id);
+    const cov = arr(assets).filter((a) => VISUAL[a.kind] && arr(a.scenes).map(String).includes(id));
+    const bad = cov.some((a) => a.state === "todo" || missingFile(a));
+    const mock = cov.some((a) => a.state === "mock");
+    let kind, label;
+    if (s.source === "real") {
+      const real = cov.filter((a) => a.source === "real");
+      if (!real.length || bad) { kind = "todo"; label = "To capture"; }
+      else if (mock) { kind = "mock"; label = "Mock in plan"; }
+      else if (real.every((a) => a.kind === "screenshot" || a.kind === "image")) { kind = "stills"; label = "Captured stills"; }
+      else { kind = "real"; label = "Captured"; }
+    } else if (s.source === "generated") {
+      if (bad) { kind = "todo"; label = "Plate to generate"; }
+      else if (mock) { kind = "mock"; label = "Mock in plan"; }
+      else { kind = "gen"; label = "Generated plate"; }
+    } else if (s.source === "mock") { kind = "mock"; label = "Mock in plan"; }
+    else return { kind: "other", label: "", cls: made ? "none" : "todo" };
+    return { kind, label, cls: made ? kind : "todo" };
+  }
+
+  /* ONE derived model for a selected story: the asset rows used in its scenes + its keyframes still to make; buckets are exclusive. */
+  function model(doc, board) {
+    const ids = new Set(arr((board || {}).scenes).map((x) => String(x.id)));
+    const items = [];
+    arr(doc.assets).forEach((a, i) => {
+      const scenes = arr(a.scenes).map(String).filter((x) => ids.has(x));
+      if (!scenes.length && arr(a.scenes).length) return;
+      items.push({ type: "asset", a, r: a.path ? mref(a.path) : null, eff: missingFile(a) ? "missing" : a.state, scenes, i });
+    });
+    if (board) arr(doc.to_make).forEach((t, i) => { if (t.kind === "keyframe" && t.story === board.id) items.push({ type: "keyframe", t, eff: "todo", i: 1000 + i }); });
+    const n = { ready: 0, mock: 0, todo: 0, missing: 0 };
+    items.forEach((x) => { n[x.eff]++; });
+    return { items, n, total: items.length };
+  }
+
+  /* done only when a final exists, every final file resolves, and no approval is stale */
+  function finalState(doc) {
+    const fs = arr(doc.finals);
+    if (!fs.length) return { registered: false, ok: false };
+    const ok = fs.every((f) => { const r = mref(f.path); return !!r && !r.error; }) && !arr(doc.stale_steps).length;
+    return { registered: true, ok };
+  }
+
+  /* With more than one story the person must have opened every story in the tab the gate decides on before the primary says Approve. */
+  const SEEN_TAB = { "storyboard-approved": "storyboard", "assets-approved": "assets", "final-confirmation": "storyboard" };
+  const seenKey = (tab, id) => tab + ":" + id;
+  function seenRule(doc, gateName, seen) {
+    const tab = SEEN_TAB[gateName];
+    const boards = arr(doc.boards);
+    if (!tab || boards.length < 2) return null;
+    const un = boards.find((b) => !seen.has(seenKey(tab, b.id)));
+    return un ? { board: un.id, tab } : null;
+  }
+
+  /* Approve at the assets gate is not backed while a ready asset has no file. */
+  function missingRule(doc, gateName) {
+    if (gateName !== "assets-approved") return null;
+    const n = missingAll(doc);
+    return n ? { disabled: true, count: n, note: n + " " + (n === 1 ? "file is" : "files are") + " missing. Send changes so the agent attaches " + (n === 1 ? "it" : "them") + "." } : null;
+  }
+
+  const api = { arr, mref, fileBad, missingFile, missingAll, sceneStatus, model, finalState, seenRule, seenKey, missingRule };
+  root.PF = api;
+  if (typeof module !== "undefined" && module.exports) module.exports = api;
+})(typeof window !== "undefined" ? window : globalThis);

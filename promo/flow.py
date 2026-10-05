@@ -19,6 +19,7 @@ for the AskUserQuestion widget; `promo flow board` writes the dashboard page (st
     promo flow draft add FILE ; promo flow round start --feedback TEXT ; promo flow round close --council F --research F
     promo flow final add FILE ; promo flow revise --feedback TEXT      after the final: more feedback, council again
     promo flow board [--out F]                    write the dashboard HTML
+    promo flow snapshot [--out F]                 the promo-flow mod state: `commissionctl mod publish promo-flow --file F` (mods/promo-flow/)
 """
 from __future__ import annotations
 
@@ -407,7 +408,7 @@ def ask(pd, st):
     stage = st["stage"]
     ok = all(o for o, _ in checks(pd, st))
     if stage == "discover" and not (st.get("discover") or {}).get("style"):
-        return dict(header="Style", multiSelect=False, question="What style of content do you want? (Pick one, or describe it; and paste any reference videos or material that might help.)",
+        return dict(header="Style", multiSelect=False, question="What style of content do you want?",
                     options=[dict(label=a, description=b) for a, b in STYLES[:4]])
     if stage == "scripts" and ok:
         return dict(header="Scripts", multiSelect=True, question="Which script(s) should go to storyboards?",
@@ -419,11 +420,12 @@ def ask(pd, st):
         return dict(header="Assets", multiSelect=False, question="Reviewed every asset (screenshots, pictures, audio, recordings; mocks are marked)? Approve the plan?",
                     options=[dict(label="Approve asset plan", description="generate the remaining keyframes"), dict(label="Changes", description="swap, add or drop assets")])
     if stage == "confirm":
-        return dict(header="Go?", multiSelect=False, question="Final confirmation: generate the first drafts now? (It takes a while and is not free.)",
+        return dict(header="Go?", multiSelect=False, question="Generate the first drafts now?",
                     options=[dict(label="Yes, generate drafts", description="all keyframes and assets are real"), dict(label="Not yet", description="more changes first")])
     if stage == "review" and open_round(st) is None:
         n = len(cycle_rounds(st))
-        return dict(header="Draft", multiSelect=False, question=f"Watched the draft? Approve it, or send feedback (round {n + 1} of {MAX_ROUNDS}).",
+        q = f"All {MAX_ROUNDS} rounds are used. Approve the draft, or restate the direction." if n >= MAX_ROUNDS else "Watched the draft? Approve it, or send feedback."
+        return dict(header="Draft", multiSelect=False, question=q,
                     options=[dict(label="Approve", description="submit as final"), dict(label="Feedback", description="tell me what to change; the council checks intent first")])
     if stage == "final":
         return dict(header="Final", multiSelect=False, question="Final is in. Want more changes?", options=[dict(label="Done", description="stop here"), dict(label="More feedback", description="council reviews again")])
@@ -452,6 +454,270 @@ def status(pd):
                 checks=[dict(ok=o, text=t) for o, t in ch], ready=all(o for o, _ in ch), next=hints(pd, st), ask=ask(pd, st),
                 needs=needs(pd, st), picks=st["picks"], gates={k: dict(by=v["by"], at=v["at"], fresh=gate_ok(pd, st, k)) for k, v in st["gates"].items()},
                 dashboard=os.path.join(fdir(pd), "dashboard.html"))
+
+
+GATE_PRIMARY = dict(style="Choose style", pick="Pick scripts", approve="Review", confirm="Confirm go", draft="Watch draft")
+GATE_CARD = {"storyboard-approved": "Review storyboard", "assets-approved": "Review assets"}
+MAX_PICKS = 2
+NUM = {1: "One", 2: "Two", 3: "Three", 4: "Four", 5: "Five", 6: "Six", 7: "Seven", 8: "Eight", 9: "Nine"}
+BEAT_RE = re.compile(r"^\s*(?:[-*]|\d+[.)])\s+(.*\S)")
+
+
+def _stale(pd, st):
+    """Stages whose gate was approved earlier but the thing approved changed since (and which the flow has reached)."""
+    cur = STAGES.index(st["stage"])
+    return [dict(id=sg, gate=g, label=LABEL[sg]) for sg, g in GATE_OF.items() if STAGES.index(sg) <= cur and g in st["gates"] and not gate_ok(pd, st, g)]
+
+
+def _gate(pd, st):
+    a = ask(pd, st)
+    stage = st["stage"]
+    stale = _stale(pd, st)
+    past = [x for x in stale if x["id"] != stage]
+    if past:
+        x = past[0]
+        return dict(gate=x["gate"], kind="approve", question=f"{x['label']} changed after you approved it. Approve it again?", approve_label="Approve again",
+                    changes_label="Send changes", options=[], stale=True, stage=x["id"])
+    if stage == "pick" and a is None and st["scripts"] and not gate_ok(pd, st, "scripts-picked"):
+        a = dict(question="Which script(s) should go to storyboards?", options=[dict(label=f"{s['id']}: {s['title']}", description=s["logline"]) for s in st["scripts"][:4]])
+    if stage in ("scripts", "pick") and a is not None:
+        return dict(gate="scripts-picked", kind="pick", question=a["question"], approve_label="Continue", changes_label="Send changes", options=a["options"],
+                    picks_min=1, picks_max=MAX_PICKS, stage=stage)
+    kinds = dict(discover=("style", "style"), storyboard=("storyboard-approved", "approve"), assets=("assets-approved", "approve"),
+                 confirm=("final-confirmation", "confirm"), review=("draft-approved", "draft"))
+    if a is None or stage not in kinds:
+        return None
+    labels = dict(style=("Use this style", "Describe another"), approve=("Approve", "Send changes"), confirm=("Generate drafts", "Not yet"), draft=("Approve draft", "Send feedback"))
+    g, k = kinds[stage]
+    out = dict(gate=g, kind=k, question=a["question"], approve_label=labels[k][0], changes_label=labels[k][1], options=a["options"] if k == "style" else [], stage=stage)
+    if any(x["id"] == stage for x in stale):
+        out["stale"] = True
+        if k in ("approve", "confirm"):
+            out["approve_label"] = "Approve again"
+    return out
+
+
+def _media(path):
+    """A file the mod can show: `{"$file": <absolute path>}` (the host resolves it to an upload), or None when there is no such file."""
+    return {"$file": os.path.abspath(path)} if path and os.path.isfile(path) else None
+
+
+def _clip(text, n):
+    text = " ".join(str(text).split())
+    return text if len(text) <= n else text[:n - 1].rstrip() + "…"
+
+
+def _all_frames(pd, st, which):
+    tot = miss = 0
+    for _, b, d in boards(pd, st):
+        for s in b.get("scenes") or []:
+            tot += len(list(SB._frames(s, which)))
+        miss += len(SB.missing(b, d, which))
+    return tot, miss
+
+
+def plain_checks(pd, st, stage=None):
+    """[(ok, sentence)]: the same conditions as `checks()`, worded for the person (what is true or still open), no commands, no counts of internals."""
+    stage = stage or st["stage"]
+    f = fdir(pd)
+    R = []
+    n = len(st["scripts"])
+    if stage == "discover":
+        d = st.get("discover") or {}
+        R += [(bool(d.get("style")), "Style chosen"), (bool(d.get("refs") or d.get("no_refs")), "References added, or none to add")]
+    elif stage == "scripts":
+        k = len(st["councils"].get("scripts", []))
+        R += [(n >= MIN_SCRIPTS, f"{n} of {MIN_SCRIPTS} scripts drafted" if n < MIN_SCRIPTS else f"{NUM.get(n, n)} scripts drafted"),
+              (k >= 1, "Scripts reviewed by the council" if k else "Scripts not reviewed by the council yet")]
+    elif stage == "pick":
+        R.append((gate_ok(pd, st, "scripts-picked"), "You picked the stories to take forward" if gate_ok(pd, st, "scripts-picked") else "You pick the stories to take forward"))
+    elif stage == "storyboard":
+        bs = boards(pd, st)
+        R.append((len(bs) == len(st["picks"]) and bool(bs), "A storyboard for every picked story"))
+        for sid, b, d in bs:
+            pr = SB.problems(b)
+            R.append((not pr, f"Story {sid} is complete" if not pr else f"Story {sid}: {pr[0]}"))
+        _, miss = _all_frames(pd, st, ("start", "end"))
+        R.append((not miss, "Every scene has its start and end frame" if not miss else f"{miss} {'frame' if miss == 1 else 'frames'} not made yet"))
+        R.append((gate_ok(pd, st, "storyboard-approved"), "You approved the storyboard" if gate_ok(pd, st, "storyboard-approved") else "You approve the storyboard"))
+    elif stage == "assets":
+        pr = AP.problems(AP.load(f), scene_ids(pd, st), pd)
+        R.append((not pr, "Every scene has its assets planned" if not pr else pr[0][0].upper() + pr[0][1:]))
+        R.append((gate_ok(pd, st, "assets-approved"), "You approved the asset plan" if gate_ok(pd, st, "assets-approved") else "You review every asset and approve the plan"))
+    elif stage == "keyframes":
+        tot, miss = _all_frames(pd, st, ("start", "end", "frames"))
+        R.append((not miss, f"All stories: all {tot} keyframes made" if not miss else f"All stories: {tot - miss} of {tot} keyframes made, {miss} left"))
+        sts = [AP.state(x, pd) for x in AP.load(f)]
+        m, t = sts.count("mock"), sts.count("todo")
+        left = [x for x in (f"{m} mock" if m else "", f"{t} to make" if t else "") if x]
+        R.append((not (m or t), "Every planned asset has its file." if not (m or t) else " and ".join(left).capitalize() + (" asset still to replace" if m + t == 1 else " assets still to replace")))
+    elif stage == "confirm":
+        R.append((gate_ok(pd, st, "final-confirmation"), "You confirmed generation" if gate_ok(pd, st, "final-confirmation") else "You confirm generation"))
+    elif stage == "drafts":
+        ok = bool(st["drafts"]) and all(os.path.isfile(x["file"]) for x in st["drafts"])
+        R.append((ok, "First draft is ready" if ok else "Waiting for the first draft"))
+    elif stage == "review":
+        R += [(open_round(st) is None, "No round is in progress" if open_round(st) is None else "A round is in progress"),
+              (gate_ok(pd, st, "draft-approved"), "You approved the draft" if gate_ok(pd, st, "draft-approved") else "You approve the draft")]
+    elif stage == "final":
+        fin_ok = bool(st["finals"]) and all(os.path.isfile(x["file"]) for x in st["finals"])
+        R.append((fin_ok, "Final file delivered" if fin_ok else "A final is registered, but its file is missing" if st["finals"] else "Waiting for the final file"))
+    return R
+
+
+def _status(pd, st, pc):
+    stage = st["stage"]
+    if stage == "scripts":
+        n = len(st["scripts"])
+        return f"Writing scripts: {n} of {MIN_SCRIPTS} drafted" if n < MIN_SCRIPTS else f"{NUM.get(n, n)} scripts are drafted and being reviewed"
+    if stage == "drafts":
+        return "Waiting for the first draft." if not st["drafts"] else "First draft is ready. Moving on."
+    r = open_round(st)
+    if stage == "review" and r:
+        return f"Round {r['n']} is in progress: applying your feedback."
+    bad = [t for ok, t in pc if not ok]
+    return bad[0] if bad else f"{LABEL[stage]} is done. Moving on."
+
+
+def _finished(st, stale):
+    """Delivered = at the final stage, a final is registered, every registered file is on disk, and no approval is stale."""
+    return st["stage"] == "final" and bool(st["finals"]) and all(os.path.isfile(x["file"]) for x in st["finals"]) and not stale
+
+
+def _summary(pd, st, gate, pc, rounds_used):
+    stage = st["stage"]
+    cur = STAGES.index(stage)
+    stale = _stale(pd, st)
+    finished = _finished(st, stale)
+    prog = dict(done=len(STAGES) if finished else cur, total=len(STAGES))
+    picked = [x["title"] for x in st["scripts"] if x["id"] in st["picks"]]
+    title = _clip(("Promo: " + picked[0]) if picked else ((st["intent"].split(".")[0] or "Production").strip() or "Production"), 40)
+    primary = None
+    if finished:
+        status, badge = "Final delivered.", "done"
+    elif gate:
+        status = _clip(gate["question"], 140)
+        badge = "attention" if stage == "review" and rounds_used >= MAX_ROUNDS else "waiting"
+        primary = "Approve again" if gate.get("stale") else GATE_CARD.get(gate["gate"]) or GATE_PRIMARY.get(gate["kind"])
+    else:
+        status, badge = _clip(_status(pd, st, pc), 140), "working"
+    return dict(title=title, status=status, badge=badge, progress=prog, **({"primary": primary[:24]} if primary else {}))
+
+
+def _beats(path):
+    out = []
+    try:
+        for line in open(path).read().splitlines():
+            m = BEAT_RE.match(line)
+            if m:
+                out.append(_clip(m.group(1), 90))
+            if len(out) == 2:
+                break
+    except OSError:
+        pass
+    return out
+
+
+def _keyframe_label(boards_, n):
+    """('Scene 03 \u00b7 mid frame 1', 't=14.5 s' | '')"""
+    for sid, b, _ in boards_:
+        if sid != n["story"]:
+            continue
+        for s in b.get("scenes") or []:
+            if s["id"] != n["scene"]:
+                continue
+            w = n["which"]
+            if w in ("start", "end"):
+                return f"Scene {s['id']} \u00b7 {w} frame", ""
+            i = int(w[w.index("[") + 1:-1])
+            t = (s.get("frames") or [])[i].get("t")
+            return f"Scene {s['id']} \u00b7 mid frame {i + 1}", (f"t={t:g} s" if isinstance(t, (int, float)) else "")
+    return f"Scene {n['scene']} \u00b7 {n['which']}", ""
+
+
+def _asset_label(a):
+    """A human title for an asset: its explicit `label`, else the first clause of `how`, else the id made readable (the raw id stays in `id`)."""
+    if a.get("label"):
+        return _clip(a["label"], 48)
+    first = re.split(r"[.:;\u2014]|, ", a.get("how") or "", maxsplit=1)[0].strip()
+    if 3 <= len(first) <= 60:
+        return first[0].upper() + first[1:]
+    return re.sub(r"[-_]+", " ", a["id"]).strip().capitalize()
+
+
+def snapshot(pd):
+    """The mod state of `mods/promo-flow` (`commissionctl mod publish promo-flow --file F`): `summary` for the chat card, `steps`, the gate, and every
+    media file as a `{"$file": abs path}` object the host turns into an upload. Schema: mods/promo-flow/README.md."""
+    st = load(pd)
+    f = fdir(pd)
+    picks = set(st["picks"])
+    scripts = [dict(id=s["id"], title=s["title"], logline=s["logline"], picked=s["id"] in picks, verdict=None, beats=_beats(os.path.join(f, s["file"]))) for s in st["scripts"]]
+    bl = []
+    bds = boards(pd, st)
+    for sid, b, d in bds:
+        sc = []
+        for s in b.get("scenes", []):
+            def fr(label, x):
+                x = x or {}
+                return dict(label=label, path=_media(os.path.join(d, x["image"])) if x.get("image") else None, prompt=x.get("prompt"))
+            src = s.get("source")
+            sc.append(dict(id=s["id"], beat=s.get("beat", ""), start_s=float(s["t"][0]), end_s=float(s["t"][1]), action=s.get("action", ""), caption=s.get("caption") or None,
+                           voice=s.get("vo") or None, sound=s.get("sound") or None, camera=s.get("camera") or None, proof=s.get("proof") or None,
+                           source=src if src in ("real", "generated", "mock") else "other", generated=src == "generated", start=fr("start", s.get("start")), end=fr("end", s.get("end")),
+                           frames=[fr(f"t={x.get('t', '?')}s", x) for x in s.get("frames") or []]))
+        bl.append(dict(id=sid, title=b.get("title", sid), logline=b.get("logline", ""), aspect=b.get("aspect", "16:9"),
+                       duration_s=float(max((s["end_s"] for s in sc), default=0)), scenes=sc))
+    valid = {s["id"] for b in bl for s in b["scenes"]}
+    assets = []
+    for a in AP.load(f):
+        assets.append(dict(id=a["id"], label=_asset_label(a), kind=a["kind"], source=a["source"], state=AP.state(a, pd), scenes=[x for x in a.get("scenes", []) if x in valid], how=a.get("how", ""),
+                           licence=a.get("licence"), note=a.get("note"), path=_media(os.path.join(pd, a["path"])) if a.get("path") else None))
+    rounds = []
+    for r in st["rounds"]:
+        c = r.get("closed")
+        research = []
+        if c:
+            rp = os.path.join(pd, c["dir"], "research.md")
+            research = sorted(set(URL_RE.findall(open(rp).read()))) if os.path.isfile(rp) else []
+        rounds.append(dict(cycle=r["cycle"], n=r["n"], feedback=r["feedback"], verdict=(c or {}).get("verdict", "").lower() or None, open=not c,
+                           scores=(c or {}).get("scores") or {}, research=research, drafts_at_start=r.get("drafts_at_start", 0)))
+    after = {}
+    for r in rounds:
+        after.setdefault(r["drafts_at_start"], f"round {r['n']}" if r["cycle"] == 1 else f"round {r['cycle']}.{r['n']}")
+    rel = lambda p: os.path.relpath(p, pd) if p.startswith(pd) else os.path.basename(p)  # noqa: E731
+    drafts = [dict(id=f"d{i + 1}", label=f"Draft {i + 1}", note=d.get("note") or None, path=_media(d["file"]), name=os.path.basename(d["file"]), rel=rel(d["file"]),
+                   after=after.get(i, "")) for i, d in enumerate(st["drafts"])]
+    finals = [dict(id=f"f{i + 1}", label=f"Final {i + 1}", path=_media(x["file"]), name=os.path.basename(x["file"]), rel=rel(x["file"])) for i, x in enumerate(st["finals"])]
+    pc = plain_checks(pd, st)
+    gate = _gate(pd, st)
+    nd = needs(pd, st)
+    to_make = []
+    for n in nd:
+        if n["kind"] == "keyframe":
+            label, at = _keyframe_label(bds, n)
+            to_make.append(dict(kind="keyframe", id=f"{n['story']}/{n['scene']}/{n['which']}", story=n["story"], scene=n["scene"], which=n["which"],
+                                label=label, at=at, detail=n.get("prompt") or ""))
+        else:
+            to_make.append(dict(kind="asset", id=n["id"], label=n["id"], detail=n.get("how") or "", asset_kind=n.get("asset_kind"), source=n.get("source")))
+    used = len(cycle_rounds(st))
+    cur = STAGES.index(st["stage"])
+    stale = _stale(pd, st)
+    stale_ids = {x["id"] for x in stale}
+    finished = _finished(st, stale)
+    steps = []
+    for i, sg in enumerate(STAGES):
+        state = "current" if i == cur and not finished else "done" if (i < cur or finished) else "todo"
+        if sg in stale_ids and i < cur:
+            state = "stale"
+        steps.append(dict(id=sg, label=LABEL[sg], state=state, stale=sg in stale_ids))
+    since = (st.get("log") or [{}])[-1].get("at")
+    return dict(summary=_summary(pd, st, gate, pc, used), title=_clip((st["intent"].split(".")[0] or "Production"), 80), intent=st["intent"],
+                stage=st["stage"], stage_label=LABEL[st["stage"]], stage_since=since, cycle=st["cycle"], rounds_used=used, rounds_max=MAX_ROUNDS, steps=steps,
+                stale_steps=stale,
+                style=(st.get("discover") or {}) and dict(style=st["discover"].get("style"), refs=st["discover"].get("refs", []), no_refs=st["discover"].get("no_refs", False)) or None,
+                scripts=scripts, boards=bl, assets=assets, to_make=to_make, drafts=drafts, finals=finals, rounds=rounds,
+                checks=[dict(ok=o, text=t) for o, t in pc], gate=gate,
+                approvals={k: dict(by=v["by"], at=v["at"], fresh=gate_ok(pd, st, k)) for k, v in st["gates"].items()})
 
 
 def status_text(s):
@@ -518,12 +784,13 @@ def main(argv=None):
     p = P("council"); p.add_argument("kind"); p.add_argument("--file", required=True); p.add_argument("--note", default="")
     p = P("approve"); p.add_argument("gate"); p.add_argument("--by", required=True); p.add_argument("--picks", nargs="*"); p.add_argument("--note", default="")
     p = P("asset"); p.add_argument("action", choices=["add", "list"]); p.add_argument("--id"); p.add_argument("--kind"); p.add_argument("--scenes", default="")
-    p.add_argument("--source"); p.add_argument("--how", default=""); p.add_argument("--path"); p.add_argument("--licence"); p.add_argument("--note")
+    p.add_argument("--source"); p.add_argument("--how", default=""); p.add_argument("--path"); p.add_argument("--licence"); p.add_argument("--note"); p.add_argument("--label")
     p = P("draft"); p.add_argument("action", choices=["add"]); p.add_argument("file"); p.add_argument("--note", default="")
     p = P("round"); p.add_argument("action", choices=["start", "close"]); p.add_argument("--feedback", default=""); p.add_argument("--council"); p.add_argument("--research"); p.add_argument("--note", default="")
     p = P("final"); p.add_argument("action", choices=["add"]); p.add_argument("file")
     P("revise").add_argument("--feedback", required=True)
     p = P("board"); p.add_argument("--out")
+    p = P("snapshot"); p.add_argument("--out")
     a = ap.parse_args(argv)
     pd = a.project or os.getcwd()
     if a.cmd == "init" and a.name and not a.project:
@@ -559,7 +826,7 @@ def main(argv=None):
                     raise FlowError("asset add needs --id --kind --source --scenes --how")
                 st = load(pd)
                 rec = dict(id=a.id, kind=a.kind, source=a.source, scenes=[s for s in a.scenes.split(",") if s], how=a.how)
-                for k in ("path", "licence", "note"):
+                for k in ("path", "licence", "note", "label"):
                     if getattr(a, k):
                         rec[k] = getattr(a, k)
                 AP.save(fdir(pd), AP.upsert(AP.load(fdir(pd)), rec))
@@ -577,6 +844,14 @@ def main(argv=None):
             add_final(pd, a.file)
         elif a.cmd == "revise":
             print(f"cycle {load(pd)['cycle'] + 1}: round {revise(pd, a.feedback)} open")
+        elif a.cmd == "snapshot":
+            doc = json.dumps(snapshot(pd), indent=2)
+            if a.out:
+                os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
+                open(a.out, "w").write(doc)
+                print(a.out)
+            else:
+                print(doc)
         elif a.cmd == "board":
             print(dashboard(pd, a.out))
     except (FlowError, BR.BriefError) as e:

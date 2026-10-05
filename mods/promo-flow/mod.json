@@ -1,0 +1,19 @@
+{
+  "id": "promo-flow",
+  "name": "Promo flow",
+  "version": "0.1.0",
+  "protocol": 1,
+  "description": "Plan, storyboard and review a produced video with the person in the loop.",
+  "entry": "index.html",
+  "surface": "stage",
+  "state_limit_kb": 1024,
+  "slash": {"name": "promo-flow", "description": "Plan and review a produced video step by step", "args": "what the video is for"},
+  "activate": {"message": "[mod:promo-flow] {by} started the promo flow. Their request, verbatim: {args}. Run: promo flow init, then publish the state."},
+  "actions": {
+    "approve":  {"guard": {"state": "/gate/gate", "payload": "gate"}, "message": "[mod:promo-flow] {by} approved {gate}. Run: promo flow approve {gate} --by \"{by}\", then advance and publish the next state."},
+    "pick":     {"guard": {"state": "/gate/gate", "payload": "gate"}, "message": "[mod:promo-flow] {by} picked scripts {picks}. Run: promo flow approve scripts-picked --picks {picks} --by \"{by}\"."},
+    "changes":  {"message": "[mod:promo-flow] {by} asked for changes on {stage}: {text}"},
+    "feedback": {"message": "[mod:promo-flow] {by} sent draft feedback (round {round} of {max_rounds}): {text}"}
+  },
+  "skill": "agent/SKILL.md"
+}
