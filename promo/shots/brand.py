@@ -33,7 +33,8 @@ DEFAULTS = dict(
     rule=True, rule_y=0.625, rule_half=0.20,
     tagline=None, tagline_frac=0.042, t_tagline=1.0, tagline_y=0.69,   # one small serif line under the rule (verifiable claims only)
     t_mark=0.15, t_name=0.45, t_rule=0.95, t_flare=1.35, t_sheen=1.9,
-    col_name=(246, 242, 236), col_dash=(255, 188, 108), col_ai=(206, 200, 255), col_glow=(150, 138, 255),
+    col_name=(236, 232, 223), col_dash=(255, 188, 108), col_ai=(159, 152, 246), col_glow=(130, 120, 240),
+    spin=26.0,                    # degrees the mark turns through while it arrives
 )
 
 _CACHE = {}
@@ -117,16 +118,26 @@ def mark_tile(S, ss=4):
 
 
 def emblem_tile(path, S, ss=4):
-    """RGBA tile (2.4 S square, at ss x) holding the product emblem PNG scaled to diameter S."""
+    """RGBA tile (2.4 S square, at ss x) with the product emblem PNG scaled so its bounding box is S wide, centred on the emblem's own
+    centre (the ring), read from emblem.json next to the PNG ({"centre": [x, y]} normalised; default the box centre)."""
+    import json
+    import os
     T = int(S * 2.4) * ss
     em = Image.open(path).convert("RGBA")
-    bb = em.getbbox()
-    if bb:
-        em = em.crop(bb)
-    d = int(S * ss)
-    em = em.resize((d, int(d * em.height / em.width)), Image.LANCZOS)
+    W0, H0 = em.size
+    cen = (0.5, 0.5)
+    meta = os.path.splitext(path)[0] + ".json"
+    if os.path.exists(meta):
+        try:
+            cen = tuple(json.load(open(meta))["centre"])
+        except Exception:
+            pass
+    bb = em.getbbox() or (0, 0, W0, H0)
+    k = S * ss / max(bb[2] - bb[0], 1)
+    cx, cy = cen[0] * W0 - bb[0], cen[1] * H0 - bb[1]                  # emblem centre inside the cropped box
+    em = em.crop(bb).resize((max(2, int((bb[2] - bb[0]) * k)), max(2, int((bb[3] - bb[1]) * k))), Image.LANCZOS)
     out = Image.new("RGBA", (T, T), (0, 0, 0, 0))
-    out.paste(em, ((T - em.width) // 2, (T - em.height) // 2), em)
+    out.paste(em, (int(T / 2 - cx * k), int(T / 2 - cy * k)), em)
     return out
 
 
@@ -296,14 +307,14 @@ def lockup(OW, OH, t, name, serif_paths, cfg=None):
             if key not in _CACHE:
                 _CACHE[key] = emblem_tile(c["emblem_path"], int(S)) if c["emblem_path"] else mark_tile(int(S))
             big = _CACHE[key]
-            ang = (1 - mp) * 60.0
+            ang = (1 - mp) * c["spin"]
             sc = 0.55 + 0.45 * mp
             tile = big.rotate(ang, Image.BICUBIC) if ang > 0.2 else big
             side = int(big.width / 4 * sc)
             tile = tile.resize((max(2, side), max(2, side)), Image.LANCZOS)
             mx, my = OW / 2, c["mark_y"] * OH
             al = tile.split()[3]
-            _paste(out, _glow(al.resize(tile.size), 0.035 * OH, c["col_glow"], 1.1 * mp), mx, my)
+            _paste(out, _glow(al.resize(tile.size), 0.035 * OH, c["col_glow"], 0.5 * mp), mx, my)
             _paste(out, tile, mx, my, mp)
             tf = t - c["t_flare"]
             if 0 <= tf <= 1.1:
