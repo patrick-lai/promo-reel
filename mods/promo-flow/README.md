@@ -28,7 +28,10 @@ Every path below that says `file` is `{"$file": "<absolute path>"}` (the host tu
                  The frames are storyboard stills, not footage. One function derives the scene chip and the timeline mark: for source=real, "Captured" only when every real asset covering the scene is ready and its file loads
                  (screenshots alone read "Captured stills", never green); any mock reads "Mock in plan"; any to-make or missing file, or no asset, reads "To capture";
                  "Generated plate" for generated; no chip for `other` (a scene with no `source` is `other`, never real). Legend: "All real assets ready"
-    assets     [{id, label, kind, source, state: ready|mock|todo, scenes[] (only ids that exist in a board), how, licence, note, path: file|null}]
+    assets     [{id, label, kind, source, state: ready|mock|todo, scenes[] (only ids that exist in a board), how, licence, note, path: file|null, sample: file|null, sample_note}]
+                 `sample` is what `promo flow asset make` made so the person can look at / hear the asset before it exists (image, ~7 s mp4, mp3): the tile plays it labelled SAMPLE and the
+                 state stays mock / to make. The Approve button at the storyboard gate stays disabled while any frame is not an image (`start|end.slate` = a text slate, path null) and at the assets gate
+                 while any asset has neither `path` nor `sample`; the banner's "Ask the agent to make them" sends the `generate` action (`promo flow make`)
                  the mod shows a `ready` asset whose file is missing or failed as "File missing", never as ready, and disables Approve at the assets gate while any file is missing.
                  `label` is the human title (explicit `label`, else the first clause of `how`, else the id made readable); the raw `id` is only a tooltip
     to_make    [{kind: keyframe|asset, id, label, at?, detail, story?, scene?, which?, asset_kind?, source?}]   what `promo flow needs` lists; keyframe label is "Scene 03 · mid frame 1", at is "t=14.5 s"
@@ -41,6 +44,8 @@ Every path below that says `file` is `{"$file": "<absolute path>"}` (the host tu
 
 **Counts have one source.** For the selected story the mod derives one list (asset rows used in that story's scenes + that story's keyframes still to make) with exclusive buckets ready / mock / to make / missing; the Assets tab badge, the counter row, the filters and the cards all read it, and the Storyboard badge is the number of scenes in that story (`mod-dev/shoot.py` asserts badge = sum of buckets = cards for every stage and story). Scene refs on assets are validated against the selected story's scene ids.
 
+Actions: `approve`, `pick`, `changes`, `feedback`, `generate {what}`.
+
 `gate.gate` is what the `approve` and `pick` actions guard on (`/gate/gate` vs payload `gate`). The first state after activation is `{}` with summary status "Starting": the app shows its Getting started screen.
 The `readonly` flag on the host `state` message (archived thread) disables every send. Actions: `approve {gate, draft?}` (at the draft gate `draft` is the latest draft's id), `pick {gate, picks: "A B"}`, `changes {stage, text}`, `feedback {round, max_rounds, text}`.
 The style step has no flow gate, so the person's choice goes as `changes {stage: "discover", text: "Style: ..."}`.
@@ -48,6 +53,8 @@ The style step has no flow gate, so the person's choice goes as `changes {stage:
 ## Develop
     .venv/bin/python mod-dev/serve.py            # builds a fixture project, serves http://127.0.0.1:8765/dev/harness.html
     .venv/bin/python mod-dev/shoot.py            # screenshots to /tmp/promo-flow-shots/v1/ (headless Chrome)
+    .venv/bin/python mod-dev/serve.py --project PROJECT_DIR   # drive a REAL project: stage `live` re-reads `promo flow snapshot`, clicks run the real flow commands (approve, pick, generate = `promo flow make`)
+    .venv/bin/python mod-dev/shoot.py --base http://127.0.0.1:8765 --tabs storyboard,assets   # screenshots of that live stage
     .venv/bin/python mod-dev/fixtures.py --keep /tmp/pf-fix --dump /tmp/pf-snapshots   # the canned states as JSON files
     .venv/bin/python -m pytest tests/test_flow.py -q
 

@@ -1,6 +1,7 @@
 """Screenshots of the mod through the harness with headless Chrome driven over the DevTools protocol (stdlib only).
 
     .venv/bin/python mod-dev/shoot.py [--out /tmp/promo-flow-shots/v1] [--only storyboard,review] [--no-extras]
+    .venv/bin/python mod-dev/shoot.py --base http://127.0.0.1:PORT --tabs storyboard,assets [--w 520] [--scroll 0,600] [--out DIR]   # a running `serve.py --project` (stage live)
 
 Every stage x {dark, light} at pane width 520 and 900, plus 380, then a few interaction shots (lightbox, note box, picks, offline, readonly, ...).
 """
@@ -239,7 +240,16 @@ def main():
     ap.add_argument("--only", default="")
     ap.add_argument("--no-extras", action="store_true")
     ap.add_argument("--files", default="", help="comma list of output names (without .png) to shoot, e.g. 07-confirm-520-dark,x-no-host-520")
+    ap.add_argument("--base", help="URL of a running serve.py --project: shoot its live stage instead of the canned ones")
+    ap.add_argument("--tabs", default="storyboard,assets")
+    ap.add_argument("--scroll", default="0")
+    ap.add_argument("--click", default="", help="with --base: CSS selectors to click (| separated) after the tab opens, e.g. '.warnline .load'")
+    ap.add_argument("--w", type=int, default=520)
+    ap.add_argument("--h", type=int, default=1100)
+    ap.add_argument("--dark", action="store_true")
     a = ap.parse_args()
+    if a.base:
+        return live(a)
     only = [x for x in a.only.split(",") if x]
     files = [x for x in a.files.split(",") if x]
     if not files:
@@ -285,6 +295,36 @@ def main():
         srv.shutdown()
     print("\n".join(sorted(os.path.basename(p) for p in made)))
     print(f"{len(made)} screenshots in {a.out}")
+
+
+SETTLED = "!document.querySelector('.content .sk:not(.skbar)') && !document.querySelector('.content [aria-busy]')"
+
+
+def live(a):
+    """Screenshots of a running `serve.py --project` server: each tab at one pane width, optionally scrolled (each scroll offset is its own shot)."""
+    os.makedirs(a.out, exist_ok=True)
+    sh = Shooter(a.base)
+    made = []
+    try:
+        for tab in a.tabs.split(","):
+            for sc in [int(x) for x in a.scroll.split(",")]:
+                cid = sh.open("live", a.w, a.h, a.dark)
+                sh.js(click("#tab-" + tab), cid)
+                for sel in [x for x in a.click.split("|") if x]:
+                    time.sleep(0.5)
+                    sh.js(click(sel), cid)
+                sh.js(scroll(sc), cid)
+                for _ in range(40):
+                    time.sleep(0.5)
+                    if sh.js(SETTLED, cid):
+                        break
+                time.sleep(0.5)
+                p = os.path.join(a.out, f"live-{tab}-{a.w}{'-s' + str(sc) if sc else ''}.png")
+                sh.shot(p)
+                made.append(p)
+    finally:
+        sh.close()
+    print("\n".join(made))
 
 
 CLICK = "(sel) => { const e = document.querySelector(sel); if (!e) throw new Error('no ' + sel); e.click(); }"

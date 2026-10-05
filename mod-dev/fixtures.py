@@ -198,6 +198,13 @@ def gen_assets(pd, stage):
         mp4(p("assets", "dawn.mp4"), "smptebars", 3)
         by["plate-dawn"]["path"] = "assets/dawn.mp4"
     AP.save(os.path.join(pd, "flow"), plan)
+    samples = {}
+    for a in plan:
+        if not a.get("path"):
+            rel = os.path.join("flow", "previews", a["id"] + (".wav" if a["kind"] == "sfx" else ".mp4"))
+            (wav(p(rel), 520, 1.5) if a["kind"] == "sfx" else mp4(p(rel), "testsrc2", 2))
+            samples[a["id"]] = dict(path=rel, note="Fixture sample standing in for the asset.", at=F.now())
+    write(p("flow", "samples.json"), json.dumps(samples))
 
 
 def round_files(tmp, pd, n, verdict, feedback_urls=3):

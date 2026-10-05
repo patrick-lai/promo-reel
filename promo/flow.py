@@ -15,6 +15,9 @@ for the AskUserQuestion widget; `promo flow board` writes the dashboard page (st
     promo flow script add ID --title T --logline L --file F ;  promo flow council scripts|storyboard|assets --file F
     promo flow approve scripts-picked --picks A [B] --by NAME ; promo flow approve storyboard-approved|assets-approved|final-confirmation|draft-approved --by NAME
     promo flow asset add|list ;  promo flow needs          what to generate / capture next (missing frames and assets, with prompts)
+    promo flow frames [--story B] [--scene ID]    MAKE the missing storyboard frames as real images (grok / codex CLI); a text slate is not a frame
+    promo flow asset make [--id X ...]            MAKE a real sample of each planned asset (concept still, short clip, audio excerpt) to look at / listen to
+    promo flow make                               frames, then asset samples: everything the person has to see before approving
     promo flow advance                            move on when the checks pass and the gate is approved
     promo flow draft add FILE ; promo flow round start --feedback TEXT ; promo flow round close --council F --research F
     promo flow final add FILE ; promo flow revise --feedback TEXT      after the final: more feedback, council again
@@ -34,6 +37,7 @@ import sys
 
 from . import assetplan as AP
 from . import brief as BR
+from . import previews as PV
 from . import storyboard as SB
 from .home import resolve as _resolve
 
@@ -208,6 +212,8 @@ def checks(pd, st, stage=None):
         plan = AP.load(f)
         pr = AP.problems(plan, scene_ids(pd, st), pd)
         R.append((not pr, "asset plan covers every scene" + (f": {pr[0]}" + (f" (+{len(pr) - 1} more)" if len(pr) > 1 else "") if pr else "")))
+        nop = unpreviewed(pd)
+        R.append((not nop, "every asset has a real preview to look at or play" + (f" ({len(nop)} without: `promo flow asset make`)" if nop else "")))
         R.append((gate_ok(pd, st, "assets-approved"), "the person reviewed every asset and approved the plan (`approve assets-approved --by NAME`)"))
     elif stage == "keyframes":
         mi = [m for sid, b, d in boards(pd, st) for m in SB.missing(b, d, ("start", "end", "frames"))]
@@ -389,6 +395,12 @@ def discover(pd, style, refs, no_refs):
 
 
 # ---- needs / ask / status ----------------------------------------------------------------------------------------------------------------
+def unpreviewed(pd):
+    """Planned assets the person cannot open or play yet (no real file and no sample)."""
+    samples = PV.load_samples(fdir(pd))
+    return [a for a in AP.load(fdir(pd)) if not PV.has_sample(a, pd, samples)]
+
+
 def needs(pd, st=None):
     st = st or load(pd)
     out = []
@@ -400,6 +412,8 @@ def needs(pd, st=None):
         s = AP.state(a, pd)
         if s == "todo" or (s == "mock" and STAGES.index(st["stage"]) >= STAGES.index("keyframes")):
             out.append(dict(kind="asset", id=a["id"], asset_kind=a["kind"], source=a["source"], how=a["how"], out=os.path.join(pd, a.get("path") or a["id"])))
+    for a in unpreviewed(pd):
+        out.append(dict(kind="preview", id=a["id"], asset_kind=a["kind"], source=a["source"], how=a["how"], then=f"promo flow asset make --id {a['id']}"))
     return out
 
 
@@ -438,9 +452,9 @@ def hints(pd, st):
         discover="Ask the person (AskUserQuestion) what style they want and for any reference videos/material; record with `promo flow discover`. Study references with `promo refs add`.",
         scripts=f"Write {MIN_SCRIPTS}+ scripts with different angles; run the council (evals/council-flow.md, scripts lens set) 1-2 rounds and record with `promo flow council scripts`; `promo flow script add`. Then ask which to progress.",
         pick="Ask which script(s) to progress (multi-select); record the answer with `approve scripts-picked --picks ... --by NAME`.",
-        storyboard="Per picked story write flow/boards/<id>/board.json, generate every scene's START and END frame, `promo flow board`, SHOW the page, iterate until they approve.",
-        assets="List every asset (screenshots, pictures, recordings, music, voice, sfx; mocks allowed) with `promo flow asset add`, `promo flow board`, SHOW it, plan it out with the person.",
-        keyframes="Generate the remaining keyframes and replace every mock (`promo flow needs`), then advance.",
+        storyboard="Per picked story write flow/boards/<id>/board.json, then `promo flow frames` MAKES every scene's START and END frame as a real image (a text slate does not count), `promo flow board`, SHOW the page, iterate until they approve.",
+        assets="List every asset (screenshots, pictures, recordings, music, voice, sfx) with `promo flow asset add`, then `promo flow asset make` so each has a real sample to look at or hear (a placeholder is not a preview), publish, plan it out with the person.",
+        keyframes="Make the remaining keyframes (`promo flow make`) and replace every mock and sample with the real file (`promo flow needs`), then advance.",
         confirm="Show the final summary (board + assets) and get the explicit go for drafts.",
         drafts="Build the first drafts (promo build, draft encode), register with `promo flow draft add`, advance, SHOW them.",
         review="Take the person's feedback verbatim: `round start`; run the council (lens 0 intent + web research of the topic and examples of good videos); apply one batch; build one draft; `round close`. Max %d rounds." % MAX_ROUNDS,
@@ -504,7 +518,10 @@ def _media(path):
 
 def _clip(text, n):
     text = " ".join(str(text).split())
-    return text if len(text) <= n else text[:n - 1].rstrip() + "…"
+    if len(text) <= n:
+        return text
+    cut = text[:n - 1]
+    return (cut.rsplit(" ", 1)[0] if " " in cut[n // 2:] else cut).rstrip(" ,;:") + "…"      # at a word boundary: "shell chips read AI…" cut mid-word is unreadable
 
 
 def _all_frames(pd, st, which):
@@ -543,6 +560,8 @@ def plain_checks(pd, st, stage=None):
     elif stage == "assets":
         pr = AP.problems(AP.load(f), scene_ids(pd, st), pd)
         R.append((not pr, "Every scene has its assets planned" if not pr else pr[0][0].upper() + pr[0][1:]))
+        nop = unpreviewed(pd)
+        R.append((not nop, "Every asset has a preview you can open or play" if not nop else f"{len(nop)} {'asset has' if len(nop) == 1 else 'assets have'} no preview yet"))
         R.append((gate_ok(pd, st, "assets-approved"), "You approved the asset plan" if gate_ok(pd, st, "assets-approved") else "You review every asset and approve the plan"))
     elif stage == "keyframes":
         tot, miss = _all_frames(pd, st, ("start", "end", "frames"))
@@ -610,7 +629,7 @@ def _beats(path):
         for line in open(path).read().splitlines():
             m = BEAT_RE.match(line)
             if m:
-                out.append(_clip(m.group(1), 90))
+                out.append(_clip(m.group(1), 140))
             if len(out) == 2:
                 break
     except OSError:
@@ -635,13 +654,21 @@ def _keyframe_label(boards_, n):
     return f"Scene {n['scene']} \u00b7 {n['which']}", ""
 
 
+KIND_PREFIX = dict(rec="", ui="", vo="Voice", sfx="Sound effect", plate="Plate", card="Card", music="Music")
+
+
 def _asset_label(a):
-    """A human title for an asset: its explicit `label`, else the first clause of `how`, else the id made readable (the raw id stays in `id`)."""
+    """A human title for an asset: its explicit `label`, else the first clause of `how` when that reads as a title, else its id made readable
+    (`rec-ticket-form` -> "Ticket form"). A stub clause ("Capture ?demo=1", a cut-off parenthesis) is shared by several assets, so it is no title."""
     if a.get("label"):
         return _clip(a["label"], 48)
     first = re.split(r"[.:;\u2014]|, ", a.get("how") or "", maxsplit=1)[0].strip()
-    if 3 <= len(first) <= 60:
+    if 12 <= len(first) <= 60 and first.count("(") == first.count(")") and not re.search(r"[?=]", first):
         return first[0].upper() + first[1:]
+    head, _, rest = a["id"].partition("-")
+    if rest and head in KIND_PREFIX:
+        words = " ".join(x for x in (KIND_PREFIX[head], re.sub(r"[-_]+", " ", rest)) if x)
+        return words[0].upper() + words[1:]
     return re.sub(r"[-_]+", " ", a["id"]).strip().capitalize()
 
 
@@ -659,7 +686,9 @@ def snapshot(pd):
         for s in b.get("scenes", []):
             def fr(label, x):
                 x = x or {}
-                return dict(label=label, path=_media(os.path.join(d, x["image"])) if x.get("image") else None, prompt=x.get("prompt"))
+                p = os.path.join(d, x["image"]) if x.get("image") else ""
+                slate = os.path.isfile(p) and SB.is_slate(p)
+                return dict(label=label, path=None if slate else _media(p), slate=slate, prompt=x.get("prompt"))
             src = s.get("source")
             sc.append(dict(id=s["id"], beat=s.get("beat", ""), start_s=float(s["t"][0]), end_s=float(s["t"][1]), action=s.get("action", ""), caption=s.get("caption") or None,
                            voice=s.get("vo") or None, sound=s.get("sound") or None, camera=s.get("camera") or None, proof=s.get("proof") or None,
@@ -669,9 +698,12 @@ def snapshot(pd):
                        duration_s=float(max((s["end_s"] for s in sc), default=0)), scenes=sc))
     valid = {s["id"] for b in bl for s in b["scenes"]}
     assets = []
+    samples = PV.load_samples(f)
     for a in AP.load(f):
+        sm = samples.get(a["id"]) or {}
         assets.append(dict(id=a["id"], label=_asset_label(a), kind=a["kind"], source=a["source"], state=AP.state(a, pd), scenes=[x for x in a.get("scenes", []) if x in valid], how=a.get("how", ""),
-                           licence=a.get("licence"), note=a.get("note"), path=_media(os.path.join(pd, a["path"])) if a.get("path") else None))
+                           licence=a.get("licence"), note=a.get("note"), path=_media(os.path.join(pd, a["path"])) if a.get("path") else None,
+                           sample=_media(os.path.join(pd, sm["path"])) if sm.get("path") else None, sample_note=sm.get("note")))
     rounds = []
     for r in st["rounds"]:
         c = r.get("closed")
@@ -697,7 +729,7 @@ def snapshot(pd):
             label, at = _keyframe_label(bds, n)
             to_make.append(dict(kind="keyframe", id=f"{n['story']}/{n['scene']}/{n['which']}", story=n["story"], scene=n["scene"], which=n["which"],
                                 label=label, at=at, detail=n.get("prompt") or ""))
-        else:
+        elif n["kind"] == "asset":
             to_make.append(dict(kind="asset", id=n["id"], label=n["id"], detail=n.get("how") or "", asset_kind=n.get("asset_kind"), source=n.get("source")))
     used = len(cycle_rounds(st))
     cur = STAGES.index(st["stage"])
@@ -731,6 +763,34 @@ def status_text(s):
     if s["ask"]:
         L.append(f"ask the person: {s['ask']['question']}  [{' | '.join(o['label'] for o in s['ask']['options'])}]")
     return "\n".join(L)
+
+
+# ---- real previews ---------------------------------------------------------------------------------------------------------------------
+def _report(what, made, failed):
+    print(f"{what}: {len(made)} made, {len(failed)} failed")
+    for label, why in failed:
+        print(f"  {label}: {why}", file=sys.stderr)
+    return 1 if failed else 0
+
+
+def make_frames(pd, story, scene, which, force, provider, jobs, limit=None):
+    st = load(pd)
+    bds = [b for b in boards(pd, st) if not story or b[0] == story]
+    if not bds:
+        raise FlowError(f"no board{' ' + story if story else ''} to make frames for")
+    look = (st.get("discover") or {}).get("style") or ""
+    print(f"making {len(PV.frame_targets(bds, scene, which, force)[:limit])} frames with the generator CLI ({jobs} at a time, ~25 s each)")
+    made, failed = PV.make_frames(bds, look, scene, which, force, provider, jobs, limit)
+    return _report("frames", made, failed)
+
+
+def make_assets(pd, ids, force, provider):
+    st = load(pd)
+    plan = AP.load(fdir(pd))
+    if ids and (unknown := set(ids) - {x["id"] for x in plan}):
+        raise FlowError(f"no such asset: {', '.join(sorted(unknown))}")
+    made, failed = PV.make_samples(plan, pd, boards(pd, st), ids, force, provider)
+    return _report("asset samples", made, failed)
 
 
 # ---- dashboard -------------------------------------------------------------------------------------------------------------------------
@@ -783,8 +843,13 @@ def main(argv=None):
     p = P("script"); p.add_argument("action", choices=["add"]); p.add_argument("id"); p.add_argument("--title", required=True); p.add_argument("--logline", required=True); p.add_argument("--file", required=True)
     p = P("council"); p.add_argument("kind"); p.add_argument("--file", required=True); p.add_argument("--note", default="")
     p = P("approve"); p.add_argument("gate"); p.add_argument("--by", required=True); p.add_argument("--picks", nargs="*"); p.add_argument("--note", default="")
-    p = P("asset"); p.add_argument("action", choices=["add", "list"]); p.add_argument("--id"); p.add_argument("--kind"); p.add_argument("--scenes", default="")
+    p = P("asset"); p.add_argument("action", choices=["add", "list", "make"]); p.add_argument("--id", action="append"); p.add_argument("--kind"); p.add_argument("--scenes", default="")
     p.add_argument("--source"); p.add_argument("--how", default=""); p.add_argument("--path"); p.add_argument("--licence"); p.add_argument("--note"); p.add_argument("--label")
+    p.add_argument("--fetch-url"); p.add_argument("--sha256"); p.add_argument("--force", action="store_true"); p.add_argument("--provider", default="auto")
+    p = P("frames"); p.add_argument("--story"); p.add_argument("--scene"); p.add_argument("--which", nargs="+", default=["start", "end"], choices=["start", "end", "frames"])
+    p.add_argument("--force", action="store_true"); p.add_argument("--jobs", type=int, default=3); p.add_argument("--provider", default="auto"); p.add_argument("--limit", type=int)
+    p = P("make"); p.add_argument("--which", nargs="+", default=["start", "end"], choices=["start", "end", "frames"]); p.add_argument("--jobs", type=int, default=3)
+    p.add_argument("--force", action="store_true"); p.add_argument("--provider", default="auto")
     p = P("draft"); p.add_argument("action", choices=["add"]); p.add_argument("file"); p.add_argument("--note", default="")
     p = P("round"); p.add_argument("action", choices=["start", "close"]); p.add_argument("--feedback", default=""); p.add_argument("--council"); p.add_argument("--research"); p.add_argument("--note", default="")
     p = P("final"); p.add_argument("action", choices=["add"]); p.add_argument("file")
@@ -821,17 +886,24 @@ def main(argv=None):
             if a.action == "list":
                 for x in AP.load(fdir(pd)):
                     print(f"{x['id']:<20} {x['kind']:<10} {x['source']:<9} {AP.state(x, pd):<6} scenes {','.join(x['scenes'])}  {x['how']}")
+            elif a.action == "make":
+                return make_assets(pd, a.id, a.force, a.provider)
             else:
-                if not (a.id and a.kind and a.source):
-                    raise FlowError("asset add needs --id --kind --source --scenes --how")
+                if not (a.id and len(a.id) == 1 and a.kind and a.source):
+                    raise FlowError("asset add needs one --id and --kind --source --scenes --how")
                 st = load(pd)
-                rec = dict(id=a.id, kind=a.kind, source=a.source, scenes=[s for s in a.scenes.split(",") if s], how=a.how)
-                for k in ("path", "licence", "note", "label"):
+                rec = dict(id=a.id[0], kind=a.kind, source=a.source, scenes=[s for s in a.scenes.split(",") if s], how=a.how)
+                for k in ("path", "licence", "note", "label", "fetch_url", "sha256"):
                     if getattr(a, k):
                         rec[k] = getattr(a, k)
                 AP.save(fdir(pd), AP.upsert(AP.load(fdir(pd)), rec))
                 st["gates"].pop("assets-approved", None)
                 save(pd, st)
+        elif a.cmd == "frames":
+            return make_frames(pd, a.story, a.scene, tuple(a.which), a.force, a.provider, a.jobs, a.limit)
+        elif a.cmd == "make":
+            frames_rc = make_frames(pd, None, None, tuple(a.which), a.force, a.provider, a.jobs)
+            return make_assets(pd, None, a.force, a.provider) or frames_rc          # a failed frame must not stop the audio samples
         elif a.cmd == "draft":
             add_draft(pd, a.file, a.note)
         elif a.cmd == "round":

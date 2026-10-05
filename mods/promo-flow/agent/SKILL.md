@@ -16,8 +16,11 @@ Never edit the JSON by hand. The first publish activates the mod in this thread.
 **Their clicks arrive as chat messages** starting `[mod:promo-flow]`:
 - `approved <gate>` or `picked scripts A B`: run the exact `promo flow approve ... --by "NAME"` the message names (NAME is the person), `promo flow advance`, then publish.
   If the approve command says the gate belongs to a later stage, `promo flow advance` first, then approve.
+- `wants the real thing made, not placeholders: <what>`: run `promo flow make` (storyboard frames as real images, then a sample of every asset: concept still, short clip, audio excerpt), publish. If a sample fails (no source file for the music, no generator logged in), say exactly what is missing instead of publishing a placeholder.
 - `asked for changes on <stage>: <text>` (also "Style: ..." from the discover step): do the work, regenerate what changed, `promo flow board`, publish. Do not approve.
 - `sent draft feedback (round n of 5): <text>`: `promo flow round start --feedback "<text verbatim>"`, council, one batch, one draft, `round close`, publish.
+
+**Before you ask for a decision**, `promo flow make`: the person decides by looking and listening, so every frame must be an image and every asset needs its real file or a sample. A text slate or an empty MOCK tile is not a preview, and the Approve button stays disabled while any exist.
 
 **Never approve yourself** (an agent name is refused). Never send an action for them. If `commissionctl mod status promo-flow` shows nothing new, wait.
 A thread that is archived shows the last state read only; nothing more to do.

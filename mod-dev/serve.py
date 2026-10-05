@@ -4,6 +4,8 @@
   /api/stages          [{id, title, status, badge}] canned states built by fixtures.py through the real `promo flow snapshot`
   /api/state/<id>      {version, summary, state}: `$file` objects already resolved to `$media` like the daemon does
   /media/<upload_id>   the file, with Range support
+  --project DIR        serve a REAL project as stage `live`: every request re-reads `promo flow snapshot`, and POST /api/action runs the real
+                       `promo flow` command behind the click (approve / pick / generate = `promo flow make`), so the whole flow can be driven by hand.
 """
 from __future__ import annotations
 
@@ -13,21 +15,27 @@ import json
 import mimetypes
 import os
 import re
+import subprocess
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import unquote, urlparse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-MODS = os.path.join(os.path.dirname(HERE), "mods")
+ROOT = os.path.dirname(HERE)
+MODS = os.path.join(ROOT, "mods")
 sys.path.insert(0, HERE)
+sys.path.insert(0, ROOT)
 import fixtures  # noqa: E402
+from promo import flow  # noqa: E402
 
 CSP = ("default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src blob:; font-src 'self'; "
        "connect-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'")
 MAX_FILE = {"image": 12 << 20, "audio": 100 << 20, "video": 100 << 20}
 UPLOADS: dict[str, str] = {}
 STAGES: dict[str, dict] = {}
+LIVE: dict[str, object] = {"project": None, "jobs": []}
+BY = "Sam"
 
 
 def resolve(x):
@@ -51,6 +59,8 @@ def resolve(x):
 
 
 def doc(name):
+    if name == "live":
+        STAGES["live"] = flow.snapshot(LIVE["project"])
     st = STAGES[name]
     if name == "starting":
         return {"summary": {"title": "Promo flow", "status": "Starting", "badge": "working"}, "state": {}}
@@ -83,6 +93,15 @@ class H(BaseHTTPRequestHandler):
     def do_HEAD(self):
         self.do_GET()
 
+    def do_POST(self):
+        if urlparse(self.path).path != "/api/action" or not LIVE["project"]:
+            return self.send(404, b"not found")
+        body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
+        try:
+            self.json(run_action(LIVE["project"], body.get("name"), body.get("payload") or {}))
+        except flow.FlowError as e:
+            self.json({"ok": False, "error": str(e)})
+
     def do_GET(self):
         path = unquote(urlparse(self.path).path)
         try:
@@ -92,7 +111,7 @@ class H(BaseHTTPRequestHandler):
                 out = []
                 for k, v in STAGES.items():
                     sm = (v.get("summary") if v else None) or {"title": "Promo flow", "status": "Starting", "badge": "working"}
-                    out.append(dict(id=k, title=sm["title"], status=sm["status"], badge=sm["badge"]))
+                    out.append(dict(id=k, title=sm["title"], status=sm["status"], badge=sm["badge"], live=k == "live"))
                 return self.json(out)
             m = re.fullmatch(r"/api/state/([\w-]+)", path)
             if m:
@@ -147,11 +166,32 @@ class H(BaseHTTPRequestHandler):
         return self.send(code, body, ctype, extra)
 
 
-def start(port=0, keep=None):
-    """Build the fixtures and serve; returns (server, thread, url)."""
+def run_action(pd, name, payload):
+    """What the agent does when the person clicks, so the harness drives the real flow instead of a canned one."""
+    if name == "approve":
+        flow.approve(pd, payload["gate"], BY)
+        flow.advance(pd)
+    elif name == "pick":
+        flow.approve(pd, "scripts-picked", BY, payload["picks"].split())
+        flow.advance(pd)
+    elif name == "generate":
+        job = subprocess.Popen([sys.executable, "-m", "promo", "flow", "--project", pd, "make"], cwd=ROOT, env={**os.environ, "PYTHONPATH": ROOT},
+                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        LIVE["jobs"].append(job)
+        return {"ok": True, "message": "making frames and samples (promo flow make)", "pending": False}
+    else:
+        return {"ok": True, "message": f"{name} is a message to the agent; nothing to run here", "pending": True}
+    return {"ok": True, "pending": False}
+
+
+def start(port=0, keep=None, project=None):
+    """Build the fixtures and serve; returns (server, thread, url). With `project`, a real flow project is served as stage `live`."""
     states, tmp = fixtures.build(keep)
     STAGES.clear()
     STAGES.update(states)
+    if project:
+        LIVE["project"] = os.path.abspath(project)
+        STAGES["live"] = flow.snapshot(LIVE["project"])
     srv = ThreadingHTTPServer(("127.0.0.1", port), H)
     t = threading.Thread(target=srv.serve_forever, daemon=True)
     t.start()
@@ -162,9 +202,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--keep", help="build the fixture project in this dir and keep it")
+    ap.add_argument("--project", help="a real `promo flow` project dir, served as stage `live` (default stage then)")
     a = ap.parse_args()
-    srv, t, url = start(a.port, a.keep)
-    print(f"mod harness: {url}/dev/harness.html   (Ctrl-C to stop)")
+    srv, t, url = start(a.port, a.keep, a.project)
+    print(f"mod harness: {url}/dev/harness.html{'?stage=live' if a.project else ''}   (Ctrl-C to stop)")
     try:
         t.join()
     except KeyboardInterrupt:

@@ -18,6 +18,10 @@
     return !r || !!r.error;
   }
   const missingFile = (a) => a.state === "ready" && fileBad(a);
+  /* What the person can open or play: the asset's real file, else the sample the agent made of it. A frame is an image only when its file loads. */
+  const usable = (x) => { const r = x ? mref(x) : null; return !!r && !r.error; };
+  const hasPreview = (a) => usable(a.path) || usable(a.sample);
+  const noFrame = (f) => !(f && usable(f.path));
   const missingAll = (doc) => arr(doc.assets).filter(missingFile).length;
 
   /* Footage status of one scene, read by BOTH the chip and the timeline mark.
@@ -54,7 +58,7 @@
     arr(doc.assets).forEach((a, i) => {
       const scenes = arr(a.scenes).map(String).filter((x) => ids.has(x));
       if (!scenes.length && arr(a.scenes).length) return;
-      items.push({ type: "asset", a, r: a.path ? mref(a.path) : null, eff: missingFile(a) ? "missing" : a.state, scenes, i });
+      items.push({ type: "asset", a, r: a.path ? mref(a.path) : null, s: a.sample ? mref(a.sample) : null, eff: missingFile(a) ? "missing" : a.state, scenes, i });
     });
     if (board) arr(doc.to_make).forEach((t, i) => { if (t.kind === "keyframe" && t.story === board.id) items.push({ type: "keyframe", t, eff: "todo", i: 1000 + i }); });
     const n = { ready: 0, mock: 0, todo: 0, missing: 0 };
@@ -88,7 +92,25 @@
     return n ? { disabled: true, count: n, note: n + " " + (n === 1 ? "file is" : "files are") + " missing. Send changes so the agent attaches " + (n === 1 ? "it" : "them") + "." } : null;
   }
 
-  const api = { arr, mref, fileBad, missingFile, missingAll, sceneStatus, model, finalState, seenRule, seenKey, missingRule };
+  /* Nobody approves what they cannot see: a placeholder is not a preview. The storyboard gate needs every START/END/mid frame as an image,
+     the assets gate needs every asset to have its file or a sample. `ask` names what the agent is asked to make. */
+  function previewRule(doc, gateName) {
+    const plural = (n, one, many) => (n === 1 ? one : many);
+    if (gateName === "storyboard-approved") {
+      const by = {};
+      arr(doc.boards).forEach((b) => arr(b.scenes).forEach((s) => { const k = [s.start, s.end, ...arr(s.frames)].filter(noFrame).length; if (k) by[b.id] = (by[b.id] || 0) + k; }));
+      const n = Object.values(by).reduce((a, b) => a + b, 0);
+      const where = arr(doc.boards).length > 1 ? " (" + Object.entries(by).map(([id, k]) => "story " + id + ": " + k).join(", ") + ")" : "";
+      return n ? { disabled: true, count: n, by, ask: "frames", note: n + " " + plural(n, "frame is", "frames are") + " not a real image yet" + where + ". Ask the agent to make " + plural(n, "it", "them") + "." } : null;
+    }
+    if (gateName === "assets-approved") {
+      const n = arr(doc.assets).filter((a) => !hasPreview(a)).length;
+      return n ? { disabled: true, count: n, ask: "samples", note: n + " " + plural(n, "asset has", "assets have") + " nothing to look at or hear yet. Ask the agent to make " + plural(n, "a sample", "samples") + "." } : null;
+    }
+    return null;
+  }
+
+  const api = { arr, mref, fileBad, missingFile, missingAll, hasPreview, noFrame, sceneStatus, model, finalState, seenRule, seenKey, missingRule, previewRule };
   root.PF = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof window !== "undefined" ? window : globalThis);

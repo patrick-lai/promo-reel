@@ -84,3 +84,21 @@ test("missing-file rule: Approve is blocked at the assets gate, plural-correct",
   assert.equal(L.missingRule(one, "storyboard-approved"), null);
   assert.equal(L.missingRule({ assets: [asset("a", "image", "real", "ready", ["01"])] }, "assets-approved"), null);
 });
+
+test("nobody approves a placeholder: unmade frames and previewless assets block their gates", () => {
+  const doc = { boards: [{ scenes: [{ id: "01", start: { path: ok("s") }, end: { path: null, slate: true } }, { id: "02", start: { path: ok("a") }, end: { path: ok("b") } }] }],
+    assets: [asset("r", "recording", "mock", "mock", ["01"]), asset("m", "music", "licensed", "todo", ["01"]), { ...asset("v", "voice", "licensed", "todo", ["01"]), sample: ok("v") }] };
+  assert.equal(L.previewRule(doc, "storyboard-approved").count, 1);
+  assert.match(L.previewRule({ ...doc, boards: [{ id: "B", scenes: [] }, { id: "D", scenes: doc.boards[0].scenes }] }, "storyboard-approved").note, /story D: 1/);
+  assert.equal(L.previewRule(doc, "assets-approved").count, 2);
+  assert.equal(L.previewRule(doc, "draft-approved"), null);
+  doc.boards[0].scenes[0].end.path = ok("e");
+  doc.assets[0].sample = ok("clip");
+  doc.assets[1].sample = ok("track");
+  assert.equal(L.previewRule(doc, "storyboard-approved"), null);
+  assert.equal(L.previewRule(doc, "assets-approved"), null);
+});
+test("a sample that failed to attach is no preview", () => {
+  assert.equal(L.hasPreview({ ...asset("m", "music", "licensed", "todo", ["01"]), sample: bad }), false);
+  assert.equal(L.hasPreview({ ...asset("m", "music", "licensed", "todo", ["01"]), sample: ok("t") }), true);
+});

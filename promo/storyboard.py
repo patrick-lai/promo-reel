@@ -23,6 +23,7 @@ import json
 import os
 
 REQUIRED = ("id", "beat", "t", "action", "start", "end")
+SLATE_SHARE = (0.9, 0.995)      # one colour covers 90..99.5 % of the frame: a slate with text on it (a fully flat image is a test pattern, not a slate)
 
 
 def board_path(board_dir):
@@ -73,6 +74,21 @@ def problems(b):
     return out
 
 
+def is_slate(path):
+    """A text slate: a flat-colour image with a little text on it, the stand-in an agent writes instead of a real frame. A file made by
+    `promo flow frames` has a `.gen.json` sidecar and is never one; a captured screenshot is not flat enough."""
+    if os.path.isfile(path + ".gen.json"):
+        return False
+    from collections import Counter
+    from PIL import Image
+    with Image.open(path) as im:
+        im = im.convert("RGB")
+        im.thumbnail((160, 90))
+        px = list(im.getdata())
+    share = Counter(px).most_common(1)[0][1] / len(px)
+    return SLATE_SHARE[0] <= share < SLATE_SHARE[1]
+
+
 def _frames(s, which):
     for w in which:
         if w in ("start", "end") and isinstance(s.get(w), dict):
@@ -83,13 +99,17 @@ def _frames(s, which):
 
 
 def missing(b, board_dir, which=("start", "end")):
-    """[{scene, which, image, prompt}] for frames that are specified but whose image file does not exist yet."""
+    """[{scene, which, image, prompt, slate}] for frames that are specified but are not real images yet: the file does not exist, or it is a text slate."""
     out = []
     for s in b.get("scenes") or []:
         for w, f in _frames(s, which):
             img = f.get("image")
-            if img and not os.path.isfile(os.path.join(board_dir, img)):
-                out.append(dict(scene=s.get("id"), which=w, image=os.path.join(board_dir, img), prompt=f.get("prompt", "")))
+            if not img:
+                continue
+            p = os.path.join(board_dir, img)
+            slate = os.path.isfile(p) and is_slate(p)
+            if slate or not os.path.isfile(p):
+                out.append(dict(scene=s.get("id"), which=w, image=p, prompt=f.get("prompt", ""), slate=slate))
     return out
 
 
@@ -135,7 +155,7 @@ dl{display:grid;grid-template-columns:84px 1fr;gap:3px 10px;margin:8px 0 0;font-
 def _fr(label, f, bdir):
     img = (f or {}).get("image")
     p = os.path.join(bdir, img) if img else ""
-    uri = _data_uri(p) if p and os.path.isfile(p) else ""
+    uri = _data_uri(p) if p and os.path.isfile(p) and not is_slate(p) else ""
     inner = f'<img src="{uri}" alt="{html.escape(label)}">' if uri else f'<div class="ph">not made yet<br>{html.escape((f or {}).get("prompt", "")[:90])}</div>'
     return f'<div class="fr"><span class="lbl">{html.escape(label)}</span>{inner}</div>'
 

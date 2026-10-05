@@ -7,7 +7,7 @@
   const SHORT = { discover: "Style", scripts: "Scripts", pick: "Pick", storyboard: "Storyboard", assets: "Assets", keyframes: "Keyframes", confirm: "Confirm", drafts: "Drafts", review: "Review", final: "Final" };
   const STAGE_TAB = { scripts: "scripts", pick: "scripts", storyboard: "storyboard", assets: "assets", keyframes: "storyboard", confirm: "storyboard", drafts: "draft", review: "draft", final: "draft" };
   const BADGE_TEXT = { working: "With the agent", waiting: "Your turn", done: "Done", attention: "Needs attention" };
-  const ACTION_WORD = { approve: "your approval", pick: "your picks", changes: "your changes", feedback: "your feedback" };
+  const ACTION_WORD = { approve: "your approval", pick: "your picks", changes: "your changes", feedback: "your feedback", generate: "your request" };
   const VERDICT = { yes: ["Intent matched", "ok"], partial: ["Partly matched", "warn"], no: ["Missed the intent", "bad"] };
   const KIND_LABEL = { screenshot: "Screenshot", image: "Image", recording: "Recording", video: "Video", music: "Music", voice: "Voice", sfx: "Sound effect" };
   const KIND_MEDIA = { screenshot: "image", image: "image", recording: "video", video: "video", music: "audio", voice: "audio", sfx: "audio" };
@@ -75,7 +75,7 @@
   }
 
   /* ---------------- media over the bridge ---------------- */
-  const M = { seq: 0, waiting: new Map(), cache: new Map() };
+  const M = { seq: 0, waiting: new Map(), cache: new Map(), queue: [] };
   const PF = window.PF;
   const mref = PF.mref;
   const mkind = (r, fallback) => {
@@ -89,15 +89,21 @@
     if (/\.(wav|mp3|m4a|aac|ogg|flac)$/.test(nm)) return "audio";
     return fallback || "file";
   };
+  /* A story has 30+ frames: asking the host for all of them at once made some time out on a cold load, so only a few requests are in flight. */
+  const MAX_INFLIGHT = 6;
+  const pumpMedia = () => { while (M.waiting.size < MAX_INFLIGHT && M.queue.length) M.queue.shift()(); };
   function getMedia(r) {
     const hit = M.cache.get(r.upload_id);
     if (hit) return hit.p;
     const entry = { kind: mkind(r), url: null };
     entry.p = new Promise((resolve, reject) => {
       const id = "m" + ++M.seq;
-      const timer = setTimeout(() => { M.waiting.delete(id); reject(new Error("The host did not answer in time.")); }, 30000);
-      M.waiting.set(id, { resolve, reject, timer, r });
-      post({ type: "media", id, upload_id: r.upload_id });
+      M.queue.push(() => {
+        const timer = setTimeout(() => { M.waiting.delete(id); reject(new Error("The host did not answer in time.")); pumpMedia(); }, 30000);
+        M.waiting.set(id, { resolve, reject, timer, r });
+        post({ type: "media", id, upload_id: r.upload_id });
+      });
+      pumpMedia();
     }).then((url) => { entry.url = url; return url; }, (e) => { M.cache.delete(r.upload_id); throw e; });
     M.cache.set(r.upload_id, entry);
     return entry.p;
@@ -107,6 +113,7 @@
     if (!w) return;
     M.waiting.delete(m.id);
     clearTimeout(w.timer);
+    pumpMedia();
     if (m.blob) {
       let b = m.blob;
       if (!b.type && w.r.mime) b = new Blob([b], { type: w.r.mime });
@@ -478,6 +485,12 @@
     wrap.append(sc, sel);
     return wrap;
   }
+  /* The one honest answer to a placeholder: ask the agent to make the real thing (frames as images, a sample of every asset). */
+  function makeBanner(text, what) {
+    const blocked = S.readonly || S.offline || !!S.pending || !!S.justSent || !!S.sending;
+    return h("div", { class: "warnline", role: "status" }, ic("alert"), h("span", { text }),
+      h("button", { class: "load", type: "button", disabled: blocked, text: "Ask the agent to make them", onclick: () => send("generate", { what }) }));
+  }
   function viewStoryboard() {
     const d = S.doc, boards = arr(d.boards), b = curBoard();
     const confirm = d.stage === "confirm";
@@ -487,14 +500,17 @@
     const total = Math.max(b.duration_s || 0, ...scenes.map((x) => x.end_s || 0), 1);
     const chips = confirm ? null : h("div", { class: "chips" }, h("span", { class: "chip", text: scenes.length + (scenes.length === 1 ? " scene" : " scenes") }), h("span", { class: "chip", text: num(total) + " s" }), h("span", { class: "chip", text: b.aspect || "16:9" }));
     if (confirm) box.append(confirmCard(boards));
-    if (d.stage === "keyframes") box.append(keyframeGrid(b));
     box.append(h("div", { class: "board-row" }, boards.length > 1 ? storySwitch(boards) : h("div", { class: "ttl", text: b.title }), chips));
+    const unmade = PF.previewRule(d, "storyboard-approved");
+    if (unmade && !confirm) box.append(makeBanner(unmade.note.replace(/ Ask the agent.*$/, ""), "storyboard frames"));
+    if (d.stage === "keyframes") box.append(keyframeGrid(b));
     if (b.logline && !confirm) box.append(h("div", { class: "sub" }, showMore(b.logline, 160, "c2")));
     if (!scenes.length) { box.append(h("div", { class: "empty card" }, h("div", { class: "ring" }, ic("scene")), h("h2", { text: "No scenes yet" }), h("p", { text: "This story has no scenes. The agent adds them when it writes the storyboard." }))); return h("div", { class: "pane" }, box); }
     const tl = h("div", { class: "tlwrap" }, h("div", { class: "tl", role: "group", "aria-label": "Timeline: jump to a scene" }, scenes.map((x) =>
       h("button", { type: "button", class: "k-" + sceneStatus(x).cls, "data-sid": x.id, style: "flex:" + Math.max((x.end_s - x.start_s), 0.5) + " 1 0", title: "Scene " + x.id + " " + x.beat + ", " + num(x.start_s) + " to " + num(x.end_s) + " s. " + STILLS,
         "aria-label": "Scene " + x.id + ", " + x.beat, onclick: () => jumpScene(b.id, x.id) }, h("span", { class: "fill", text: x.id })))),
-      confirm ? null : h("div", { class: "tl-leg" }, h("span", null, h("i", { class: "r" }), "All real assets ready"), h("span", null, h("i", { class: "s" }), "Stills only"), h("span", null, h("i", { class: "m" }), "Mock in plan"), h("span", null, h("i", { class: "g" }), "Generated"), h("span", null, h("i", { class: "t" }), "To capture / not made")),
+      confirm ? null : h("div", { class: "tl-leg" }, [["r", "real", "All real assets ready"], ["s", "stills", "Stills only"], ["m", "mock", "Mock in plan"], ["g", "gen", "Generated"], ["t", "todo", "To capture / not made"]]
+        .filter(([, k]) => scenes.some((x) => sceneStatus(x).cls === k)).map(([c, , label]) => h("span", null, h("i", { class: c }), label))),
       confirm ? null : h("p", { class: "tl-note", text: "Frames are storyboard stills, not footage." }));
     if (!confirm) box.append(tl);
     const ar = String(b.aspect || "16:9").replace(":", "/");
@@ -566,12 +582,18 @@
     for (const sc of arr(b.scenes)) {
       const main = [["Start", sc.start], ["End", sc.end]];
       const mids = arr(sc.frames);
-      const mk = (label, f) => { const r = f && mref(f.path); const ok = !!(r && !r.error); total++; if (ok) done++; return { label, r, ok }; };
+      const mk = (label, f) => { const r = f && mref(f.path); const ok = !!(r && !r.error); total++; if (ok) done++; return { label, r, ok, prompt: f && f.prompt }; };
       cells.push({ sc, main: main.map(([l, f]) => mk(l, f)), mids: mids.map((f, i) => mk("Mid " + (i + 1), f)) });
     }
+    const flat = [];
     const tile = (c, it) => {
-      if (it.ok) { const f = h("div", { class: "fr", title: it.label, style: "position:relative" }); lazyInto(f, it.r, (u) => h("img", { src: u, alt: "Scene " + c.sc.id + " " + it.label }), { compact: true }); return f; }
-      return h("div", { class: "fr empty", title: it.label }, "Not made");
+      if (!it.ok) return h("div", { class: "fr empty", title: it.label }, "Not made");
+      const kind = it.label === "Start" ? "start" : it.label === "End" ? "end" : "mid";
+      const idx = flat.length;
+      flat.push({ r: it.r, ctx: { scene: c.sc, label: it.label, kind }, prompt: it.prompt });
+      const slot = h("span", { style: "position:absolute;inset:0;display:block" });
+      lazyInto(slot, it.r, (u) => h("img", { src: u, alt: "Scene " + c.sc.id + " " + it.label, draggable: "false" }), { compact: true });
+      return h("button", { type: "button", class: "fr", title: it.label, "aria-label": "Open scene " + c.sc.id + " " + it.label + " frame larger", onclick: () => openLightbox(flat, idx) }, slot);
     };
     const grid = h("div", { class: "kf-grid" }, cells.map((c) => {
       const mm = c.mids.filter((m) => m.ok).length;
@@ -579,14 +601,14 @@
         c.mids.length ? h("span", { class: "chip kf-mid" + (mm < c.mids.length ? " dashed" : ""), title: mm + " of " + c.mids.length + " mid frames made", text: "+" + c.mids.length + " mid" + (mm < c.mids.length ? " \u00b7 " + (c.mids.length - mm) + " not made" : "") }) : null);
     }));
     return h("div", null, h("div", { class: "h2", style: "margin-bottom:4px" }, "Keyframes", h("span", { class: "chip", text: "Story " + b.id + ": " + done + " of " + total + " made" })),
-      h("p", { class: "tl-note", style: "margin-bottom:8px", text: "Frames are storyboard stills, not footage." }), grid);
+      grid);
   }
 
   function frameEl(f, label, ar, flat, ctx) {
     const st = "--ar:" + ar;
     const r = f && mref(f.path);
     const lab = h("span", { class: "lbl", text: label });
-    if (!r) return h("div", { class: "fr empty", style: st }, lab, h("div", null, h("b", { text: "Not made yet" }), f && f.prompt ? h("div", { class: "p", text: f.prompt }) : null));
+    if (!r) return h("div", { class: "fr empty", style: st }, lab, h("div", null, h("b", { text: f && f.slate ? "Placeholder, no image yet" : "No image yet" }), f && f.prompt ? h("div", { class: "p", text: f.prompt }) : null));
     if (r.error) return h("div", { class: "fr err", style: st }, lab, h("span", { text: r.error }));
     const idx = flat.length;
     flat.push({ r, ctx, prompt: f.prompt });
@@ -633,7 +655,8 @@
     tgS.disabled = !hasS; tgE.disabled = !hasE;
     tgS.setAttribute("aria-pressed", String(it.ctx.kind === "start")); tgE.setAttribute("aria-pressed", String(it.ctx.kind === "end"));
     tg.hidden = !(hasS || hasE);
-    prompt.replaceChildren(it.ctx.kind === "mid" ? h("b", { text: it.ctx.label + ". " }) : "", it.prompt ? h("span", null, h("b", { text: (it.method ? "How it is made: " : "Frame: ") }), it.prompt) : "");
+    prompt.replaceChildren(it.ctx.kind === "mid" ? h("b", { text: it.ctx.label + ". " }) : "", it.prompt ? h("span", null, h("b", { text: (it.method ? "How it is made: " : "Frame: ") }), it.prompt) : "",
+      s.voice ? h("span", { class: "lb-say" }, h("b", { text: "Voice: " }), s.voice) : "", s.caption ? h("span", { class: "lb-say" }, h("b", { text: "Caption: " }), s.caption) : "");
     const my = LB.i;
     img.replaceChildren(h("div", { class: "sk", style: "position:absolute;inset:0;border-radius:6px" }), prev, next);
     getMedia(it.r).then((u) => { if (LB.open && LB.i === my) img.replaceChildren(h("img", { src: u, alt: "Scene " + s.id + " " + it.ctx.label }), prev, next); },
@@ -645,6 +668,20 @@
     LB.open = false; el.lb.hidden = true; el.lb.replaceChildren();
     inertTargets().forEach((n) => n.removeAttribute("inert"));
     if (LB.opener && document.contains(LB.opener)) LB.opener.focus();
+  }
+  /* A clip is looked at big and with controls (pause, seek, full screen): the tile is only a poster. Same overlay, focus handling and Esc as the frames. */
+  function openPlayer(a, r, sampled) {
+    LB.items = []; LB.i = 0; LB.opener = document.activeElement; LB.open = true; LB.parts = null;
+    const close = h("button", { class: "l", type: "button", "aria-label": "Close", onclick: closeLightbox }, ic("close"));
+    const stage = h("div", { class: "lb-frame" }, h("div", { class: "sk", style: "position:absolute;inset:0;border-radius:6px", "aria-hidden": "true" }));
+    const how = scrubPaths(a.how);
+    el.lb.replaceChildren(h("div", { class: "lb-top" }, h("div", { class: "cap" }, a.label || a.id, sampled ? h("span", { class: "lb-chip", text: "Sample" }) : null), close),
+      h("div", { class: "lb-stage" }, stage, h("div", { class: "lb-info" }, sampled && a.sample_note ? h("p", null, h("b", { text: "Sample: " }), a.sample_note) : null, how ? h("p", { text: how }) : null)));
+    el.lb.hidden = false;
+    inertTargets().forEach((n) => n.setAttribute("inert", ""));
+    getMedia(r).then((u) => { if (LB.open) stage.replaceChildren(h("video", { src: u, controls: "", autoplay: "", playsinline: "", "aria-label": a.label || a.id })); },
+      () => { if (LB.open) stage.replaceChildren(h("span", { text: "Couldn't load this clip." })); });
+    close.focus();
   }
   document.addEventListener("keydown", (e) => {
     if (!LB.open) return;
@@ -677,8 +714,10 @@
     box.append(cnt);
     const miss = missingAll(), here = m.n.missing, other = miss - here;
     if (miss) box.append(h("div", { class: "warnline", role: "alert" }, ic("alert"), h("span", { text: (here ? here + " " + plural(here, "file is", "files are") + " missing." : "No files missing in this story.") + (other > 0 ? " " + other + " " + plural(other, "file is", "files are") + " missing (other story)." : "") })));
+    const bare = arr(d.assets).filter((a) => !PF.hasPreview(a)).length;
+    if (bare) box.append(makeBanner(bare + " " + plural(bare, "asset has", "assets have") + " nothing to look at or hear yet.", "asset samples"));
     const shown = m.items.filter((x) => !S.filter || x.eff === S.filter).sort((a, b) => RANK[a.eff] - RANK[b.eff] || a.i - b.i);
-    box.append(h("div", { class: "gallery", "data-count": String(shown.length) }, shown.map((x) => (x.type === "keyframe" ? keyframeRow(x.t) : x.eff === "todo" || x.eff === "missing" ? assetRow(x) : assetTile(x)))));
+    box.append(h("div", { class: "gallery", "data-count": String(shown.length) }, shown.map((x) => (x.type === "keyframe" ? keyframeRow(x.t) : !PF.hasPreview(x.a) && (x.eff === "todo" || x.eff === "missing") ? assetRow(x) : assetTile(x)))));
     const c = STAGE_TAB[d.stage] === "assets" ? checksLine() : null;
     if (c) box.append(c);
     return h("div", { class: "pane" }, box);
@@ -715,40 +754,46 @@
     rg.addEventListener("input", () => { if (a.duration) a.currentTime = a.duration * rg.value / 1000; });
     return h("div", { class: "audio" }, pp, rg, tm);
   }
+  const STATE_CHIP = { mock: ["Mock", "warn"], todo: ["To make", "bad"], missing: ["File missing", "bad"] };
   function assetTile(x) {
-    const a = x.a, r = x.r, eff = x.eff;
+    const a = x.a, eff = x.eff;
+    const real = x.r && !x.r.error ? x.r : null;
+    const src = real || (x.s && !x.s.error ? x.s : null);
+    const sampled = !real && !!src;
     const fallback = KIND_MEDIA[a.kind] || "file";
-    const kind = r && !r.error ? mkind(r, fallback) : fallback;
-    const isAudio = kind === "audio" && eff !== "mock";
-    const pv = h("div", { class: "pv " + (eff === "mock" ? "mock" : isAudio ? "lead" : "") });
+    const kind = src ? mkind(src, fallback) : fallback;
+    const isAudio = kind === "audio" && !!src;
+    const pv = h("div", { class: "pv " + (!src ? "mock" : isAudio ? "lead" : "") });
     const slot = h("div", { class: "slot" });
     pv.append(slot);
     let prow = null;
-    if (eff === "mock" && !(r && !r.error && kind === "image")) { /* stripes only: the corner badge is the one marker */ }
+    if (!src) slot.append(h("div", { class: "mid" }, glyphFor(fallback), h("span", { text: "No preview yet" })));
     else if (isAudio) {
       slot.append(h("div", { class: "mid" }, glyphFor("audio")));
       prow = h("div", { class: "prow" });
-      lazyInto(prow, r, (u) => audioControl(u), { manual: r.size > BIG_AUDIO, manualText: "Load audio (" + fmtSize(r.size) + ")" });
-    } else if (kind === "image") lazyInto(slot, r, (u) => h("img", { src: u, alt: a.label || a.id, draggable: "false" }), { compact: true });
+      lazyInto(prow, src, (u) => audioControl(u), { manual: src.size > BIG_AUDIO, manualText: "Load audio (" + fmtSize(src.size) + ")" });
+    } else if (kind === "image") lazyInto(slot, src, (u) => h("img", { src: u, alt: a.label || a.id, draggable: "false" }), { compact: true });
     else if (kind === "video") {
       const build = (u) => {
-        const v = h("video", { src: u + "#t=0.1", preload: "metadata", playsinline: "", muted: "", "aria-label": a.label || a.id });
-        const play = h("button", { class: "play", type: "button", "aria-label": "Play " + (a.label || a.id) }, ic("play", "ic-play"));
-        const toggle = () => { if (v.paused) v.play().catch(() => {}); else v.pause(); };
-        play.addEventListener("click", toggle); v.addEventListener("click", toggle);
-        v.addEventListener("play", () => { play.hidden = true; }); v.addEventListener("pause", () => { play.hidden = false; }); v.addEventListener("ended", () => { play.hidden = false; });
-        return h("div", { style: "position:absolute;inset:0" }, v, play);
+        const v = h("video", { src: u + "#t=0.1", preload: "metadata", playsinline: "", muted: "", "aria-hidden": "true", tabindex: "-1" });
+        const open = () => openPlayer(a, src, sampled);
+        v.addEventListener("click", open);
+        return h("div", { style: "position:absolute;inset:0" }, v, h("button", { class: "play", type: "button", "aria-label": "Play " + (a.label || a.id) + " larger", onclick: open }, ic("play", "ic-play")));
       };
-      lazyInto(slot, r, build, { manual: r.size > BIG_VIDEO, manualText: "Load video (" + fmtSize(r.size) + ")" });
-    } else slot.append(h("div", { class: "mid" }, ic("scene"), h("span", { text: (r && r.name) || a.id })));
-    if (eff === "mock") pv.append(h("span", { class: "tag", text: "MOCK" }));
+      lazyInto(slot, src, build, { manual: src.size > BIG_VIDEO, manualText: "Load video (" + fmtSize(src.size) + ")" });
+    } else slot.append(h("div", { class: "mid" }, ic("scene"), h("span", { text: src.name || a.id })));
+    if (sampled) pv.append(h("span", { class: "tag", text: "SAMPLE" }));
+    else if (src && eff === "mock") pv.append(h("span", { class: "tag", text: "MOCK" }));
     const sc = x.scenes;
     const how = scrubPaths(a.how);
     const lic = [a.licence ? "Licence: " + a.licence : "", a.note && !/^https?:/i.test(a.note) ? a.note : ""].filter(Boolean).join(" · ");
     const url = a.note && /^https:\/\//i.test(a.note) ? a.note : "";
+    const sc_ = STATE_CHIP[eff];
     return h("article", { class: "card asset" + (isAudio ? " a-audio" : "") }, pv, h("div", { class: "bd" }, h("div", { class: "nm", title: a.id, text: a.label || a.id }),
-      h("div", { class: "kind" }, h("span", { class: "chip", text: eff === "mock" ? (KIND_LABEL[a.kind] || a.kind) : (KIND_LABEL[a.kind] || a.kind) + " · " + a.source }), a.source === "licensed" && !a.licence ? h("span", { class: "chip warn", text: "No licence on file" }) : null),
+      h("div", { class: "kind" }, h("span", { class: "chip", text: (KIND_LABEL[a.kind] || a.kind) + (eff === "ready" ? " · " + a.source : "") }), sc_ ? h("span", { class: "chip " + sc_[1], text: sc_[0] }) : null,
+        a.source === "licensed" && !a.licence ? h("span", { class: "chip warn", text: "No licence on file" }) : null),
       sc.length ? h("div", { class: "sc", text: (sc.length === 1 ? "Scene " : "Scenes ") + sceneRange(sc) }) : null,
+      sampled && a.sample_note ? h("div", { class: "how", text: "Sample: " + a.sample_note }) : null,
       how ? (a.source === "generated" ? h("details", { class: "prompt" }, h("summary", { text: "View prompt" }), h("p", { text: how })) : h("div", { class: "how" }, showMore(how, 90, "c2"))) : null,
       lic || url ? h("div", { class: "lic" }, lic, lic && url ? " · " : "", url ? h("button", { type: "button", text: host(url), title: url, onclick: () => post({ type: "open-url", url }) }) : null) : null), prow);
   }
@@ -859,7 +904,7 @@
       m.primary = g.approve_label || "Use this style"; m.primaryDisabled = !(S.style || S.ownStyle.trim());
       if (m.primaryDisabled) m.note = "Choose a style, or describe your own";
     } else m.primary = g.approve_label || "Approve";
-    const mr = PF.missingRule(d, g.gate);
+    const mr = PF.missingRule(d, g.gate) || PF.previewRule(d, g.gate);
     if (g.kind === "approve" && mr) { m.primaryDisabled = true; m.note = mr.note; }
     if (g.kind === "draft") {
       const ds = arr(d.drafts), latest = ds[ds.length - 1];
@@ -879,11 +924,11 @@
       m.reviewTab = gt;
       m.primary = "Review " + tabs.find((t) => t.id === gt).label;
       m.primaryDisabled = false;
-      m.note = "Open it before you decide.";
+      m.note = "Open " + tabs.find((t) => t.id === gt).label + " before you decide.";
     }
     if (!m.reviewTab && (g.kind === "approve" || g.kind === "confirm")) {
       const un = PF.seenRule(d, g.gate, S.seen);
-      if (un) { m.reviewStory = un; m.primary = "Review story " + un.board; m.primaryDisabled = false; m.note = "Story " + un.board + " not opened yet."; }
+      if (un) { m.reviewStory = un; m.primary = "Review story " + un.board; m.primaryDisabled = false; m.note = "Open story " + un.board + " before you decide: you have only looked at the other " + (arr(d.boards).length === 2 ? "story" : "stories") + "."; }
     }
     if (S.stale && S.stale.changedGate) { m.primaryDisabled = true; m.note = "This step changed. Review the update first."; }
     return m;

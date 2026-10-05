@@ -34,6 +34,8 @@ HOME = Path.home()
 
 NEG = ("No people, no text, no logos, no user-interface, no screens, no software windows. ")
 NEG_PEOPLE = "No on-screen text, no logos, no user-interface or software windows readable on any screen. "
+STORYBOARD = ("This is a STORYBOARD STILL for planning, not final footage: one clean, believable concept frame. If it shows software, draw a plausible generic "
+              "app window; no real brand logos, no watermarks, only short legible labels. ")
 
 
 def _file(p):
@@ -79,18 +81,22 @@ def _mark_ok(provider, kind):
     _state_path().write_text(json.dumps(st, indent=1))
 
 
-def pick(kind: str, provider: str = "auto") -> dict:
+def providers(kind: str, provider: str = "auto") -> list[dict]:
     ps = [p for p in detect() if p["available"] and kind in p["kind"]]
     if provider != "auto":
         ps = [p for p in ps if p["id"] == provider]
     if not ps:
         raise SystemExit(f"no available provider for {kind} (provider={provider}); run `promo gen detect`")
     ps.sort(key=lambda p: (kind not in p["verified"], p["id"] not in ("grok", "codex")))
-    return ps[0]
+    return ps
 
 
-def prompt_for(kind: str, prompt: str, out: Path, seconds: float, aspect: str, people: bool = False, ref=None) -> str:
-    base = (f"{NEG_PEOPLE if people else NEG}{prompt.strip()} ")
+def pick(kind: str, provider: str = "auto") -> dict:
+    return providers(kind, provider)[0]
+
+
+def prompt_for(kind: str, prompt: str, out: Path, seconds: float, aspect: str, people: bool = False, ref=None, guard: str | None = None) -> str:
+    base = (f"{guard if guard is not None else NEG_PEOPLE if people else NEG}{prompt.strip()} ")
     refs = [ref] if isinstance(ref, str) else list(ref or [])
     if refs:
         lead = f"Use the image file {refs[0]} as the identity AND set reference: the person must be exactly the same woman (same face, same hair, same oatmeal hoodie) in exactly the same room (same wood panelling, same brass desk lamp, same desk). "
@@ -191,29 +197,39 @@ def requests(spec) -> list[dict]:
     return rows
 
 
-def generate(kind: str, prompt: str, out: str, seconds: float = 4.0, aspect: str = "16:9", provider: str = "auto",
-             timeout: int = 900, people: bool = False, ref=None) -> dict:
-    out_p = Path(out).expanduser().resolve()
-    out_p.parent.mkdir(parents=True, exist_ok=True)
-    p = pick(kind, provider)
-    text = prompt_for(kind, prompt, out_p, seconds, aspect, people, ref)
+def _run_provider(p: dict, text: str, out_p: Path, timeout: int) -> str:
+    """Run one provider; returns '' when it wrote `out_p`, else why it did not."""
     t0 = time.time()
     r = subprocess.run(argv_for(p, text), cwd=str(out_p.parent), capture_output=True, text=True, timeout=timeout)
-    if not out_p.exists():
+    if not out_p.exists() and p["id"] == "codex":
         # codex keeps images under ~/.codex/generated_images/<session>/: take the newest file made since we started
         gi = HOME / ".codex" / "generated_images"
         newest = None
-        if p["id"] == "codex" and gi.exists():
-            for f in gi.rglob("*"):
-                if f.is_file() and f.stat().st_mtime >= t0 and (newest is None or f.stat().st_mtime > newest.stat().st_mtime):
-                    newest = f
+        for f in gi.rglob("*") if gi.exists() else []:
+            if f.is_file() and f.stat().st_mtime >= t0 and (newest is None or f.stat().st_mtime > newest.stat().st_mtime):
+                newest = f
         if newest:
             shutil.copyfile(newest, out_p)
-    if not out_p.exists():
-        raise RuntimeError(f"{p['id']} produced no file at {out_p} (exit {r.returncode}): {(r.stdout or r.stderr)[-400:]}")
-    wm = None
-    if p["id"] == "grok":
-        wm = strip_watermark(out_p, kind)
+    if out_p.exists():
+        return ""
+    return f"{p['id']} produced no file at {out_p} (exit {r.returncode}): {(r.stdout or r.stderr)[-400:]}"
+
+
+def generate(kind: str, prompt: str, out: str, seconds: float = 4.0, aspect: str = "16:9", provider: str = "auto",
+             timeout: int = 900, people: bool = False, ref=None, guard: str | None = None) -> dict:
+    """`guard` replaces the plate guard (no UI, no text) for callers that need another look, e.g. STORYBOARD stills; their corner logo is the caller's to crop."""
+    out_p = Path(out).expanduser().resolve()
+    out_p.parent.mkdir(parents=True, exist_ok=True)
+    text = prompt_for(kind, prompt, out_p, seconds, aspect, people, ref, guard)
+    why = []
+    for p in providers(kind, provider):
+        err = _run_provider(p, text, out_p, timeout)
+        if not err:
+            break
+        why.append(err)
+    else:
+        raise RuntimeError("; ".join(why))
+    wm = strip_watermark(out_p, kind) if p["id"] == "grok" and guard is None else None
     meta = dict(generated=True, kind=kind, watermark_cropped=wm, provider=p["id"], prompt=prompt, seconds=seconds if kind == "video" else None, aspect=aspect,
                 sha256=sha256(out_p), at=time.strftime("%Y-%m-%dT%H:%M:%S"), **probe_media(out_p))
     Path(str(out_p) + ".gen.json").write_text(json.dumps(meta, indent=1))

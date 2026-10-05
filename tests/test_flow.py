@@ -7,6 +7,7 @@ from PIL import Image
 from promo import assetplan as AP
 from promo import brief as BR
 from promo import flow as F
+from promo import previews as PV
 from promo import storyboard as SB
 
 INTENT = "Make a 60s promo for Acme Tasks: tell it at night, wake up to merged PRs."
@@ -92,7 +93,9 @@ def test_happy_path_and_gates(pd, tmp_path):
     rec(id="ui1", kind="recording", source="generated", scenes=["01"], how="x")
     assert any("generated UI" in p for p in AP.problems(AP.load(os.path.join(pd, "flow")), ["01", "02"], pd))
     rec(id="ui1", kind="recording", source="mock", scenes=["01", "02"], how="screen recording of the ticket list")
-    st = F.load(pd)
+    with pytest.raises(F.FlowError, match="real preview"):
+        F.approve(pd, "assets-approved", "Pat")                      # a plan nobody can look at is not approvable
+    assert F.make_assets(pd, None, False, "auto") == 0
     F.approve(pd, "assets-approved", "Pat")
     assert F.advance(pd) == "keyframes"
     with pytest.raises(F.FlowError, match="real"):
@@ -462,5 +465,69 @@ def test_mod_logic_unit_tests_pass():
     if not node:
         pytest.skip("node is not installed")
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    r = subprocess.run([node, "--test", os.path.join(root, "mods", "promo-flow", "test")], capture_output=True, text=True, timeout=120)
+    r = subprocess.run([node, "--test", os.path.join(root, "mods", "promo-flow", "test", "logic.test.js")], capture_output=True, text=True, timeout=120)
     assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-1000:]
+
+
+def slate(p):
+    """What an agent wrote in place of a frame: a flat dark image with a few lines of text."""
+    from PIL import ImageDraw
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    im = Image.new("RGB", (320, 180), (34, 34, 38))
+    ImageDraw.Draw(im).rectangle((10, 10, 120, 24), fill=(230, 130, 70))
+    im.save(p)
+
+
+def test_text_slate_is_not_a_frame(pd):
+    d = board(pd, "A")
+    assert SB.missing(SB.load(d), d) == []
+    slate(os.path.join(d, "frames", "01-s.png"))
+    miss = SB.missing(SB.load(d), d)
+    assert [(m["scene"], m["which"], m["slate"]) for m in miss] == [("01", "start", True)]
+    open(os.path.join(d, "frames", "01-s.png.gen.json"), "w").write("{}")          # what `promo flow frames` writes beside a real image
+    assert SB.missing(SB.load(d), d) == []
+
+
+def test_snapshot_shows_samples_and_hides_slates(pd):
+    d = board(pd, "A")
+    slate(os.path.join(d, "frames", "01-e.png"))
+    st = F.load(pd)
+    st["picks"] = ["A"]
+    F.save(pd, st)
+    AP.save(os.path.join(pd, "flow"), [dict(id="m1", kind="music", source="licensed", scenes=["01"], how="track", path="media/m1.wav")])
+    import numpy as np
+    import soundfile as sf
+    os.makedirs(os.path.join(pd, "media"))
+    sf.write(os.path.join(pd, "media", "m1.wav"), np.sin(np.arange(48000 * 30) * 0.05) * 0.2, 48000)
+    snap = F.snapshot(pd)
+    sc = snap["boards"][0]["scenes"][0]
+    assert sc["end"]["slate"] and sc["end"]["path"] is None and sc["start"]["path"]
+    assert snap["assets"][0]["sample"] is None                               # a real file is the preview itself
+    AP.save(os.path.join(pd, "flow"), [dict(id="m1", kind="music", source="licensed", scenes=["01"], how="track", licence="CC0")])
+    assert [n["id"] for n in F.needs(pd) if n["kind"] == "preview"] == ["m1"]
+    AP.save(os.path.join(pd, "flow"), [dict(id="m1", kind="music", source="licensed", scenes=["01"], how="track", licence="CC0", path="media/m1.wav")])
+    PV.make_samples(AP.load(os.path.join(pd, "flow")), pd, F.boards(pd, F.load(pd)), force=True)
+    sample = F.snapshot(pd)["assets"][0]["sample"]
+    assert sample and os.path.isfile(sample["$file"])
+    dur = float(__import__("subprocess").run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", sample["$file"]], capture_output=True, text=True).stdout)
+    assert 15 < dur <= 21                                                    # an excerpt, not the whole 30 s track
+
+
+def test_make_frames_replaces_slates_and_reports_failures(pd, monkeypatch):
+    d = board(pd, "A")
+    slate(os.path.join(d, "frames", "01-s.png"))
+    slate(os.path.join(d, "frames", "02-e.png"))
+    os.remove(os.path.join(d, "frames", "02-s.png"))
+
+    def fake_generate(kind, prompt, out, provider="auto", guard=None, **kw):
+        if "Scene 02" in prompt:
+            raise RuntimeError("grok produced no file")
+        img(out, (200, 120, 60))
+        open(out + ".gen.json", "w").write("{}")
+        return dict(provider="codex", prompt=prompt, at="now")
+    monkeypatch.setattr(PV.G, "generate", fake_generate)
+    made, failed = PV.make_frames(F.boards(pd, dict(F.load(pd), picks=["A"])), say=lambda *_: None)
+    assert made == ["A/01/start"]
+    assert sorted(f[0] for f in failed) == ["A/02/end", "A/02/start"] and "no file" in failed[0][1]
+    assert not SB.is_slate(os.path.join(d, "frames", "01-s.png"))               # a real image now, with its sidecar
+    assert [(m["scene"], m["which"]) for m in SB.missing(SB.load(d), d)] == [("02", "start"), ("02", "end")]

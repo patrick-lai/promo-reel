@@ -13,8 +13,9 @@
   const log = (t) => { const d = document.createElement("div"); d.textContent = new Date().toTimeString().slice(0, 8) + "  " + t; $("log").prepend(d); if ($("log").children.length > 80) $("log").lastChild.remove(); };
   const post = (m) => frame.contentWindow && frame.contentWindow.postMessage(m, "*");
 
+  const isLive = (id) => H.stages.some((s) => s.id === id && s.live);
   async function stageDoc(id) {
-    if (!H.docs[id]) H.docs[id] = await (await fetch("/api/state/" + id)).json();
+    if (!H.docs[id] || isLive(id)) H.docs[id] = await (await fetch("/api/state/" + id)).json();
     return H.docs[id];
   }
   async function sendState() {
@@ -40,6 +41,14 @@
     }
     if (H.readonly) { post({ type: "result", id: m.id, ok: false, error: "This thread is archived" }); return log("action REJECTED 409 archived"); }
     log("action " + m.name + " -> " + render(a.message, { ...m.payload, by }).slice(0, 400));
+    if (isLive(H.stage)) {
+      const r = await (await fetch("/api/action", { method: "POST", body: JSON.stringify({ name: m.name, payload: m.payload }) })).json();
+      log("live " + m.name + (r.ok ? " ok: " + (r.message || "ran the flow command") : " REFUSED: " + r.error));
+      if (!r.ok) return post({ type: "result", id: m.id, ok: false, error: r.error });
+      post({ type: "result", id: m.id, ok: true });
+      H.pending = r.pending ? { name: m.name } : null; H.version++;
+      return sendState();
+    }
     setTimeout(() => { post({ type: "result", id: m.id, ok: true }); H.pending = H.noPending ? null : { name: m.name }; sendState(); }, 250);
   }
   async function onMedia(m) {
@@ -90,6 +99,7 @@
     for (const [id, key] of [["offline", "offline"], ["readonly", "readonly"], ["hold", "hold"], ["mediaErr", "mediaErr"], ["slow", "slow"], ["noPending", "noPending"]]) $(id).onchange = (e) => { H[key] = e.target.checked; H.version += key === "hold" ? 0 : 0; sendState(); };
     $("reduce").onchange = (e) => { H.reduce = e.target.checked; sendInit(); };
     $("bump").onclick = () => { H.version++; sendState(); log("version -> " + H.version); };
+    if (isLive(H.stage)) setInterval(() => { H.version++; sendState(); }, 15000);
     $("bumpGate").onclick = () => { const i = H.stages.findIndex((s) => s.id === H.stage); H.stage = H.stages[Math.min(i + 1, 9)].id; H.version++; paintControls(); sendState(); log("step changed under the person -> " + H.stage); };
     $("respond").onclick = () => { const i = H.stages.findIndex((s) => s.id === H.stage); H.pending = null; H.stage = H.stages[Math.min(i + 1, 9)].id; H.version++; paintControls(); sendState(); };
     if (q.get("offline")) { H.offline = true; $("offline").checked = true; }
