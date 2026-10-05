@@ -709,3 +709,10 @@ button.fr:hover { border-color: var(--c-accent); }
 .choice:not(.static):hover{border-color:color-mix(in srgb,var(--c-accent) 55%,var(--c-line))}
 .choice:has(input:checked)::after{content:"Selected";position:absolute;top:8px;right:10px;font-size:11px;font-weight:650;color:var(--c-accent)}
 .pane{padding-bottom:24px}
+.choice:has(input:checked)::after{top:auto;bottom:8px}
+.choice .t{flex-wrap:nowrap;align-items:flex-start}.choice .t b{flex:1 1 0;min-width:0}.choice .t .chip{flex:none}
+.drawing{display:grid;gap:8px}.dr-h{display:flex;align-items:center;gap:10px}.dr-h b{font-size:15px}.drawing p{font-size:13px;color:var(--c-dim)}
+.dr-tiles{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}.dr-tiles i{aspect-ratio:16/9;border-radius:var(--r-sm)}
+.council.fold summary{cursor:pointer;font-weight:650;list-style:none;min-height:28px;display:flex;align-items:center}.council.fold summary::-webkit-details-marker{display:none}
+.council.fold p{font-size:13px;color:var(--c-dim);margin-top:6px}
+.drawing,.council.fold{padding:12px 14px}.council.fold summary::after{content:"\25BE";margin-left:auto;color:var(--c-dim)}.council.fold[open] summary::after{content:"\25B4"}

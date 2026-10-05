@@ -318,7 +318,7 @@
       el.tabs.dataset.key = key;
       el.tabs.style.position = "sticky";
       el.tabs.replaceChildren(...list.map((t) => h("button", { class: "tab", type: "button", role: "tab", id: "tab-" + t.id, "data-tab": t.id, "aria-controls": "content", onclick: () => pickTab(t.id), onkeydown: tabKey },
-        t.label, t.n != null ? h("span", { class: "n", text: String(t.n) }) : null, t.id === cur && !S.readonly ? h("i", { class: "now" + (waiting ? "" : " idle"), role: "img", title: waiting ? "Waiting on you" : "Not waiting on you", "aria-label": waiting ? "Waiting on you" : "Not waiting on you" }) : null)));
+        t.label, t.n != null ? h("span", { class: "n", text: String(t.n), title: t.n + " " + ({ scripts: "scripts", storyboard: "scenes", assets: "assets", draft: "videos" }[t.id] || "items") }) : null, t.id === cur && !S.readonly ? h("i", { class: "now" + (waiting ? "" : " idle"), role: "img", title: waiting ? "Waiting on you" : "Not waiting on you", "aria-label": waiting ? "Waiting on you" : "Not waiting on you" }) : null)));
       for (const b of el.tabs.children) { const t = list.find((x) => x.id === b.dataset.tab); b.title = S.readonly && b.dataset.tab === cur ? "Archived" : t && t.title ? t.title : ""; }
       if (!el.tabs.dataset.fade) { el.tabs.dataset.fade = "1"; fadeX(el.tabs); }
     }
@@ -461,7 +461,7 @@
       const picked = s.picked || (!pickMode && S.sentPicks && S.sentPicks.has(s.id));
       const title = h("div", { class: "t" }, h("span", { class: "id", text: s.id }), h("b", { text: s.title }),
         picked && !pickMode ? h("span", { class: "chip ok" }, ic("check"), "Picked") : null, s.verdict ? h("span", { class: "chip", text: s.verdict }) : null);
-      const body = h("div", { class: "body" }, strip, title, h("div", { class: "logline" }, showMore(s.logline || "", 200, "c2")),
+      const body = h("div", { class: "body" }, strip, title, h("div", { class: "logline" }, showMore(s.logline || "", 200, "c3")),
         beats.length ? h("ol", { class: "beats", "aria-label": all.length > 2 ? "Opening and closing beats" : "Beats" }, beats.map((b) => h("li", { text: b })), all.length > 2 ? h("li", { class: "more-beats", text: all.length + " beats in total" }) : null) : null);
       if (pickMode) {
         const inp = h("input", { type: "checkbox", value: s.id, checked: S.picks.has(s.id), "aria-label": s.id + ": " + s.title, onchange: () => {
@@ -472,7 +472,15 @@
         list.append(h("label", { class: "card choice" }, inp, h("div", { class: "row" }, h("span", { class: "box" }, ic("check")), body)));
       } else list.append(h("div", { class: "card choice static" + (picked ? " picked" : arr(d.scripts).some((o) => o.picked) ? " passed" : "") }, h("div", { class: "row" }, body)));
     }
-    if (d.councils && d.councils.scripts) box.append(h("div", { class: "card council" }, h("b", { text: "What the council said" }), h("p", null, showMore(d.councils.scripts, 260, "c3"))));
+    if (d.councils && d.councils.scripts) {
+      if (pickMode || !arr(d.scripts).some((x) => x.picked)) box.append(h("div", { class: "card council" }, h("b", { text: "What the council said" }), h("p", null, showMore(d.councils.scripts, 260, "c3"))));
+      else box.append(h("details", { class: "card council fold" }, h("summary", { text: "What the council said about the scripts" }), h("p", { text: d.councils.scripts })));
+    }
+    if (!pickMode && d.stage === "storyboard" && !arr(d.boards).length) {
+      box.append(h("div", { class: "card drawing", role: "status" }, h("div", { class: "dr-h" }, h("i", { class: "spin" }), h("b", { text: "Your storyboard is being drawn" })),
+        h("p", { text: "The agent is turning your pick into scenes, each with a start and an end picture. They appear here as soon as they exist, and you approve them before anything else is made." }),
+        h("div", { class: "dr-tiles", "aria-hidden": "true" }, [0, 1, 2, 3, 4].map(() => h("i", { class: "sk" })))));
+    }
     box.append(list);
     const c = STAGE_TAB[d.stage] === "scripts" ? checksLine() : null;
     if (c) box.append(c);
@@ -1024,7 +1032,7 @@
     m.placeholder = { style: "Describe the style you want, or paste a reference link.", approve: "What should change? Name the scene or asset if you can.", confirm: "What needs to happen before drafts?",
       draft: used >= max ? "All " + max + " rounds are used. Say what direction you want instead." : "What should change in the draft?" }[g.kind] || "What should change?";
     m.round = used + 1; m.max = max;
-    m.note = { style: "Choose a style, or describe your own.", approve: g.stale ? (STAGE_LABEL[g.stage] || "This step") + " changed since you approved it." : "Approve to move on, or send changes.", confirm: "",
+    m.note = { style: "Choose a style, or describe your own.", approve: g.stale ? "Look it over, then approve again or send changes." : "Approve to move on, or send changes.", confirm: "",
       draft: used >= max ? "All " + max + " rounds are used." : "Approve it, or send feedback for the next round.", pick: "" }[g.kind] || "";
     if (g.kind === "pick") {
       const n = S.picks.size;
