@@ -1,6 +1,6 @@
 """Dev server for the mod harness (stdlib only):  .venv/bin/python mod-dev/serve.py [--port 8765] [--keep DIR]  then open the printed URL.
 
-  /mods/<...>          repo files under mods/ (mod files under /mods/promo-flow/ carry the daemon's CSP, so a violation shows up here first)
+  /mods/<...>          repo files under mods/
   /api/stages          [{id, title, status, badge}] canned states built by fixtures.py through the real `promo flow snapshot`
   /api/state/<id>      {version, summary, state}: `$file` objects already resolved to `$media` like the daemon does
   /media/<upload_id>   the file, with Range support
@@ -29,8 +29,6 @@ sys.path.insert(0, ROOT)
 import fixtures  # noqa: E402
 from promo import flow  # noqa: E402
 
-CSP = ("default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src blob:; font-src 'self'; "
-       "connect-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'")
 MAX_FILE = {"image": 12 << 20, "audio": 100 << 20, "video": 100 << 20}
 UPLOADS: dict[str, str] = {}
 STAGES: dict[str, dict] = {}
@@ -136,8 +134,6 @@ class H(BaseHTTPRequestHandler):
             return self.send(404, b"not found")
         ctype = {".js": "text/javascript", ".css": "text/css", ".html": "text/html", ".json": "application/json", ".svg": "image/svg+xml"}.get(os.path.splitext(full)[1], mimetypes.guess_type(full)[0] or "application/octet-stream")
         extra = {"X-Content-Type-Options": "nosniff"}
-        if rel.startswith("promo-flow/"):
-            extra["Content-Security-Policy"] = CSP
         return self.send(200, open(full, "rb").read(), ctype + ("; charset=utf-8" if ctype.startswith("text/") else ""), extra)
 
     def media(self, p):

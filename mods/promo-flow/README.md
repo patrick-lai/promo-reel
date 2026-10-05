@@ -1,17 +1,21 @@
 # promo-flow mod
 
-**Host-agnostic by design:** this mod speaks the bridge protocol (v1, `postMessage`) described in the host's own docs (`docs/mods.md` of the host), and `mod-dev/` plays a minimal host for it. CommissionAI was the first host.
+**Host-agnostic by design:** this mod speaks the mod protocol (v2: mounted in the host's page, inside a shadow root) described in the host's own docs (`docs/mods.md` of the host), and `mod-dev/` plays a minimal host for it. CommissionAI was the first host.
 
-The promo flow (`promo flow ...`, see `promo/flow.py`) as a mod: a sandboxed web app that the host shows in its Stage (right pane, about 380 to 900 px wide, full height),
+The promo flow (`promo flow ...`, see `promo/flow.py`) as a mod: a web app that the host mounts into its own page and shows in its Stage (right pane, about 380 to 900 px wide, full height),
 with a short summary card in the chat. The agent publishes state; the person's clicks come back to the agent as `[mod:promo-flow] ...` messages. In CommissionAI the agent publishes with `commissionctl mod publish promo-flow --file F`.
 
     mod.json        manifest: slash command, activation message, actions approve | pick | changes | feedback, agent skill
     index.html      shell (header + stepper, tabs, content, sticky gate bar, lightbox)
-    app.js          bridge protocol v1, rendering, lazy media; icons.js inline SVG icons; style.css
+    app.js          registers window.commissionMods["promo-flow"] = mount({root, post}) -> {receive, unmount}; rendering, lazy media; icons.js inline SVG icons; style.css
     agent/SKILL.md  what the agent learns (publish with `promo flow snapshot`, react to `[mod:promo-flow]`)
 
-No build step, no network, no storage. Classic scripts (not `type=module`: module scripts are fetched with CORS, which an opaque-origin sandboxed frame cannot satisfy without an
-`Access-Control-Allow-Origin` header). The app talks only through `postMessage`: in `init state media result theme`, out `ready media action title open-url`.
+No build step, no network, no storage. Classic scripts, loaded once into the host's window; everything they define lives inside `mount`, so the only globals are `commissionMods`, `PF` and `icon`.
+The app talks only through the bridge: `receive` takes `init state media result theme`, `post` sends `ready media action title open-url`. All DOM access goes through the shadow root (`root.getElementById`, `root.activeElement`),
+the CSS styles `:host`, and every width rule is a container query on the host (an `inline-size` container), because media queries would measure the host's whole window, not the pane.
+
+**Voice input** is the host's, not ours: the note box is marked `data-dictate` and the compose row has `<slot name="dictate">`. CommissionAI renders its own voice button into that slot (Mac app only) and dictates
+straight into the box, which fires `input` like typing. Nothing to do in the mod beyond the marker and the slot.
 Media arrive as Blobs on request, by upload id, only for tiles near the viewport; the app makes and revokes its own object URLs. Only `opacity` and `transform` animate; `reduceMotion` is honoured.
 
 ## State schema (`promo flow snapshot`, `promo.flow.snapshot()`)
@@ -59,6 +63,6 @@ The style step has no flow gate, so the person's choice goes as `changes {stage:
     .venv/bin/python mod-dev/fixtures.py --keep /tmp/pf-fix --dump /tmp/pf-snapshots   # the canned states as JSON files
     .venv/bin/python -m pytest tests/test_flow.py -q
 
-The harness plays the host: sandboxed iframe (`allow-scripts`), mod files served with the daemon's CSP (so a violation shows up here), switch stage, dark/light, pane width (380 / 520 / 900),
+The harness plays the host: mounts the mod into its page in a shadow root like CommissionAI does, puts a stand-in Mic button in the dictate slot, switch stage, dark/light, pane width (380 / 520 / 900),
 offline, readonly, reduce motion, hold state (loading), media failures, a new version arriving mid-edit (with or without the step changing), and the bridge log with the rendered action messages.
 Stages: the ten flow stages plus `starting`, `storyboard-partial`, `assets-error`, `long-content`, `review-maxed`.

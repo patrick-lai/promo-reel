@@ -2,7 +2,7 @@
   "id": "promo-flow",
   "name": "Promo flow",
   "version": "0.1.0",
-  "protocol": 1,
+  "protocol": 2,
   "description": "Plan, storyboard and review a produced video with the person in the loop.",
   "entry": "index.html",
   "surface": "stage",

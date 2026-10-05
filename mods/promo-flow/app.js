@@ -1,7 +1,8 @@
 "use strict";
-/* Promo flow mod: talks to the host only through the postMessage bridge (protocol 1).
+/* Promo flow mod, mounted by the host straight into its page inside a shadow root (protocol 2). It talks to the host only through ctx.post and receive.
    in:  init, state, media, result, theme     out: ready, media, action, title, open-url */
-(() => {
+window.commissionMods = window.commissionMods || {};
+window.commissionMods["promo-flow"] = function mount(ctx) {
   const STAGE_IDS = ["discover", "scripts", "pick", "storyboard", "assets", "keyframes", "confirm", "drafts", "review", "final"];
   const STAGE_LABEL = { discover: "Style & references", scripts: "Scripts", pick: "Pick stories", storyboard: "Storyboard", assets: "Asset plan", keyframes: "Keyframes", confirm: "Final confirmation", drafts: "First drafts", review: "Review rounds", final: "Final" };
   const SHORT = { discover: "Style", scripts: "Scripts", pick: "Pick", storyboard: "Storyboard", assets: "Assets", keyframes: "Keyframes", confirm: "Confirm", drafts: "Drafts", review: "Review", final: "Final" };
@@ -15,8 +16,8 @@
   const MAX_NOTE = 1500, STALL_MS = 45000, BOOT_MS = 8000;
   const BIG_VIDEO = 24 * 1024 * 1024, BIG_AUDIO = 8 * 1024 * 1024, BIG_DRAFT = 60 * 1024 * 1024;
 
-  const $ = (id) => document.getElementById(id);
-  const root = document.documentElement;
+  const $ = (id) => ctx.root.getElementById(id);
+  const root = ctx.root.host;
   const el = { sc: $("scroller"), app: $("app"), stepNo: $("stepNo"), badge: $("badge"), badgeText: $("badgeText"), stageName: $("stageName"), stepsBtn: $("stepsBtn"), stateLine: $("stateLine"),
     stepper: $("stepper"), curLab: $("curLab"), stepsList: $("stepsList"), banners: $("banners"), tabs: $("tabs"), content: $("content"), gate: $("gate"), gateNote: $("gateNote"),
     compose: $("compose"), note: $("note"), noteLabel: $("noteLabel"), noteHint: $("noteHint"), gateErr: $("gateErr"), btn2: $("btnSecondary"), btn1: $("btnPrimary"),
@@ -43,7 +44,7 @@
     return n;
   }
   const ic = (n, c) => window.icon(n, c);
-  const post = (m) => { try { window.parent.postMessage(m, "*"); } catch (_) { /* no host */ } };
+  const post = ctx.post;
   const clip = (s, n) => { s = String(s == null ? "" : s); return s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s; };
   const fmtSize = (b) => (b >= 1048576 ? (b / 1048576).toFixed(b >= 10485760 ? 0 : 1) + " MB" : Math.max(1, Math.round(b / 1024)) + " KB");
   const fmtTime = (s) => { s = Math.max(0, Math.round(s || 0)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
@@ -135,7 +136,6 @@
     })(S.doc);
     for (const id of [...M.cache.keys()]) if (!live.has(id)) revoke(id);
   }
-  window.addEventListener("pagehide", () => { for (const id of [...M.cache.keys()]) revoke(id); });
 
   const ioMap = new WeakMap();
   const io = "IntersectionObserver" in window ? new IntersectionObserver((es) => {
@@ -174,7 +174,7 @@
   function onAccent() {
     try {
       const probe = h("span", { style: "color:" + (getComputedStyle(root).getPropertyValue("--c-accent").trim() || "#b4531f") + ";position:absolute;visibility:hidden" });
-      document.body.append(probe);
+      ctx.root.append(probe);
       const m = getComputedStyle(probe).color.match(/[\d.]+/g) || [180, 83, 31];
       probe.remove();
       const lin = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
@@ -299,7 +299,7 @@
     const key = JSON.stringify(list);
     if (el.banners.dataset.key === key) return;
     el.banners.dataset.key = key;
-    const ae = document.activeElement;
+    const ae = ctx.root.activeElement;
     const fk = ae && el.banners.contains(ae) ? ae.dataset.k : null;
     el.banners.replaceChildren(...list.map((b) => h("div", { class: "banner" + (b.warn ? " warn" : ""), role: b.warn ? "alert" : "status" }, ic(b.icon),
       h("div", { class: "grow" }, b.bold ? h("b", { text: b.bold }) : null, b.text, b.snip ? h("span", { class: "snip", text: b.snip }) : null),
@@ -362,7 +362,7 @@
     if (!force && sig === lastSig) return;
     const keepScroll = sig.split("|")[0] === lastSig.split("|")[0] ? el.sc.scrollTop : 0;
     lastSig = sig;
-    const ae = document.activeElement;
+    const ae = ctx.root.activeElement;
     const fk = ae && el.content.contains(ae) ? ae.dataset.k : null;
     releaseHeavy();
     S.scrollHook = null;
@@ -625,7 +625,7 @@
     return im;
   }
   function jumpScene(story, id) {
-    const t = document.getElementById("scene-" + story + "-" + id);
+    const t = $("scene-" + story + "-" + id);
     if (!t) return;
     if (t.tagName === "DETAILS") t.open = true;
     t.scrollIntoView({ block: "start", behavior: reduced() ? "auto" : "smooth" });
@@ -719,7 +719,7 @@
   const LB = { items: [], i: 0, opener: null, open: false, parts: null };
   const inertTargets = () => [el.sc, el.gate];
   function openLightbox(items, i) {
-    LB.items = items; LB.i = i; LB.opener = document.activeElement; LB.open = true;
+    LB.items = items; LB.i = i; LB.opener = ctx.root.activeElement; LB.open = true;
     const title = h("div", { class: "cap" }), cnt = h("span", { class: "cnt" });
     const prev = h("button", { class: "l nav prev", type: "button", "aria-label": "Previous frame", onclick: () => lbGo(-1) }, ic("left"));
     const next = h("button", { class: "l nav next", type: "button", "aria-label": "Next frame", onclick: () => lbGo(1) }, ic("right"));
@@ -764,11 +764,11 @@
     if (!LB.open) return;
     LB.open = false; el.lb.hidden = true; el.lb.replaceChildren();
     inertTargets().forEach((n) => n.removeAttribute("inert"));
-    if (LB.opener && document.contains(LB.opener)) LB.opener.focus();
+    if (LB.opener && LB.opener.isConnected) LB.opener.focus();
   }
   /* A clip is looked at big and with controls (pause, seek, full screen): the tile is only a poster. Same overlay, focus handling and Esc as the frames. */
   function openPlayer(a, r, sampled) {
-    LB.items = []; LB.i = 0; LB.opener = document.activeElement; LB.open = true; LB.parts = null;
+    LB.items = []; LB.i = 0; LB.opener = ctx.root.activeElement; LB.open = true; LB.parts = null;
     const close = h("button", { class: "l", type: "button", "aria-label": "Close", onclick: closeLightbox }, ic("close"));
     const stage = h("div", { class: "lb-frame" }, h("div", { class: "sk", style: "position:absolute;inset:0;border-radius:6px", "aria-hidden": "true" }));
     const how = scrubPaths(a.how);
@@ -780,7 +780,7 @@
       () => { if (LB.open) stage.replaceChildren(h("span", { text: "Couldn't load this clip." })); });
     close.focus();
   }
-  document.addEventListener("keydown", (e) => {
+  ctx.root.addEventListener("keydown", (e) => {
     if (!LB.open) return;
     if (e.key === "Escape") { e.preventDefault(); closeLightbox(); }
     else if (e.key === "ArrowLeft") { e.preventDefault(); lbGo(-1); }
@@ -788,7 +788,7 @@
     else if (e.key === "Tab") {
       const f = [...el.lb.querySelectorAll("button")].filter((b) => !b.disabled && b.offsetParent !== null);
       if (!f.length) return;
-      const i = f.indexOf(document.activeElement);
+      const i = f.indexOf(ctx.root.activeElement);
       e.preventDefault();
       f[(i + (e.shiftKey ? -1 : 1) + f.length) % f.length].focus();
     }
@@ -1240,9 +1240,7 @@
 
   function startBootTimer() { clearTimeout(S.bootTimer); S.bootTimer = setTimeout(() => { if (!S.booted) { S.noState = true; S.booted = true; el.app.dataset.boot = "ready"; render(true); } }, BOOT_MS); }
 
-  window.addEventListener("message", (e) => {
-    if (e.source !== window.parent) return;
-    const m = e.data;
+  function receive(m) {
     if (!m || typeof m !== "object") return;
     switch (m.type) {
       case "init": setTheme(!!m.dark, m.tokens, !!m.reduceMotion); break;
@@ -1252,7 +1250,12 @@
       case "result": onResult(m); break;
       default: break;
     }
-  });
+  }
+  function unmount() {
+    clearTimeout(S.bootTimer); clearTimeout(S.stallTimer);
+    if (S.sending) clearTimeout(S.sending.timer);
+    for (const id of [...M.cache.keys()]) revoke(id);
+  }
   el.stepsBtn.addEventListener("click", () => { S.stepsOpen = !S.stepsOpen; renderHeader(); });
 
   /* Loading skeleton until the first state; fixed size so nothing jumps. */
@@ -1264,4 +1267,5 @@
   onAccent();
   startBootTimer();
   post({ type: "ready" });
-})();
+  return { receive, unmount };
+};

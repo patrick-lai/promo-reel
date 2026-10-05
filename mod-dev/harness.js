@@ -1,9 +1,10 @@
 "use strict";
-/* Plays a bridge-protocol host for mods/promo-flow: sandbox="allow-scripts" iframe, bridge protocol v1, canned states from serve.py. */
+/* Plays the host for mods/promo-flow: mounts it in this page inside a shadow root (protocol 2), canned states from serve.py. */
 (() => {
   const q = new URLSearchParams(location.search);
   const $ = (id) => document.getElementById(id);
-  const frame = $("frame"), pane = $("pane");
+  const pane = $("pane");
+  let mod = null, shadow = null;
   const MOD = q.get("mod") || "promo-flow";
   const LIGHT = { "--ink": "#1c1a16", "--dim": "#6b665c", "--well": "#f4f2ed", "--raised": "#ffffff", "--accent": "#b4531f", "--line": "#e2ded3", "--radius": "12px", "--font": 'ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif' };
   const DARK = { "--ink": "#ece8df", "--dim": "#9d978a", "--well": "#15130f", "--raised": "#1f1c17", "--accent": "#e58c55", "--line": "#35312a", "--radius": "12px", "--font": LIGHT["--font"] };
@@ -11,7 +12,7 @@
     version: 1, pending: null, stages: [], docs: {}, manifest: null, ready: false };
 
   const log = (t) => { const d = document.createElement("div"); d.textContent = new Date().toTimeString().slice(0, 8) + "  " + t; $("log").prepend(d); if ($("log").children.length > 80) $("log").lastChild.remove(); };
-  const post = (m) => frame.contentWindow && frame.contentWindow.postMessage(m, "*");
+  const post = (m) => mod && mod.receive(m);
 
   const isLive = (id) => H.stages.some((s) => s.id === id && s.live);
   async function stageDoc(id) {
@@ -63,20 +64,50 @@
     } catch (e) { post({ type: "media", id: m.id, blob: null, error: String(e) }); }
   }
 
-  window.addEventListener("message", (e) => {
-    if (e.source !== frame.contentWindow) return;
-    const m = e.data || {};
+  function onModMessage(m) {
     if (m.type === "ready") { H.ready = true; log("ready"); sendInit(); sendState(); }
     else if (m.type === "media") onMedia(m);
     else if (m.type === "action") { log("action request " + m.name + " " + JSON.stringify(m.payload).slice(0, 160)); onAction(m); }
     else if (m.type === "title") log("title: " + m.text + (m.text.length > 40 ? "  (TOO LONG)" : ""));
     else if (m.type === "open-url") log("open-url " + m.url + (/^https:\/\//i.test(m.url) ? "" : "  (REFUSED: not https)"));
     else log("? " + JSON.stringify(m).slice(0, 120));
-  });
+  }
 
-  function load() {
+  /* Stands in for Commission's voice button, slotted into the mod's dictate slot: it writes into the [data-dictate] field the way the host's dictation does. */
+  function fakeMic() {
+    const b = Object.assign(document.createElement("button"), { type: "button", slot: "dictate", textContent: "Mic", title: "Fake dictation (harness)" });
+    b.onclick = () => {
+      const t = shadow.querySelector("[data-dictate]");
+      t.value += (t.value && !/\s$/.test(t.value) ? " " : "") + "make the second scene shorter";
+      t.dispatchEvent(new Event("input", { bubbles: true }));
+      t.focus();
+    };
+    return b;
+  }
+
+  async function load() {
     H.ready = false; H.pending = null;
-    frame.src = "/mods/" + MOD + "/index.html?" + Date.now();
+    if (mod) mod.unmount();
+    mod = null;
+    const base = new URL("/mods/" + MOD + "/", location.href);
+    const doc = new DOMParser().parseFromString(await (await fetch(new URL("index.html", base), { cache: "no-store" })).text(), "text/html");
+    const host = document.createElement("div");
+    host.style.height = "100%";
+    shadow = host.attachShadow({ mode: "open" });
+    for (const l of doc.querySelectorAll('link[rel="stylesheet"]')) shadow.append(Object.assign(document.createElement("link"), { rel: "stylesheet", href: new URL(l.getAttribute("href"), base).href }));
+    const scripts = [...doc.body.querySelectorAll("script[src]")].map((x) => { x.remove(); return new URL(x.getAttribute("src"), base).href; });
+    shadow.append(...doc.body.childNodes);
+    host.append(fakeMic());
+    pane.replaceChildren(host);
+    for (const x of document.head.querySelectorAll("script[data-mod]")) x.remove();
+    for (const src of scripts) {
+      const tag = Object.assign(document.createElement("script"), { src: src + "?" + Date.now() });
+      tag.dataset.mod = MOD;
+      await new Promise((ok, fail) => { tag.onload = ok; tag.onerror = () => fail(new Error("Could not load " + src)); document.head.append(tag); });
+    }
+    // Mod messages are handled after the call returns, as the host does, so "ready" sent during mount finds mod.receive in place.
+    mod = window.commissionMods[MOD]({ root: shadow, post: (m) => queueMicrotask(() => onModMessage(m)) });
+    window.harness.root = shadow;
   }
   function paintControls() {
     $("dark").setAttribute("aria-pressed", H.dark);

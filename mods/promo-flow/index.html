@@ -32,8 +32,11 @@
     <p class="gate-note" id="gateNote" role="status" tabindex="-1"></p>
     <div class="compose" id="compose" hidden>
       <label class="sr" for="note" id="noteLabel">Your note</label>
-      <textarea id="note" rows="4" maxlength="1500"></textarea>
-      <p class="hint" id="noteHint"></p>
+      <textarea id="note" rows="4" maxlength="1500" data-dictate></textarea>
+      <div class="compose-foot">
+        <p class="hint" id="noteHint"></p>
+        <slot name="dictate"></slot>
+      </div>
     </div>
     <p class="gate-err" id="gateErr" role="alert" hidden></p>
     <div class="gate-actions" id="gateActions">

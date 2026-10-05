@@ -117,21 +117,12 @@ class Shooter:
         page = [t for t in tabs if t["type"] == "page"][0]
         self.ws = WS(page["webSocketDebuggerUrl"])
         self.ws.call("Page.enable")
-        self.ws.call("Target.setAutoAttach", autoAttach=True, waitForDebuggerOnStart=False, flatten=True)
 
-    def iframe_session(self):
-        """The sandboxed mod frame lives in its own process (opaque origin), so it arrives as an auto-attached iframe target."""
-        sess = None
-        for e in self.ws.events:
-            m = e.get("method")
-            if m == "Target.attachedToTarget" and e["params"]["targetInfo"]["type"] == "iframe":
-                sess = e["params"]["sessionId"]
-            elif m == "Target.detachedFromTarget" and e["params"]["sessionId"] == sess:
-                sess = None
-        return sess
-
-    def js(self, expr, sess=None):
-        r = self.ws.call("Runtime.evaluate", session=sess, expression=expr, returnByValue=True, awaitPromise=True)
+    def js(self, expr, mod=False):
+        """mod=True runs expr against the mod's shadow root: `document` in it is that root (getElementById and querySelector work the same)."""
+        if mod:
+            expr = f"(function (document) {{ return ({expr}); }})(window.harness.root)"
+        r = self.ws.call("Runtime.evaluate", expression=expr, returnByValue=True, awaitPromise=True)
         if "exceptionDetails" in r:
             raise RuntimeError(r["exceptionDetails"].get("exception", {}).get("description", "js error"))
         return r["result"].get("value")
@@ -139,23 +130,22 @@ class Shooter:
     def open(self, stage, w, h, dark, extra=""):
         self.ws.call("Emulation.setDeviceMetricsOverride", width=w, height=h, deviceScaleFactor=1.5, mobile=False)
         self.ws.events.clear()
+        self.js("window.harness = null")  # so the wait below cannot see the previous page's mod
         self.ws.call("Page.navigate", url=f"{self.base}/dev/harness.html?bare=1&stage={stage}&dark={1 if dark else 0}{extra}")
         t0 = time.time()
-        cid = None
+        mod = False
         while time.time() - t0 < 12:
             self.ws.pump(0.2)
-            cid = self.iframe_session()
-            if cid:
-                try:
-                    if self.js("document.getElementById('app').dataset.boot === 'ready' && !document.querySelector('.content .sk:not(.skbar)') && !document.querySelector('.content [aria-busy]')", cid):
-                        break
-                except RuntimeError:
-                    pass
-            cid = None
-        if not cid:
+            try:
+                if self.js("!!(window.harness && window.harness.root)") and self.js("document.getElementById('app').dataset.boot === 'ready' && !document.querySelector('.content .sk:not(.skbar)') && !document.querySelector('.content [aria-busy]')", True):
+                    mod = True
+                    break
+            except RuntimeError:
+                pass
+        if not mod:
             raise RuntimeError(f"mod did not settle for {stage} {w}")
         time.sleep(0.45)
-        return cid
+        return mod
 
     def shot(self, path):
         r = self.ws.call("Page.captureScreenshot", format="png")
@@ -215,12 +205,12 @@ SCENECHECK = """(async () => {
 def selfcheck(sh, base):
     bad = 0
     for st in ["assets", "keyframes", "confirm", "drafts", "review", "final", "assets-error", "stale-approval", "long-content", "storyboard-partial"]:
-        cid = sh.open(st, 520, 900, False)
-        for r in sh.js(SELFCHECK, cid) or []:
+        mod = sh.open(st, 520, 900, False)
+        for r in sh.js(SELFCHECK, mod) or []:
             ok = r["badge"] == r["total"] == r["sum"] == r["cards"]
             bad += not ok
             print(("ok   " if ok else "FAIL ") + st, r)
-        for r in sh.js(SCENECHECK, cid) or []:
+        for r in sh.js(SCENECHECK, mod) or []:
             bad += not r["ok"]
             if not r["ok"]:
                 print("FAIL scene-status", st, r)
@@ -279,13 +269,13 @@ def main():
                     continue
                 if files and "x-" + name not in files:
                     continue
-                cid = sh.open(stage, w, h, dark, extra)
+                mod = sh.open(stage, w, h, dark, extra)
                 if script:
                     for s in script if isinstance(script, list) else [script]:
                         if s.startswith("TOP:"):
                             sh.js(s[4:])
                         else:
-                            sh.js(s, cid)
+                            sh.js(s, mod)
                         time.sleep(0.5)
                 p = os.path.join(a.out, f"x-{name}.png")
                 sh.shot(p)
@@ -308,15 +298,15 @@ def live(a):
     try:
         for tab in a.tabs.split(","):
             for sc in [int(x) for x in a.scroll.split(",")]:
-                cid = sh.open("live", a.w, a.h, a.dark)
-                sh.js(click("#tab-" + tab), cid)
+                mod = sh.open("live", a.w, a.h, a.dark)
+                sh.js(click("#tab-" + tab), mod)
                 for sel in [x for x in a.click.split("|") if x]:
                     time.sleep(0.5)
-                    sh.js(click(sel), cid)
-                sh.js(scroll(sc), cid)
+                    sh.js(click(sel), mod)
+                sh.js(scroll(sc), mod)
                 for _ in range(40):
                     time.sleep(0.5)
-                    if sh.js(SETTLED, cid):
+                    if sh.js(SETTLED, mod):
                         break
                 time.sleep(0.5)
                 p = os.path.join(a.out, f"live-{tab}-{a.w}{'-s' + str(sc) if sc else ''}.png")
