@@ -21,6 +21,7 @@ sys.path.insert(0, ROOT)
 from PIL import Image, ImageDraw, ImageFont  # noqa: E402
 
 from promo import assetplan as AP  # noqa: E402
+from promo import boardedit as BE  # noqa: E402
 from promo import brief as BR  # noqa: E402
 from promo import flow as F  # noqa: E402
 from promo import share as SH  # noqa: E402
@@ -161,6 +162,31 @@ BEATS = {
 STYLE_REFS = ["https://www.youtube.com/watch?v=Zq1JhZq6q0k"]
 
 
+BANK = ["The room is quiet and the only light is the laptop.", "One sentence is typed, and nothing else is needed.", "The board fills with tickets, each claimed by an agent.",
+        "A progress line moves along the bottom of the screen, and nobody touches it.", "The first pull request opens, with a short note on what it changes and why.", "Checks run in the background and turn green one by one.",
+        "A reviewer comment is answered by the agent, and the thread resolves.", "The window goes dark and the clock moves past midnight.", "At the edge of the blinds the first grey light arrives.",
+        "The merged column grows by one, then another, then six more.", "Nothing here is staged: every number on screen is the number from the real run.", "The person reads the summary and scrolls to the diff."]
+
+
+def long_script_md(title, acts=6, words=9000):
+    """A believable long script (headings, picture / voice / sound lines, a timing table, checklists, a quote), about `words` words."""
+    out = [f"# {title}", "", "> One request at night. By morning the work is merged. Calm, real footage, no hype.", "", "**Length:** 60 s master · **Format:** 16:9 · **Voice:** warm, unhurried", ""]
+    per = words // (acts * 6)
+    n = 0
+    for a in range(acts):
+        out += [f"## Act {a + 1}: " + ["The night", "The request", "The work", "The long dark", "Morning", "Proof"][a % 6], ""]
+        for sc in range(6):
+            n += 1
+            body = " ".join(BANK[(n * 3 + i) % len(BANK)] for i in range(max(2, per // 14)))
+            out += [f"### Scene {n:02d}", "", f"**Picture:** {body}", f"**Voice:** \"{BANK[(n * 5) % len(BANK)]}\"", f"**Sound:** soft room tone, a single key click at {n % 9 + 1} s", ""]
+            if sc == 2:
+                out += ["| Beat | Time | Proof |", "|---|---|---|", f"| Request typed | {n % 9 + 1} s | footage take 02 |", f"| Tickets claimed | {n % 9 + 5} s | footage take 03 |", ""]
+            if sc == 4:
+                out += ["- [x] Evidence checked against the real run", "- [ ] Caption held for 2 s", f"- Timing note: see [the style reference](https://example.com/ref-{n})", ""]
+        out += ["---", ""]
+    return "\n".join(out)
+
+
 def gen_boards(pd, which=("A", "B")):
     for sid, b in (("A", BOARD_A), ("B", BOARD_B)):
         if sid not in which:
@@ -249,7 +275,7 @@ def build(keep=None):
     F.advance(pd)
     for sid, title, logline in SCRIPTS:
         sf = os.path.join(tmp, f"script-{sid}.md")
-        write(sf, f"# {title}\n\n{logline}\n\n" + "\n".join(f"{i + 1}. {b}" for i, b in enumerate(BEATS[sid])) + "\n")
+        write(sf, f"# {title}\n\n{logline}\n\n" + "\n".join(f"{i + 1}. {b}" for i, b in enumerate(BEATS[sid])) + "\n" + ("\n" + long_script_md("Full script: " + title, 4, 5200) if sid == "A" else ""))
         F.add_script(pd, sid, title, logline, sf)
     snap("scripts")
     cf = os.path.join(tmp, "council.md")
@@ -261,6 +287,23 @@ def build(keep=None):
     F.advance(pd)
     gen_boards(pd)
     snap("storyboard")
+    # the agent adds the whole production pack and a very long script on request
+    F.plan_pack(pd)
+    F.doc_put(pd, "full-script-a", title="Full script: Wake up to merged PRs", kind="script", text=long_script_md("Full script: Wake up to merged PRs", 8, 14000), story="A",
+              summary="Every scene with picture, voice and sound. 8 acts.")
+    F.doc_put(pd, "research-notes", kind="research", text="# Research\n\n## What the references do well\n\n- Slow push-ins on real UI, never a mock-up\n- One idea per cut\n\nSee https://www.apple.com/newsroom/ and [Linear's changelog](https://www.linear.app/changelog).\n\nSafe by construction: <img src=x onerror=alert(1)> and [bad](javascript:alert(1)) stay plain text.\n")
+    snap("plan")
+    fd = os.path.join(pd, "flow")
+    bpa = os.path.join(fd, "boards", "A", "board.json")
+    before = open(bpa).read()
+    BE.density(fd, [b for b in F.boards(pd, F.load(pd)) if b[0] == "A"], every=5)
+    dense = json.load(open(bpa))
+    for n, sc_ in enumerate(dense["scenes"]):
+        for k, fr_ in enumerate(sc_.get("frames") or []):
+            if fr_.get("auto") and (n + k) % 3 != 2:
+                frame(os.path.join(fd, "boards", "A", fr_["image"]), int(sc_["id"]), "MID", sc_["beat"], HUES[n % len(HUES)])
+    snap("dense")
+    open(bpa, "w").write(before)                      # the drawn frames stay on disk: the snapshot above serves them
     frames = [os.path.join(pd, "flow", "boards", "A", "frames", f"{x}-end.png") for x in ("02", "05", "07")] + [os.path.join(pd, "flow", "boards", "B", "frames", "13-start.png")]
     for fp in frames:
         os.rename(fp, fp + ".bak")
@@ -345,7 +388,7 @@ def build(keep=None):
     uploaded(pd, "final", 1, "artifacts")
     snap("final")
     order = ["discover", "scripts", "pick", "storyboard", "assets", "keyframes", "confirm", "drafts", "review", "final",
-             "storyboard-partial", "assets-error", "stale-approval", "long-content", "review-maxed"]
+             "storyboard-partial", "plan", "dense", "assets-error", "stale-approval", "long-content", "review-maxed"]
     res = {k: out[k] for k in order}
     res["starting"] = {}
     return res, tmp

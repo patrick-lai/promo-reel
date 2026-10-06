@@ -224,8 +224,112 @@ def selfcheck(sh, base):
     return bad
 
 
+UICHECK = r"""(async () => {
+  const root = window.harness.root, wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const Q = (x) => root.querySelector(x), QA = (x) => [...root.querySelectorAll(x)];
+  const click = async (x) => { const e = Q(x); if (!e) throw new Error('no ' + x); e.click(); await wait(350); };
+  const until = async (f, ms = 6000) => { const t = Date.now(); while (Date.now() - t < ms) { if (f()) return true; await wait(80); } return false; };
+  const out = [], ok = (name, pass, info) => out.push({ name, pass: !!pass, info: info === undefined ? '' : String(info) });
+  const log = () => window.document.getElementById('log').innerText;
+  const step = window.harness.H.stage;
+  if (step === 'plan') {
+    await click('#tab-plan');
+    const cards = QA('.doc-card').length, chip = +Q('[data-k=g-all] .n').textContent;
+    ok('plan lists every script and document', cards === chip && cards === 20, cards + ' cards, chip ' + chip);
+    ok('tab badge counts the documents', +Q('.tab[data-tab=plan] .n').textContent === 17);
+    await click('[data-k=g-Script]');
+    ok('group filter narrows the list', QA('.doc-card').length === 6, QA('.doc-card').length);
+    await click('[data-k=g-all]');
+    await click('[data-k="open-doc:full-script-a"]');
+    ok('reader loads a 12 000 word script', await until(() => Q('.doc-page .md-h')));
+    const n = +(Q('.pg-l').textContent.match(/of (\d+)/) || [0, 0])[1];
+    ok('it is paginated', n >= 12, n + ' pages');
+    ok('page 1 shows its first heading', /Full script/.test(Q('.doc-page').textContent));
+    await click('[data-k=pg-next-bot]');
+    ok('next page', /Page 2 of/.test(Q('.pg-l').textContent), Q('.pg-l').textContent);
+    ok('focus moves to the page', root.activeElement === Q('.doc-page'));
+    const toc = Q('[data-k=rd-toc]');
+    toc.selectedIndex = toc.options.length - 1; toc.dispatchEvent(new Event('change')); await wait(300);
+    const want = +toc.options[toc.options.length - 1].textContent.match(/p\.(\d+)$/)[1];
+    ok('contents jumps to the chosen heading', new RegExp('Page ' + want + ' of ' + n).test(Q('.pg-l').textContent) && Q('[data-k=pg-prev-top]').disabled === false, Q('.pg-l').textContent + ' want p.' + want);
+    await click('[data-k=pg-next-bot]'); await click('[data-k=pg-next-bot]'); await click('[data-k=pg-next-bot]');
+    ok('the last page has no Next', Q('[data-k=pg-next-top]').disabled && Q('[data-k=pg-next-bot]').disabled && new RegExp('Page ' + n + ' of ' + n).test(Q('.pg-l').textContent), Q('.pg-l').textContent);
+    const f = Q('[data-k=rd-find]'); f.value = 'blinds'; f.dispatchEvent(new Event('input')); await wait(500);
+    ok('find counts matches over every page', /\d+ matches on \d+ pages/.test(Q('.rd-found').textContent), Q('.rd-found').textContent);
+    ok('the match is highlighted', QA('.doc-page mark').length >= 1);
+    await click('[aria-label="Next match"]');
+    ok('next match moves between pages', QA('.doc-page mark').length >= 1);
+    f.value = 'Picture'; f.dispatchEvent(new Event('input')); await wait(500);
+    const marks = () => QA('.doc-page mark'), curIdx = () => marks().findIndex((m) => m.classList.contains('cur'));
+    const pg0 = Q('.pg-l').textContent, i0 = curIdx();
+    ok('find marks the current match', marks().length > 2 && i0 >= 0, marks().length + ' marks, cur ' + i0);
+    await click('[aria-label="Next match"]');
+    ok('next steps to the next match on the same page', Q('.pg-l').textContent === pg0 && curIdx() === i0 + 1, pg0 + ' -> ' + Q('.pg-l').textContent + ' cur ' + curIdx());
+    await click('[aria-label="Previous match"]');
+    ok('previous steps back', curIdx() === i0, curIdx());
+    f.value = 'blinds'; f.dispatchEvent(new Event('input')); await wait(400);
+    f.value = 'zzzzqq'; f.dispatchEvent(new Event('input')); await wait(400);
+    ok('no match is said plainly', /No match/.test(Q('.rd-found').textContent));
+    await click('[data-k=pg-next-bot]'); await click('[data-k=pg-next-bot]');
+    const here = Q('.pg-l').textContent, y0 = document.getElementById('scroller').scrollTop = 5000;
+    await wait(100);
+    const y1 = document.getElementById('scroller').scrollTop;
+    window.harness.setStage('dense'); await wait(900);
+    ok('a step change keeps the reader on its page and place', Q('.reader') && Q('.pg-l').textContent === here && document.getElementById('scroller').scrollTop > 0.5 * y1, Q('.pg-l') && Q('.pg-l').textContent + ' vs ' + here + ' y ' + document.getElementById('scroller').scrollTop + ' vs ' + y1);
+    window.harness.setStage('plan'); await wait(900);
+    await click('[data-k=rd-back]');
+    ok('back returns to the list with focus on the document', !!Q('.doc-card') && (root.activeElement || {}).dataset && root.activeElement.dataset.k === 'open-doc:full-script-a', (root.activeElement || {}).tagName);
+    await click('[data-k="open-doc:research-notes"]');
+    await until(() => Q('.doc-page'));
+    ok('markup is text, never HTML', !Q('.doc-page img') && /onerror/.test(Q('.doc-page').textContent) && !QA('.doc-page a').length);
+    ok('https links go through the host', QA('.doc-page .lnk').length >= 2 && !QA('.doc-page .lnk').some((b) => /^javascript/i.test(b.title)));
+    QA('.doc-page .lnk')[0].click(); await wait(200);
+    ok('link opens through open-url', /open-url https:\/\/www\.apple\.com/.test(log()));
+    await click('[data-k=rd-back]');
+    await click('[data-k="open-doc:capture-a"]'); await until(() => Q('.doc-page'));
+    ok('checklists render as checkboxes', QA('.doc-page .md-box').length >= 2);
+    await click('[data-k=rd-back]');
+    await click('[data-k="open-doc:shotlist-a"]'); await until(() => Q('.doc-page'));
+    ok('tables render with a scroll region', !!Q('.doc-page .md-tbl table') && QA('.doc-page th').length >= 8);
+    await click('[data-k=rd-back]');
+    await click('[data-k="q-Shot list"]');
+    ok('a request opens the note box prefilled', !Q('#compose').hidden && /shot list/i.test(Q('#note').value) && Q('#btnPrimary').textContent === 'Send request', Q('#btnPrimary').textContent);
+    Q('#note').value = 'Add a shot list for story B too, every shot numbered.'; Q('#note').dispatchEvent(new Event('input')); await wait(100);
+    await click('#btnPrimary');
+    await wait(500);
+    ok('the request reaches the agent', /action request -> \[mod:promo-flow\] Sam asked you to add to the plan \(looking at the Plan tab\): Add a shot list for story B/.test(log()), log().slice(0, 400));
+  }
+  if (step === 'dense') {
+    await click('[data-k=sbv-time]');
+    const figs = QA('.tl-fig').length, badge = +Q('[data-k=sbv-time] .n').textContent;
+    ok('frames in time shows every frame', figs === badge && figs === 28, figs + ' vs ' + badge);
+    const times = QA('.tl-fig .lbl').map((e) => e.textContent);
+    ok('they are in time order', times[0] === '0:00' && times.indexOf('0:05') > 0, times.slice(0, 6).join(' '));
+    await click('[data-k=sbv-scenes]');
+    ok('scenes view still there', QA('.scene').length === 8);
+    ok('dense scene shows a film strip', !!Q('.frames.film') && QA('.frames.film .fr').length >= 3);
+    ok('current cadence is pressed', Q('[data-k=dens-5]').getAttribute('aria-pressed') === 'true');
+    await click('[data-k=dens-2]');
+    await wait(500);
+    ok('a new cadence is a message to the agent', /action density -> \[mod:promo-flow\] Sam wants storyboard frames every 2 seconds for story A\. Run: promo flow density --story A --every 2/.test(log()), log().slice(0, 300));
+  }
+  return out;
+})()"""
+
+
+def uicheck(sh):
+    bad = 0
+    for st in ["plan", "dense"]:
+        mod = sh.open(st, 520, 1000, False)
+        for r in sh.js(UICHECK, mod) or []:
+            bad += not r["pass"]
+            print(("ok   " if r["pass"] else "FAIL ") + f"{st}: {r['name']}" + (f"  [{r['info']}]" if r["info"] and not r["pass"] else ""))
+    return bad
+
+
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--check", action="store_true", help="run the interaction checks (plan reader, requests, density) and exit non-zero on a failure")
     ap.add_argument("--out", default="/tmp/promo-flow-shots/v1")
     ap.add_argument("--only", default="")
     ap.add_argument("--no-extras", action="store_true")
@@ -248,6 +352,14 @@ def main():
     srv, _, base = serve.start(0)
     sh = Shooter(base)
     made = []
+    if a.check:
+        try:
+            bad = uicheck(sh)
+        finally:
+            sh.close()
+            srv.shutdown()
+        print("interaction check failures:", bad)
+        return 1 if bad else 0
     try:
         if os.environ.get("SELFCHECK", "1") == "1":
             print("count self-check failures:", selfcheck(sh, base))
@@ -324,6 +436,10 @@ def click(sel):
     return f"({CLICK})({json.dumps(sel)})"
 
 
+def typein(sel, text):
+    return f"(() => {{ const e = document.querySelector({json.dumps(sel)}); if (!e) throw new Error('no {sel}'); e.value = {json.dumps(text)}; e.dispatchEvent(new Event('input', {{ bubbles: true }})); }})()"
+
+
 def scroll(px):
     return f"document.getElementById('scroller').scrollTop = {px}"
 
@@ -364,8 +480,26 @@ EXTRAS = [
     ("assets-filter-todo-520", "keyframes", 520, 900, False, "", [click("#tab-assets"), click(".counter button:nth-of-type(3)")]),
     ("picks-cleared-380", "pick", 380, 780, True, "", ["document.querySelector('.choice input').click()", "TOP:window.harness.setStage('storyboard')"]),
     ("steps-open-380", "storyboard", 380, 780, False, "", [click("#stepsBtn")]),
+    ("plan-520", "plan", 520, 900, False, "", [click("#tab-plan")]),
+    ("plan-380-dark", "plan", 380, 780, True, "", [click("#tab-plan")]),
+    ("plan-900", "plan", 900, 900, False, "", [click("#tab-plan")]),
+    ("plan-empty-520", "scripts", 520, 900, True, "", [click("#tab-plan")]),
+    ("plan-scrolled-520", "plan", 520, 900, True, "", [click("#tab-plan"), scroll(900)]),
+    ("reader-520", "plan", 520, 900, False, "", [click("#tab-plan"), click('[data-k="open-doc:full-script-a"]')]),
+    ("reader-380-dark", "plan", 380, 780, True, "", [click("#tab-plan"), click('[data-k="open-doc:full-script-a"]'), click('[data-k="pg-next-top"]')]),
+    ("reader-table-520", "plan", 520, 900, True, "", [click("#tab-plan"), click('[data-k="open-doc:shotlist-a"]')]),
+    ("reader-find-900", "plan", 900, 900, False, "", [click("#tab-plan"), click('[data-k="open-doc:full-script-a"]'), typein('[data-k="rd-find"]', "blinds")]),
+    ("reader-checklist-520", "plan", 520, 900, False, "", [click("#tab-plan"), click('[data-k="open-doc:capture-a"]')]),
+    ("request-520", "plan", 520, 900, False, "", [click("#tab-plan"), click('[data-k="q-Shot list"]')]),
+    ("request-380-dark", "plan", 380, 780, True, "", [click("#tab-plan"), click('[data-k="q-Everything for production"]')]),
+    ("script-read-520", "pick", 520, 900, False, "", []),
+    ("script-reader-520", "scripts", 520, 900, True, "", [click('[data-k="open-script:A"]')]),
+    ("dense-520", "dense", 520, 1100, False, "", []),
+    ("dense-time-520", "dense", 520, 1100, False, "", [click('[data-k="sbv-time"]')]),
+    ("dense-time-900", "dense", 900, 1000, True, "", [click('[data-k="sbv-time"]')]),
+    ("dense-scene-380", "dense", 380, 900, True, "", [scroll(780)]),
     ("scripts-after-pick-520", "storyboard", 520, 900, False, "", [click("#tab-scripts")]),
 ]
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main() or 0)

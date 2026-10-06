@@ -8,7 +8,11 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   const SHORT = { discover: "Style", scripts: "Scripts", pick: "Pick", storyboard: "Storyboard", assets: "Assets", keyframes: "Keyframes", confirm: "Confirm", drafts: "Drafts", review: "Review", final: "Final" };
   const STAGE_TAB = { scripts: "scripts", pick: "scripts", storyboard: "storyboard", assets: "assets", keyframes: "storyboard", confirm: "storyboard", drafts: "draft", review: "draft", final: "draft" };
   const BADGE_TEXT = { working: "With the agent", waiting: "Your turn", done: "Done", attention: "Needs attention" };
-  const ACTION_WORD = { approve: "your approval", pick: "your picks", changes: "your changes", feedback: "your feedback", generate: "your request", share: "your upload request" };
+  const ACTION_WORD = { approve: "your approval", pick: "your picks", changes: "your changes", feedback: "your feedback", generate: "your request", request: "your request", density: "your request", share: "your upload request" };
+  const KIND_ICON = { script: "doc", treatment: "spark", shotlist: "table", direction: "film", edit: "cut", audio: "music", capture: "camera", schedule: "clock", deliverables: "download", risks: "shield", research: "link", review: "refresh", notes: "doc" };
+  const QUICK = [["Full script", "Write the full script as a document I can read: voice-over, on-screen text and action for every scene."], ["Shot list", "Add a shot list: one row per shot with time, picture, camera, caption, voice and proof."],
+    ["Edit plan", "Add an edit plan: the cut list on the timeline with transitions, rhythm and what holds still."], ["Audio plan", "Add an audio plan: voice lines, music cues, sound effects and mix targets."],
+    ["Capture checklist", "Add a capture checklist: every recording and screenshot to make, how, and in what state."], ["Everything for production", "Build the whole production pack: treatment, director's notes, shot list, edit plan, audio plan, capture checklist, claims and risks, deliverables and schedule."]];
   const VERDICT = { yes: ["Intent matched", "ok"], partial: ["Partly matched", "warn"], no: ["Missed the intent", "bad"] };
   const KIND_LABEL = { screenshot: "Screenshot", image: "Image", recording: "Recording", video: "Video", music: "Music", voice: "Voice", sfx: "Sound effect" };
   const KIND_MEDIA = { screenshot: "image", image: "image", recording: "video", video: "video", music: "audio", voice: "audio", sfx: "audio" };
@@ -26,7 +30,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   const S = {
     booted: false, version: null, summary: {}, doc: {}, pending: null, offline: false, readonly: false,
     tab: null, userTab: false, stage: null, picks: new Set(), style: null, ownStyle: "", boardIdx: 0, draftSel: null, earlier: false, filter: null, checksOpen: false,
-    seen: new Set(), ref: "", compose: false, sending: null, justSent: null, stall: false, err: "", stale: null, stash: null, updated: false, stepsOpen: false, lastAction: null, title: "", lastBadge: "", noState: false,
+    seen: new Set(), ref: "", compose: false, composeKind: null, reader: null, sbView: "scenes", docGroup: null, docQ: "", docBase: null, docOpened: new Set(), reqHint: "", sending: null, justSent: null, stall: false, err: "", stale: null, stash: null, updated: false, stepsOpen: false, lastAction: null, title: "", lastBadge: "", noState: false,
   };
 
   /* ---------------- tiny DOM helper ---------------- */
@@ -109,12 +113,32 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     M.cache.set(r.upload_id, entry);
     return entry.p;
   }
+  /* A document travels as a file like any other media: its text is read from the blob here, never put in the state (a long script would not fit). */
+  const T = { cache: new Map() };
+  const blobText = (b) => (b.text ? b.text() : new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result)); fr.onerror = () => rej(fr.error); fr.readAsText(b); }));
+  function getText(r) {
+    const hit = T.cache.get(r.upload_id);
+    if (hit) return hit.p;
+    const entry = { pages: null };
+    entry.p = new Promise((resolve, reject) => {
+      const id = "m" + ++M.seq;
+      M.queue.push(() => {
+        const timer = setTimeout(() => { M.waiting.delete(id); reject(new Error("The host did not answer in time.")); pumpMedia(); }, 30000);
+        M.waiting.set(id, { resolve, reject, timer, r, text: true });
+        post({ type: "media", id, upload_id: r.upload_id });
+      });
+      pumpMedia();
+    }).then((txt) => { entry.pages = PF.paginate(txt); entry.words = PF.wordsOf(txt); return entry; }, (e) => { T.cache.delete(r.upload_id); throw e; });
+    T.cache.set(r.upload_id, entry);
+    return entry.p;
+  }
   function onMediaReply(m) {
     const w = M.waiting.get(m.id);
     if (!w) return;
     M.waiting.delete(m.id);
     clearTimeout(w.timer);
     pumpMedia();
+    if (m.blob && w.text) { blobText(m.blob).then(w.resolve, w.reject); return; }
     if (m.blob) {
       let b = m.blob;
       if (!b.type && w.r.mime) b = new Blob([b], { type: w.r.mime });
@@ -135,6 +159,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       else if (x && typeof x === "object") { if (x.$media && x.$media.upload_id) live.add(x.$media.upload_id); else Object.values(x).forEach(walk); }
     })(S.doc);
     for (const id of [...M.cache.keys()]) if (!live.has(id)) revoke(id);
+    for (const id of [...T.cache.keys()]) if (!live.has(id)) T.cache.delete(id);
   }
 
   const ioMap = new WeakMap();
@@ -215,6 +240,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     if (arr(d.scripts).length) t.push({ id: "scripts", label: "Scripts", n: d.scripts.length });
     if (b) t.push({ id: "storyboard", label: "Storyboard", n: arr(b.scenes).length });
     if (arr(d.assets).length) { const m = model(); t.push({ id: "assets", label: "Assets", n: m.total, title: "Assets: " + m.total + " rows for this story (" + m.n.ready + " ready, " + m.n.mock + " mock, " + m.n.todo + " to make" + (m.n.missing ? ", " + m.n.missing + " missing" : "") + ")" }); }
+    if (arr(d.docs).length || (arr(d.scripts).length && stageIdx() >= STAGE_IDS.indexOf("scripts"))) t.push({ id: "plan", label: "Plan", n: arr(d.docs).length || null, title: "Plan: full scripts and production documents. Ask the agent to add more." });
     if (arr(d.drafts).length || arr(d.finals).length || arr(d.rounds).length || stageIdx() >= STAGE_IDS.indexOf("drafts")) t.push({ id: "draft", label: "Drafts", n: arr(d.drafts).length + arr(d.finals).length || null });
     return t;
   }
@@ -300,7 +326,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       for (let i = shown.length; i < Math.min(DOTS, 24); i++) dots.push(h("i", { class: "dt empty", "aria-hidden": "true" }));
       const kinds = [...new Set(shown.map((x) => x.kind))].filter((k) => ACT_KIND[k]);
       const feed = act.filter((x) => x.kind !== "milestone").slice(-3).reverse();
-      el.working.replaceChildren(
+      el.working.replaceChildren(...[
         h("div", { class: "wk-head" }, h("i", { class: "wk-pulse", "aria-hidden": "true" }),
           h("div", { class: "wk-main" },
             h("div", { class: "wk-now", text: last ? last.text : "Starting to work on this step" }),
@@ -308,7 +334,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
         act.length ? h("div", { class: "wk-map", role: "img", "aria-label": act.length + " steps so far. Hover a dot for what it was." }, dots) : null,
         kinds.length ? h("div", { class: "wk-legend" }, kinds.map((k) => h("span", null, h("i", { class: "dt k-" + k + " done" }), ACT_KIND[k]))) : null,
         feed.length > 1 ? h("ul", { class: "wk-feed" }, feed.map((x) => h("li", null, h("span", { class: "t", text: clock(x.at) }), h("span", { text: x.text })))) : null,
-        h("p", { class: "wk-note", id: "wkNote" }));
+        h("p", { class: "wk-note", id: "wkNote" })].filter(Boolean));       // replaceChildren turns a null into the text "null"
     }
     const tick = () => {
       const act = arr(S.doc.activity).filter((x) => x && x.at);
@@ -373,7 +399,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       el.tabs.dataset.key = key;
       el.tabs.style.position = "sticky";
       el.tabs.replaceChildren(...list.map((t) => h("button", { class: "tab", type: "button", role: "tab", id: "tab-" + t.id, "data-tab": t.id, "aria-controls": "content", onclick: () => pickTab(t.id), onkeydown: tabKey },
-        t.label, t.n != null ? h("span", { class: "n", text: String(t.n), title: t.n + " " + ({ scripts: "scripts", storyboard: "scenes", assets: "assets", draft: "videos" }[t.id] || "items") }) : null, t.id === cur && !S.readonly ? h("i", { class: "now" + (waiting ? "" : " idle"), role: "img", title: waiting ? "Waiting on you" : "Not waiting on you", "aria-label": waiting ? "Waiting on you" : "Not waiting on you" }) : null)));
+        t.label, t.n != null ? h("span", { class: "n", text: String(t.n), title: t.n + " " + ({ scripts: "scripts", storyboard: "scenes", assets: "assets", draft: "videos", plan: "documents" }[t.id] || "items") }) : null, t.id === cur && !S.readonly ? h("i", { class: "now" + (waiting ? "" : " idle"), role: "img", title: waiting ? "Waiting on you" : "Not waiting on you", "aria-label": waiting ? "Waiting on you" : "Not waiting on you" }) : null)));
       for (const b of el.tabs.children) { const t = list.find((x) => x.id === b.dataset.tab); b.title = S.readonly && b.dataset.tab === cur ? "Archived" : t && t.title ? t.title : ""; }
       if (!el.tabs.dataset.fade) { el.tabs.dataset.fade = "1"; fadeX(el.tabs); }
     }
@@ -394,26 +420,30 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     pickTab(bs[j].dataset.tab);
     bs[j].focus();
   }
-  function pickTab(id) { if (S.tab === id) return; S.tab = id; S.userTab = true; S.updated = false; render(); el.sc.scrollTop = 0; }
+  function pickTab(id) { if (S.tab === id && !S.reader) return; S.reader = null; S.tab = id; S.userTab = true; S.updated = false; render(); el.sc.scrollTop = 0; }
 
   /* ---------------- content ---------------- */
   let lastSig = "", tick = 0;
   function sliceFor(tab, withChecks) {
     const d = S.doc;
     const common = withChecks ? [d.stage, d.checks, d.gate && d.gate.kind, d.gate && d.gate.picks_max, d.stale_steps, d.stage_since] : [d.stage];
+    if (S.reader) { const it = findReadable(S.reader.key); return [it && [it.title, it.words, it.body, it.updated]]; }
     if (tab === "scripts") return [d.scripts, d.intent, common];
     if (tab === "storyboard") return [d.boards, d.stage === "confirm" ? d.assets.map((a) => [a.kind, a.source, a.scenes]) : 0, d.stage === "keyframes" ? d.to_make : 0, common];
     if (tab === "assets") return [d.assets, d.to_make, d.boards, common];
     if (tab === "draft") return [d.drafts, d.finals, d.rounds, d.rounds_used, d.rounds_max, d.share, common];
+    if (tab === "plan") return [d.docs, d.scripts, d.boards && d.boards.map((b) => b.id), common];
     return [d.intent, d.style, common];
   }
   function renderContent(list, force) {
     let sig;
+    if (S.reader && !findReadable(S.reader.key)) S.reader = null;
     if (S.noState && !hasDoc()) sig = "noconn";
     else if (!readable()) sig = "bad";
     else if (isStarting()) sig = "start";
     else if (!list.length) sig = "overview|" + JSON.stringify([sliceFor(null, true), gate(), S.style, S.readonly, !!S.pending]);
-    else sig = S.tab + "|" + JSON.stringify(sliceFor(S.tab, true)) + "|" + [...S.picks].join() + "|" + S.style + S.boardIdx + S.draftSel + S.earlier + S.filter + S.readonly + !!S.pending + !!S.justSent;
+    else if (S.reader) sig = "reader|" + S.reader.key + "|" + JSON.stringify(sliceFor(S.tab, false)) + S.readonly;
+    else sig = S.tab + "|" + JSON.stringify(sliceFor(S.tab, true)) + "|" + [...S.picks].join() + "|" + S.style + S.boardIdx + S.draftSel + S.earlier + S.filter + S.readonly + !!S.pending + !!S.justSent + !!S.sending + S.sbView + S.docGroup + S.docQ + (S.compose ? S.composeKind : "");
     if (!force && sig === lastSig) return;
     const keepScroll = sig.split("|")[0] === lastSig.split("|")[0] ? el.sc.scrollTop : 0;
     lastSig = sig;
@@ -426,7 +456,8 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     else if (!readable()) view = viewBad();
     else if (isStarting()) view = viewStarting();
     else if (!list.length) view = viewOverview();
-    else view = ({ scripts: viewScripts, storyboard: viewStoryboard, assets: viewAssets, draft: viewDraft }[S.tab] || viewOverview)();
+    else if (S.reader) view = viewReader();
+    else view = ({ scripts: viewScripts, storyboard: viewStoryboard, assets: viewAssets, draft: viewDraft, plan: viewPlan }[S.tab] || viewOverview)();
     el.content.replaceChildren(view);
     el.sc.scrollTop = keepScroll;
     el.content.setAttribute("aria-labelledby", S.tab ? "tab-" + S.tab : "");
@@ -516,8 +547,10 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       const picked = s.picked || (!pickMode && S.sentPicks && S.sentPicks.has(s.id));
       const title = h("div", { class: "t" }, h("span", { class: "id", text: s.id }), h("b", { text: s.title }),
         picked && !pickMode ? h("span", { class: "chip ok" }, ic("check"), "Picked") : null, s.verdict ? h("span", { class: "chip", text: s.verdict }) : null);
+      const sr = mref(s.body);
+      const read = sr && !sr.error ? h("button", { type: "button", class: "btn ghost sm read-btn", "data-k": "open-script:" + s.id, onclick: (e) => { e.preventDefault(); e.stopPropagation(); openReader("script:" + s.id); } }, ic("doc"), "Read the full script" + (s.words ? " \u00b7 " + wordsLabel(s.words) : "")) : null;
       const body = h("div", { class: "body" }, strip, title, h("div", { class: "logline" }, showMore(s.logline || "", 200, "c3")),
-        beats.length ? h("ol", { class: "beats", "aria-label": all.length > 2 ? "Opening and closing beats" : "Beats" }, beats.map((b) => h("li", { text: b })), all.length > 2 ? h("li", { class: "more-beats", text: all.length + " beats in total" }) : null) : null);
+        read, beats.length ? h("ol", { class: "beats", "aria-label": all.length > 2 ? "Opening and closing beats" : "Beats" }, beats.map((b) => h("li", { text: b })), all.length > 2 ? h("li", { class: "more-beats", text: all.length + " beats in total" }) : null) : null);
       if (pickMode) {
         const inp = h("input", { type: "checkbox", value: s.id, checked: S.picks.has(s.id), "aria-label": s.id + ": " + s.title, onchange: () => {
           if (inp.checked) S.picks.add(s.id); else S.picks.delete(s.id);
@@ -540,6 +573,209 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     const c = STAGE_TAB[d.stage] === "scripts" ? checksLine() : null;
     if (c) box.append(c);
     return h("div", { class: "pane" }, box);
+  }
+
+  /* ----- plan: scripts and production documents, read page by page ----- */
+  /* Everything readable in one list: the scripts the agent wrote and the planning documents it added. The text is a file, never part of the state. */
+  function readables() {
+    const d = S.doc, out = [];
+    for (const s of arr(d.scripts)) out.push({ src: "script", key: "script:" + s.id, id: s.id, title: s.title, kind: "script", kind_label: "Script · story " + s.id, group: "Script", words: s.words || 0, preview: s.logline, headings: arr(s.headings), body: s.body, story: s.id, picked: !!s.picked, updated: null });
+    for (const x of arr(d.docs)) out.push({ ...x, src: "doc", key: "doc:" + x.id });
+    return out;
+  }
+  const findReadable = (key) => readables().find((x) => x.key === key) || null;
+  const GROUP_ORDER = ["Script", "Direction", "Edit", "Audio", "Capture", "Delivery", "Notes"];
+  function openReader(key, page) {
+    S.docOpened.add(key);
+    S.reader = { key, page: page || 0, q: "", mi: null, from: S.tab, fresh: true, built: false };
+    render(true);
+    el.sc.scrollTop = 0;
+  }
+  function closeReader() {
+    const from = S.reader && S.reader.from, key = S.reader && S.reader.key;
+    S.reader = null;
+    if (from && tabList().some((t) => t.id === from)) { S.tab = from; S.userTab = true; }
+    render(true);
+    const back = key && el.content.querySelector('[data-k="open-' + key + '"]');
+    if (back) back.focus({ preventScroll: false });
+  }
+  const minutes = (w) => "~" + PF.readMinutes(w) + " min read";
+  const wordsLabel = (w) => w.toLocaleString("en-US") + " words";
+
+  function viewPlan() {
+    const d = S.doc, all = readables();
+    const box = h("div", { class: "stack" });
+    const blocked = !canAsk();
+    const quick = h("div", { class: "ask-row", role: "group", "aria-label": "Ask the agent to add something" },
+      QUICK.map(([label, text]) => h("button", { type: "button", class: "qchip", disabled: blocked, "data-k": "q-" + label, onclick: () => openRequest(text, "What should the agent add? Edit the request if you like.") }, ic("plus"), label)));
+    box.append(h("section", { class: "card ask-card", "aria-label": "Ask the agent" },
+      h("div", { class: "ask-h" }, ic("spark"), h("b", { text: "Ask the agent for anything the production needs" })),
+      h("p", { class: "ask-p", text: "Scripts of any length, shot lists, edit and audio plans, checklists. It adds them here, and you read them page by page." }),
+      quick,
+      h("button", { type: "button", class: "btn ghost sm", disabled: blocked, "data-k": "q-other", text: "Ask for something else", onclick: () => openRequest("", "Say what you want the agent to add to the plan.") })));
+    if (!all.length) {
+      box.append(h("div", { class: "empty card" }, h("div", { class: "ring" }, ic("doc")), h("h2", { text: "Nothing here yet" }), h("p", { text: "Pick one of the requests above, or say what you need. Full scripts and plans show up in this tab as soon as the agent writes them." })));
+      return h("div", { class: "pane" }, box);
+    }
+    const groups = GROUP_ORDER.filter((g) => all.some((x) => x.group === g));
+    if (S.docGroup && !groups.includes(S.docGroup)) S.docGroup = null;
+    const q = S.docQ.trim().toLowerCase();
+    if (groups.length > 1 || all.length > 6) {
+      const bar = h("div", { class: "doc-tools" });
+      if (groups.length > 1) bar.append(h("div", { class: "seg-ctl wrap", role: "group", "aria-label": "Show" }, [null, ...groups].map((g) => h("button", { type: "button", "data-k": "g-" + (g || "all"), "aria-pressed": String(S.docGroup === g), onclick: () => { S.docGroup = g; render(true); } }, g || "All", h("span", { class: "n", text: String(g ? all.filter((x) => x.group === g).length : all.length) })))));
+      if (all.length > 6) bar.append(h("input", { type: "search", class: "doc-find", "aria-label": "Search the documents", placeholder: "Search titles and summaries", value: S.docQ, "data-k": "doc-q", oninput: (e) => { S.docQ = e.target.value; clearTimeout(S.dq); S.dq = setTimeout(() => render(true), 160); } }));
+      box.append(bar);
+    }
+    const shown = all.filter((x) => (!S.docGroup || x.group === S.docGroup) && (!q || ((x.title || "") + " " + (x.summary || "") + " " + (x.preview || "") + " " + (x.kind_label || "")).toLowerCase().includes(q)));
+    if (!shown.length) box.append(h("p", { class: "muted", role: "status", text: "No document matches." }));
+    for (const g of groups) {
+      const inG = shown.filter((x) => x.group === g);
+      if (!inG.length) continue;
+      box.append(h("section", { class: "doc-group", "aria-label": g }, h("h3", { class: "h2", text: g }), h("div", { class: "doc-list" }, inG.map(docCard))));
+    }
+    return h("div", { class: "pane" }, box);
+  }
+  function docCard(x) {
+    const r = mref(x.body), bad = !r || r.error;
+    const fresh = S.docBase && !S.docBase.has(x.key) && !S.docOpened.has(x.key);
+    const meta = [x.kind_label, x.words ? wordsLabel(x.words) : null, x.words ? minutes(x.words) : null].filter(Boolean).join(" · ");
+    return h("button", { type: "button", class: "card doc-card" + (bad ? " bad" : ""), "data-k": "open-" + x.key, disabled: bad, "aria-label": "Read " + x.title + (fresh ? " (new)" : ""), onclick: () => openReader(x.key) },
+      h("span", { class: "gl" }, ic(KIND_ICON[x.kind] || "doc")),
+      h("span", { class: "dc-body" },
+        h("span", { class: "dc-t" }, h("b", { text: x.title }), fresh ? h("span", { class: "chip new", text: "New" }) : null, x.picked ? h("span", { class: "chip ok" }, ic("check"), "Picked") : null, x.story && x.src === "doc" ? h("span", { class: "chip", text: "Story " + x.story }) : null),
+        h("span", { class: "dc-m", text: meta + (x.updated ? " · " + ago(x.updated) : "") }),
+        bad ? h("span", { class: "dc-p err", text: "The file is missing. Ask the agent to add it again." }) : (x.summary || x.preview) ? h("span", { class: "dc-p", text: clip(x.summary || x.preview, 220) }) : null),
+      h("span", { class: "dc-go" }, ic("right")));
+  }
+
+  /* markdown -> DOM (never innerHTML); `q` highlights the search term */
+  function inlineNodes(text, q) {
+    const mark = (t) => PF.markSplit(t, q).map((p) => (p.hit ? h("mark", { text: p.text }) : p.text));
+    const out = [];
+    String(text).split("\n").forEach((line, i) => {
+      if (i) out.push(h("br"));
+      for (const t of PF.inline(line)) {
+        if (t.t === "b") out.push(h("strong", null, mark(t.text)));
+        else if (t.t === "i") out.push(h("em", null, mark(t.text)));
+        else if (t.t === "code") out.push(h("code", null, t.text));
+        else if (t.t === "link") out.push(h("button", { type: "button", class: "lnk", title: t.url, onclick: () => { if (/^https:\/\//i.test(t.url)) post({ type: "open-url", url: t.url }); } }, mark(t.text)));
+        else out.push(...mark(t.text));
+      }
+    });
+    return out;
+  }
+  function blockNode(b, q) {
+    if (b.t === "h") return h("h" + Math.min(b.level + 1, 5), { class: "md-h md-h" + b.level }, inlineNodes(b.text, q));
+    if (b.t === "p") return h("p", { class: "md-p" }, inlineNodes(b.text, q));
+    if (b.t === "quote") return h("blockquote", { class: "md-q" }, inlineNodes(b.text, q));
+    if (b.t === "hr") return h("hr", { class: "md-hr" });
+    if (b.t === "code") return h("pre", { class: "md-code", tabindex: "0" }, h("code", { text: b.text }));
+    if (b.t === "list") {
+      const count = {};
+      return h("div", { class: "md-list", role: "list" }, b.items.map((it) => {
+        let mk;
+        if (it.check != null) mk = h("span", { class: "md-box" + (it.check ? " on" : ""), role: "img", "aria-label": it.check ? "Done" : "Not done" }, it.check ? ic("check") : null);
+        else if (it.ordered) { count[it.depth] = (count[it.depth] || 0) + 1; Object.keys(count).forEach((k) => { if (+k > it.depth) delete count[k]; }); mk = h("span", { class: "md-n", text: count[it.depth] + "." }); }
+        else { Object.keys(count).forEach((k) => { if (+k >= it.depth) delete count[k]; }); mk = h("span", { class: "md-dot", "aria-hidden": "true" }); }
+        return h("div", { class: "md-li", role: "listitem", style: "margin-left:" + it.depth * 18 + "px" }, mk, h("span", { class: "md-lt" + (it.check ? " done" : "") }, inlineNodes(it.text, q)));
+      }));
+    }
+    if (b.t === "table") {
+      return h("div", { class: "md-tbl", tabindex: "0", role: "region", "aria-label": "Table" }, h("table", null,
+        h("thead", null, h("tr", null, b.head.map((c) => h("th", { scope: "col" }, inlineNodes(c, q))))),
+        h("tbody", null, b.rows.map((r) => h("tr", null, b.head.map((_, i) => h("td", null, inlineNodes(r[i] || "", q))))))));
+    }
+    return null;
+  }
+
+  function viewReader() {
+    const R = S.reader, it = findReadable(R.key);
+    const r = mref(it.body);
+    /* A refresh (the agent added pages, the step moved on) rebuilds this view: keep the reader's place and the focus in the find box. */
+    const keepY = R.built ? el.sc.scrollTop : null;
+    const ae = ctx.root.activeElement;
+    const keepFocus = R.built && ae && el.content.contains(ae) ? ae.dataset.k || null : null;
+    R.built = true;
+    const back = h("button", { type: "button", class: "rd-back", "data-k": "rd-back", onclick: closeReader }, ic("left"), h("span", { text: ({ plan: "Plan", scripts: "Scripts", storyboard: "Storyboard" })[R.from] || "Back" }));
+    const meta = [it.kind_label, it.words ? wordsLabel(it.words) : null, it.words ? minutes(it.words) : null].filter(Boolean);
+    const head = h("header", { class: "rd-head" }, back, h("h2", { class: "rd-title", text: it.title }),
+      h("div", { class: "rd-meta" }, meta.map((m) => h("span", { class: "chip", text: m })), r && !r.error ? downloadButton(r, it.title) : null));
+    const body = h("div", { class: "rd-body" });
+    const wrap = h("article", { class: "reader", "aria-label": it.title }, head, body);
+    const fail = (msg) => body.replaceChildren(h("div", { class: "mid bad", role: "alert" }, ic("alert"), h("span", { text: msg }), r && !r.error ? h("button", { class: "load", type: "button", text: "Try again", onclick: () => { T.cache.delete(r.upload_id); load(); } }) : null));
+    function load() {
+      if (!r || r.error) return fail("This document's file is missing. Ask the agent to add it again.");
+      const cached = T.cache.get(r.upload_id);
+      if (cached && cached.pages) return paint(cached.pages);                    // no skeleton flash when only the step moved on
+      body.replaceChildren(h("div", { class: "pane skel", "aria-busy": "true", "aria-label": "Loading the document" }, h("div", { class: "sk", style: "height:18px;width:50%" }), h("div", { class: "sk", style: "height:60px" }), h("div", { class: "sk", style: "height:60px" }), h("div", { class: "sk", style: "height:60px" })));
+      getText(r).then((entry) => paint(entry.pages), () => fail("Couldn't load this document."));
+    }
+    function paint(pages) {
+      R.page = Math.max(0, Math.min(R.page, pages.length - 1));
+      const outline = PF.outline(pages);
+      const find = h("input", { type: "search", class: "rd-find", "aria-label": "Find in this document", placeholder: "Find in this document", value: R.q, "data-k": "rd-find" });
+      const found = h("span", { class: "rd-found", role: "status" });
+      const prevHit = h("button", { type: "button", class: "icon-btn sm", "aria-label": "Previous match", onclick: () => hit(-1) }, ic("left"));
+      const nextHit = h("button", { type: "button", class: "icon-btn sm", "aria-label": "Next match", onclick: () => hit(1) }, ic("right"));
+      const toc = pages.length > 1 ? h("select", { class: "rd-toc", "aria-label": "Jump to", "data-k": "rd-toc", onchange: (e) => { go(+e.target.value); } },
+        outline.filter((o) => o.level <= 2 || pages.length < 14).map((o) => h("option", { value: String(o.page), selected: o.page === R.page }, (o.level > 1 ? "  " : "") + o.title + " · p." + (o.page + 1)))) : null;
+      const tools = h("div", { class: "rd-tools" }, h("div", { class: "rd-findrow" }, find, prevHit, nextHit), found, toc);
+      const page = h("div", { class: "doc-page", tabindex: "-1" });
+      const pgBar = h("div", { class: "pg-bar", "aria-hidden": "true" }, h("i"));
+      const top = h("nav", { class: "pager top", "aria-label": "Pages" }), bot = h("nav", { class: "pager bot", "aria-label": "Pages" });
+      const navParts = (cls) => [h("button", { type: "button", class: "btn ghost sm", "data-k": "pg-prev-" + cls, disabled: R.page === 0, onclick: () => go(R.page - 1) }, ic("left"), "Previous"),
+        h("span", { class: "pg-l", text: "Page " + (R.page + 1) + " of " + pages.length + (pages[R.page].title && !/^Page \d+$/.test(pages[R.page].title) ? " \u00b7 " + clip(pages[R.page].title, 36) : "") }),
+        h("button", { type: "button", class: "btn ghost sm", "data-k": "pg-next-" + cls, disabled: R.page === pages.length - 1, onclick: () => go(R.page + 1) }, "Next", ic("right"))];
+      const hits = () => PF.findPages(pages, R.q);
+      const before = (pg) => hits().filter((x) => x.page < pg).reduce((n, x) => n + x.n, 0);
+      /* Match by match through the whole document: R.mi is the index of the current match; a page with many matches is stepped through, not skipped. */
+      function hit(d) {
+        const hs = hits(), tot = hs.reduce((n, x) => n + x.n, 0);
+        if (!tot) return;
+        const onPage = R.mi != null && R.mi >= before(R.page) && R.mi < before(R.page) + ((hs.find((x) => x.page === R.page) || { n: 0 }).n);
+        const base = onPage ? R.mi : d > 0 ? before(R.page) - 1 : before(R.page);
+        R.mi = (base + d + tot) % tot;
+        let acc = 0, pg = hs[0].page;
+        for (const x of hs) { if (R.mi < acc + x.n) { pg = x.page; break; } acc += x.n; }
+        R.page = pg;
+        draw();
+        const m = page.querySelectorAll("mark")[R.mi - acc];
+        if (m) m.scrollIntoView({ block: "center", behavior: reduced() ? "auto" : "smooth" });
+        say("Match " + (R.mi + 1) + " of " + tot + ", page " + (R.page + 1));
+      }
+      function go(i) {
+        if (i < 0 || i >= pages.length) return;
+        R.page = i;
+        draw();
+        el.sc.scrollTop = Math.max(0, wrap.getBoundingClientRect().top - el.sc.getBoundingClientRect().top + el.sc.scrollTop - (el.tabs.hidden ? 0 : el.tabs.offsetHeight) - 4);
+        page.focus({ preventScroll: true });
+        say("Page " + (i + 1) + " of " + pages.length);
+      }
+      function draw() {
+        const p = pages[R.page];
+        const nodes = p.blocks.map((b) => blockNode(b, R.q)).filter(Boolean);
+        page.replaceChildren(...nodes);
+        if (R.mi != null) { const k = R.mi - before(R.page), ms = page.querySelectorAll("mark"); if (k >= 0 && k < ms.length) ms[k].classList.add("cur"); }
+        const hs = hits(), total = hs.reduce((a, x) => a + x.n, 0);
+        found.textContent = R.q.trim().length < 2 ? "" : total ? total + " " + plural(total, "match", "matches") + " on " + hs.length + " " + plural(hs.length, "page", "pages") : "No match";
+        found.classList.toggle("none", R.q.trim().length >= 2 && !total);
+        prevHit.disabled = nextHit.disabled = !total;
+        pgBar.firstChild.style.width = ((R.page + 1) / pages.length) * 100 + "%";
+        if (toc) { const sel = outline.filter((o) => o.level <= 2 || pages.length < 14); const idx = sel.reduce((best, o, n) => (o.page <= R.page ? n : best), 0); toc.selectedIndex = idx; }
+        top.replaceChildren(...navParts("top"));
+        bot.replaceChildren(...navParts("bot"));
+      }
+      let ft = 0;
+      find.addEventListener("input", () => { clearTimeout(ft); ft = setTimeout(() => { R.q = find.value; R.mi = null; const hs = hits(); if (hs.length && !hs.some((x) => x.page === R.page)) R.page = hs[0].page; draw(); if (hs.length) hit(1); }, 140); });
+      find.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); hit(e.shiftKey ? -1 : 1); } else if (e.key === "Escape" && find.value) { find.value = ""; R.q = ""; R.mi = null; draw(); e.stopPropagation(); } });
+      body.replaceChildren(...[tools, top, page, bot, pages.length > 1 ? pgBar : null].filter(Boolean));
+      draw();
+      if (keepY != null) el.sc.scrollTop = keepY;
+      if (keepFocus) { const n = body.querySelector('[data-k="' + keepFocus + '"]'); if (n) n.focus({ preventScroll: true }); }
+    }
+    load();
+    if (R.fresh) { R.fresh = false; requestAnimationFrame(() => back.focus({ preventScroll: true })); }
+    return h("div", { class: "pane" }, wrap);
   }
 
   /* ----- storyboard ----- */
@@ -581,10 +817,17 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     box.append(h("div", { class: "board-row" }, boards.length > 1 ? storySwitch(boards) : h("div", { class: "ttl", text: b.title }), chips));
     const unmade = PF.previewRule(d, "storyboard-approved");
     if (unmade && !confirm) box.append(makeBanner(unmade.note.replace(/ Ask the agent.*$/, ""), "storyboard frames"));
-    if (scenes.some((x) => x.start && mref(x.start.path) && !(mref(x.start.path) || {}).error)) box.append(animatic(b, scenes));
+    if (scenes.length && !confirm) box.append(sbTools(b, scenes));
+    if (S.sbView !== "time" && scenes.some((x) => x.start && mref(x.start.path) && !(mref(x.start.path) || {}).error)) box.append(animatic(b, scenes));
     if (d.stage === "keyframes") box.append(keyframeGrid(b));
     if (b.logline && !confirm) box.append(h("div", { class: "sub" }, showMore(b.logline, 160, "c2")));
     if (!scenes.length) { box.append(h("div", { class: "empty card" }, h("div", { class: "ring" }, ic("scene")), h("h2", { text: "No scenes yet" }), h("p", { text: "This story has no scenes. The agent adds them when it writes the storyboard." }))); return h("div", { class: "pane" }, box); }
+    if (S.sbView === "time" && !confirm) {
+      box.append(timeFrames(b));
+      const c0 = d.stage === "storyboard" ? checksLine() : null;
+      if (c0) box.append(c0);
+      return h("div", { class: "pane" }, box);
+    }
     const tl = h("div", { class: "tlwrap" }, h("div", { class: "tl", role: "group", "aria-label": "Timeline: jump to a scene" }, scenes.map((x) =>
       h("button", { type: "button", class: "k-" + sceneStatus(x).cls, "data-sid": x.id, style: "flex:" + Math.max((x.end_s - x.start_s), 0.5) + " 1 0", title: "Scene " + x.id + " " + x.beat + ", " + num(x.start_s) + " to " + num(x.end_s) + " s. " + STILLS,
         "aria-label": "Scene " + x.id + ", " + x.beat, onclick: () => jumpScene(b.id, x.id) }, tlThumb(x), h("span", { class: "fill", text: x.id })))),
@@ -606,6 +849,32 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       for (const bt of tl.querySelectorAll("button")) bt.setAttribute("aria-current", String(bt.dataset.sid === cur));
     };
     return h("div", { class: "pane" }, box);
+  }
+  /* View switch + "how many frames": the person asks for a cadence ("every 5 s") and the agent adds and draws those frames. */
+  function sbTools(b, scenes) {
+    const all = PF.frameTimeline(b), made = all.filter((x) => x.f && mref(x.f.path) && !mref(x.f.path).error).length;
+    const view = h("div", { class: "seg-ctl", role: "group", "aria-label": "View" }, [["scenes", "Scenes", scenes.length], ["time", "Frames in time", all.length]].map(([k, l, n]) =>
+      h("button", { type: "button", "data-k": "sbv-" + k, "aria-pressed": String(S.sbView === k), onclick: () => { S.sbView = k; render(true); el.sc.scrollTop = 0; } }, l, h("span", { class: "n", text: String(n) }))));
+    const cur = b.density || 0;
+    const choices = PF.DENSITY_CHOICES.slice();
+    if (cur && !choices.some((c) => c.every === cur)) choices.push({ every: cur, label: "Every " + num(cur) + " s" });
+    const ok = canAsk();
+    const dens = h("div", { class: "dens" }, h("span", { class: "dens-l", id: "densL", text: "Frames" }),
+      h("div", { class: "seg-ctl wrap", role: "group", "aria-labelledby": "densL" }, choices.map((c) => h("button", { type: "button", "data-k": "dens-" + c.every, "aria-pressed": String(c.every === cur), disabled: !ok && c.every !== cur, title: c.every ? "Ask the agent for a frame every " + num(c.every) + " seconds" : "Only the start and end of each scene",
+        onclick: () => { if (c.every !== cur) send("density", { story: b.id, every: c.every, what: c.every ? "every " + num(c.every) + " seconds" : "back to just the start and end of each scene" }); } }, c.label)).concat(
+        h("button", { type: "button", "data-k": "dens-custom", "aria-pressed": "false", disabled: !ok, text: "Other\u2026", title: "Ask for a different spacing", onclick: () => openRequest("Show me storyboard frames every  seconds" + (arr(S.doc.boards).length > 1 ? " for story " + b.id : "") + ".", "How often should there be a frame? Say the seconds.") }))));
+    return h("div", { class: "sb-tools" }, view, dens, cur ? h("p", { class: "dens-note", role: "status", text: "A frame every " + num(cur) + " s: " + made + " of " + all.length + " frames drawn." }) : null);
+  }
+  /* The whole story as frames in time order: start frames, the frames on the cadence, end frames. */
+  function timeFrames(b) {
+    const items = PF.frameTimeline(b), ar = String(b.aspect || "16:9").replace(":", "/"), flat = [];
+    if (!items.length) return h("div", { class: "empty card" }, h("div", { class: "ring" }, ic("image")), h("h2", { text: "No frames yet" }), h("p", { text: "Frames appear here as the agent draws them." }));
+    const grid = h("div", { class: "tl-grid", role: "list", "aria-label": "Frames in time order" }, items.map((x) => {
+      const t = PF.clockT(x.t), kind = x.kind === "mid" ? "frame at " + t : x.kind;
+      return h("figure", { class: "tl-fig " + x.kind, role: "listitem" }, frameEl(x.f, t, ar, flat, { scene: x.scene, label: cap(kind), kind: x.kind }),
+        h("figcaption", null, h("b", { text: x.scene.id }), " " + x.scene.beat, h("span", { class: "k", text: x.kind === "mid" ? (x.auto ? "on the cadence" : "mid") : x.kind })));
+    }));
+    return h("div", { class: "tl-time" }, h("p", { class: "tl-note", text: "Every frame of this story in time order. Frames are storyboard stills, not footage." }), grid);
   }
   /* Watch it: the storyboard stills played in order with the caption, the voice line and the music sample. A preview of the pacing, not footage. */
   function animatic(b, scenes) {
@@ -700,7 +969,12 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     const time = num(s.start_s) + "–" + num(s.end_s) + " s";
     const facts = [["Happens", s.action, "span"], ["Caption", s.caption, "main"], ["Voice", s.voice, "main"], ["Sound", s.sound, "minor"], ["Camera", s.camera, "minor"], ["Proof", s.proof, "minor"]].filter((r) => r[1]);
     const rows = [h("div", { class: "frames" }, mk(s.start, "START"), h("span", { class: "arr" }, ic("arrow")), mk(s.end, "END"))];
-    for (let i = 0; i < mids.length; i += 2) rows.push(h("div", { class: "frames mids" }, mk(mids[i], "Mid \u00b7 " + (mids[i].label || ""), "Mid"), h("span"), mids[i + 1] ? mk(mids[i + 1], "Mid \u00b7 " + (mids[i + 1].label || ""), "Mid") : h("span")));
+    if (mids.length > 2) {
+      const film = h("div", { class: "frames film", role: "group", "aria-label": "Frames through the scene, " + mids.length });
+      mids.forEach((m) => film.append(mk(m, typeof m.t === "number" ? PF.clockT(m.t) : m.label || "", "Mid \u00b7 " + (typeof m.t === "number" ? PF.clockT(m.t) : m.label || ""))));
+      fadeX(film);
+      rows.push(film);
+    } else for (let i = 0; i < mids.length; i += 2) rows.push(h("div", { class: "frames mids" }, mk(mids[i], "Mid \u00b7 " + (mids[i].label || ""), "Mid"), h("span"), mids[i + 1] ? mk(mids[i + 1], "Mid \u00b7 " + (mids[i + 1].label || ""), "Mid") : h("span")));
     const body = [rows, facts.length ? h("dl", { class: "facts" }, facts.map((r) => h("div", { class: "fact " + r[2] }, h("dt", { class: "k", text: r[0] }), h("dd", { class: "v", text: r[1] })))) : null];
     const id = "scene-" + b.id + "-" + s.id;
     if (collapsed) {
@@ -1160,7 +1434,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       }
     }
     const tabs = tabList(), gt = gTab();
-    if ((g.kind === "approve" || g.kind === "confirm" || g.kind === "draft") && gt && gt !== S.tab && tabs.some((t) => t.id === gt)) {
+    if ((g.kind === "approve" || g.kind === "confirm" || g.kind === "draft") && gt && (gt !== S.tab || S.reader) && tabs.some((t) => t.id === gt)) {
       m.reviewTab = gt;
       m.primary = "Review " + tabs.find((t) => t.id === gt).label;
       m.primaryDisabled = false;
@@ -1177,6 +1451,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   function renderGate() {
     const m = gateModel();
     S.cur = m;
+    if (S.compose && S.composeKind === "request") { m.sendLabel = "Send request"; m.placeholder = S.reqHint || "What should the agent add or change?"; }
     const busy = !!S.sending;
     const note = (txt, opts = {}) => {
       el.gateNote.className = "gate-note";
@@ -1220,8 +1495,18 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     el.gateErr.textContent = S.err;
   }
 
-  function openCompose() { S.compose = true; renderGate(); el.note.focus(); }
-  function closeCompose() { S.compose = false; S.err = ""; renderGate(); el.btn2.focus(); }
+  function openCompose() { S.compose = true; S.composeKind = null; renderGate(); el.note.focus(); }
+  /* Ask the agent to add or change something (a document, a script, more frames). The text goes into the same note box as every other message, so dictation works. */
+  function openRequest(text, hint) {
+    if (S.readonly || S.pending || S.justSent || S.sending) return;
+    S.compose = true; S.composeKind = "request"; S.reqHint = hint || "";
+    el.note.value = text || "";
+    renderGate();
+    el.note.focus();
+    el.note.setSelectionRange(el.note.value.length, el.note.value.length);
+  }
+  const canAsk = () => !(S.readonly || S.offline || S.pending || S.justSent || S.sending);
+  function closeCompose() { S.compose = false; S.composeKind = null; S.err = ""; renderGate(); el.btn2.focus(); }
   el.btn2.addEventListener("click", () => {
     const m = S.cur;
     if (m && m.mode === "wait") { if (S.stall && !S.pending && S.lastAction) send(S.lastAction.name, S.lastAction.payload, true); return; }
@@ -1238,6 +1523,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     if (S.compose) {
       const text = el.note.value.trim().slice(0, MAX_NOTE);
       if (!text) return;
+      if (S.composeKind === "request") return send("request", { text, where: ({ plan: "Plan", scripts: "Scripts", storyboard: "Storyboard", assets: "Assets", draft: "Drafts" })[S.tab] || "Stage" });
       if (m.g && m.g.kind === "style") return send("changes", { stage: "discover", text: "Style: " + text + refTail() });
       if (m.changes === "feedback") return send("feedback", { round: m.round, max_rounds: m.max, text });
       return send("changes", { stage: m.stage, text });
@@ -1269,7 +1555,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     if (m.ok) {
       S.err = "";
       S.justSent = { key: gateKey(), name: sent.name, saw: false };
-      if (S.compose) { el.note.value = ""; S.compose = false; }
+      if (S.compose) { el.note.value = ""; S.compose = false; S.composeKind = null; }
       S.stale = null; S.stash = null; S.updated = false;
       startStall();
       render(true);
@@ -1284,7 +1570,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     el.app.dataset.boot = "ready";
     const list = tabList();
     const cur = gTab();
-    if (S.stage !== S.doc.stage) { S.stage = S.doc.stage; S.userTab = false; S.sentPicks = null; S.draftSel = null; S.earlier = false; S.filter = null; S.boardIdx = 0; S.seen = new Set(); }
+    if (S.stage !== S.doc.stage) { S.stage = S.doc.stage; S.userTab = false; S.sentPicks = null; S.draftSel = null; S.earlier = false; S.filter = null; S.boardIdx = 0; S.seen = new Set(); S.sbView = "scenes"; }
     if (!S.userTab || !list.some((t) => t.id === S.tab)) S.tab = list.some((t) => t.id === cur) ? cur : list.length ? list[list.length - 1].id : null;
     if (!list.length) S.tab = null;
     renderHeader();
@@ -1327,11 +1613,12 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     if ((S.style || S.ownStyle) && (!g || g.kind !== "style" || gateChanged)) { S.style = null; S.ownStyle = ""; S.ref = ""; cleared = true; }
     if (gateChanged) {
       if (S.compose && el.note.value.trim()) { S.stash = { text: el.note.value.trim(), label: prevLabel || "the previous step" }; el.note.value = ""; }
-      if (S.compose) S.compose = false;
+      if (S.compose) { S.compose = false; S.composeKind = null; }
       if (cleared && !wasSent) toast("Your picks were cleared because the step changed");
       if (wasEditing) S.stale = { changedGate: true };
     } else if (changedVersion && wasEditing) S.stale = S.stale || { changedGate: false };
     if (!wasEditing && !gateChanged) S.stale = null;
+    if (!S.docBase && hasDoc()) S.docBase = new Set(readables().map((x) => x.key));
     S.booted = true;
     render();
     if (!first && !wasEditing && !gateChanged && changedVersion && g && !S.pending && !S.justSent && before !== JSON.stringify(sliceFor(S.tab, false))) { S.updated = true; renderBanners(); }

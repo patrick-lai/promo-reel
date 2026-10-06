@@ -132,3 +132,81 @@ test("share rows: new, on, edited draft (in place or a copy) and a locked final"
   r = rows({ id: "f2", ...file, shared: { artifacts: rec(true) } });
   assert.deepEqual([r.artifacts.state, r.artifacts.action], ["locked", ""]);
 });
+
+/* ---- reading long documents ---- */
+test("markdown blocks: headings, lists with checks, tables, quotes, code, page markers", () => {
+  const b = L.parseBlocks("# Title\n\nFirst line\nsecond line\n\n- one\n  - nested\n- [x] done\n- [ ] open\n\n1. a\n2. b\n\n> quoted\n> more\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n```\ncode # not heading\n```\n\n<!-- page: Act two -->\n---\n");
+  assert.deepEqual(b.map((x) => x.t), ["h", "p", "list", "list", "quote", "table", "code", "page", "hr"]);
+  assert.equal(b[1].text, "First line\nsecond line");
+  assert.deepEqual(b[2].items.map((x) => [x.depth, x.check]), [[0, null], [1, null], [0, true], [0, false]]);
+  assert.equal(b[3].items[1].ordered, true);
+  assert.deepEqual(b[5].head, ["A", "B"]);
+  assert.deepEqual(b[5].rows, [["1", "2"]]);
+  assert.equal(b[6].text, "code # not heading");
+  assert.equal(b[7].title, "Act two");
+});
+test("inline markup: bold, italic, code, https links, trailing punctuation stays out of the link", () => {
+  const t = L.inline("a **b** and *c* and `d` see [site](https://x.dev/a) or https://y.dev/z. Done");
+  assert.deepEqual(t.map((x) => x.t), ["text", "b", "text", "i", "text", "code", "text", "link", "text", "link", "text"]);
+  assert.equal(t[9].url, "https://y.dev/z");
+  assert.equal(t[10].text, ". Done");
+  assert.equal(L.plain("**x** *y* [z](https://a.b)"), "x y z");
+  assert.deepEqual(L.inline("javascript:alert(1) [x](javascript:alert(1))").map((x) => x.t), ["text"]);
+});
+const longDoc = (sections, words) => Array.from({ length: sections }, (_, i) => "## Section " + (i + 1) + "\n\n" + Array.from({ length: words / 50 }, () => "word ".repeat(50).trim() + ".").join("\n\n")).join("\n\n");
+test("pagination: explicit markers win, otherwise ~650 words per page and a new page at a heading, never inside a block", () => {
+  const marked = L.paginate("intro\n\n<!-- page: One -->\nalpha\n\n<!-- page -->\nbeta\n");
+  assert.deepEqual(marked.map((p) => p.title), ["Page 1", "One", "Page 3"]);
+  const pages = L.paginate(longDoc(6, 500));
+  assert.ok(pages.length >= 4 && pages.length <= 6, "pages " + pages.length);
+  assert.ok(pages.every((p) => p.words > 0 && p.words <= 900));
+  assert.equal(pages.map((p) => p.words).reduce((a, b) => a + b, 0), 3000 + 12, "every word lands on exactly one page");
+  assert.ok(pages[1].title.startsWith("Section"));
+  const table = "| a | b |\n|--|--|\n" + "| x y z | q |\n".repeat(900);
+  assert.equal(L.paginate(table).length, 1, "a table is one block");
+  assert.equal(L.paginate("").length, 1);
+});
+test("a 30 000 word script paginates and searches fast", () => {
+  const t0 = Date.now();
+  const pages = L.paginate(longDoc(60, 500));
+  assert.ok(pages.length > 40);
+  assert.equal(L.outline(pages).filter((o) => o.level === 2).length, 60);
+  assert.ok(Date.now() - t0 < 1500);
+});
+test("outline and find", () => {
+  const pages = L.paginate("# Doc\n\nhello Needle\n\n<!-- page -->\n## Two\n\nneedle needle\n");
+  assert.deepEqual(L.outline(pages).map((o) => [o.title, o.page]), [["Doc", 0], ["Two", 1]]);
+  assert.deepEqual(L.findPages(pages, "needle"), [{ page: 0, n: 1 }, { page: 1, n: 2 }]);
+  assert.deepEqual(L.findPages(pages, "n"), []);
+  assert.deepEqual(L.markSplit("A Needle b", "needle"), [{ text: "A ", hit: false }, { text: "Needle", hit: true }, { text: " b", hit: false }]);
+});
+test("frame timeline: every frame in time order, a scene's END before the next scene's START", () => {
+  const sc = (id, a, b, mids) => ({ id, start_s: a, end_s: b, start: { id: id + "s" }, end: { id: id + "e" }, frames: (mids || []).map((t) => ({ t })) });
+  const tl = L.frameTimeline({ scenes: [sc("01", 0, 5, [2.5]), sc("02", 5, 12, [7, 10])] });
+  assert.deepEqual(tl.map((x) => [x.scene.id, x.kind, x.t]), [["01", "start", 0], ["01", "mid", 2.5], ["01", "end", 5], ["02", "start", 5], ["02", "mid", 7], ["02", "mid", 10], ["02", "end", 12]]);
+  assert.equal(L.clockT(65.5), "1:05.5");
+  assert.equal(L.clockT(5), "0:05");
+});
+
+test("non-Latin scripts count words and paginate", () => {
+  assert.equal(L.wordsOf("Привет мир, это сценарий"), 4);
+  assert.equal(L.wordsOf("日本語 の 台本"), 3);
+  const ru = L.paginate(Array.from({ length: 40 }, (_, i) => "## Акт " + i + "\n\n" + "слово ".repeat(60)).join("\n\n"));
+  assert.ok(ru.length > 2, "pages " + ru.length);
+});
+test("a heading keeps its own # (C#), only a closing run of # is dropped", () => {
+  assert.equal(L.parseBlocks("# C#")[0].text, "C#");
+  assert.equal(L.parseBlocks("## Title ##")[0].text, "Title");
+});
+test("search ignores case and survives characters whose lower case is longer", () => {
+  assert.deepEqual(L.markSplit("Stra\u00dfe \u0130stanbul", "stanbul").map((x) => [x.text, x.hit]), [["Stra\u00dfe \u0130", false], ["stanbul", true]]);
+  assert.deepEqual(L.markSplit("a.b a+b", "a+b").map((x) => x.hit), [false, true]);
+  assert.deepEqual(L.findPages(L.paginate("one Needle\n\nNEEDLE two"), "needle"), [{ page: 0, n: 2 }]);
+});
+test("clock times never print 0:010 or 0:60", () => {
+  assert.equal(L.clockT(9.96), "0:10");
+  assert.equal(L.clockT(59.96), "1:00");
+  assert.equal(L.clockT(0), "0:00");
+  assert.equal(L.clockT(125), "2:05");
+  assert.equal(L.clockT(14.5), "0:14.5");
+});

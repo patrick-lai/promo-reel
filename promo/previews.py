@@ -101,7 +101,7 @@ def frame_targets(bds, scene=None, which=("start", "end"), force=False):
         for s in b.get("scenes") or []:
             if scene and s.get("id") != scene:
                 continue
-            for w, f in SB._frames(s, which):
+            for w, f in SB._frames(s, SB.which_for(b, which)):
                 if f.get("image"):
                     p = os.path.join(d, f["image"])
                     if force or not os.path.isfile(p) or SB.is_slate(p):

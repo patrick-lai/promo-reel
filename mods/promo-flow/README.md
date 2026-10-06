@@ -28,10 +28,12 @@ Every path below that says `file` is `{"$file": "<absolute path>"}` (the host tu
     steps      [{id, label, state: done|current|todo|stale, stale}]  (10, one per stage; `stale` = its approval no longer matches what was approved; never `done` then)
     stale_steps [{id, gate, label}]                            approvals that went stale; the mod shows "Approved earlier, but <step> changed since."
     style      {style, refs[], no_refs} | null
-    scripts    [{id, title, logline, picked, verdict, beats[<=2]}]       beats = first two list items of the script file
+    scripts    [{id, title, logline, picked, verdict, beats[<=2], words, headings[{level,title}<=40], body: file}]   beats = first two list items of the script file; body = the whole script (markdown, any length)
+    docs       [{id, title, kind, kind_label, group, story|null, summary, updated, source: agent|template, words, headings[<=40], preview, body: file}]   the Plan tab: planning documents the agent added with `promo flow doc ...`
+                 kinds: script treatment shotlist direction edit audio capture schedule deliverables risks research review notes; groups: Script Direction Edit Audio Capture Delivery Notes
     councils   {scripts?: text}                                    the latest council note per kind (<= 900 chars): shown as "What the council said" above the scripts
-    boards     [{id, title, logline, aspect, duration_s, scenes: [{id, beat, start_s, end_s, action, caption, voice, sound, camera, proof,
-                 source: real|generated|mock|other, generated, start: {label, path: file|null, prompt}, end: {...}, frames: [{label, path, prompt}]}]}]
+    boards     [{id, title, logline, aspect, duration_s, density: every_s|null, scenes: [{id, beat, start_s, end_s, action, caption, voice, sound, camera, proof,
+                 source: real|generated|mock|other, generated, start: {label, path: file|null, prompt}, end: {...}, frames: [{label, path, prompt, t, auto}]}]}]
                  The frames are storyboard stills, not footage. One function derives the scene chip and the timeline mark: for source=real, "Captured" only when every real asset covering the scene is ready and its file loads
                  (screenshots alone read "Captured stills", never green); any mock reads "Mock in plan"; any to-make or missing file, or no asset, reads "To capture";
                  "Generated plate" for generated; no chip for `other` (a scene with no `source` is `other`, never real). Legend: "All real assets ready"
@@ -57,7 +59,13 @@ Every path below that says `file` is `{"$file": "<absolute path>"}` (the host tu
 
 **Counts have one source.** For the selected story the mod derives one list (asset rows used in that story's scenes + that story's keyframes still to make) with exclusive buckets ready / mock / to make / missing; the Assets tab badge, the counter row, the filters and the cards all read it, and the Storyboard badge is the number of scenes in that story (`mod-dev/shoot.py` asserts badge = sum of buckets = cards for every stage and story). Scene refs on assets are validated against the selected story's scene ids.
 
-Actions: `approve`, `pick`, `changes`, `feedback`, `generate {what}`, `share {kind: draft|final, n, item, dest, dest_label}` (the agent runs `promo flow share <kind> <n> --to <dest> --by NAME`).
+**Long content never touches the state size limit.** A script or document travels as a file (`body`); the mod asks the host for the blob, reads its text, and paginates it itself (`logic.js`: `parseBlocks`, `paginate`, `findPages`, `outline`; unit-tested, a 30 000 word script paginates in a few ms). Only titles, word counts, headings and a preview are in the state.
+
+**Plan tab** (`Plan`, shown from the scripts stage on, or as soon as a document exists): an "Ask the agent" card with quick requests (full script, shot list, edit plan, audio plan, capture checklist, everything for production, something else), then the library grouped by kind with search. A request opens the footer note box (so voice dictation works) prefilled and sends the `request` action. Opening a script (Scripts tab: "Read the full script") or a document opens the **reader**: back button, word count and read time, Download, find with highlighted matches across pages, a contents list, previous/next, page n of N. Markdown is rendered to DOM nodes, never HTML; only `https` links open, through the host. Documents added after the first state read carry a "New" chip until opened.
+
+**Storyboard tab**: a view switch (Scenes | Frames in time) and a cadence control (Start and end, every 10 s, every 5 s, every 2 s, Other...) that sends `density`. Frames in time lists every frame in time order with its clock time; a scene with more than two mid frames shows them as a film strip. When a board has a density, the storyboard gate needs those frames as real images too.
+
+Actions: `approve`, `pick`, `changes`, `feedback`, `generate {what}`, `request {text, where}` (an ask for content: documents, scripts, plans, scene changes), `density {story, every, what}` (every 0 = back to start and end frames); `share {kind: draft|final, n, item, dest, dest_label}` (the agent runs `promo flow share <kind> <n> --to <dest> --by NAME`).
 
 `gate.gate` is what the `approve` and `pick` actions guard on (`/gate/gate` vs payload `gate`). The first state after activation is `{}` with summary status "Starting": the app shows its Getting started screen.
 The `readonly` flag on the host `state` message (archived thread) disables every send. Actions: `approve {gate, draft?}` (at the draft gate `draft` is the latest draft's id), `pick {gate, picks: "A B"}`, `changes {stage, text}`, `feedback {round, max_rounds, text}`.
@@ -73,4 +81,5 @@ The style step has no flow gate, so the person's choice goes as `changes {stage:
 
 The harness plays the host: mounts the mod into its page in a shadow root like CommissionAI does, puts a stand-in Mic button in the dictate slot, switch stage, dark/light, pane width (380 / 520 / 900),
 offline, readonly, reduce motion, hold state (loading), media failures, a new version arriving mid-edit (with or without the step changing), and the bridge log with the rendered action messages.
-Stages: the ten flow stages plus `starting`, `storyboard-partial`, `assets-error`, `long-content`, `review-maxed`.
+Stages: the ten flow stages plus `starting`, `storyboard-partial`, `plan` (17 documents, one of 12 000 words), `dense` (frames every 5 s), `assets-error`, `stale-approval`, `long-content`, `review-maxed`.
+    .venv/bin/python mod-dev/shoot.py --check    # interaction checks in headless Chrome: reader paging, find, contents, requests, cadence, escaping

@@ -469,6 +469,17 @@ def test_mod_logic_unit_tests_pass():
     assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-1000:]
 
 
+def test_mod_interaction_checks_pass():
+    """The Plan tab reader (paging, contents, find, escaping, requests) and the storyboard cadence control, driven in headless Chrome (mod-dev/shoot.py --check)."""
+    import subprocess
+    import sys
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if not os.path.exists("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome") or not __import__("shutil").which("ffmpeg"):
+        pytest.skip("headless Chrome and ffmpeg are needed")
+    r = subprocess.run([sys.executable, os.path.join(root, "mod-dev", "shoot.py"), "--check"], capture_output=True, text=True, timeout=300)
+    assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-1000:]
+
+
 def slate(p):
     """What an agent wrote in place of a frame: a flat dark image with a few lines of text."""
     from PIL import ImageDraw
@@ -597,3 +608,211 @@ def test_samples_are_made_in_parallel_and_all_recorded(pd, monkeypatch):
     made, failed = PV.make_samples(plan, pd, [], jobs=3, say=lambda *_: None)
     assert sorted(made) == ["a0", "a1", "a2"] and not failed and seen == {"a0", "a1", "a2"}
     assert sorted(PV.load_samples(os.path.join(pd, "flow"))) == ["a0", "a1", "a2"]
+
+
+# ---- long scripts, planning documents, storyboard density ------------------------------------------------------------------------------------
+from promo import boardedit as BE  # noqa: E402
+from promo import plandocs as PD  # noqa: E402
+
+
+def test_a_script_of_any_length_is_added_in_parts_and_snapshotted_as_a_file(pd, tmp_path):
+    part = "## Act\n\n" + ("word " * 400 + "\n\n") * 5
+    f = tmp_path / "s.md"
+    f.write_text("# Full script\n\n" + part)
+    F.add_script(pd, "A", "Alpha", "log", str(f))
+    n = F.add_script(pd, "A", None, None, text=part, append=True)
+    assert n > 4000
+    sc = F.snapshot(pd)["scripts"][0]
+    assert sc["words"] == n and sc["title"] == "Alpha" and sc["headings"][0]["title"] == "Full script"
+    assert sc["body"]["$file"].endswith("scripts/A.md")                      # the text travels as a file, never in the state
+    with pytest.raises(F.FlowError, match="no script"):
+        F.add_script(pd, "Z", None, None, text="x", append=True)
+    with pytest.raises(F.FlowError, match="--title"):
+        F.add_script(pd, "B", None, None, text="x")
+
+
+def test_planning_documents_are_added_replaced_appended_and_removed(pd):
+    assert F.doc_put(pd, "full-script", kind="script", text="# The full script\n\nOne.\n") == 4
+    with pytest.raises(F.FlowError, match="exists"):
+        F.doc_put(pd, "full-script", text="again")
+    F.doc_put(pd, "full-script", text="Two.", append=True)
+    assert F.doc_put(pd, "full-script", text="# Replaced\n\nThree.\n", force=True) == 2
+    d = F.snapshot(pd)["docs"]
+    assert [x["id"] for x in d] == ["full-script"]
+    assert d[0]["title"] == "The full script" and d[0]["kind_label"] == "Script" and d[0]["group"] == "Script" and d[0]["words"] == 2
+    assert open(os.path.join(pd, "flow", "docs", "full-script.md")).read().startswith("# Replaced")
+    with pytest.raises(F.FlowError, match="kind is one of"):
+        F.doc_put(pd, "x", kind="poem", text="a")
+    with pytest.raises(F.FlowError, match="lower-case"):
+        F.doc_put(pd, "Bad Id", text="a")
+    with pytest.raises(PD.DocError, match="empty"):
+        F.doc_put(pd, "e", text="  ")
+    F.doc_rm(pd, "full-script")
+    assert F.snapshot(pd)["docs"] == [] and not os.path.exists(os.path.join(pd, "flow", "docs", "full-script.md"))
+    assert any(a["text"] == "Removed from the plan: full-script" for a in F.snapshot(pd)["activity"])
+
+
+def test_doc_groups_are_ordered_and_state_stays_small_for_huge_documents(pd):
+    F.doc_put(pd, "z-notes", kind="notes", text="# N\n\nx")
+    F.doc_put(pd, "a-shots", kind="shotlist", text="# S\n\nx")
+    F.doc_put(pd, "b-script", kind="script", text="# " + "w " * 10 + "\n\n" + ("lorem ipsum dolor " * 30 + "\n\n") * 4000)       # ~ 1 MB of text
+    snap = F.snapshot(pd)
+    assert [d["group"] for d in snap["docs"]] == ["Script", "Direction", "Notes"]
+    assert len(json.dumps(snap)) < 40_000                                    # the host's state limit is 1 MB: bodies are files
+    assert snap["docs"][0]["words"] > 100_000
+
+
+def test_templates_are_built_from_the_real_board_and_assets(pd):
+    board(pd, "A")
+    st = F.load(pd)
+    st["picks"] = ["A"]
+    F.save(pd, st)
+    AP.save(os.path.join(pd, "flow"), [dict(id="vo-main", kind="voice", source="generated", scenes=["02"], how="Calm read", licence="Kokoro Apache-2.0"), dict(id="rec-a", kind="recording", source="real", scenes=["01"], how="Record the board")])
+    did, n = F.doc_new(pd, "shotlist", story="A")
+    assert did == "shotlist" and n > 40
+    text = open(os.path.join(pd, "flow", "docs", "shotlist.md")).read()
+    assert "| 01 | 0–4 s | Beat 01 |" in text and "8 tasks" in text and "ticket list shows 8" in text
+    F.doc_new(pd, "capture")
+    assert "Record the board" in open(os.path.join(pd, "flow", "docs", "capture.md")).read()
+    F.doc_new(pd, "audio")
+    assert "Calm read" in open(os.path.join(pd, "flow", "docs", "audio.md")).read()
+    with pytest.raises(F.FlowError, match="no storyboard Q"):
+        F.doc_new(pd, "shotlist", story="Q")
+    with pytest.raises(PD.DocError, match="no template"):
+        F.doc_new(pd, "poem")
+
+
+def test_plan_pack_builds_everything_once_and_per_story(pd):
+    board(pd, "A")
+    board(pd, "B")
+    st = F.load(pd)
+    st["picks"] = ["A", "B"]
+    F.save(pd, st)
+    made, kept = F.plan_pack(pd)
+    ids = set(made)
+    assert {"treatment-a", "treatment-b", "shotlist-a", "shotlist-b", "edit-b", "audio-a", "direction", "deliverables", "schedule"} <= ids and not kept
+    made2, kept2 = F.plan_pack(pd)
+    assert not made2 and set(kept2) == ids
+    assert F.plan_pack(pd, force=True)[0]
+    docs = {d["id"]: d for d in F.snapshot(pd)["docs"]}
+    assert docs["shotlist-a"]["story"] == "A" and docs["direction"]["story"] is None
+
+
+def test_density_puts_frames_on_the_time_grid_and_the_gate_needs_them(pd):
+    d = board(pd, "A")
+    st = F.load(pd)
+    st["picks"] = ["A"]
+    F.save(pd, st)
+    bds = F.boards(pd, st)
+    msg = BE.density(os.path.join(pd, "flow"), bds, every=2)
+    b = SB.load(d)
+    ts = [f["t"] for s in b["scenes"] for f in s.get("frames", [])]
+    assert ts == [2.0, 6.0, 8.0] and b["density"] == {"every_s": 2} and "3 added" in msg      # 4 is the cut between the scenes: START/END frames cover it
+    assert all(f["auto"] and f["image"] and f["prompt"] for s in b["scenes"] for f in s["frames"])
+    assert SB.problems(b) == []
+    assert len(SB.missing(b, d, ("start", "end"))) == 3                       # the dense frames now count even at the storyboard stage
+    assert sum(1 for n in F.needs(pd) if n["kind"] == "keyframe") == 3
+    snap = F.snapshot(pd)["boards"][0]
+    assert snap["density"] == 2 and [x["t"] for x in snap["scenes"][1]["frames"]] == [6.0, 8.0] and snap["scenes"][1]["frames"][0]["auto"]
+    # a new cadence replaces the auto frames, keeps the ones already on the grid, and never touches hand-made frames
+    b["scenes"][0]["frames"].append(dict(t=1.0, image="frames/hand.png", prompt="hand made"))
+    BE._save(d, b)
+    img(os.path.join(d, "frames", "01-t0020.png"))
+    BE.density(os.path.join(pd, "flow"), F.boards(pd, F.load(pd)), every=4)
+    b = SB.load(d)
+    assert [(f["t"], bool(f.get("auto"))) for f in b["scenes"][0]["frames"]] == [(1.0, False)]
+    assert [f["t"] for f in b["scenes"][1]["frames"]] == [8.0]
+    assert not os.path.exists(os.path.join(d, "frames", "01-t0020.png"))     # an auto frame that left the grid is removed from disk
+    BE.density(os.path.join(pd, "flow"), F.boards(pd, F.load(pd)), clear=True)
+    b = SB.load(d)
+    assert "density" not in b and b["scenes"][0]["frames"][0]["t"] == 1.0 and "frames" not in b["scenes"][1]
+    with pytest.raises(BE.BoardError, match="--every"):
+        BE.density(os.path.join(pd, "flow"), F.boards(pd, F.load(pd)), every=0.1)
+    with pytest.raises(BE.BoardError, match="limit"):
+        BE.density(os.path.join(pd, "flow"), [("A", dict(scenes=[dict(id="01", t=[0, 600])], story="A"), d)], every=1)
+
+
+def test_storyboard_density_blocks_approval_until_frames_exist(pd, monkeypatch):
+    d = board(pd, "A")
+    st = F.load(pd)
+    st.update(picks=["A"], stage="storyboard")
+    F.save(pd, st)
+    BE.density(os.path.join(pd, "flow"), F.boards(pd, st), every=2)
+    ok = {t: o for o, t in F.checks(pd, F.load(pd))}
+    assert not [o for t, o in ok.items() if "START and END" in t and o]
+    made = []
+    monkeypatch.setattr(PV, "_make_one", lambda prompt, final, provider, size=PV.FRAME_SIZE: (img(final, (9, 9, 9)), made.append(final)))
+    monkeypatch.setattr(SB, "is_slate", lambda p: False)
+    assert F.make_frames(pd, None, None, ("start", "end"), False, "auto", 2) == 0
+    assert len(made) == 3 and not SB.missing(SB.load(d), d, ("start", "end"))
+
+
+def test_scene_editing_without_json(pd):
+    fd = os.path.join(pd, "flow")
+    assert "0 scenes" in BE.story_set(fd, "C", "Story C", "Line")
+    BE.scene_add(fd, "C", "01", [0, 5], "Hook", "A desk at night", caption="Hi", source="generated")
+    BE.scene_add(fd, "C", "03", [10, 15], "Payoff", "Merged")
+    BE.scene_add(fd, "C", "02", [5, 10], "Middle", "Work happens", after="01")
+    b = SB.load(os.path.join(fd, "boards", "C"))
+    assert [s["id"] for s in b["scenes"]] == ["01", "02", "03"] and b["scenes"][0]["start"]["image"] == "frames/01-start.png"
+    assert "Start of Hook" in b["scenes"][0]["start"]["prompt"]
+    for s in b["scenes"]:
+        for w in ("start", "end"):
+            img(os.path.join(fd, "boards", "C", s[w]["image"]))
+    BE.scene_set(fd, "C", "02", t=[5, 11], action="It gets busy", redraw="start")
+    b = SB.load(os.path.join(fd, "boards", "C"))
+    assert b["scenes"][1]["t"] == [5.0, 11.0] and b["scenes"][1]["action"] == "It gets busy"
+    assert not os.path.exists(os.path.join(fd, "boards", "C", "frames", "02-start.png")) and os.path.exists(os.path.join(fd, "boards", "C", "frames", "02-end.png"))
+    BE.scene_rm(fd, "C", "03")
+    assert [s["id"] for s in SB.load(os.path.join(fd, "boards", "C"))["scenes"]] == ["01", "02"]
+    for bad, msg in ((lambda: BE.scene_add(fd, "C", "01", [0, 1], "x", "y"), "already exists"), (lambda: BE.scene_add(fd, "C", "09", [3, 2], "x", "y"), "END after START"),
+                     (lambda: BE.scene_set(fd, "C", "01"), "nothing to change"), (lambda: BE.scene_set(fd, "C", "77", beat="x"), "no scene 77"),
+                     (lambda: BE.scene_add(fd, "C", "09", [0, 1], "x", "y", source="mock"), "real|generated"), (lambda: BE.story_set(fd, "N", title="only"), "needs --title")):
+        with pytest.raises(BE.BoardError, match=msg):
+            bad()
+
+
+def test_cli_commands_for_documents_scenes_and_density(pd, capsys):
+    base = ["--project", pd]
+    assert F.main(base + ["story", "A", "--title", "T", "--logline", "L"]) == 0
+    assert F.main(base + ["scene", "add", "A", "01", "--t", "0", "12", "--beat", "Hook", "--action", "A desk"]) == 0
+    assert F.main(base + ["scene", "add", "A", "02", "--t", "12", "24", "--beat", "Mid", "--action", "A board", "--caption", "Hi"]) == 0
+    assert F.main(base + ["scene", "set", "A", "02", "--caption", "Hello", "--redraw", "all"]) == 0
+    st = F.load(pd)
+    st["picks"] = ["A"]
+    F.save(pd, st)
+    assert F.main(base + ["density", "--every", "5", "--story", "A"]) == 0
+    assert F.main(base + ["doc", "add", "notes", "--kind", "notes", "--text", "# Hi\nthere"]) == 0
+    assert F.main(base + ["doc", "append", "notes", "--text", "more"]) == 0
+    assert F.main(base + ["doc", "new", "shotlist", "--story", "A"]) == 0
+    assert F.main(base + ["plan", "pack"]) == 0
+    assert F.main(base + ["doc", "list"]) == 0
+    out = capsys.readouterr().out
+    assert "shotlist " in out and "notes" in out and "kept shotlist" in out
+    assert F.main(base + ["scene", "add", "A", "09"]) == 1                      # missing --t/--beat/--action
+    assert F.main(base + ["scene", "list", "A"]) == 0
+    assert F.main(base + ["doc", "rm", "notes"]) == 0
+    assert F.main(base + ["doc", "rm", "notes"]) == 1
+    assert "Hello" in json.dumps(SB.load(os.path.join(pd, "flow", "boards", "A")))
+
+
+def test_retiming_or_adding_a_scene_keeps_the_frame_grid_and_per_scene_density_keeps_the_board_marker(pd):
+    fd = os.path.join(pd, "flow")
+    BE.story_set(fd, "C", "Story C", "Line")
+    BE.scene_add(fd, "C", "01", [0, 10], "Hook", "A desk")
+    BE.scene_add(fd, "C", "02", [10, 20], "Next", "A board")
+    d = os.path.join(fd, "boards", "C")
+    BE.density(fd, [("C", SB.load(d), d)], every=5)
+    assert [f["t"] for f in SB.load(d)["scenes"][0]["frames"]] == [5.0]
+    img(os.path.join(d, "frames", "01-t0050.png"))
+    msg = BE.scene_set(fd, "C", "01", t=[0, 4])                                   # the 5 s frame is now outside the scene
+    b = SB.load(d)
+    assert "frames" not in b["scenes"][0] and SB.problems(b) == [] and not os.path.exists(os.path.join(d, "frames", "01-t0050.png")), msg
+    BE.scene_set(fd, "C", "02", t=[10, 31])                                       # longer scene: the grid grows with it
+    assert [f["t"] for f in SB.load(d)["scenes"][1]["frames"]] == [15.0, 20.0, 25.0, 30.0]
+    BE.scene_add(fd, "C", "03", [31, 42], "End", "Merged")                         # a new scene joins the grid
+    assert [f["t"] for f in SB.load(d)["scenes"][2]["frames"]] == [35.0, 40.0]
+    BE.density(fd, [("C", SB.load(d), d)], every=2, scene="03")                    # one scene at a finer grid
+    assert SB.load(d)["density"] == {"every_s": 5}
+    with pytest.raises(BE.BoardError, match="no scene 99"):
+        BE.density(fd, [("C", SB.load(d), d)], every=5, scene="99")

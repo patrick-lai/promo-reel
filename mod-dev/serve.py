@@ -177,6 +177,10 @@ def run_action(pd, name, payload):
         return {"ok": True, "message": "making frames and samples (promo flow make)", "pending": False}
     elif name == "share":
         return {"ok": True, "message": f"upload {payload['item']} to {payload['dest_label']}: `promo flow share {payload['kind']} {payload['n']} --to {payload['dest']} --by NAME` is the agent's to run", "pending": True}
+    elif name == "density":
+        args = ["--clear"] if not payload.get("every") else ["--every", str(payload["every"])]
+        rc = flow.main(["--project", pd, "density", "--story", payload["story"], *args])
+        return {"ok": rc == 0, "error": "density failed (see the harness console)", "message": f"promo flow density {' '.join(args)} (the agent then draws the frames)", "pending": True}
     else:
         return {"ok": True, "message": f"{name} is a message to the agent; nothing to run here", "pending": True}
     return {"ok": True, "pending": False}

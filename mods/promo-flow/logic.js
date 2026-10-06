@@ -134,7 +134,173 @@
     });
   }
 
-  const api = { arr, mref, fileBad, missingFile, missingAll, hasPreview, noFrame, sceneStatus, model, finalState, seenRule, seenKey, missingRule, previewRule, downloadName, shareRows };
+
+  /* ---------- reading long documents: a small markdown reader, pagination, search ---------- */
+  const wordsOf = (t) => (String(t || "").match(/\S*[\p{L}\p{N}_]\S*/gu) || []).length;
+  const PAGE_LINE = /^\s*<!--\s*page(?:\s*:\s*(.*?))?\s*-->\s*$/;
+  const LIST_LINE = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/;
+  const isTableSep = (l) => /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(l) && l.includes("-");
+  const cells = (l) => l.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+
+  /* Lines -> blocks: h{level,text} p{text} list{items:[{text,depth,ordered,check}]} quote{text} hr code{text} table{head,rows,align} page{title}. Nothing here touches HTML. */
+  function parseBlocks(text) {
+    const lines = String(text || "").replace(/\r\n?/g, "\n").split("\n");
+    const out = [];
+    let i = 0;
+    const special = (l) => /^\s*```/.test(l) || /^\s*#{1,4}\s/.test(l) || PAGE_LINE.test(l) || /^\s*([-*_])\1\1+\s*$/.test(l) || LIST_LINE.test(l) || /^\s*>/.test(l) || /^\s*\|/.test(l);
+    while (i < lines.length) {
+      const l = lines[i];
+      if (!l.trim()) { i++; continue; }
+      const pm = l.match(PAGE_LINE);
+      if (pm) { out.push({ t: "page", title: (pm[1] || "").trim() }); i++; continue; }
+      if (/^\s*```/.test(l)) {
+        const body = []; i++;
+        while (i < lines.length && !/^\s*```/.test(lines[i])) body.push(lines[i++]);
+        i++;
+        out.push({ t: "code", text: body.join("\n") });
+        continue;
+      }
+      const hm = l.match(/^\s*(#{1,4})\s+(.*?)(?:\s+#+)?\s*$/);
+      if (hm) { out.push({ t: "h", level: hm[1].length, text: hm[2] }); i++; continue; }
+      if (/^\s*([-*_])\1\1+\s*$/.test(l)) { out.push({ t: "hr" }); i++; continue; }
+      if (/^\s*\|/.test(l) && i + 1 < lines.length && isTableSep(lines[i + 1])) {
+        const head = cells(l); i += 2;
+        const rows = [];
+        while (i < lines.length && /^\s*\|/.test(lines[i])) rows.push(cells(lines[i++]));
+        out.push({ t: "table", head, rows });
+        continue;
+      }
+      if (/^\s*>/.test(l)) {
+        const q = [];
+        while (i < lines.length && /^\s*>/.test(lines[i])) q.push(lines[i++].replace(/^\s*>\s?/, ""));
+        out.push({ t: "quote", text: q.join("\n") });
+        continue;
+      }
+      if (LIST_LINE.test(l)) {
+        const items = [];
+        while (i < lines.length) {
+          const m = lines[i].match(LIST_LINE);
+          if (m) {
+            const cm = m[3].match(/^\[([ xX])\]\s+(.*)$/);
+            items.push({ depth: Math.min(3, Math.floor(m[1].replace(/\t/g, "  ").length / 2)), ordered: /\d/.test(m[2]), text: cm ? cm[2] : m[3], check: cm ? cm[1] !== " " : null });
+            i++;
+          } else if (lines[i].trim() && /^\s{2,}\S/.test(lines[i]) && items.length) { items[items.length - 1].text += "\n" + lines[i].trim(); i++; }
+          else break;
+        }
+        out.push({ t: "list", items });
+        continue;
+      }
+      const para = [l];
+      i++;
+      while (i < lines.length && lines[i].trim() && !special(lines[i])) para.push(lines[i++]);
+      out.push({ t: "p", text: para.join("\n") });
+    }
+    return out;
+  }
+
+  /* Inline markup -> tokens {t: text|b|i|code|link, text, url}. A link is only ever an https URL (the reader opens it through the host). */
+  function inline(text) {
+    const out = [];
+    const re = /(\*\*[^*\n]+?\*\*|__[^_\n]+?__|`[^`\n]+`|\*[^*\s][^*\n]*?\*|\[[^\]\n]+\]\(https?:\/\/[^)\s]+\)|https?:\/\/[^\s)<>\]]*[^\s)<>\].,;:!?])/g;
+    let last = 0, m;
+    const str = String(text == null ? "" : text);
+    while ((m = re.exec(str))) {
+      if (m.index > last) out.push({ t: "text", text: str.slice(last, m.index) });
+      const x = m[0];
+      if (x.startsWith("**") || x.startsWith("__")) out.push({ t: "b", text: x.slice(2, -2) });
+      else if (x[0] === "`") out.push({ t: "code", text: x.slice(1, -1) });
+      else if (x[0] === "[") { const mm = x.match(/^\[([^\]]+)\]\((.+)\)$/); out.push({ t: "link", text: mm[1], url: mm[2] }); }
+      else if (x[0] === "*") out.push({ t: "i", text: x.slice(1, -1) });
+      else out.push({ t: "link", text: x, url: x });
+      last = m.index + x.length;
+    }
+    if (last < str.length) out.push({ t: "text", text: str.slice(last) });
+    return out;
+  }
+  const plain = (text) => inline(text).map((x) => x.text).join("");
+
+  function blockText(b) {
+    if (b.t === "h" || b.t === "p" || b.t === "quote" || b.t === "code") return plain(b.text);
+    if (b.t === "list") return b.items.map((x) => plain(x.text)).join("\n");
+    if (b.t === "table") return [b.head, ...b.rows].map((r) => r.map(plain).join(" ")).join("\n");
+    return "";
+  }
+  const blockWords = (b) => wordsOf(blockText(b));
+
+  /* Pages: explicit `<!-- page -->` markers win; otherwise about `target` words per page, starting a new page at a heading once the page is a third full,
+     never inside a block (a table or a code block stays whole). Every page keeps its blocks, its title (first heading) and its words. */
+  function paginate(text, opts) {
+    const target = (opts && opts.target) || 650;
+    const blocks = parseBlocks(text);
+    const pages = [];
+    let cur = null;
+    const open = (title) => { cur = { title: title || "", blocks: [], words: 0, explicit: !!title }; pages.push(cur); };
+    const marked = blocks.some((b) => b.t === "page");
+    for (const b of blocks) {
+      if (b.t === "page") { if (cur && !cur.blocks.length) cur.title = b.title || cur.title; else open(b.title); continue; }
+      const w = blockWords(b);
+      if (!cur) open();
+      else if (!marked && cur.words > 0 && ((b.t === "h" && b.level <= 2 && cur.words >= target * 0.35) || cur.words + w > target * 1.35)) open();
+      cur.blocks.push(b);
+      cur.words += w;
+    }
+    if (!pages.length) open();
+    pages.forEach((p, i) => {
+      const hd = p.blocks.find((b) => b.t === "h" && b.level <= 3);
+      p.title = p.title || (hd ? plain(hd.text) : "Page " + (i + 1));
+      p.text = p.blocks.map(blockText).join("\n");
+      p.headings = p.blocks.filter((b) => b.t === "h" && b.level <= 3).map((b) => ({ level: b.level, title: plain(b.text) }));
+    });
+    return pages;
+  }
+  /* Contents list: every heading of level 1..3 with the page it is on (a page with no heading is listed under its own title). */
+  function outline(pages) {
+    const out = [];
+    pages.forEach((p, i) => {
+      if (p.headings.length) p.headings.forEach((h) => out.push({ level: h.level, title: h.title, page: i }));
+      else out.push({ level: 1, title: p.title, page: i });
+    });
+    return out;
+  }
+  const escRe = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const qre = (q) => { q = String(q || "").trim(); return q.length < 2 ? null : new RegExp(escRe(q), "giu"); };
+  /* [{page, n}] for the pages that contain `q` (case-insensitive, at least 2 characters). */
+  function findPages(pages, q) {
+    const re = qre(q);
+    if (!re) return [];
+    const out = [];
+    pages.forEach((p, i) => { const n = (p.text.match(re) || []).length; if (n) out.push({ page: i, n }); });
+    return out;
+  }
+  /* Split `text` around case-insensitive matches of `q`: [{text, hit}] (the reader wraps the hits in <mark>). */
+  function markSplit(text, q) {
+    const re = qre(q);
+    text = String(text);
+    if (!re) return [{ text, hit: false }];
+    const out = [];
+    let at = 0, m;
+    while ((m = re.exec(text))) { if (m.index > at) out.push({ text: text.slice(at, m.index), hit: false }); out.push({ text: m[0], hit: true }); at = m.index + m[0].length; if (!m[0].length) re.lastIndex++; }
+    if (at < text.length) out.push({ text: text.slice(at), hit: false });
+    return out.length ? out : [{ text, hit: false }];
+  }
+  const readMinutes = (words) => Math.max(1, Math.round((words || 0) / 200));
+
+  /* ---------- the storyboard on a time line ---------- */
+  /* Every frame of a story in time order: each scene's START at its start, its mid frames at their own times, its END at its end. Ties keep scene order,
+     so the END of one scene sits before the START of the next. */
+  function frameTimeline(board) {
+    const out = [];
+    arr((board || {}).scenes).forEach((s) => {
+      if (s.start) out.push({ t: s.start_s, kind: "start", scene: s, f: s.start });
+      arr(s.frames).forEach((f, i) => out.push({ t: typeof f.t === "number" ? f.t : s.start_s, kind: "mid", scene: s, f, i, auto: !!f.auto }));
+      if (s.end) out.push({ t: s.end_s, kind: "end", scene: s, f: s.end });
+    });
+    return out.map((x, n) => ({ x, n })).sort((a, b) => a.x.t - b.x.t || a.n - b.n).map((o) => o.x);
+  }
+  const DENSITY_CHOICES = [{ every: 0, label: "Start and end" }, { every: 10, label: "Every 10 s" }, { every: 5, label: "Every 5 s" }, { every: 2, label: "Every 2 s" }];
+  const clockT = (s) => { const t = Math.round(Math.max(0, s || 0) * 10), m = Math.floor(t / 600), rem = t - m * 600, sec = Math.floor(rem / 10), fr = rem % 10; return m + ":" + String(sec).padStart(2, "0") + (fr ? "." + fr : ""); };
+
+  const api = { arr, mref, fileBad, missingFile, missingAll, hasPreview, noFrame, sceneStatus, model, finalState, seenRule, seenKey, missingRule, previewRule, downloadName, wordsOf, parseBlocks, inline, plain, paginate, outline, findPages, markSplit, readMinutes, frameTimeline, DENSITY_CHOICES, clockT, shareRows };
   root.PF = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof window !== "undefined" ? window : globalThis);

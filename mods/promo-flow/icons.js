@@ -24,7 +24,12 @@
     download: '<path d="M10 3.5v9M6 9l4 4 4-4M4 16h12"/>',
     refresh: '<path d="M16 9a6 6 0 1 0-1.4 4.6M16 4v5h-5"/>',
     spark: '<path d="M10 3l1.6 4.4L16 9l-4.4 1.6L10 15l-1.6-4.4L4 9l4.4-1.6z"/>',
-    scene: '<rect x="3" y="5" width="14" height="10" rx="2"/><path d="M3 8h14"/>'
+    scene: '<rect x="3" y="5" width="14" height="10" rx="2"/><path d="M3 8h14"/>',
+    doc: '<path d="M5.5 3h6l3.5 3.5V16a1 1 0 0 1-1 1h-8.5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M11.5 3v3.5H15M7.5 10h5M7.5 13h5"/>',
+    table: '<rect x="3" y="4" width="14" height="12" rx="2"/><path d="M3 8.5h14M3 12.5h14M8 4v12"/>',
+    cut: '<circle cx="5.5" cy="14" r="2"/><circle cx="5.5" cy="6" r="2"/><path d="M7.2 7.2L17 14.5M7.2 12.8L17 5.5"/>',
+    camera: '<rect x="3" y="6" width="14" height="10" rx="2"/><path d="M7 6l1.2-2h3.6L13 6"/><circle cx="10" cy="11" r="2.5"/>',
+    shield: '<path d="M10 3l6 2.2v4.6c0 3.3-2.4 5.9-6 7.2-3.6-1.3-6-3.9-6-7.2V5.2z"/><path d="M7.5 10l2 2 3.5-4"/>'
   };
   window.icon = function (name, cls) {
     const t = document.createElement("template");

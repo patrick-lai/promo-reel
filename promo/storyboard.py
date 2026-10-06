@@ -67,6 +67,12 @@ def problems(b):
                 out.append(f"scene {sid}: `{w}` needs an `image` path (and a `prompt` saying how it is made)")
             elif not f.get("prompt"):
                 out.append(f"scene {sid}: `{w}` frame has no `prompt` (how it will be made / captured)")
+        for i, f in enumerate(s.get("frames") or []):
+            ft = f.get("t")
+            if not isinstance(ft, (int, float)) or len(t) != 2 or not t[0] <= ft <= t[1]:
+                out.append(f"scene {sid}: mid frame {i + 1} needs a `t` inside the scene ({t[0] if len(t) == 2 else '?'} to {t[1] if len(t) == 2 else '?'} s)")
+            elif not f.get("image") or not f.get("prompt"):
+                out.append(f"scene {sid}: mid frame {i + 1} needs an `image` path and a `prompt`")
         if s.get("source") not in (None, "real", "generated"):
             out.append(f"scene {sid}: source must be real|generated")
         if s.get("caption") and not s.get("proof") and s.get("source", "real") == "real":
@@ -98,11 +104,16 @@ def _frames(s, which):
                 yield f"frames[{i}]", f
 
 
+def which_for(b, which):
+    """A board with a frame density ("every 5 s", `promo flow density`) needs those mid frames as real images whenever its frames are asked for."""
+    return tuple(which) + (("frames",) if b.get("density") and "frames" not in which else ())
+
+
 def missing(b, board_dir, which=("start", "end")):
     """[{scene, which, image, prompt, slate}] for frames that are specified but are not real images yet: the file does not exist, or it is a text slate."""
     out = []
     for s in b.get("scenes") or []:
-        for w, f in _frames(s, which):
+        for w, f in _frames(s, which_for(b, which)):
             img = f.get("image")
             if not img:
                 continue

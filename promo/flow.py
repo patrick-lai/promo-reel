@@ -12,7 +12,12 @@ for the AskUserQuestion widget; `promo flow board` writes the dashboard page (st
     promo flow init <name> --intent TEXT          start (also creates the locked brief with the user's exact words)
     promo flow status [--json]                    where we are, what blocks, what to ask the person next
     promo flow discover --style TEXT [--ref URL ...] | --no-refs
-    promo flow script add ID --title T --logline L --file F ;  promo flow council scripts|storyboard|assets --file F
+    promo flow script add ID --title T --logline L (--file F | --file - | --text T) ;  promo flow script append ID --file F      a script of any length, in parts
+    promo flow doc add ID --kind K --title T (--file F | --text T) ;  doc append|new KIND|list|rm|templates      planning documents shown in the Plan tab (shot list, edit plan, ...)
+    promo flow plan pack [--story A]              the whole production pack built from the storyboard: treatment, direction, shot list, edit, audio, capture, claims, deliverables, schedule
+    promo flow story ID --title T --logline L ;  promo flow scene add|set|rm|list STORY ...      build and change a storyboard without writing JSON
+    promo flow density --every 5 [--story A] [--scene 03] | --clear      keyframes on a time grid ("show me frames every 5 seconds"), then `promo flow frames` makes them
+    promo flow council scripts|storyboard|assets --file F
     promo flow approve scripts-picked --picks A [B] --by NAME ; promo flow approve storyboard-approved|assets-approved|final-confirmation|draft-approved --by NAME
     promo flow asset add|list ;  promo flow needs          what to generate / capture next (missing frames and assets, with prompts)
     promo flow frames [--story B] [--scene ID]    MAKE the missing storyboard frames as real images (grok / codex CLI); a text slate is not a frame
@@ -40,7 +45,9 @@ import shutil
 import sys
 
 from . import assetplan as AP
+from . import boardedit as BE
 from . import brief as BR
+from . import plandocs as PD
 from . import previews as PV
 from . import share as SH
 from . import storyboard as SB
@@ -313,16 +320,117 @@ def approve(pd, gate, by, picks=None, note=""):
     save(pd, st)
 
 
-def add_script(pd, sid, title, logline, file):
+def _body(file=None, text=None):
+    """The text a command was given: `--text`, a file, or `--file -` for stdin (the way to hand over a very long script in one go)."""
+    if text is not None:
+        return text
+    if file == "-":
+        return sys.stdin.read()
+    if not file or not os.path.isfile(file):
+        raise FlowError(f"no such file {file}: pass `--file PATH`, `--file -` (stdin) or `--text \"...\"`")
+    with open(file) as f:
+        return f.read()
+
+
+def add_script(pd, sid, title, logline, file=None, text=None, append=False):
+    """Add a script, replace it, or (`append`) add the next part to it: a long script is written in as many parts as it needs and the Stage paginates it."""
     st = load(pd)
-    if not os.path.isfile(file):
-        raise FlowError(f"no such file {file}")
+    body = PD.check_text(_body(file, text))
     dest = os.path.join(fdir(pd), "scripts", f"{sid}.md")
+    cur = next((x for x in st["scripts"] if x["id"] == sid), None)
+    if append:
+        if not cur:
+            raise FlowError(f"no script {sid} to append to: `promo flow script add {sid} --title T --logline L ...` first")
+        old = open(dest).read() if os.path.isfile(dest) else ""
+        body = old.rstrip("\n") + "\n\n" + body.lstrip("\n")
+        PD.check_text(body)
+    elif not (title and logline):
+        raise FlowError("script add needs --title and --logline")
     os.makedirs(os.path.dirname(dest), exist_ok=True)
-    shutil.copyfile(file, dest)
-    st["scripts"] = [s for s in st["scripts"] if s["id"] != sid] + [dict(id=sid, title=title, logline=logline, file=f"scripts/{sid}.md")]
-    log(st, f"script {sid}")
+    with open(dest, "w") as f:
+        f.write(body if body.endswith("\n") else body + "\n")
+    rec = dict(id=sid, title=title or cur["title"], logline=logline or cur["logline"], file=f"scripts/{sid}.md")
+    st["scripts"] = [x for x in st["scripts"] if x["id"] != sid] + [rec] if not cur else [rec if x["id"] == sid else x for x in st["scripts"]]
+    log(st, f"script {sid}" + (" (more added)" if append else ""))
     save(pd, st)
+    return PD.words(body)
+
+
+def doc_put(pd, did, title=None, kind=None, file=None, text=None, story=None, summary=None, append=False, force=False, source=None):
+    """Add or replace a planning document (`append` adds to the end). Any length: the Stage reads it page by page."""
+    st = load(pd)
+    if not PD.valid_id(did):
+        raise FlowError("a document id is lower-case letters, digits, - and _ (e.g. `full-script`, `shot-list-a`)")
+    docs = st.setdefault("docs", [])
+    cur = next((x for x in docs if x["id"] == did), None)
+    if cur and not (append or force):
+        raise FlowError(f"document {did} exists: `--force` replaces it, `promo flow doc append {did}` adds to it")
+    kind = kind or (cur or {}).get("kind") or "notes"
+    if kind not in PD.KINDS:
+        raise FlowError(f"kind is one of {', '.join(PD.KINDS)}")
+    body = PD.check_text(_body(file, text))
+    dest = os.path.join(fdir(pd), "docs", f"{did}.md")
+    if append and cur and os.path.isfile(dest):
+        body = open(dest).read().rstrip("\n") + "\n\n" + body.lstrip("\n")
+        PD.check_text(body)
+    heads = PD.headings(body, 1)
+    title = title or (cur or {}).get("title") or (heads[0]["title"] if heads else PD.KINDS[kind][0])
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    with open(dest, "w") as f:
+        f.write(body if body.endswith("\n") else body + "\n")
+    rec = dict(id=did, title=title, kind=kind, story=story if story is not None else (cur or {}).get("story"), summary=summary if summary is not None else (cur or {}).get("summary") or "",
+               file=f"docs/{did}.md", created=(cur or {}).get("created") or now(), updated=now(), source=source or (cur or {}).get("source") or "agent")
+    st["docs"] = [rec if x["id"] == did else x for x in docs] if cur else docs + [rec]
+    log(st, (f"Added more to the plan: {title}" if append and cur else f"Added to the plan: {title}"))
+    save(pd, st)
+    return PD.words(body)
+
+
+def doc_rm(pd, did):
+    st = load(pd)
+    if not any(x["id"] == did for x in st.get("docs", [])):
+        raise FlowError(f"no document {did}: `promo flow doc list`")
+    st["docs"] = [x for x in st["docs"] if x["id"] != did]
+    p = os.path.join(fdir(pd), "docs", f"{did}.md")
+    if os.path.isfile(p):
+        os.remove(p)
+    log(st, f"Removed from the plan: {did}")
+    save(pd, st)
+
+
+def _tctx(pd, st, story):
+    bds = boards(pd, st)
+    if story and story not in [b[0] for b in bds]:
+        raise FlowError(f"no storyboard {story} yet (picked stories with a board: {', '.join(b[0] for b in bds) or 'none'})")
+    return dict(boards=bds, story=story, assets=AP.load(fdir(pd)), intent=st["intent"], style=(st.get("discover") or {}).get("style") or "")
+
+
+def doc_new(pd, kind, did=None, story=None, force=False):
+    """A starter document built from the REAL storyboard and asset plan (shot list rows are the scenes, the audio plan lists the actual voice lines and tracks)."""
+    st = load(pd)
+    text = PD.render_template(kind, _tctx(pd, st, story))
+    did = did or kind
+    heads = PD.headings(text, 1)
+    return did, doc_put(pd, did, title=heads[0]["title"] if heads else None, kind=kind, text=text, story=story, force=force, source="template",
+                        summary="Built from the storyboard and asset plan. The agent refines it.")
+
+
+def plan_pack(pd, story=None, force=False):
+    """The generic production pack in one go: treatment, director's notes, shot list, edit plan, audio plan, capture checklist, claims, deliverables, schedule.
+    With several picked stories the story-specific documents are made once per story (`shotlist-a`, `shotlist-b`). Existing documents stay unless `force`."""
+    st = load(pd)
+    stories = [story] if story else [b[0] for b in boards(pd, st)] or [None]
+    multi = len(stories) > 1
+    made, kept = [], []
+    have = {x["id"] for x in st.get("docs", [])}
+    for kind in PD.PACK:
+        for sid in stories if kind in PD.STORY_KINDS else [None]:
+            did = f"{kind}-{sid.lower()}" if multi and sid else kind
+            if did in have and not force:
+                kept.append(did)
+                continue
+            made.append(doc_new(pd, kind, did, sid, force)[0])
+    return made, kept
 
 
 def add_council(pd, kind, file, note=""):
@@ -521,9 +629,9 @@ def hints(pd, st):
     s = st["stage"]
     return dict(
         discover="Ask the person (AskUserQuestion) what style they want and for any reference videos/material; record with `promo flow discover`. Study references with `promo refs add`.",
-        scripts=f"Write {MIN_SCRIPTS}+ scripts with different angles; run the council (evals/council-flow.md, scripts lens set) 1-2 rounds and record with `promo flow council scripts`; `promo flow script add`. Then ask which to progress.",
+        scripts=f"Write {MIN_SCRIPTS}+ scripts with different angles (any length: `script add --file -` then `script append` for the next parts; the Stage reads them page by page); run the council (evals/council-flow.md, scripts lens set) 1-2 rounds and record with `promo flow council scripts`; `promo flow script add`. Then ask which to progress.",
         pick="Ask which script(s) to progress (multi-select); record the answer with `approve scripts-picked --picks ... --by NAME`.",
-        storyboard="Per picked story write flow/boards/<id>/board.json, then `promo flow frames` MAKES every scene's START and END frame as a real image (a text slate does not count), `promo flow board`, SHOW the page, iterate until they approve.",
+        storyboard="Per picked story build the board with `promo flow story` + `scene add` (or write flow/boards/<id>/board.json); a denser board on request (`promo flow density --every 5`); then `promo flow frames` MAKES every scene's START and END frame as a real image (a text slate does not count), `promo flow board`, SHOW the page, iterate until they approve.",
         assets="List every asset (screenshots, pictures, recordings, music, voice, sfx) with `promo flow asset add`, then `promo flow asset make` so each has a real sample to look at or hear (a placeholder is not a preview), publish, plan it out with the person.",
         keyframes="Make the remaining keyframes (`promo flow make`) and replace every mock and sample with the real file (`promo flow needs`), then advance.",
         confirm="Show the final summary (board + assets) and get the explicit go for drafts.",
@@ -538,7 +646,7 @@ def status(pd):
     return dict(stage=st["stage"], label=LABEL[st["stage"]], cycle=st["cycle"], rounds_used=len(cycle_rounds(st)), rounds_max=MAX_ROUNDS,
                 checks=[dict(ok=o, text=t) for o, t in ch], ready=all(o for o, _ in ch), next=hints(pd, st), ask=ask(pd, st),
                 needs=needs(pd, st), picks=st["picks"], gates={k: dict(by=v["by"], at=v["at"], fresh=gate_ok(pd, st, k)) for k, v in st["gates"].items()},
-                dashboard=os.path.join(fdir(pd), "dashboard.html"))
+                docs=[dict(id=d["id"], title=d["title"], kind=d["kind"]) for d in st.get("docs") or []], dashboard=os.path.join(fdir(pd), "dashboard.html"))
 
 
 GATE_PRIMARY = dict(style="Choose style", pick="Pick scripts", approve="Review", confirm="Confirm go", draft="Watch draft")
@@ -599,7 +707,7 @@ def _all_frames(pd, st, which):
     tot = miss = 0
     for _, b, d in boards(pd, st):
         for s in b.get("scenes") or []:
-            tot += len(list(SB._frames(s, which)))
+            tot += len(list(SB._frames(s, SB.which_for(b, which))))
         miss += len(SB.missing(b, d, which))
     return tot, miss
 
@@ -749,13 +857,39 @@ def _asset_label(a):
     return re.sub(r"[-_]+", " ", a["id"]).strip().capitalize()
 
 
+def _read(path):
+    try:
+        with open(path) as f:
+            return f.read()
+    except OSError:
+        return ""
+
+
+def _docs(pd, st):
+    """The planning documents for the Plan tab, grouped order: the text itself travels as a file (`body`), so a 30 000-word script never touches the state size limit."""
+    out = []
+    for d in st.get("docs") or []:
+        p = os.path.join(fdir(pd), d["file"])
+        text = _read(p)
+        label, group = PD.KINDS.get(d["kind"], PD.KINDS["notes"])
+        out.append(dict(id=d["id"], title=d["title"], kind=d["kind"], kind_label=label, group=group, story=d.get("story"), summary=d.get("summary") or "", updated=d.get("updated"),
+                        source=d.get("source") or "agent", words=PD.words(text), headings=PD.headings(text, 40), preview=PD.preview(text), body=_media(p)))
+    out.sort(key=lambda x: (PD.GROUPS.index(x["group"]), x["updated"] or ""))
+    return out
+
+
 def snapshot(pd):
     """The mod state of `mods/promo-flow` (`commissionctl mod publish promo-flow --file F`): `summary` for the chat card, `steps`, the gate, and every
     media file as a `{"$file": abs path}` object the host turns into an upload. Schema: mods/promo-flow/README.md."""
     st = load(pd)
     f = fdir(pd)
     picks = set(st["picks"])
-    scripts = [dict(id=s["id"], title=s["title"], logline=s["logline"], picked=s["id"] in picks, verdict=None, beats=_beats(os.path.join(f, s["file"]))) for s in st["scripts"]]
+    scripts = []
+    for s in st["scripts"]:
+        sp = os.path.join(f, s["file"])
+        text = _read(sp)
+        scripts.append(dict(id=s["id"], title=s["title"], logline=s["logline"], picked=s["id"] in picks, verdict=None, beats=_beats(sp), words=PD.words(text),
+                            headings=PD.headings(text, 40), body=_media(sp)))
     bl = []
     bds = boards(pd, st)
     for sid, b, d in bds:
@@ -770,8 +904,9 @@ def snapshot(pd):
             sc.append(dict(id=s["id"], beat=s.get("beat", ""), start_s=float(s["t"][0]), end_s=float(s["t"][1]), action=s.get("action", ""), caption=s.get("caption") or None,
                            voice=s.get("vo") or None, sound=s.get("sound") or None, camera=s.get("camera") or None, proof=s.get("proof") or None,
                            source=src if src in ("real", "generated", "mock") else "other", generated=src == "generated", start=fr("start", s.get("start")), end=fr("end", s.get("end")),
-                           frames=[fr(f"t={x.get('t', '?')}s", x) for x in s.get("frames") or []]))
-        bl.append(dict(id=sid, title=b.get("title", sid), logline=b.get("logline", ""), aspect=b.get("aspect", "16:9"),
+                           frames=[dict(fr(f"t={x.get('t', '?')}s", x), t=x.get("t") if isinstance(x.get("t"), (int, float)) else None, auto=bool(x.get("auto")))
+                                   for x in s.get("frames") or []]))
+        bl.append(dict(id=sid, title=b.get("title", sid), logline=b.get("logline", ""), aspect=b.get("aspect", "16:9"), density=b.get("density", {}).get("every_s"),
                        duration_s=float(max((s["end_s"] for s in sc), default=0)), scenes=sc))
     valid = {s["id"] for b in bl for s in b["scenes"]}
     assets = []
@@ -823,11 +958,12 @@ def snapshot(pd):
             state = "stale"
         steps.append(dict(id=sg, label=LABEL[sg], state=state, stale=sg in stale_ids))
     since = (st.get("log") or [{}])[-1].get("at")
+    docs = _docs(pd, st)
     return dict(summary=_summary(pd, st, gate, pc, used), title=_clip((st["intent"].split(".")[0] or "Production"), 80), intent=st["intent"],
                 stage=st["stage"], stage_label=LABEL[st["stage"]], stage_since=since, cycle=st["cycle"], rounds_used=used, rounds_max=MAX_ROUNDS, steps=steps,
                 stale_steps=stale,
                 style=(st.get("discover") or {}) and dict(style=st["discover"].get("style"), refs=st["discover"].get("refs", []), no_refs=st["discover"].get("no_refs", False)) or None,
-                scripts=scripts, councils=councils, boards=bl, assets=assets, to_make=to_make, drafts=drafts, finals=finals, rounds=rounds,
+                scripts=scripts, docs=docs, councils=councils, boards=bl, assets=assets, to_make=to_make, drafts=drafts, finals=finals, rounds=rounds,
                 share=dict(destinations=[dict(id=d, label=SH.LABEL[d], note=SH.NOTE[d], in_place=d == "artifacts") for d in SH.available(st)]),
                 checks=[dict(ok=o, text=t) for o, t in pc], gate=gate, activity=_activity(st),
                 approvals={k: dict(by=v["by"], at=v["at"], fresh=gate_ok(pd, st, k)) for k, v in st["gates"].items()})
@@ -837,6 +973,8 @@ def status_text(s):
     L = [f"stage: {s['label']}  ({s['stage']})   cycle {s['cycle']}   rounds {s['rounds_used']}/{s['rounds_max']}"]
     L += [f"  [{'x' if c['ok'] else ' '}] {c['text']}" for c in s["checks"]]
     L.append(f"next: {s['next']}")
+    if s.get("docs"):
+        L.append(f"plan documents: {', '.join(d['id'] for d in s['docs'])}")
     if s["needs"]:
         L.append(f"to make: {len(s['needs'])} (promo flow needs)")
     if s["ready"]:
@@ -912,6 +1050,46 @@ table{border-collapse:collapse;width:100%;font-size:13px}td{border-top:1px solid
 
 
 # ---- CLI ---------------------------------------------------------------------------------------------------------------------------------
+def _doc_cli(pd, a):
+    if a.action == "templates":
+        for k in sorted(PD.TEMPLATES):
+            print(f"{k:<13} {PD.KINDS[k][0]:<18} group {PD.KINDS[k][1]}{'   (in `plan pack`)' if k in PD.PACK else ''}")
+    elif a.action == "list":
+        for d in _docs(pd, load(pd)):
+            print(f"{d['id']:<22} {d['kind']:<13} {d['words']:>6} words  {d['title']}")
+    elif a.action == "rm":
+        doc_rm(pd, a.id)
+    elif a.action == "new":
+        if not a.kind and a.id:
+            a.kind, a.id = a.id, None
+        did, n = doc_new(pd, a.kind, a.id, a.story, a.force)
+        print(f"document {did}: {n} words, built from the storyboard")
+    else:
+        if not a.id:
+            raise FlowError("doc add|append needs an id (e.g. `promo flow doc add full-script --kind script --title \"Full script\" --file -`)")
+        n = doc_put(pd, a.id, a.title, a.kind, a.file, a.text, a.story, a.summary, append=a.action == "append", force=a.force or a.action == "append")
+        print(f"document {a.id}: {n} words")
+
+
+def _scene_cli(pd, a):
+    fd = fdir(pd)
+    if a.op == "list":
+        print("\n".join(BE.scene_lines(fd, a.story)) or "no scenes")
+        return
+    if not a.id:
+        raise FlowError(f"scene {a.op} needs a scene id")
+    fields = {k: getattr(a, k) for k in BE.SCENE_FIELDS}
+    extra = dict(start_prompt=a.start_prompt, end_prompt=a.end_prompt)
+    if a.op == "rm":
+        print(BE.scene_rm(fd, a.story, a.id))
+    elif a.op == "add":
+        if not (a.t and fields["beat"] and fields["action"]):
+            raise FlowError("scene add needs --t START END, --beat and --action")
+        print(BE.scene_add(fd, a.story, a.id, a.t, fields.pop("beat"), fields.pop("action"), a.after, **fields, **extra))
+    else:
+        print(BE.scene_set(fd, a.story, a.id, a.t, a.redraw, **fields, **extra))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="promo flow", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--project", type=_resolve, default=None, help="project dir or bare name (default: the cwd)")
@@ -926,7 +1104,16 @@ def main(argv=None):
     P("advance")
     P("needs").add_argument("--json", action="store_true")
     p = P("discover"); p.add_argument("--style", default=""); p.add_argument("--ref", action="append"); p.add_argument("--no-refs", action="store_true")
-    p = P("script"); p.add_argument("action", choices=["add"]); p.add_argument("id"); p.add_argument("--title", required=True); p.add_argument("--logline", required=True); p.add_argument("--file", required=True)
+    p = P("script"); p.add_argument("action", choices=["add", "append"]); p.add_argument("id"); p.add_argument("--title"); p.add_argument("--logline"); p.add_argument("--file"); p.add_argument("--text")
+    p = P("doc"); p.add_argument("action", choices=["add", "append", "new", "list", "rm", "templates"]); p.add_argument("id", nargs="?"); p.add_argument("--title"); p.add_argument("--kind")
+    p.add_argument("--file"); p.add_argument("--text"); p.add_argument("--story"); p.add_argument("--summary"); p.add_argument("--force", action="store_true")
+    p = P("plan"); p.add_argument("action", choices=["pack"]); p.add_argument("--story"); p.add_argument("--force", action="store_true")
+    p = P("story"); p.add_argument("id"); p.add_argument("--title"); p.add_argument("--logline"); p.add_argument("--aspect"); p.add_argument("--duration", type=float)
+    p = P("scene"); p.add_argument("op", choices=["add", "set", "rm", "list"]); p.add_argument("story"); p.add_argument("id", nargs="?"); p.add_argument("--t", type=float, nargs=2, metavar=("START", "END"))
+    p.add_argument("--after"); p.add_argument("--redraw", choices=["start", "end", "mid", "all"]); p.add_argument("--start-prompt"); p.add_argument("--end-prompt")
+    for k in BE.SCENE_FIELDS:
+        p.add_argument(f"--{k}")
+    p = P("density"); p.add_argument("--every", type=float); p.add_argument("--story"); p.add_argument("--scene"); p.add_argument("--clear", action="store_true")
     p = P("council"); p.add_argument("kind"); p.add_argument("--file", required=True); p.add_argument("--note", default="")
     p = P("approve"); p.add_argument("gate"); p.add_argument("--by", required=True); p.add_argument("--picks", nargs="*"); p.add_argument("--note", default="")
     p = P("asset"); p.add_argument("action", choices=["add", "list", "make"]); p.add_argument("--id", action="append"); p.add_argument("--kind"); p.add_argument("--scenes", default="")
@@ -965,7 +1152,23 @@ def main(argv=None):
         elif a.cmd == "discover":
             discover(pd, a.style, a.ref, a.no_refs)
         elif a.cmd == "script":
-            add_script(pd, a.id, a.title, a.logline, a.file)
+            n = add_script(pd, a.id, a.title, a.logline, a.file, a.text, a.action == "append")
+            print(f"script {a.id}: {n} words")
+        elif a.cmd == "doc":
+            _doc_cli(pd, a)
+        elif a.cmd == "plan":
+            made, kept = plan_pack(pd, a.story, a.force)
+            print(f"plan pack: made {', '.join(made) or 'nothing'}" + (f"; kept {', '.join(kept)} (use --force to rebuild)" if kept else ""))
+        elif a.cmd == "story":
+            print(BE.story_set(fdir(pd), a.id, a.title, a.logline, a.aspect, a.duration))
+        elif a.cmd == "scene":
+            _scene_cli(pd, a)
+        elif a.cmd == "density":
+            st = load(pd)
+            bds = [b for b in boards(pd, st) if not a.story or b[0] == a.story]
+            if not bds:
+                raise FlowError(f"no board{' ' + a.story if a.story else ''} to plan frames for")
+            print(BE.density(fdir(pd), bds, a.every, a.scene, a.clear))
         elif a.cmd == "council":
             print(f"council {a.kind} #{add_council(pd, a.kind, a.file, a.note)} recorded")
         elif a.cmd == "approve":
@@ -1027,7 +1230,7 @@ def main(argv=None):
             note(pd, a.text, a.kind, a.done)
         elif a.cmd == "board":
             print(dashboard(pd, a.out))
-    except (FlowError, BR.BriefError, SH.ShareError) as e:
+    except (FlowError, BR.BriefError, SH.ShareError, PD.DocError, BE.BoardError) as e:
         print(f"promo flow: {e}", file=sys.stderr)
         return 1
     return 0
