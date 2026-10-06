@@ -158,6 +158,10 @@ h1 { font-size: 19px; line-height: 1.25; font-weight: 650; letter-spacing: -.01e
 .empty h2 { font-size: 16px; font-weight: 650; }
 .empty p { color: var(--c-dim); max-width: 40ch; }
 .empty .btn { margin-top: 8px; }
+.prep .ring { animation: pulse 1.6s ease-in-out infinite; }
+.prep .dots i { font-style: normal; animation: pulse 1.2s ease-in-out infinite; }
+.prep .dots i:nth-child(2) { animation-delay: .2s; }
+.prep .dots i:nth-child(3) { animation-delay: .4s; }
 .next-list { text-align: left; width: 100%; max-width: 420px; margin-top: 12px; display: grid; gap: 8px; }
 .next-list li { display: flex; align-items: center; gap: 12px; padding: 10px 12px; }
 .next-list .num { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--c-line); display: grid; place-items: center; font-size: 11px; font-weight: 600; color: var(--c-dim); flex: none; }

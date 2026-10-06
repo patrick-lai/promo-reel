@@ -5,7 +5,7 @@ description: Publish the promo flow to the person's Stage pane (the promo-flow m
 # promo-flow mod: publishing contract
 The person sees and decides in the Stage pane; you do the work with `promo flow` (see the promo-reel skill, THE FLOW).
 
-**Starting.** If the person typed `/promo-flow <request>` or clearly asked for a produced video (promo, hero, demo, trailer), go ahead. Otherwise ask first with the ask
+**Starting.** The pane must be open before you do anything else: `commissionctl mod activate promo-flow` (idempotent; it shows "Preparing…" and the chat card at once, and a first publish replaces it). If the person typed `/promo-flow <request>` or clearly asked for a produced video (promo, hero, demo, trailer), go ahead. Otherwise ask first with the ask
 widget ("Use the promo flow for this?") and start only on yes. Then `promo flow init <name> --intent "<their words, exact>"` and publish. The project folder comes from the person's save location (`promo config output`, the folder button in the Stage), not from the repo you are working in; never `cd` into the repo to scaffold or write project files there.
 
 **Publish after every change** (a stage advanced, a script/board/asset/draft/round was added, an approval landed):

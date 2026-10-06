@@ -268,9 +268,9 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     const noConn = S.noState && !hasDoc();
     if (noConn) el.stepNo.textContent = "Not connected";
     else if (isStarting()) el.stepNo.textContent = "Starting";
-    el.stageName.textContent = noConn ? "Promo flow" : isStarting() ? "Getting started" : S.doc.stage_label || STAGE_LABEL[S.doc.stage] || "Promo flow";
+    el.stageName.textContent = noConn ? "Promo flow" : isStarting() ? "Promo flow" : S.doc.stage_label || STAGE_LABEL[S.doc.stage] || "Promo flow";
     const sm = S.summary || {};
-    el.stateLine.textContent = noConn ? "No answer from the host yet." : S.readonly ? "Archived. Read only." : isStarting() ? "Waiting on the agent." : sm.status || "";
+    el.stateLine.textContent = noConn ? "No answer from the host yet." : S.readonly ? "Archived. Read only." : isStarting() ? "Setting up your video." : sm.status || "";
     const badge = noConn ? "attention" : isStarting() ? "working" : BADGE_TEXT[sm.badge] ? sm.badge : "working";
     const bt = noConn ? "Not connected" : S.readonly ? "Read only" : BADGE_TEXT[badge];
     el.badge.dataset.badge = S.readonly && !noConn ? "readonly" : badge;
@@ -494,8 +494,9 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   function viewBad() { return h("div", { class: "pane empty" }, h("div", { class: "ring" }, ic("alert")), h("h2", { text: "Can't read this update" }), h("p", { text: "The agent published something this view doesn't understand. Ask it to run the snapshot again and republish." })); }
   function viewNoConn() { return h("div", { class: "pane empty fill", role: "alert" }, h("div", { class: "ring" }, ic("offline")), h("h2", { text: "Can't reach the host" }), h("p", { text: "Nothing arrived yet. Check the connection, then try again." }), h("button", { class: "btn primary", type: "button", text: "Retry", onclick: () => { S.noState = false; startBootTimer(); render(true); post({ type: "ready" }); } })); }
   function viewStarting() {
-    return h("div", { class: "pane empty fill" }, h("div", { class: "ring" }, ic("spark")), h("h2", { text: "Your request is with the agent" }),
-      h("p", { text: "Steps appear here as the agent publishes them." }));
+    return h("div", { class: "pane empty fill prep", role: "status" }, h("div", { class: "ring" }, ic("spark")),
+      h("h2", null, "Preparing", h("span", { class: "dots", "aria-hidden": "true" }, h("i", { text: "." }), h("i", { text: "." }), h("i", { text: "." }))),
+      h("p", { text: "The plan appears here as soon as it is ready." }));
   }
 
   /* ---------------- settings: where videos are saved ---------------- */
@@ -1529,7 +1530,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     el.gate.dataset.layout = "stack";
     el.btn1.removeAttribute("aria-describedby");
     if (m.mode === "readonly") { note("This thread is archived. You can read everything, but nothing can be sent.", { lock: true }); S.compose = false; }
-    else if (m.mode === "starting") note("Waiting on the agent for the first step.", { dot: true });
+    else if (m.mode === "starting") note("Preparing. The first step appears here when it is ready.", { dot: true });
     else if (m.mode === "wait") {
       note(S.stall ? (S.pending ? "Still queued. Check the chat." : "Still waiting. Check the chat.") : "Sent " + (ACTION_WORD[m.name] || "your reply") + ". Waiting for the agent to pick it up.", { spin: !S.stall });
       if (S.stall && !S.pending && S.lastAction) { el.btn2.hidden = false; el.btn2.dataset.quiet = "1"; el.btn2.textContent = "Send again"; el.btn2.disabled = busy || offlineBlocked(); el.gate.dataset.layout = "bar"; }

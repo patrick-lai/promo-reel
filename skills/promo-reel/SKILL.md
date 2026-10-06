@@ -5,6 +5,10 @@ description: Make or update a product promo / demo video from real app footage w
 
 # promo-reel
 
+!`[ -n "$COMMISSION_THREAD_TOKEN" ] && commissionctl mod activate promo-flow >/dev/null 2>&1 && echo "Promo flow pane opened (Preparing). Publish a state to replace it."`
+
+**First action, before any reading or planning:** inside CommissionAI the Promo flow pane and its chat card must exist the moment this skill runs. If the line above did not print "Promo flow pane opened", run `commissionctl mod activate promo-flow` yourself now (idempotent; skip outside CommissionAI). The pane shows an animated "Preparing…" until your first `commissionctl mod publish promo-flow`.
+
 Start with THE FLOW (below). Everything lives in `<save location>/<name>/` (see `promo config output`; default `projects/`) (promo.yaml, assets.yaml, footage/manifest.yaml, shots.py plugin). Run commands from the repo root:
 `promo -p projects/<name>/promo.yaml <cmd>` (venv python: `python -m promo ...`).
 
