@@ -53,7 +53,7 @@ grok, codex/GPT, a person with a recorder. promo-reel only specifies, ingests an
   Do this for the reference AND for your own draft, then compare numbers (median shot length, cut-rate curve, LUFS) as well as how it looks.
   Write what you learn to the project's `docs/reference-study/<date>-<name>.md`; presets come from measurements, not vibes.
 - **Generated images / video for NON-UI plates (YOU generate, promo-reel ingests):** the calling agent makes the asset with whatever it has
-  (its own image/video tool, `grok -p "..."`, `codex exec "..."`, a person) and hands the file down:
+  (Higgsfield/Runway ACP connectors — pick model with `skills/promo-video-route/SKILL.md` — its own image/video tool, `grok -p "..."`, `codex exec "..."`, a person) and hands the file down:
   1. Declare what you need in `promo.yaml`: `broll: [{id, kind: video|image, prompt, seconds, aspect}]`; `promo gen plan [--json]` lists the open
      requests with the full guard-prefixed prompt (no people / text / UI / logos), target path and size.
   2. Generate each one yourself and save it to the `out` path (video 4 s, 16:9, >= 720p; a corner logo is fine, see `--watermark br`).

@@ -2,7 +2,7 @@
 
 A declarative, agent-runnable pipeline for **product promo videos made from real app footage**: a beat-locked edit with eased crops and push-ins, captions in a fixed 9:16-safe zone, a licensed music edit, synthesised UI SFX, TTS voiceover, ducking and loudness mastering, and automated QA gates. It uses Python, Pillow and ffmpeg.
 
-- **Agents start here:** [`skills/promo-reel/SKILL.md`](skills/promo-reel/SKILL.md) (short) and [`AGENTS.md`](AGENTS.md) (the full workflow, team rules, and what still needs a human).
+- **Agents start here:** [`skills/promo-reel/SKILL.md`](skills/promo-reel/SKILL.md) (short), [`skills/promo-video-route/SKILL.md`](skills/promo-video-route/SKILL.md) (which video model / Higgsfield vs Runway), and [`AGENTS.md`](AGENTS.md) (the full workflow, team rules, and what still needs a human).
 - **Capture handoff:** [`capture/README.md`](capture/README.md) and `projects/<name>/footage/manifest.yaml`.
 - **Starting a project:** [`templates/new-project/`](templates/new-project/) or `promo new <name> --style hero|anime-opening|livestream|horizon|cinematic-story`. Example projects live in your projects dir (`promo config projects-dir`; by default the gitignored `projects/`), not in this repo.
 
@@ -25,7 +25,8 @@ projects/<name>/
   docs/                   brief, shot list, VO script, captions, review notes
   media/ build/ out/      gitignored: fetched assets, intermediates, deliverables
 capture/                  capture-script contract (product-specific capture scripts live in your projects dir)
-skills/promo-reel/        agent skill
+skills/promo-reel/        agent skill (flow, ingest, gates)
+skills/promo-video-route/  pick Runway vs Higgsfield and a model for generated plates
 templates/new-project/    scaffold used by `promo new`
 evals/rubric.yaml         UX reviewer's scoring rubric (versioned): read by `promo critique-pack` and `promo rubric`
 tests/                    fast unit tests (.venv/bin/python tests/test_<name>.py; needs the deps above, incl. pyyaml)
