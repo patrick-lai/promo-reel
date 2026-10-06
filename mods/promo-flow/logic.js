@@ -118,7 +118,23 @@
     return (slug || "promo") + ".mp4";
   }
 
-  const api = { arr, mref, fileBad, missingFile, missingAll, hasPreview, noFrame, sceneStatus, model, finalState, seenRule, seenKey, missingRule, previewRule, downloadName };
+  /* Where a draft or final can be uploaded and where it already is, one row per destination the host's twg can reach (`doc.share.destinations`).
+     `edited` = the file changed after the upload. A draft is the same item when edited: Artifacts refreshes it behind the same link, Loom cannot replace so it adds a copy.
+     A final is a numbered revision and is never overwritten, so an edited one only says to register the new file. */
+  function shareRows(doc, it) {
+    if (!it || fileBad(it)) return [];
+    const isFinal = String(it.id).charAt(0) === "f";
+    return arr((doc.share || {}).destinations).map((d) => {
+      const rec = (it.shared || {})[d.id] || null;
+      const row = { dest: d.id, label: d.label, url: rec && rec.url ? rec.url : null, state: "new", action: "Upload to " + d.label, note: d.note || "" };
+      if (!rec) return row;
+      if (!rec.edited) return { ...row, state: "on", action: "", note: "" };
+      if (isFinal) return { ...row, state: "locked", action: "", note: "Changed since it was uploaded. Register the new file as a new final and it goes up as the next version." };
+      return { ...row, state: "edited", action: (d.in_place ? "Update on " : "Upload again to ") + d.label, note: d.in_place ? "Same link, new file." : d.label + " keeps the earlier copy." };
+    });
+  }
+
+  const api = { arr, mref, fileBad, missingFile, missingAll, hasPreview, noFrame, sceneStatus, model, finalState, seenRule, seenKey, missingRule, previewRule, downloadName, shareRows };
   root.PF = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof window !== "undefined" ? window : globalThis);

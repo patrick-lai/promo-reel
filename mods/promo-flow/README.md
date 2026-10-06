@@ -5,7 +5,7 @@
 The promo flow (`promo flow ...`, see `promo/flow.py`) as a mod: a web app that the host mounts into its own page and shows in its Stage (right pane, about 380 to 900 px wide, full height),
 with a short summary card in the chat. The agent publishes state; the person's clicks come back to the agent as `[mod:promo-flow] ...` messages. In CommissionAI the agent publishes with `commissionctl mod publish promo-flow --file F`.
 
-    mod.json        manifest: slash command, activation message, actions approve | pick | changes | feedback, agent skill
+    mod.json        manifest: slash command, activation message, actions approve | pick | changes | feedback | generate | share, agent skill
     index.html      shell (header + stepper, tabs, content, sticky gate bar, lightbox)
     app.js          registers window.commissionMods["promo-flow"] = mount({root, post}) -> {receive, unmount}; rendering, lazy media; icons.js inline SVG icons; style.css
     agent/SKILL.md  what the agent learns (publish with `promo flow snapshot`, react to `[mod:promo-flow]`)
@@ -42,7 +42,11 @@ Every path below that says `file` is `{"$file": "<absolute path>"}` (the host tu
                  the mod shows a `ready` asset whose file is missing or failed as "File missing", never as ready, and disables Approve at the assets gate while any file is missing.
                  `label` is the human title (explicit `label`, else the first clause of `how`, else the id made readable); the raw `id` is only a tooltip
     to_make    [{kind: keyframe|asset, id, label, at?, detail, story?, scene?, which?, asset_kind?, source?}]   what `promo flow needs` lists; keyframe label is "Scene 03 · mid frame 1", at is "t=14.5 s"
-    drafts     [{id, label, note, path, name, rel, after}]   after = "round 2" when the draft was made for that round; finals [{id, label, path, name, rel}]
+    drafts     [{id, label, note, path, name, rel, after, share_as, shared}]   after = "round 2" when the draft was made for that round; finals [{id, label, path, name, rel, share_as, shared}]
+    share      {destinations: [{id: artifacts|loom, label, note, in_place}]}   what `promo flow share detect` found for the host's twg user (an hour's cache; empty = no upload row at all).
+                 Per draft/final: `share_as` is the canonical name it uploads as (`<project>_draft_N`, `<project>_final_vN`), `shared` is `{dest: {url, name, at, edited}}` for what is already up;
+                 `edited` = the file changed since. The Drafts tab shows one row per destination: Upload; Update (Artifacts refreshes the same link); Upload again (Loom cannot replace, it adds a copy);
+                 a final is a numbered revision, never overwritten (an edited one says to register the new file). `PF.shareRows` derives the rows
     rounds     [{cycle, n, feedback, verdict: yes|partial|no|null, open, scores{}, research[urls], drafts_at_start}]
     activity   [{at, text<=120, kind: capture|render|voice|music|check|plan|other|milestone, done}]  oldest first, <= 200: the agent's `promo flow note`s plus flow milestones. The working panel shows the latest
                  line, its age, one dot per item (hollow = in flight, solid = done, colour = kind) and the last three lines; `summary.status` is "Now: <latest note>" while working
@@ -53,7 +57,7 @@ Every path below that says `file` is `{"$file": "<absolute path>"}` (the host tu
 
 **Counts have one source.** For the selected story the mod derives one list (asset rows used in that story's scenes + that story's keyframes still to make) with exclusive buckets ready / mock / to make / missing; the Assets tab badge, the counter row, the filters and the cards all read it, and the Storyboard badge is the number of scenes in that story (`mod-dev/shoot.py` asserts badge = sum of buckets = cards for every stage and story). Scene refs on assets are validated against the selected story's scene ids.
 
-Actions: `approve`, `pick`, `changes`, `feedback`, `generate {what}`.
+Actions: `approve`, `pick`, `changes`, `feedback`, `generate {what}`, `share {kind: draft|final, n, item, dest, dest_label}` (the agent runs `promo flow share <kind> <n> --to <dest> --by NAME`).
 
 `gate.gate` is what the `approve` and `pick` actions guard on (`/gate/gate` vs payload `gate`). The first state after activation is `{}` with summary status "Starting": the app shows its Getting started screen.
 The `readonly` flag on the host `state` message (archived thread) disables every send. Actions: `approve {gate, draft?}` (at the draft gate `draft` is the latest draft's id), `pick {gate, picks: "A B"}`, `changes {stage, text}`, `feedback {round, max_rounds, text}`.

@@ -8,7 +8,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   const SHORT = { discover: "Style", scripts: "Scripts", pick: "Pick", storyboard: "Storyboard", assets: "Assets", keyframes: "Keyframes", confirm: "Confirm", drafts: "Drafts", review: "Review", final: "Final" };
   const STAGE_TAB = { scripts: "scripts", pick: "scripts", storyboard: "storyboard", assets: "assets", keyframes: "storyboard", confirm: "storyboard", drafts: "draft", review: "draft", final: "draft" };
   const BADGE_TEXT = { working: "With the agent", waiting: "Your turn", done: "Done", attention: "Needs attention" };
-  const ACTION_WORD = { approve: "your approval", pick: "your picks", changes: "your changes", feedback: "your feedback", generate: "your request" };
+  const ACTION_WORD = { approve: "your approval", pick: "your picks", changes: "your changes", feedback: "your feedback", generate: "your request", share: "your upload request" };
   const VERDICT = { yes: ["Intent matched", "ok"], partial: ["Partly matched", "warn"], no: ["Missed the intent", "bad"] };
   const KIND_LABEL = { screenshot: "Screenshot", image: "Image", recording: "Recording", video: "Video", music: "Music", voice: "Voice", sfx: "Sound effect" };
   const KIND_MEDIA = { screenshot: "image", image: "image", recording: "video", video: "video", music: "audio", voice: "audio", sfx: "audio" };
@@ -404,7 +404,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     if (tab === "scripts") return [d.scripts, d.intent, common];
     if (tab === "storyboard") return [d.boards, d.stage === "confirm" ? d.assets.map((a) => [a.kind, a.source, a.scenes]) : 0, d.stage === "keyframes" ? d.to_make : 0, common];
     if (tab === "assets") return [d.assets, d.to_make, d.boards, common];
-    if (tab === "draft") return [d.drafts, d.finals, d.rounds, d.rounds_used, d.rounds_max, common];
+    if (tab === "draft") return [d.drafts, d.finals, d.rounds, d.rounds_used, d.rounds_max, d.share, common];
     return [d.intent, d.style, common];
   }
   function renderContent(list, force) {
@@ -1059,6 +1059,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
           credits.length ? h("p", { class: "tl-note", text: "Credits to keep: " + credits.join(" \u00b7 ") }) : null)));
       }
       if (d.stage === "review") left.append(h("ul", { class: "watch-list", "aria-label": "What to check" }, ["Does it match the storyboard you approved?", "Is every caption and voice line true for what is on screen?", "Does the pacing and music feel right with the sound on?"].map((t) => h("li", { text: t }))));
+      left.append(shareBlock(it));
     } else {
       const since = d.stage === "drafts" ? hhmm(d.stage_since) : "";
       return h("div", { class: "pane empty fill" }, h("div", { class: "ring" }, ic("film")),
@@ -1075,6 +1076,20 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
         rounds.length ? h("div", { class: "rounds" }, rounds.slice().reverse().map(roundCard)) : h("p", { class: "sub", text: "No feedback yet. Watch the draft, then approve it or send feedback." }));
     }
     return h("div", { class: "pane" }, h("div", { class: "draft-grid" + (right ? "" : " one") }, left, right));
+  }
+  /* Upload options appear only for destinations the host's twg can reach; the click goes to the agent, which runs `promo flow share`. */
+  function shareBlock(it) {
+    const rows = PF.shareRows(S.doc, it);
+    if (!rows.length) return null;
+    const blocked = S.readonly || S.offline || !!S.pending || !!S.justSent || !!S.sending;
+    const kind = it.id.charAt(0) === "f" ? "final" : "draft", n = +it.id.slice(1);
+    return h("section", { class: "share", "aria-label": "Upload " + it.label },
+      h("div", { class: "share-h" }, h("b", { text: "Upload " + it.label.toLowerCase() }), it.share_as ? h("span", { class: "sub" }, "saved as ", h("span", { class: "as", text: it.share_as })) : null),
+      rows.map((r) => h("div", { class: "share-row", "data-dest": r.dest, "data-state": r.state },
+        r.state === "on" ? h("span", { class: "chip ok" }, ic("check"), "On " + r.label) : r.state === "new" ? h("span", { class: "chip", text: r.label }) : h("span", { class: "chip warn", text: r.label + " · edited since" }),
+        r.url && r.state !== "new" ? linkChip(r.url) : null,
+        r.action ? h("button", { type: "button", class: "btn ghost", "data-quiet": "1", disabled: blocked, text: r.action, onclick: () => send("share", { kind, n, item: it.label, dest: r.dest, dest_label: r.label }) }) : null,
+        r.note ? h("span", { class: "sub", text: r.note }) : null)));
   }
   function linkChip(u) { return h("button", { type: "button", class: "lchip", title: u, onclick: () => { if (/^https:\/\//i.test(u)) post({ type: "open-url", url: u }); } }, h("span", { text: host(u) }), ic("link")); }
   function roundCard(r) {

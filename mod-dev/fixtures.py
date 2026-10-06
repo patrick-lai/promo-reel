@@ -23,10 +23,28 @@ from PIL import Image, ImageDraw, ImageFont  # noqa: E402
 from promo import assetplan as AP  # noqa: E402
 from promo import brief as BR  # noqa: E402
 from promo import flow as F  # noqa: E402
+from promo import share as SH  # noqa: E402
 
 INTENT = "Make a 60 second promo for Acme Tasks: tell it what you want at night, wake up to merged pull requests. Calm, real product footage, no hype."
 FONTS = ["/System/Library/Fonts/HelveticaNeue.ttc", "/System/Library/Fonts/Helvetica.ttc", "/Library/Fonts/Arial.ttf"]
 HUES = [(26, 38, 80), (60, 40, 90), (20, 70, 90), (90, 50, 40), (30, 80, 70), (80, 60, 30), (40, 40, 70), (100, 50, 70)]
+
+
+def uploaded(pd, kind, n, dest, edited=False):
+    """Pretend the person's earlier upload of draft/final N to `dest`: stored the way `promo flow share` does, so the snapshot reads it back."""
+    st = F.load(pd)
+    path = (st["drafts"] if kind == "draft" else st["finals"])[n - 1]["file"]
+    rid = f"{kind}{n}-{dest}"
+    url = f"https://acme.atlassian.net/artifacts/{rid}" if dest == "artifacts" else f"https://www.loom.com/share/{rid.replace('-', '')}"
+    st.setdefault("shares", {}).setdefault(f"{kind}-{n}", {})[dest] = dict(id=rid, url=url, name=SH.canonical(pd, kind, n), sha="edited-since" if edited else SH.file_sha(path),
+                                                                           at=F.now(), access="private", by="Sam")
+    F.save(pd, st)
+
+
+def twg_available(pd, **dests):
+    st = F.load(pd)
+    st["share"] = dict(detected=dict(at=F.now(), dests={d: dict(ok=ok, why="" if ok else "not available") for d, ok in dests.items()}))
+    F.save(pd, st)
 
 
 def font(size):
@@ -294,6 +312,10 @@ def build(keep=None):
     F.add_draft(pd, d3, "Music ducked 4 dB under VO.")
     co, re_ = round_files(tmp, pd, 2, "YES", 5)
     F.round_close(pd, co, re_)
+    twg_available(pd, artifacts=True, loom=True)
+    uploaded(pd, "draft", 1, "artifacts")
+    uploaded(pd, "draft", 2, "artifacts", edited=True)
+    uploaded(pd, "draft", 2, "loom")
     snap("review")
     long = copy.deepcopy(out["review"])
     long["rounds"][0]["feedback"] += " " + "The pacing between the second and third scene still drags, and the caption sits too close to the bottom edge on a phone. " * 4
@@ -320,6 +342,7 @@ def build(keep=None):
     fin = os.path.join(pd, "out", "acme-hero-1080.mp4")
     mp4(fin, "smptebars", 2, "1920x1080")
     F.add_final(pd, fin)
+    uploaded(pd, "final", 1, "artifacts")
     snap("final")
     order = ["discover", "scripts", "pick", "storyboard", "assets", "keyframes", "confirm", "drafts", "review", "final",
              "storyboard-partial", "assets-error", "stale-approval", "long-content", "review-maxed"]

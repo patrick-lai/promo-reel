@@ -12,6 +12,7 @@
   "actions": {
     "approve":  {"guard": {"state": "/gate/gate", "payload": "gate"}, "message": "[mod:promo-flow] {by} approved {gate}. Run: promo flow approve {gate} --by \"{by}\", then advance and publish the next state."},
     "pick":     {"guard": {"state": "/gate/gate", "payload": "gate"}, "message": "[mod:promo-flow] {by} picked scripts {picks}. Run: promo flow approve scripts-picked --picks {picks} --by \"{by}\"."},
+    "share":    {"message": "[mod:promo-flow] {by} wants {item} uploaded to {dest_label}. Run: promo flow share {kind} {n} --to {dest} --by \"{by}\", then publish the new state."},
     "generate": {"message": "[mod:promo-flow] {by} wants the real thing made, not placeholders: {what}. Run: promo flow make (frames, then asset samples), then publish the new state."},
     "changes":  {"message": "[mod:promo-flow] {by} asked for changes on {stage}: {text}"},
     "feedback": {"message": "[mod:promo-flow] {by} sent draft feedback (round {round} of {max_rounds}): {text}"}

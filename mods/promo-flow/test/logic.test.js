@@ -114,3 +114,21 @@ test("download name: no extension falls back to the label as a slug plus .mp4", 
   assert.equal(L.downloadName(null, " · ! "), "promo.mp4");
   assert.equal(L.downloadName({ name: "x." }, "a".repeat(80) + " tail").length, 60 + ".mp4".length);
 });
+
+test("share rows: new, on, edited draft (in place or a copy) and a locked final", () => {
+  const doc = { share: { destinations: [{ id: "artifacts", label: "Atlassian Artifacts", note: "Private to you.", in_place: true }, { id: "loom", label: "Loom", note: "Goes to your library." }] } };
+  const file = { path: ok("v") };
+  const rec = (edited) => ({ url: "https://x/y", name: "p_draft_1", edited });
+  const rows = (it) => Object.fromEntries(L.shareRows(doc, it).map((r) => [r.dest, r]));
+  assert.deepEqual(L.shareRows({ share: { destinations: [] } }, { id: "d1", ...file }), []);
+  assert.deepEqual(L.shareRows(doc, { id: "d1", path: bad }), []);
+  let r = rows({ id: "d1", ...file, shared: {} });
+  assert.equal(r.artifacts.state, "new");
+  assert.equal(r.artifacts.action, "Upload to Atlassian Artifacts");
+  r = rows({ id: "d1", ...file, shared: { artifacts: rec(false), loom: rec(true) } });
+  assert.deepEqual([r.artifacts.state, r.artifacts.url, r.artifacts.action], ["on", "https://x/y", ""]);
+  assert.deepEqual([r.loom.state, r.loom.action, r.loom.note], ["edited", "Upload again to Loom", "Loom keeps the earlier copy."]);
+  assert.equal(rows({ id: "d1", ...file, shared: { artifacts: rec(true) } }).artifacts.action, "Update on Atlassian Artifacts");
+  r = rows({ id: "f2", ...file, shared: { artifacts: rec(true) } });
+  assert.deepEqual([r.artifacts.state, r.artifacts.action], ["locked", ""]);
+});

@@ -38,6 +38,7 @@ Post a `promo flow note` at every fan-out and fan-in so the Stage shows what is 
 
 Session UI: `status --json` carries the `ask` payload (question + options) for AskUserQuestion; `promo flow board` writes the dashboard HTML (stepper, scripts, storyboards with
 start->end frames, the asset gallery, drafts, rounds): publish it as an Artifact or show it as a widget so the person SEES the plan. Inside CommissionAI the widget is the `promo-flow` mod (`mods/promo-flow/`, README there): `promo flow snapshot --out f.json` then `commissionctl mod publish promo-flow --file f.json`; the person's clicks arrive as `[mod:promo-flow] ...` messages. Slash command: `/promo-flow` (`.claude/commands/promo-flow.md`).
+**Upload (only when the person asks).** Where their `twg` is signed in and Atlassian Artifacts or Loom is on their site (`promo flow share detect`; the snapshot checks it), the Drafts tab offers Upload per draft and final. The click reaches you as `[mod:promo-flow] ... wants Draft 5 uploaded to ...`: run `promo flow share draft|final N --to artifacts|loom --by "NAME"` and publish. One canonical name per item: draft N is `<project>_draft_N` (edited and shared again it refreshes the same Artifacts link; Loom cannot replace, so it adds a copy), a final is `<project>_final_vN` (every `final add` is the next version, never overwritten). Private unless they ask for `--access open`. Never upload on your own.
 Projects can live outside the repo: `promo config projects-dir`. The older STEP 0 / Workflow sections below are the details behind stages 1, 6-9.
 
 ## The handoff: promo-reel asks, YOU deliver (it never decides how)
@@ -129,7 +130,7 @@ reference. Structurally prevent that:
    manifest.md, earlier reviews, full check output, VO transcript). Do not run or impersonate the reviewer yourself.
    Per-project sources: `critique: {copy: [...], reviews: [...], footage_md: [...]}` in promo.yaml (project-relative paths; no defaults,
    so list the caption / VO-script files and any earlier reviews yourself).
-8. **Deliver**: only after human approval. Re-render at 4K with `--scale 2` if asked. Never publish or upload on your own.
+8. **Deliver**: only after human approval. Re-render at 4K with `--scale 2` if asked. Never publish or upload on your own; the one exception is the person's own click to put a draft or final on their Artifacts or Loom (THE FLOW, Upload).
 
 ## CLI cheat-sheet
 - `promo styles`; `promo new <name> --style hero|anime-opening|livestream`; `promo grid` (bars, beats, markers of `timeline.grid`)
@@ -137,6 +138,7 @@ reference. Structurally prevent that:
 - `promo build [--shots 05 06] [--force] [--scale 2]`; `promo shot <id...>`; `promo sfx|vo|music|events|mix|assemble|contact`
 - `promo brief init|show|check|confirm|conflict --project projects/<name>`; `promo refs add|check|show`; `promo compare-ref <draft.mp4> --project projects/<name>` (STEP 0)
 - `promo critique-pack [projects/<name>] [--out DIR] [--no-check] [--video]` (review folder for a reviewer model; holds the lock)
+- `promo flow share detect|draft|final [N] --to artifacts|loom --by NAME [--access private|open|shared]` (the person's upload; see THE FLOW)
 - `promo check [--json]`; `promo compare <ref.mp4> [--json]` (per-shot PSNR + audio diff vs a reference)
 - `promo peek <clip-id> <t> [x0 y0 x1 y1]`, `promo segpeek <shot> [t...]`, `promo mpeek out.png clip:t[:box] ...` (output in build/peek/)
 - `promo live2d fetch|render|lag`: offline Live2D hosts for the `livestream` shot type (hosts on one side, screen >= 55 %,

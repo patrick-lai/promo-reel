@@ -21,6 +21,10 @@ for the AskUserQuestion widget; `promo flow board` writes the dashboard page (st
     promo flow advance                            move on when the checks pass and the gate is approved
     promo flow draft add FILE ; promo flow round start --feedback TEXT ; promo flow round close --council F --research F
     promo flow final add FILE ; promo flow revise --feedback TEXT      after the final: more feedback, council again
+    promo flow share detect                       is Atlassian Artifacts / Loom available to this twg user (the snapshot offers uploads only when it is)
+    promo flow share draft|final [N] --to artifacts|loom --by NAME [--access private|open|shared]
+                                                  the person's upload of draft N (default the latest) as <project>_draft_N, refreshed in place when edited;
+                                                  a final as <project>_final_vN (every `final add` is the next version)
     promo flow board [--out F]                    write the dashboard HTML
     promo flow snapshot [--out F]                 the promo-flow mod state: `commissionctl mod publish promo-flow --file F` (mods/promo-flow/)
 """
@@ -38,6 +42,7 @@ import sys
 from . import assetplan as AP
 from . import brief as BR
 from . import previews as PV
+from . import share as SH
 from . import storyboard as SB
 from .home import resolve as _resolve
 
@@ -178,7 +183,7 @@ def gate_ok(pd, st, gate):
 
 def human(name):
     if not name or BR.AGENT_NAMES.search(name):
-        raise FlowError("`--by` must be the name of the person who approved (an agent cannot approve on its own behalf): ask them")
+        raise FlowError("`--by` must be the name of the person who decided this (an agent cannot approve or upload on its own behalf): ask them")
     return name
 
 
@@ -394,6 +399,38 @@ def add_final(pd, file):
     st["finals"].append(dict(file=os.path.abspath(file), at=now()))
     log(st, "final " + os.path.basename(file))
     save(pd, st)
+
+
+def _project(pd):
+    return os.path.basename(os.path.normpath(pd))
+
+
+def share_detect(pd, force=False):
+    """Probe Artifacts and Loom for this twg user and keep the answer (an hour) in the flow; stays quiet until something is there to share."""
+    st = load(pd)
+    if (force or st["drafts"] or st["finals"]) and SH.refresh(st, now(), force):
+        save(pd, st)
+    return st
+
+
+def share_upload(pd, kind, n, dest, by, access=None):
+    """The person's upload of draft/final N (default the latest). Returns (n, record, created|updated|unchanged)."""
+    st = load(pd)
+    by = human(by)
+    items = st["drafts"] if kind == "draft" else st["finals"]
+    if not items:
+        raise FlowError(f"no {kind} is registered yet")
+    n = n or len(items)
+    if not 1 <= n <= len(items):
+        raise FlowError(f"no {kind} {n}: there {'is' if len(items) == 1 else 'are'} {len(items)}")
+    item = items[n - 1]
+    project = _project(pd)
+    rec, what = SH.upload(st, project, kind, n, item["file"], dest, access, SH.describe(kind, n, project, st["intent"], item.get("note", "")), now())
+    if what != "unchanged":
+        rec["by"] = by
+        log(st, f"{kind} {n} {what} on {SH.LABEL[dest]} by {by}")
+        save(pd, st)
+    return n, rec, what
 
 
 def revise(pd, feedback):
@@ -757,9 +794,11 @@ def snapshot(pd):
     for r in rounds:
         after.setdefault(r["drafts_at_start"], f"round {r['n']}" if r["cycle"] == 1 else f"round {r['cycle']}.{r['n']}")
     rel = lambda p: os.path.relpath(p, pd) if p.startswith(pd) else os.path.basename(p)  # noqa: E731
+    proj = _project(pd)
     drafts = [dict(id=f"d{i + 1}", label=f"Draft {i + 1}", note=d.get("note") or None, path=_media(d["file"]), name=os.path.basename(d["file"]), rel=rel(d["file"]),
-                   after=after.get(i, "")) for i, d in enumerate(st["drafts"])]
-    finals = [dict(id=f"f{i + 1}", label=f"Final {i + 1}", path=_media(x["file"]), name=os.path.basename(x["file"]), rel=rel(x["file"])) for i, x in enumerate(st["finals"])]
+                   after=after.get(i, ""), **SH.view(st, proj, "draft", i + 1, d["file"])) for i, d in enumerate(st["drafts"])]
+    finals = [dict(id=f"f{i + 1}", label=f"Final {i + 1}", path=_media(x["file"]), name=os.path.basename(x["file"]), rel=rel(x["file"]),
+                   **SH.view(st, proj, "final", i + 1, x["file"])) for i, x in enumerate(st["finals"])]
     councils = {k: _clip(open(os.path.join(f, v[-1]["file"])).read(), 900) for k, v in st["councils"].items() if v and os.path.isfile(os.path.join(f, v[-1]["file"]))}
     pc = plain_checks(pd, st)
     gate = _gate(pd, st)
@@ -789,6 +828,7 @@ def snapshot(pd):
                 stale_steps=stale,
                 style=(st.get("discover") or {}) and dict(style=st["discover"].get("style"), refs=st["discover"].get("refs", []), no_refs=st["discover"].get("no_refs", False)) or None,
                 scripts=scripts, councils=councils, boards=bl, assets=assets, to_make=to_make, drafts=drafts, finals=finals, rounds=rounds,
+                share=dict(destinations=[dict(id=d, label=SH.LABEL[d], note=SH.NOTE[d], in_place=d == "artifacts") for d in SH.available(st)]),
                 checks=[dict(ok=o, text=t) for o, t in pc], gate=gate, activity=_activity(st),
                 approvals={k: dict(by=v["by"], at=v["at"], fresh=gate_ok(pd, st, k)) for k, v in st["gates"].items()})
 
@@ -903,6 +943,8 @@ def main(argv=None):
     p = P("note"); p.add_argument("text"); p.add_argument("--kind", default="other", choices=NOTE_KINDS); p.add_argument("--done", action="store_true")
     p = P("board"); p.add_argument("--out")
     p = P("snapshot"); p.add_argument("--out")
+    p = P("share"); p.add_argument("what", choices=["detect", "draft", "final"]); p.add_argument("n", nargs="?", type=int)
+    p.add_argument("--to", choices=SH.DESTS); p.add_argument("--by"); p.add_argument("--access", choices=SH.ACCESS)
     a = ap.parse_args(argv)
     pd = a.project or os.getcwd()
     if a.cmd == "init" and a.name and not a.project:
@@ -963,7 +1005,17 @@ def main(argv=None):
             add_final(pd, a.file)
         elif a.cmd == "revise":
             print(f"cycle {load(pd)['cycle'] + 1}: round {revise(pd, a.feedback)} open")
+        elif a.cmd == "share":
+            if a.what == "detect":
+                for dest, r in SH.detected(share_detect(pd, force=True)).items():
+                    print(f"{dest}: " + ("available" if r["ok"] else f"not available ({r['why']})"))
+            else:
+                if not (a.to and a.by):
+                    raise FlowError("share needs --to artifacts|loom and --by NAME (the person who asked for the upload)")
+                n, rec, what = share_upload(pd, a.what, a.n, a.to, a.by, a.access)
+                print(f"{a.what} {n} {what} on {SH.LABEL[a.to]} as {rec['name']}" + (f": {rec['url']}" if rec.get("url") else ""))
         elif a.cmd == "snapshot":
+            share_detect(pd)
             doc = json.dumps(snapshot(pd), indent=2)
             if a.out:
                 os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
@@ -975,7 +1027,7 @@ def main(argv=None):
             note(pd, a.text, a.kind, a.done)
         elif a.cmd == "board":
             print(dashboard(pd, a.out))
-    except (FlowError, BR.BriefError) as e:
+    except (FlowError, BR.BriefError, SH.ShareError) as e:
         print(f"promo flow: {e}", file=sys.stderr)
         return 1
     return 0

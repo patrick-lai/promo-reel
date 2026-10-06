@@ -753,3 +753,7 @@ button.fr:hover { border-color: var(--c-accent); }
 .wk-note { margin: 8px 0 0; font-size: 12px; color: var(--c-dim); }
 .wk-note.warn { color: var(--c-warn); }
 @media (prefers-reduced-motion: reduce) { .wk-pulse, .dt.live { animation: none; } }
+
+.share{margin-top:14px;padding:10px 12px;border:1px solid var(--c-line);border-radius:var(--r-md);display:grid;gap:8px}
+.share-h{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;font-size:13px}.share-h .as{font-family:var(--b-mono);color:var(--c-ink);overflow-wrap:anywhere}
+.share-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.share-row .sub{flex:1 1 160px;min-width:0;font-size:12px}.share-row .btn.ghost[data-quiet]{min-height:32px;padding:0 12px;border-color:var(--c-line);color:var(--c-ink);font-size:13px}.share-row .btn.ghost[data-quiet]:disabled{color:var(--c-dim)}

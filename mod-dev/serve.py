@@ -175,6 +175,8 @@ def run_action(pd, name, payload):
                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         LIVE["jobs"].append(job)
         return {"ok": True, "message": "making frames and samples (promo flow make)", "pending": False}
+    elif name == "share":
+        return {"ok": True, "message": f"upload {payload['item']} to {payload['dest_label']}: `promo flow share {payload['kind']} {payload['n']} --to {payload['dest']} --by NAME` is the agent's to run", "pending": True}
     else:
         return {"ok": True, "message": f"{name} is a message to the agent; nothing to run here", "pending": True}
     return {"ok": True, "pending": False}

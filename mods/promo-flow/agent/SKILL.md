@@ -21,6 +21,10 @@ Never edit the JSON by hand. The first publish activates the mod in this thread.
   A "Style: X. Reference: URL" message is `promo flow discover --style "X" --ref URL`; "Style: X. No reference link." is `promo flow discover --style "X" --no-refs`; then `promo flow advance`.
 - `sent draft feedback (round n of 5): <text>`: `promo flow round start --feedback "<text verbatim>"`, council, one batch, one draft, `round close`, publish.
 
+- `wants <item> uploaded to <destination>`: the person clicked Upload on a draft or the final. The Stage only offers it where their `twg` is signed in and the product is there (`promo flow share detect` refreshes that, e.g. after they sign in). Run the exact `promo flow share draft|final N --to artifacts|loom --by "NAME"` from the message, then publish. It is private to them; widen with `--access open` only when they ask.
+  Names are canonical: draft N is `<project>_draft_N` (edited and shared again, Artifacts refreshes the same link; Loom cannot replace, so it adds a copy and keeps the old links in the record), a final is `<project>_final_vN` (each `final add` is the next version and is never overwritten). Tell them the link it printed. If it fails, say the reason it printed; an error that says to check Artifacts or Loom may have landed, so do not retry blindly.
+  Never upload on your own (rule 5).
+
 **Before you ask for a decision**, `promo flow make`: the person decides by looking and listening, so every frame must be an image and every asset needs its real file or a sample. A text slate or an empty MOCK tile is not a preview, and the Approve button stays disabled while any exist.
 
 **While you work (anything over ~2 minutes: captures, renders, voices, builds).** The person is waiting and cannot see your tools. Every ~3 minutes, and at each new sub-step:
