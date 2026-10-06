@@ -644,6 +644,11 @@ def ask(pd, st):
     return None
 
 
+def ask_in_stage(pd, st):
+    """True when the Stage pane's gate already carries the `ask` question (same decision, same buttons): put it nowhere else, or the person answers twice."""
+    return ask(pd, st) is not None and _gate(pd, st) is not None
+
+
 def hints(pd, st):
     s = st["stage"]
     return dict(
@@ -663,7 +668,7 @@ def status(pd):
     st = load(pd)
     ch = checks(pd, st)
     return dict(stage=st["stage"], label=LABEL[st["stage"]], cycle=st["cycle"], rounds_used=len(cycle_rounds(st)), rounds_max=MAX_ROUNDS,
-                checks=[dict(ok=o, text=t) for o, t in ch], ready=all(o for o, _ in ch), next=hints(pd, st), ask=ask(pd, st),
+                checks=[dict(ok=o, text=t) for o, t in ch], ready=all(o for o, _ in ch), next=hints(pd, st), ask=ask(pd, st), ask_in_stage=ask_in_stage(pd, st),
                 needs=needs(pd, st), picks=st["picks"], gates={k: dict(by=v["by"], at=v["at"], fresh=gate_ok(pd, st, k)) for k, v in st["gates"].items()},
                 docs=[dict(id=d["id"], title=d["title"], kind=d["kind"]) for d in st.get("docs") or []], dashboard=os.path.join(fdir(pd), "dashboard.html"))
 
@@ -1006,7 +1011,8 @@ def status_text(s):
     if s["ready"]:
         L.append("ready: `promo flow advance`")
     if s["ask"]:
-        L.append(f"ask the person: {s['ask']['question']}  [{' | '.join(o['label'] for o in s['ask']['options'])}]")
+        where = "the Stage pane carries it (mod open: do NOT also ask in chat)" if s["ask_in_stage"] else "ask in chat"
+        L.append(f"ask the person: {s['ask']['question']}  [{' | '.join(o['label'] for o in s['ask']['options'])}]  ({where})")
     return "\n".join(L)
 
 

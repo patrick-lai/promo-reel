@@ -174,6 +174,13 @@ def test_status_json_has_ask(pd):
     assert s["stage"] == "discover" and s["ask"]["header"] == "Style" and len(s["ask"]["options"]) >= 2
 
 
+def test_ask_in_stage_when_the_pane_gate_carries_it(pd):
+    s = F.status(pd)
+    assert s["ask"] and s["ask_in_stage"] is True
+    assert F.snapshot(pd)["gate"]["question"] == s["ask"]["question"]
+    assert "do NOT also ask in chat" in F.status_text(s)
+
+
 def walk(x):
     if isinstance(x, dict):
         yield x

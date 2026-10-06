@@ -41,6 +41,8 @@ Never edit the JSON by hand. The first publish activates the mod in this thread.
 Write it as plain words about the video ("Taking snapshots of the real app", "Designing the voice for the opening line"), never a command or a path. `promo flow make` notes itself.
 The Stage shows the latest note, how long ago it was, and one dot per past note; the chat card status reads "Now: <note>".
 
+**One question, one place.** The pane's `gate` is the question (style, scripts to pick, storyboard, assets, go, draft). While this mod is open, never put the same decision in the chat ask box (`status --json` says so with `ask_in_stage: true`): the box belongs to the host, nothing closes it when they answer in the pane, and it sits there looking unanswered. Use the chat ask only for what the pane cannot carry (references and must-not-claim before there is a gate, a clarifying question) and say in one line that the pane has the decision. If an answer arrives as `[mod:promo-flow]` while a chat question on the same gate is still open, act on the pane answer and do not ask that question again.
+
 **Never approve yourself** (an agent name is refused). Never send an action for them. If `commissionctl mod status promo-flow` shows nothing new, wait.
 A thread that is archived shows the last state read only; nothing more to do.
 
