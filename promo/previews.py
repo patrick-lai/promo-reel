@@ -24,7 +24,7 @@ import shutil
 import subprocess
 import tempfile
 import urllib.request
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from . import genvideo as G
 from . import storyboard as SB
@@ -109,10 +109,12 @@ def frame_targets(bds, scene=None, which=("start", "end"), force=False):
     return out
 
 
-def make_frames(bds, look="", scene=None, which=("start", "end"), force=False, provider="auto", jobs=3, limit=None, say=print):
-    """Generate the missing frames in parallel. Returns (made, failed): the labels, and [(label, reason)] for the ones a provider could not make."""
+def make_frames(bds, look="", scene=None, which=("start", "end"), force=False, provider="auto", jobs=3, limit=None, say=print, job=None):
+    """Generate the missing frames in parallel. Returns (made, failed): the labels, and [(label, reason)] for the ones a provider could not make.
+    `job(todo)` returns a `flowjob.Job` for the targets, told about each frame as it lands."""
     todo = frame_targets(bds, scene, which, force)[:limit]
     made, failed = [], []
+    track = job(todo) if job else None
 
     def run(t):
         label, b, s, f, p = t
@@ -123,9 +125,13 @@ def make_frames(bds, look="", scene=None, which=("start", "end"), force=False, p
         return label, None
 
     with ThreadPoolExecutor(max_workers=max(1, jobs)) as ex:
-        for label, err in ex.map(run, todo):
+        futs = {ex.submit(run, t): t for t in todo}
+        for fut in as_completed(futs):
+            label, err = fut.result()
             (failed.append((label, err)) if err else made.append(label))
             say(f"  {'FAILED' if err else 'made  '} frame {label}" + (f": {err[:160]}" if err else ""))
+            if track:
+                track.item(label, futs[fut][4], err)
     return made, failed
 
 
@@ -274,13 +280,15 @@ def make_sample(a, pd, bds, provider="auto"):
     return dict(path=rel, note=note, at=_now())
 
 
-def make_samples(plan, pd, bds, ids=None, force=False, provider="auto", say=print, jobs=3):
-    """Make the missing samples (all with force), `jobs` at a time. Returns (made, failed) like make_frames; writes flow/samples.json."""
+def make_samples(plan, pd, bds, ids=None, force=False, provider="auto", say=print, jobs=3, job=None):
+    """Make the missing samples (all with force), `jobs` at a time. Returns (made, failed) like make_frames; writes flow/samples.json.
+    `job(todo)` returns a `flowjob.Job` for the assets, told about each sample as it lands."""
     flow_dir = os.path.join(pd, "flow")
     samples = load_samples(flow_dir)
     todo = [a for a in plan if not ((ids and a["id"] not in ids) or (not force and has_sample(a, pd, samples)))]
     made, failed = [], []
     lock = threading.Lock()
+    track = job(todo) if job else None
 
     def run(a):
         try:
@@ -289,6 +297,8 @@ def make_samples(plan, pd, bds, ids=None, force=False, provider="auto", say=prin
             with lock:
                 failed.append((a["id"], str(e)))
                 say(f"  FAILED sample {a['id']}: {str(e)[:200]}")
+                if track:
+                    track.item(a["id"], None, str(e))
             return
         with lock:
             samples[a["id"]] = res
@@ -296,6 +306,8 @@ def make_samples(plan, pd, bds, ids=None, force=False, provider="auto", say=prin
             say(f"  made   sample {a['id']} -> {res['path']}")
             with open(samples_path(flow_dir), "w") as f:
                 json.dump(samples, f, indent=2)
+            if track:
+                track.item(a["id"], os.path.join(pd, res["path"]), None)
 
     with ThreadPoolExecutor(max_workers=max(1, jobs)) as ex:
         list(ex.map(run, todo))

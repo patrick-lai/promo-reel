@@ -988,3 +988,98 @@ def test_resume_by_id_closes_the_picker(tmp_path, monkeypatch):
     pk = F.picker(resumed=pid)
     assert pk["pickable"] is False and pk["resumed"]["id"] == pid and pk["summary"]["badge"] == "done"
     assert F.main(["resume", "no-such-project"]) == 1
+
+
+# ---- live progress of long preview runs ------------------------------------------------------------------------------------------------------
+def recording_commissionctl(tmp_path, monkeypatch):
+    """A `commissionctl` on PATH that keeps every published state, in order, like the host's version history."""
+    bindir, out = tmp_path / "bin", tmp_path / "published"
+    bindir.mkdir()
+    out.mkdir()
+    exe = bindir / "commissionctl"
+    exe.write_text(f'#!/bin/sh\nn=$(ls "{out}" | wc -l | tr -d " ")\ncp "$5" "{out}/$(printf %03d $n).json"\n')
+    exe.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bindir}:{os.environ['PATH']}")
+    monkeypatch.setenv("COMMISSION_THREAD_TOKEN", "t")
+    monkeypatch.delenv("PROMO_FLOW_PUBLISH", raising=False)
+    return lambda: [json.load(open(out / f)) for f in sorted(os.listdir(out))]
+
+
+def test_frame_run_publishes_a_rising_count_with_each_picture(pd, tmp_path, monkeypatch):
+    board(pd, "A", make_imgs=False)
+    st = F.load(pd)
+    st.update(picks=["A"], stage="storyboard")
+    F.save(pd, st)
+    published = recording_commissionctl(tmp_path, monkeypatch)
+
+    def make_one(prompt, final, provider, size=PV.FRAME_SIZE):
+        if "Scene 02" in prompt and final.endswith("-e.png"):
+            raise RuntimeError("grok produced no file")
+        img(final)
+    monkeypatch.setattr(PV, "_make_one", make_one)
+    assert F.main(["--project", pd, "frames", "--jobs", "1"]) == 1
+    states = published()
+    assert [s["summary"]["status"] for s in states[:4]] == [
+        "Generating storyboard images: 0 of 4 images done. Now: Scene 01 \u00b7 start frame.", "Generating storyboard images: 1 of 4 images done. Now: Scene 01 \u00b7 end frame.",
+        "Generating storyboard images: 2 of 4 images done. Now: Scene 02 \u00b7 start frame.", "Generating storyboard images: 3 of 4 images done. Now: Scene 02 \u00b7 end frame."]
+    assert {s["summary"]["badge"] for s in states[:4]} == {"working"}
+    assert [s["summary"]["progress"] for s in states[:2]] == [dict(done=0, total=4), dict(done=1, total=4)]
+    first = states[1]["job"]
+    assert first["state"] == "running" and first["items"][0]["label"] == "Scene 01 · start frame" and first["items"][0]["path"]["$file"].endswith("01-s.png")
+    assert [a["label"] for a in first["active"]] == ["Scene 01 · end frame"]
+    last = F.snapshot(pd)["job"]
+    assert (last["state"], last["done"], last["failed"], last["active"]) == ("done", 3, 1, [])
+    assert [x["ok"] for x in last["items"]][-1] is False and "no file" in last["items"][-1]["error"]
+
+
+def test_an_interrupted_run_reads_stopped_not_still_working(pd, monkeypatch):
+    board(pd, "A", make_imgs=False)
+    st = F.load(pd)
+    st.update(picks=["A"], stage="storyboard")
+    F.save(pd, st)
+    calls = []
+
+    def make_one(prompt, final, provider, size=PV.FRAME_SIZE):
+        calls.append(final)
+        if len(calls) == 2:
+            raise KeyboardInterrupt
+        img(final)
+    monkeypatch.setattr(PV, "_make_one", make_one)
+    with pytest.raises(KeyboardInterrupt):
+        F.make_frames(pd, None, None, ("start", "end"), False, "auto", 1)
+    snap = F.snapshot(pd)
+    assert snap["job"]["state"] == "stopped" and snap["job"]["done"] == 1
+    assert snap["summary"]["status"].startswith("Stopped after 1 of 4 images") and snap["summary"]["badge"] == "attention"
+
+
+def test_a_build_reports_each_step_and_the_one_that_failed(pd, tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from promo import assets as A
+    from promo import cli
+    from promo import footage as FT
+    published = recording_commissionctl(tmp_path, monkeypatch)
+    build = str(tmp_path / "build")
+    spec = SimpleNamespace(root=pd, path=os.path.join(pd, "promo.yaml"), build=build, scale=1, validate=lambda: [])
+
+    def step(name, fail=False):
+        def run(a):
+            if fail:
+                raise RuntimeError("ffmpeg exited 1")
+        return dict(name=name, key=name.replace(" ", "_"), dig=lambda: "d", outputs=[os.path.join(build, name + ".out")] if name.startswith("shot") else [], run=run, deps=[])
+    steps = [step("sfx"), step("vo"), step("shot 01"), step("mix", fail=True), step("assemble")]
+    monkeypatch.setattr(cli, "plan", lambda spec_: steps)
+    monkeypatch.setattr(A, "gate", lambda spec_: None)
+    monkeypatch.setattr(FT, "gate", lambda spec_, ids=None: None)
+    cli.Stamps(build).write("sfx", "d")                      # unchanged since the last build
+    with pytest.raises(RuntimeError):
+        cli.dispatch(spec, SimpleNamespace(cmd="build", shots=None, force=False))
+    statuses = [s["summary"]["status"].split(". Also open")[0] for s in published()]
+    assert statuses == ["Building the video: 0 of 6 steps done. Now: Checking licences and footage", "Building the video: 1 of 6 steps done. Now: Sound effects",
+                        "Building the video: 2 of 6 steps done. Now: Voice-over", "Building the video: 3 of 6 steps done. Now: Shot 01",
+                        "Building the video: 4 of 6 steps done. Now: Mixing and mastering", "Stopped after 4 of 6 steps. Ask the agent to carry on"]
+    job = F.snapshot(pd)["job"]
+    assert (job["state"], job["done"], job["failed"], job["total"]) == ("stopped", 4, 1, 6)
+    assert [(x["label"], x["ok"], x["skipped"]) for x in job["items"]] == [
+        ("Checking licences and footage", True, False), ("Sound effects", True, True), ("Voice-over", True, False), ("Shot 01", True, False), ("Mixing and mastering", False, False)]
+    assert job["resume"] == f"promo -p {spec.path} build"
+    assert F.snapshot(pd)["summary"]["status"].startswith("Stopped after 4 of 6 steps")

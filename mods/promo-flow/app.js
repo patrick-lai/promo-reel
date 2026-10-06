@@ -23,7 +23,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   const $ = (id) => ctx.root.getElementById(id);
   const root = ctx.root.host;
   const el = { sc: $("scroller"), app: $("app"), stepNo: $("stepNo"), badge: $("badge"), badgeText: $("badgeText"), stageName: $("stageName"), stepsBtn: $("stepsBtn"), settingsBtn: $("settingsBtn"), stateLine: $("stateLine"),
-    stepper: $("stepper"), curLab: $("curLab"), stepsList: $("stepsList"), banners: $("banners"), working: $("working"), tabs: $("tabs"), content: $("content"), gate: $("gate"), gateNote: $("gateNote"),
+    stepper: $("stepper"), curLab: $("curLab"), stepsList: $("stepsList"), banners: $("banners"), job: $("job"), working: $("working"), tabs: $("tabs"), content: $("content"), gate: $("gate"), gateNote: $("gateNote"),
     compose: $("compose"), note: $("note"), noteLabel: $("noteLabel"), noteHint: $("noteHint"), gateErr: $("gateErr"), btn2: $("btnSecondary"), btn1: $("btnPrimary"),
     lb: $("lightbox"), toast: $("toast"), live: $("live") };
 
@@ -304,7 +304,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   const DOTS = 60, STALE_MIN = 12;
   function renderWorking() {
     const sm = S.summary || {};
-    const on = hasDoc() && !isStarting() && !S.readonly && !(S.noState && !hasDoc()) && sm.badge === "working";
+    const on = hasDoc() && !isStarting() && !S.readonly && !(S.noState && !hasDoc()) && sm.badge === "working" && !jobRunning();
     el.working.hidden = !on;
     clearInterval(S.agoTimer); S.agoTimer = 0;
     if (!on) { el.working.dataset.key = ""; return; }
@@ -344,6 +344,96 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     };
     tick();
     S.agoTimer = setInterval(tick, 20000);
+  }
+
+  /* ---------------- live run: storyboard images or asset samples, each one shown the moment it lands ---------------- */
+  const jobRunning = () => hasDoc() && !S.readonly && !!S.doc.job && S.doc.job.state === "running";
+  const agoS = (s) => (s < 60 ? Math.round(s) + " s ago" : Math.round(s / 60) + " min ago");
+  const ASSET_ICON = { music: "music", voice: "wave", sfx: "wave", recording: "film", video: "film", check: "shield", image: "image" };
+  function jobTile(t, pop) {
+    const x = t.item || {};
+    const cls = "jb-tile " + t.type + (x.skipped ? " skip" : "") + (pop ? " pop" : "");
+    /* Build steps are mostly icons (voice, music, mix): their name is the only way to tell them apart. Frames carry their scene in the picture. */
+    const cap = () => (S.doc.job.kind === "build" ? h("span", { class: "jb-cap", "aria-hidden": "true", text: x.label }) : "");
+    if (t.type === "queued") return h("div", { class: cls, "aria-hidden": "true" });
+    if (t.type === "active") return h("div", { class: cls, title: "Making now: " + x.label }, h("i", { class: "spin", "aria-hidden": "true" }), cap());
+    if (t.type === "failed") return h("div", { class: cls, title: x.label + ": couldn't be made" }, ic("alert"), cap());
+    const r = mref(x.path);
+    const slot = h("span", { class: "jb-slot" });
+    const name = x.label + (x.skipped ? " (unchanged)" : "");
+    /* A frame opens its scene, a sample the Assets tab; a build step has nowhere of its own to go, so it is only a picture. */
+    const b = x.story ? h("button", { type: "button", class: cls, title: name, "aria-label": "Open " + name, onclick: () => goScene(x.story, x.scene) }, slot)
+      : x.asset_kind && S.doc.job.kind === "samples" ? h("button", { type: "button", class: cls, title: name, "aria-label": "Open " + name, onclick: () => pickTab("assets") }, slot)
+      : h("div", { class: cls, title: name, role: "img", "aria-label": name }, slot, cap());
+    if (r && !r.error && /^image\//.test(r.mime || "image/")) lazyInto(slot, r, (u) => h("img", { src: u, alt: "", draggable: "false" }), { compact: true });
+    else slot.replaceChildren(ic(ASSET_ICON[x.asset_kind] || "image"));
+    return b;
+  }
+  function jobParts() {
+    if (S.jobEls) return S.jobEls;
+    const J = { icon: h("span", { class: "jb-icon", "aria-hidden": "true" }), title: h("div", { class: "jb-title" }), clock: h("div", { class: "jb-sub" }),
+      done: h("b"), total: h("span"), fill: h("i"), now: h("p", { class: "jb-now" }), grid: h("div", { class: "jb-grid" }), more: h("p", { class: "jb-more" }),
+      note: h("p", { class: "jb-note" }), act: h("div", { class: "jb-act" }), tiles: new Map() };
+    J.bar = h("div", { class: "jb-bar", role: "progressbar", "aria-valuemin": "0" }, J.fill);
+    el.job.replaceChildren(h("div", { class: "jb-head" }, J.icon, h("div", { class: "jb-main" }, J.title, J.clock), h("div", { class: "jb-count", "aria-hidden": "true" }, J.done, J.total)),
+      J.bar, J.now, J.grid, J.more, J.note, J.act);
+    S.jobEls = J;
+    return J;
+  }
+  function renderJob() {
+    const v = hasDoc() && !isStarting() && !S.readonly ? PF.jobView(S.doc.job, Date.now()) : null;
+    clearInterval(S.jobTimer); S.jobTimer = 0;
+    el.job.hidden = !v;
+    if (!v) { el.job.replaceChildren(); S.jobEls = null; S.jobSaid = null; return; }
+    const J = jobParts();
+    const job = S.doc.job;
+    const key = JSON.stringify([job.state, job.done, job.failed, job.total, arr(job.items).length, v.tiles.map((t) => t.type + (t.item ? t.item.id : t.n)), S.offline, !!S.pending, !!S.justSent, !!S.sending]);
+    if (J.key !== key) {
+      const animate = J.tiles.size > 0;
+      const next = new Map();
+      J.grid.replaceChildren(...v.tiles.map((t) => {
+        const k = t.type + ":" + (t.item ? t.item.id : "q" + t.n);
+        const n = J.tiles.get(k) || jobTile(t, animate && (t.type === "item" || t.type === "failed"));
+        next.set(k, n);
+        return n;
+      }));
+      J.tiles = next;
+      if (J.done.textContent && J.done.textContent !== String(v.done)) { J.done.classList.remove("bump"); void J.done.offsetWidth; J.done.classList.add("bump"); }
+      J.done.textContent = String(v.done);
+      J.total.textContent = "/ " + v.total;
+      J.title.textContent = v.title;
+      J.fill.style.transform = "scaleX(" + v.pct + ")";
+      J.bar.setAttribute("aria-label", v.title);
+      J.bar.setAttribute("aria-valuemax", String(v.total));
+      J.bar.setAttribute("aria-valuenow", String(v.done + v.failed));
+      J.bar.setAttribute("aria-valuetext", v.done + " of " + v.total + " " + v.many + " made" + (v.failed ? ", " + v.failed + " failed" : ""));
+      J.now.replaceChildren(...(v.state === "running" && v.active.length && !v.waiting ? [h("b", { text: "Making now: " }), v.active.map((x) => x.label).join(", ")] : []));
+      const more = [v.earlier ? v.earlier + " earlier " + (v.earlier === 1 ? v.one : v.many) + " not shown" : "", v.moreQueued ? v.moreQueued + " more queued" : ""].filter(Boolean);
+      J.more.textContent = more.length ? more.join(" · ") + "." : "";
+      const blocked = S.readonly || S.offline || !!S.pending || !!S.justSent || !!S.sending;
+      J.act.replaceChildren(...(v.state === "stopped" && v.resume ? [h("button", { class: "load", type: "button", disabled: blocked, text: "Ask the agent to carry on",
+        onclick: () => send("resume", { what: v.title.toLowerCase() + ": " + job.label.toLowerCase(), command: v.resume }) })] : []));
+      J.key = key;
+      const said = v.state + v.done;
+      if (S.jobSaid != null && S.jobSaid !== said && (v.state !== "running" || v.done % 5 === 0)) say(v.title + ": " + v.done + " of " + v.total + " " + v.many + " made.");
+      S.jobSaid = said;
+    }
+    const tick = () => {
+      const w = PF.jobView(S.doc.job, Date.now());
+      if (!w) return;
+      el.job.dataset.state = w.waiting ? "waiting" : w.stale ? "stale" : w.state;
+      J.icon.replaceChildren(w.alive && !w.waiting ? h("i", { class: "jb-ring" }) : ic(w.state === "done" ? "check" : w.waiting ? "clock" : "alert"));
+      J.clock.textContent = w.waiting ? "Queued " + PF.clockS(w.elapsed) + " · " + w.waiting
+        : w.stale ? "No sign of life for " + Math.round(w.staleFor / 60) + " min"
+        : w.state === "running" ? "Running " + PF.clockS(w.elapsed) + " · " + (w.done + w.failed ? "last " + w.one + " " + agoS(w.quiet) : "first " + w.one + " on its way") + (w.eta != null ? " · " + PF.aboutS(w.eta) + " left" : "")
+        : w.state === "done" ? "Took " + PF.clockS(w.elapsed) : "Ran " + PF.clockS(w.elapsed) + ", then ended before it finished.";
+      const cur = w.active[0] ? w.active[0].label : "the current " + w.one;
+      J.note.textContent = w.stale ? "The run stopped checking in. It may have been stopped. Ask the agent in the chat."
+        : w.slow ? cur + " has been going for " + Math.round(w.quiet / 60) + " min. Long ones take a while; the run is still checking in." : "";
+      J.note.classList.toggle("warn", w.stale);
+    };
+    tick();
+    if (v.state === "running") S.jobTimer = setInterval(tick, 1000);
   }
 
   /* ---------------- banners ---------------- */
@@ -439,7 +529,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     else if (S.settingsOpen) sig = "settings|" + JSON.stringify([S.doc.settings, S.readonly, S.offline, !!S.pending, !!S.justSent, !!S.sending, S.err]);
     else if (!list.length) sig = "overview|" + JSON.stringify([sliceFor(null, true), gate(), S.style, S.readonly, !!S.pending]);
     else if (S.reader) sig = "reader|" + S.reader.key + "|" + JSON.stringify(sliceFor(S.tab, false)) + S.readonly;
-    else sig = S.tab + "|" + JSON.stringify(sliceFor(S.tab, true)) + "|" + [...S.picks].join() + "|" + S.style + S.boardIdx + S.draftSel + S.earlier + S.filter + S.readonly + !!S.pending + !!S.justSent + !!S.sending + S.sbView + S.docGroup + S.docQ + (S.compose ? S.composeKind : "");
+    else sig = S.tab + "|" + JSON.stringify(sliceFor(S.tab, true)) + "|" + [...S.picks].join() + "|" + S.style + S.boardIdx + S.draftSel + S.earlier + S.filter + S.readonly + !!S.pending + !!S.justSent + !!S.sending + S.sbView + S.docGroup + S.docQ + (S.compose ? S.composeKind : "") + jobRunning();
     if (!force && sig === lastSig) return;
     const keepScroll = sig.split("|")[0] === lastSig.split("|")[0] ? el.sc.scrollTop : 0;
     lastSig = sig;
@@ -859,6 +949,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   /* The one honest answer to a placeholder: ask the agent to make the real thing (frames as images, a sample of every asset). */
   function makeBanner(text, what) {
     const blocked = S.readonly || S.offline || !!S.pending || !!S.justSent || !!S.sending;
+    if (jobRunning() && S.doc.job.kind !== "build") return h("div", { class: "warnline", role: "status" }, ic("alert"), h("span", { text: text + " Being made now: see the progress above." }));
     return h("div", { class: "warnline", role: "status" }, ic("alert"), h("span", { text }),
       h("button", { class: "load", type: "button", disabled: blocked, text: "Ask the agent to make them", onclick: () => send("generate", { what }) }));
   }
@@ -1523,8 +1614,10 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     if (m.mode === "readonly") { note("This thread is archived. You can read everything, but nothing can be sent.", { lock: true }); S.compose = false; }
     else if (m.mode === "starting") note("Preparing. The first step appears here when it is ready.", { dot: true });
     else if (m.mode === "wait") {
-      note(S.stall ? (S.pending ? "Still queued. Check the chat." : "Still waiting. Check the chat.") : "Sent " + (ACTION_WORD[m.name] || "your reply") + ". Waiting for the agent to pick it up.", { spin: !S.stall });
-      if (S.stall && !S.pending && S.lastAction) { el.btn2.hidden = false; el.btn2.dataset.quiet = "1"; el.btn2.textContent = "Send again"; el.btn2.disabled = busy || offlineBlocked(); el.gate.dataset.layout = "bar"; }
+      const jv = jobRunning() ? PF.jobView(S.doc.job, Date.now()) : null;
+      if (jv) note("Sent " + (ACTION_WORD[m.name] || "your reply") + ". The agent picks it up when the " + jv.many + " above are done (" + (jv.done + jv.failed) + " of " + jv.total + ").", { spin: true });
+      else note(S.stall ? (S.pending ? "Still queued. Check the chat." : "Still waiting. Check the chat.") : "Sent " + (ACTION_WORD[m.name] || "your reply") + ". Waiting for the agent to pick it up.", { spin: !S.stall });
+      if (!jv && S.stall && !S.pending && S.lastAction) { el.btn2.hidden = false; el.btn2.dataset.quiet = "1"; el.btn2.textContent = "Send again"; el.btn2.disabled = busy || offlineBlocked(); el.gate.dataset.layout = "bar"; }
     } else if (m.mode === "work") {
       el.gate.dataset.layout = "bar";
       el.btn2.hidden = false; el.btn2.dataset.quiet = "1";
@@ -1633,6 +1726,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     if (!list.length) S.tab = null;
     if (S.settingsOpen && !hasSettings()) S.settingsOpen = false;
     renderHeader();
+    renderJob();
     renderWorking();
     renderBanners();
     renderTabs(list);
@@ -1700,7 +1794,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     }
   }
   function unmount() {
-    clearTimeout(S.bootTimer); clearTimeout(S.stallTimer); clearInterval(S.agoTimer);
+    clearTimeout(S.bootTimer); clearTimeout(S.stallTimer); clearInterval(S.agoTimer); clearInterval(S.jobTimer);
     if (S.sending) clearTimeout(S.sending.timer);
     for (const id of [...M.cache.keys()]) revoke(id);
   }

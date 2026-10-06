@@ -328,7 +328,47 @@
   }
   const outputDirty = (out, sel, text) => sel !== out.mode || (sel === "custom" && withSlug(text) !== out.template);
 
-  const api = { arr, mref, fileBad, missingFile, missingAll, hasPreview, noFrame, sceneStatus, model, finalState, seenRule, seenKey, missingRule, previewRule, bodyOf, downloadName, textFileName, wordsOf, parseBlocks, inline, plain, paginate, outline, findPages, markSplit, readMinutes, frameTimeline, DENSITY_CHOICES, clockT, shareRows, outputProblem, previewOutput, outputDirty };
+  /* The live panel for a preview run (snapshot `job`, promo/flowjob.py). `now` is ms since the epoch, passed in so the clock is the caller's.
+     Tiles fill left to right: made (or failed) items, then the ones being made now, then a row of the queue; a long run keeps its newest pictures. */
+  const JOB_NOUN = { frames: ["image", "images"], samples: ["sample", "samples"], build: ["step", "steps"] };
+  const JOB_TILES = 24, JOB_QUEUE_TILES = 6, JOB_DONE_SHOWN_MIN = 10;
+  /* A run writes a heartbeat every minute (promo/flowjob.py HEARTBEAT_S): three missed beats and it is no longer shown as alive. A rendered
+     shot can take many minutes, so "slow" (a gentle note, spinner kept) waits longer for builds than for one generated picture. */
+  const JOB_ALIVE_S = 180, JOB_SLOW_S = { build: 900 }, JOB_SLOW_DEFAULT_S = 240;
+  function jobView(job, now) {
+    if (!job || !job.total) return null;
+    const t = (iso) => Date.parse(iso);
+    const items = arr(job.items), active = arr(job.active);
+    const [one, many] = JOB_NOUN[job.kind] || ["item", "items"];
+    const finished = job.done + job.failed;
+    if (job.state === "done" && now - t(job.finished || job.updated) > JOB_DONE_SHOWN_MIN * 60000) return null;
+    const end = job.state === "running" ? now : t(job.finished || job.updated);
+    const elapsed = Math.max(0, (end - t(job.started)) / 1000);
+    const lastAt = items.length ? t(items[items.length - 1].at) : t(job.started);
+    const quiet = Math.max(0, (now - lastAt) / 1000);
+    const queued = Math.max(0, job.total - finished - active.length);
+    const alive = job.state === "running" && (now - t(job.updated)) / 1000 < JOB_ALIVE_S;
+    const skipped = items.filter((x) => x.skipped).length;
+    const queuedShown = Math.min(queued, JOB_QUEUE_TILES);
+    const room = Math.max(0, JOB_TILES - active.length - queuedShown);
+    const shown = items.slice(-room);
+    const tiles = [...shown.map((x) => ({ type: x.ok ? "item" : "failed", item: x })), ...active.map((x) => ({ type: "active", item: x })),
+      ...Array.from({ length: job.state === "running" ? queuedShown : 0 }, (_, i) => ({ type: "queued", n: i }))];
+    const eta = job.state === "running" && finished >= 2 ? Math.round((elapsed / finished) * (job.total - finished)) : null;
+    const n = (k) => k + " " + (k === 1 ? one : many);
+    const title = job.state === "running" ? job.label
+      : job.state === "done" ? (job.kind === "build" ? "Finished " + n(job.done) + (skipped ? ", " + skipped + " unchanged" : "") : "Made " + n(job.done)) + (job.failed ? ", " + job.failed + " failed" : "")
+      : "Stopped after " + job.done + " of " + n(job.total);
+    return { state: job.state, title, done: job.done, failed: job.failed, total: job.total, pct: Math.min(1, finished / job.total), one, many, elapsed, quiet, eta,
+      alive, stale: job.state === "running" && !alive, staleFor: Math.max(0, (now - t(job.updated)) / 1000), waiting: alive ? job.waiting || null : null,
+      slow: alive && !job.waiting && quiet >= (JOB_SLOW_S[job.kind] || JOB_SLOW_DEFAULT_S), resume: job.resume || null, tiles, earlier: Math.max(0, items.length - shown.length) + Math.max(0, finished - items.length),
+      moreQueued: job.state === "running" ? queued - queuedShown : 0, active };
+  }
+  /* 74 -> "1:14", 3725 -> "1:02:05": a running clock. */
+  const clockS = (s) => { s = Math.floor(Math.max(0, s)); const hh = Math.floor(s / 3600), mm = Math.floor(s / 60) % 60, ss = String(s % 60).padStart(2, "0"); return hh ? hh + ":" + String(mm).padStart(2, "0") + ":" + ss : mm + ":" + ss; };
+  const aboutS = (s) => (s < 50 ? "under a minute" : s < 90 ? "about a minute" : "about " + Math.round(s / 60) + " min");
+
+  const api = { jobView, clockS, aboutS, arr, mref, fileBad, missingFile, missingAll, hasPreview, noFrame, sceneStatus, model, finalState, seenRule, seenKey, missingRule, previewRule, bodyOf, downloadName, textFileName, wordsOf, parseBlocks, inline, plain, paginate, outline, findPages, markSplit, readMinutes, frameTimeline, DENSITY_CHOICES, clockT, shareRows, outputProblem, previewOutput, outputDirty };
   root.PF = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof window !== "undefined" ? window : globalThis);

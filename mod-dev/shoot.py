@@ -454,6 +454,10 @@ def scroll(px):
 
 
 EXTRAS = [
+    ("generating-520", "generating", 520, 900, True, "", None),
+    ("generating-380-light", "generating", 380, 900, False, "", None),
+    ("generating-stopped-520", "generating-stopped", 520, 900, True, "", None),
+    ("building-520", "building", 520, 900, True, "", None),
     ("lightbox-520", "storyboard", 520, 900, True, "", [click(".scene .fr"), click(".lb .nav.next")]),
     ("lightbox-900-light", "storyboard", 900, 900, False, "", [click(".scene:nth-child(2) .fr:last-of-type")]),
     ("lightbox-380", "storyboard", 380, 780, True, "", [click(".scene .fr")]),

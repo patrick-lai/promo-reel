@@ -49,6 +49,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -56,6 +57,7 @@ import sys
 from . import assetplan as AP
 from . import boardedit as BE
 from . import brief as BR
+from . import flowjob as FJ
 from . import home
 from . import plandocs as PD
 from . import previews as PV
@@ -824,7 +826,30 @@ def _finished(st, stale):
     return st["stage"] == "final" and bool(st["finals"]) and all(os.path.isfile(x["file"]) for x in st["finals"]) and not stale
 
 
-def _summary(pd, st, gate, pc, rounds_used):
+def _job(pd):
+    """The latest preview run for the Stage: state, counts, what is being made now and every item so far (newest last) with its file."""
+    j = FJ.load(fdir(pd))
+    if not j:
+        return None
+    return dict(kind=j["kind"], label=j["label"], state=FJ.state(j), done=j["done"], failed=j["failed"], total=j["total"], started=j["started"], updated=j["updated"],
+                finished=j["finished"], waiting=j.get("waiting"), resume=j.get("resume"), active=j["active"], items=[dict(x, path=_media(x["path"])) for x in j["items"]])
+
+
+def _job_line(st, job, gate):
+    """The chat card's line while a run is going (or died since the last thing that happened): the count that goes up, never a stale question alone."""
+    last = max([x["at"] for x in (st.get("log") or []) + (st.get("activity") or [])] or [""])
+    if not job or not (job["state"] == "running" or (job["state"] == "stopped" and job["updated"] >= last)):
+        return None
+    many = FJ.NOUN[job["kind"]][1]
+    if job["state"] == "running":
+        line = f"{job['label']}: {job['done']} of {job['total']} {many} done" + (f", {job['failed']} failed" if job["failed"] else "")
+        line += f". Waiting: {job['waiting'][0].lower()}{job['waiting'][1:]}" if job.get("waiting") else f". Now: {job['active'][0]['label']}" if job["active"] else ""
+    else:
+        line = f"Stopped after {job['done']} of {job['total']} {many}. Ask the agent to carry on"
+    return _clip(line + (f". Also open for you: {gate['question']}" if gate else "."), 140)
+
+
+def _summary(pd, st, gate, pc, rounds_used, job=None):
     stage = st["stage"]
     cur = STAGES.index(stage)
     stale = _stale(pd, st)
@@ -847,6 +872,11 @@ def _summary(pd, st, gate, pc, rounds_used):
         cap = [x for x in AP.load(os.path.join(pd, "flow")) if x.get("kind") in ("recording", "screenshot") and AP.state(x, pd) in ("mock", "todo")] if stage == "keyframes" else []
         if cap:
             status, badge = f"Your turn: {len(cap)} {'recording' if len(cap) == 1 else 'recordings'} to capture from the real app. See the Assets tab, then send them to the agent.", "waiting"
+    line = None if finished else _job_line(st, job, gate)
+    if line:
+        # A run in progress is the agent's turn, whatever is also open: a card pinned on "your turn" over a busy agent reads as stuck.
+        status, prog = line, dict(done=job["done"] + job["failed"], total=job["total"])
+        badge = "working" if job["state"] == "running" else "waiting" if gate else "attention"
     return dict(title=title, status=status, badge=badge, progress=prog, **({"primary": primary[:24]} if primary else {}))
 
 
@@ -1038,13 +1068,14 @@ def snapshot(pd):
     since = (st.get("log") or [{}])[-1].get("at")
     docs = _docs(pd, st)
     place = st.get("place") or dict(zip(("project", "repo"), home.current_project()))
-    return _fit_bodies(dict(summary=_summary(pd, st, gate, pc, used), title=_clip((st["intent"].split(".")[0] or "Production"), 80), intent=st["intent"],
+    job = _job(pd)
+    return _fit_bodies(dict(summary=_summary(pd, st, gate, pc, used, job), title=_clip((st["intent"].split(".")[0] or "Production"), 80), intent=st["intent"],
                 stage=st["stage"], stage_label=LABEL[st["stage"]], stage_since=since, cycle=st["cycle"], rounds_used=used, rounds_max=MAX_ROUNDS, steps=steps,
                 stale_steps=stale,
                 style=(st.get("discover") or {}) and dict(style=st["discover"].get("style"), refs=st["discover"].get("refs", []), no_refs=st["discover"].get("no_refs", False)) or None,
                 scripts=scripts, docs=docs, councils=councils, boards=bl, assets=assets, to_make=to_make, drafts=drafts, finals=finals, rounds=rounds,
                 share=dict(destinations=[dict(id=d, label=SH.LABEL[d], note=SH.NOTE[d], in_place=d == "artifacts") for d in SH.available(st)]),
-                checks=[dict(ok=o, text=t) for o, t in pc], gate=gate, activity=_activity(st),
+                checks=[dict(ok=o, text=t) for o, t in pc], gate=gate, activity=_activity(st), job=job,
                 settings=dict(output=home.output_info(place["project"], place["repo"]), saved_in=os.path.abspath(pd)),
                 approvals={k: dict(by=v["by"], at=v["at"], fresh=gate_ok(pd, st, k)) for k, v in st["gates"].items()}))
 
@@ -1199,7 +1230,37 @@ def _report(what, made, failed):
     return 1 if failed else 0
 
 
-def make_frames(pd, story, scene, which, force, provider, jobs, limit=None):
+def publish_live(pd):
+    """`publish` from inside a long run (each picture, sample or build step, and the heartbeat). A failed push never stops the run: it is
+    reported, and the next item or the command's own publish at the end tries again."""
+    try:
+        publish(pd)
+    except (FlowError, OSError) as e:
+        print(f"  live update to the Stage skipped: {e}", file=sys.stderr)
+
+
+def _tracked(pd, kind, label, workers, live, meta, run, resume):
+    """Run a preview step with a live job record (flow/job.json). `run(start)` hands `start(todo)` to the generator; an exception or Ctrl-C
+    marks the run stopped so the Stage does not show it as still going."""
+    box = {}
+
+    def start(todo):
+        if not todo:
+            return None
+        box["job"] = FJ.Job(fdir(pd), kind, label, [meta(t) for t in todo], workers, (lambda: publish_live(pd)) if live else None, resume)
+        return box["job"]
+    try:
+        out = run(start)
+    except BaseException:
+        if "job" in box:
+            box["job"].close(stopped=True)
+        raise
+    if "job" in box:
+        box["job"].close()
+    return out
+
+
+def make_frames(pd, story, scene, which, force, provider, jobs, limit=None, live=False):
     st = load(pd)
     bds = [b for b in boards(pd, st) if not story or b[0] == story]
     if not bds:
@@ -1208,18 +1269,26 @@ def make_frames(pd, story, scene, which, force, provider, jobs, limit=None):
     n = len(PV.frame_targets(bds, scene, which, force)[:limit])
     print(f"making {n} frames with the generator CLI ({jobs} at a time, ~25 s each)")
     _note(pd, f"Drawing {n} storyboard frames" + (f" for scene {scene}" if scene else ""), "render")
-    made, failed = PV.make_frames(bds, look, scene, which, force, provider, jobs, limit)
+
+    def meta(t):
+        sid, sc, w = t[0].split("/", 2)
+        return dict(id=t[0], label=_keyframe_label(bds, dict(story=sid, scene=sc, which=w))[0], story=sid, scene=sc)
+    made, failed = _tracked(pd, "frames", "Generating storyboard images", jobs, live, meta,
+                            lambda start: PV.make_frames(bds, look, scene, which, force, provider, jobs, limit, job=start),
+                            f"promo flow --project {shlex.quote(os.path.abspath(pd))} frames")
     _note(pd, f"Drew {len(made)} storyboard frames" + (f", {len(failed)} failed" if failed else ""), "render", True)
     return _report("frames", made, failed)
 
 
-def make_assets(pd, ids, force, provider, jobs=3):
+def make_assets(pd, ids, force, provider, jobs=3, live=False):
     st = load(pd)
     plan = AP.load(fdir(pd))
     if ids and (unknown := set(ids) - {x["id"] for x in plan}):
         raise FlowError(f"no such asset: {', '.join(sorted(unknown))}")
     _note(pd, "Making a sample of every asset: stills, short clips, voices, music", "voice")
-    made, failed = PV.make_samples(plan, pd, boards(pd, st), ids, force, provider, jobs=jobs)
+    made, failed = _tracked(pd, "samples", "Making asset samples", jobs, live, lambda a: dict(id=a["id"], label=_asset_label(a), asset_kind=a["kind"]),
+                            lambda start: PV.make_samples(plan, pd, boards(pd, st), ids, force, provider, jobs=jobs, job=start),
+                            f"promo flow --project {shlex.quote(os.path.abspath(pd))} asset make")
     _note(pd, f"Made {len(made)} asset samples" + (f", {len(failed)} failed" if failed else ""), "voice", True)
     return _report("asset samples", made, failed)
 
@@ -1389,7 +1458,7 @@ def main(argv=None):
                 for x in AP.load(fdir(pd)):
                     print(f"{x['id']:<20} {x['kind']:<10} {x['source']:<9} {AP.state(x, pd):<6} scenes {','.join(x['scenes'])}  {x['how']}")
             elif a.action == "make":
-                rc = make_assets(pd, a.id, a.force, a.provider, a.jobs)
+                rc = make_assets(pd, a.id, a.force, a.provider, a.jobs, live=True)
             else:
                 if not (a.id and len(a.id) == 1 and a.kind and a.source):
                     raise FlowError("asset add needs one --id and --kind --source --scenes --how")
@@ -1402,10 +1471,10 @@ def main(argv=None):
                 st["gates"].pop("assets-approved", None)
                 save(pd, st)
         elif a.cmd == "frames":
-            rc = make_frames(pd, a.story, a.scene, tuple(a.which), a.force, a.provider, a.jobs, a.limit)
+            rc = make_frames(pd, a.story, a.scene, tuple(a.which), a.force, a.provider, a.jobs, a.limit, live=True)
         elif a.cmd == "make":
-            frames_rc = make_frames(pd, None, None, tuple(a.which), a.force, a.provider, a.jobs)
-            rc = make_assets(pd, None, a.force, a.provider, a.jobs) or frames_rc          # a failed frame must not stop the audio samples
+            frames_rc = make_frames(pd, None, None, tuple(a.which), a.force, a.provider, a.jobs, live=True)
+            rc = make_assets(pd, None, a.force, a.provider, a.jobs, live=True) or frames_rc          # a failed frame must not stop the audio samples
         elif a.cmd == "draft":
             add_draft(pd, a.file, a.note)
         elif a.cmd == "round":

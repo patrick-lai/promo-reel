@@ -16,6 +16,7 @@
     "generate": {"message": "[mod:promo-flow] {by} wants the real thing made, not placeholders: {what}. Run: promo flow make (frames, then asset samples), then publish the new state."},
     "request":  {"message": "[mod:promo-flow] {by} asked you to add to the plan (looking at the {where} tab): {text}. Do it with promo flow doc | plan pack | script | story | scene | density (see your skill, any length is fine), then publish the new state. Do not approve anything."},
     "density":  {"message": "[mod:promo-flow] {by} wants storyboard frames {what} for story {story}. Run: promo flow density --story {story} --every {every} (every 0 means --clear), then promo flow frames to draw them, then publish."},
+    "resume":   {"message": "[mod:promo-flow] {by} wants the stopped run carried on ({what}). Run: {command}, then publish the new state."},
     "changes":  {"message": "[mod:promo-flow] {by} asked for changes on {stage}: {text}"},
     "feedback": {"message": "[mod:promo-flow] {by} sent draft feedback (round {round} of {max_rounds}): {text}"},
     "settings": {"message": "[mod:promo-flow] {by} chose where new videos are saved: {output}. Run: promo config output \"{output}\" (home, repo and default are names; anything else is a folder), then publish the new state. If it fails, tell them why in one sentence."}

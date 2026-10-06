@@ -5,7 +5,7 @@
 The promo flow (`promo flow ...`, see `promo/flow.py`) as a mod: a web app that the host mounts into its own page and shows in its Stage (right pane, about 380 to 900 px wide, full height),
 with a short summary card in the chat. The agent publishes state; the person's clicks come back to the agent as `[mod:promo-flow] ...` messages. In CommissionAI the agent publishes with `commissionctl mod publish promo-flow --file F`.
 
-    mod.json        manifest: slash command, activation message, actions approve | pick | changes | feedback | generate | share, agent skill
+    mod.json        manifest: slash command, activation message, actions approve | pick | changes | feedback | generate | share | resume, agent skill
     index.html      shell (header + stepper, tabs, content, sticky gate bar, lightbox)
     app.js          registers window.commissionMods["promo-flow"] = mount({root, post}) -> {receive, unmount}; rendering, lazy media; icons.js inline SVG icons; style.css
     agent/SKILL.md  what the agent learns (publish with `promo flow snapshot`, react to `[mod:promo-flow]`)
@@ -52,6 +52,19 @@ Every path below that says `file` is `{"$file": "<absolute path>"}` (the host tu
     rounds     [{cycle, n, feedback, verdict: yes|partial|no|null, open, scores{}, research[urls], drafts_at_start}]
     activity   [{at, text<=120, kind: capture|render|voice|music|check|plan|other|milestone, done}]  oldest first, <= 200: the agent's `promo flow note`s plus flow milestones. The working panel shows the latest
                  line, its age, one dot per item (hollow = in flight, solid = done, colour = kind) and the last three lines; `summary.status` is "Now: <latest note>" while working
+    job        {kind: frames|samples|build, label, state: running|done|stopped, done, failed, total, started, updated, finished|null, waiting|null, resume|null,
+                 active: [{id, label, story?, scene?, asset_kind?}], items: [{id, label, story?, scene?, asset_kind?, at, ok, skipped, path: file|null, error|null}] (<= 48, newest last)} | null
+                 the latest long run (`promo flow frames | make | asset make`, and `promo build | shot` when promo.yaml sits in the flow project; flow/job.json,
+                 promo/flowjob.py). `stopped` = ended early or its process is gone. `updated` is a heartbeat (every minute while the process lives): three missed
+                 beats and the panel says "No sign of life" instead of spinning. `waiting` = queued behind another render (the box-wide heavy lock).
+                 Build items are the steps (licence and footage checks, sound effects, voice-over, music, each shot with a still from its render, mix,
+                 assemble, contact sheet); `skipped` = unchanged since the last build. `resume` is the command that carries a stopped run on.
+                 The live panel above the tabs shows a spinner, a running clock, the count, a bar, "Making now", and one tile per picture as it lands (failed tiles
+                 warn, the ones being made shimmer, one row of the queue), and "Ask the agent to carry on" on a stopped run. A finished run stays 10 minutes.
+                 While a run is going, or stopped since the last flow event, `summary.status` is "<label>: N of M done" and `summary.progress` is the run's count,
+                 so the chat card's number goes up with every picture. Those commands publish the snapshot themselves after every picture when `commissionctl`
+                 and a thread token are there (`PROMO_FLOW_PUBLISH=0` turns it off); so does every `promo flow` command that changes the flow, so the card never
+                 lags behind an approval the agent forgot to publish.
     checks     [{ok, text}]  plain sentences from the same conditions as `promo flow status` ("2 of 4 keyframes done, 2 left")
     approvals  {gate: {by, at, fresh}}
     settings   {output: {template, source: env|config|default, mode: home|repo|default|custom, locked, available, project, repo, home, example, presets{home|repo|default: {template, example}}}, saved_in}

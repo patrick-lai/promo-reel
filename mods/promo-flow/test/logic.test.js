@@ -241,3 +241,44 @@ test("save folder: Save is offered only when the choice differs from what is sav
   assert.equal(L.outputDirty(custom, "custom", "/Volumes/D"), false);
   assert.equal(L.outputDirty(custom, "custom", "/Volumes/E"), true);
 });
+
+const T0 = Date.parse("2026-10-07T10:00:00+11:00");
+const at = (s) => new Date(T0 + s * 1000).toISOString();
+const run = (extra) => ({ kind: "frames", label: "Generating storyboard images", state: "running", done: 0, failed: 0, total: 6, started: at(0), updated: at(0), finished: null, active: [], items: [], ...extra });
+const made = (id, s, ok = true) => ({ id, label: "Scene " + id, at: at(s), ok, path: ok ? { $media: { upload_id: id, mime: "image/png" } } : null });
+test("a running job fills tiles in order: made, being made, queued, with a time estimate", () => {
+  const v = L.jobView(run({ done: 2, failed: 1, items: [made("1", 30), made("2", 60), made("3", 90, false)], active: [{ id: "4", label: "Scene 4" }] }), T0 + 100000);
+  assert.deepEqual(v.tiles.map((t) => t.type), ["item", "item", "failed", "active", "queued", "queued"]);
+  assert.equal(v.title, "Generating storyboard images");
+  assert.equal(v.pct, 0.5);
+  assert.equal(v.eta, 100);
+  assert.equal(v.quiet, 10);
+  assert.equal(v.slow, false);
+});
+test("a slow run that still checks in is alive; one that stopped checking in is stale", () => {
+  const now = T0 + 20 * 60000;
+  const slowBuild = run({ kind: "build", label: "Building the video", done: 3, items: [made("vo", 60)], active: [{ id: "shot 05", label: "Shot 05" }] });
+  assert.deepEqual([L.jobView({ ...slowBuild, updated: at(19 * 60) }, now)].map((v) => [v.alive, v.slow, v.stale]), [[true, true, false]]);
+  assert.deepEqual([L.jobView({ ...slowBuild, updated: at(10 * 60) }, now)].map((v) => [v.alive, v.slow, v.stale]), [[false, false, true]]);
+  const queued = L.jobView({ ...slowBuild, updated: at(19 * 60), waiting: "Waiting for another render on this Mac to finish" }, now);
+  assert.equal(queued.waiting, "Waiting for another render on this Mac to finish");
+  assert.equal(queued.slow, false);
+});
+test("a long run keeps its newest pictures", () => {
+  const items = Array.from({ length: 40 }, (_, i) => made(String(i), i));
+  const v = L.jobView(run({ total: 100, done: 40, items, active: [{ id: "40", label: "Scene 40" }], updated: at(39) }), T0 + 40000);
+  assert.equal(v.tiles.length, 24);
+  assert.equal(v.tiles[0].item.id, "23");
+  assert.equal(v.earlier, 23);
+  assert.equal(v.moreQueued, 59 - 6);
+});
+test("a finished run reads Made N and fades out after ten minutes; a stopped run stays", () => {
+  const done = run({ state: "done", done: 6, finished: at(300), items: [made("1", 300)] });
+  assert.equal(L.jobView(done, T0 + 301000).title, "Made 6 images");
+  const built = run({ kind: "build", state: "done", done: 5, finished: at(300), items: [{ ...made("sfx", 10), skipped: true }, made("shot 01", 200)] });
+  assert.equal(L.jobView(built, T0 + 301000).title, "Finished 5 steps, 1 unchanged");
+  assert.equal(L.jobView(done, T0 + 300000 + 11 * 60000), null);
+  const stopped = L.jobView(run({ state: "stopped", done: 2, updated: at(60) }), T0 + 3600000);
+  assert.equal(stopped.title, "Stopped after 2 of 6 images");
+  assert.deepEqual(stopped.tiles.map((t) => t.type), []);
+});

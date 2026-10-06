@@ -25,7 +25,9 @@ from promo import assetplan as AP  # noqa: E402
 from promo import boardedit as BE  # noqa: E402
 from promo import brief as BR  # noqa: E402
 from promo import flow as F  # noqa: E402
+from promo import flowjob as FJ  # noqa: E402
 from promo import home  # noqa: E402
+from promo import previews as PV  # noqa: E402
 from promo import share as SH  # noqa: E402
 
 INTENT = "Make a 60 second promo for Acme Tasks: tell it what you want at night, wake up to merged pull requests. Calm, real product footage, no hype."
@@ -201,6 +203,42 @@ def gen_boards(pd, which=("A", "B")):
             frame(os.path.join(d, s["end"]["image"]), int(s["id"]), "END", s["beat"], tint)
 
 
+def running_job(pd, made, stopped=False):
+    """A storyboard image run part way through, as `promo flow frames` leaves it: `made` frames landed (one failed), started minutes ago.
+    Running means this process is alive, which holds while the harness serves the snapshot."""
+    st = F.load(pd)
+    bds = F.boards(pd, st)
+    queue = [dict(id=t[0], label=F._keyframe_label(bds, dict(zip(("story", "scene", "which"), t[0].split("/", 2))))[0], story=t[0].split("/")[0], scene=t[0].split("/")[1], path=t[4])
+             for t in PV.frame_targets(bds, force=True)]
+    job = FJ.Job(os.path.join(pd, "flow"), "frames", "Generating storyboard images", [{k: v for k, v in q.items() if k != "path"} for q in queue], 3)
+    t0 = datetime.datetime.now().astimezone() - datetime.timedelta(seconds=25 * made + 40)
+    for i, q in enumerate(queue[:made]):
+        job.item(q["id"], q["path"], "grok produced no file" if i == 4 else None)
+        job.d["items"][-1]["at"] = (t0 + datetime.timedelta(seconds=25 * (i + 1))).isoformat(timespec="seconds")
+    job.d["started"] = t0.isoformat(timespec="seconds")
+    if stopped:
+        job.close(stopped=True)
+    else:
+        with job.lock:
+            job._write()
+
+
+def building_job(pd):
+    """`promo build` part way through, as the CLI leaves it in a flow project: checks and unchanged sound effects done, voice and music made,
+    three shots rendered (the storyboard frames stand in for their thumbnails), shot 04 rendering now."""
+    from promo import cli
+    d = os.path.join(pd, "flow", "boards", "A", "frames")
+    names = ["checks", "sfx", "vo", "music"] + [f"shot {i:02d}" for i in range(1, 9)] + ["events", "mix", "assemble", "contact"]
+    job = FJ.Job(os.path.join(pd, "flow"), "build", "Building the video", [cli._step_meta(n) for n in names], 1, resume=f"promo -p {pd}/promo.yaml build")
+    t0 = datetime.datetime.now().astimezone() - datetime.timedelta(minutes=6)
+    for i, n in enumerate(names[:7]):
+        job.item(n, os.path.join(d, f"{n[5:]}-start.png") if n.startswith("shot") else None, None, skipped=n == "sfx")
+        job.d["items"][-1]["at"] = (t0 + datetime.timedelta(seconds=50 * (i + 1))).isoformat(timespec="seconds")
+    job.d["started"] = t0.isoformat(timespec="seconds")
+    with job.lock:
+        job._write()
+
+
 def gen_mids(pd):
     d = os.path.join(pd, "flow", "boards", "A")
     for name, which in (("03-mid.png", "MID"), ("03-mid2.png", "MID")):
@@ -357,6 +395,11 @@ def _build(tmp):
     F.advance(pd)
     gen_boards(pd)
     snap("storyboard")
+    running_job(pd, 9)
+    snap("generating")
+    running_job(pd, 5, stopped=True)
+    snap("generating-stopped")
+    os.remove(os.path.join(pd, "flow", FJ.FILE))
     # the agent adds the whole production pack and a very long script on request
     F.plan_pack(pd)
     F.doc_put(pd, "full-script-a", title="Full script: Wake up to merged PRs", kind="script", text=long_script_md("Full script: Wake up to merged PRs", 8, 14000), story="A",
@@ -397,6 +440,9 @@ def _build(tmp):
     F.approve(pd, "assets-approved", "Sam")
     F.advance(pd)
     snap("keyframes")
+    building_job(pd)
+    snap("building")
+    os.remove(os.path.join(pd, "flow", FJ.FILE))
     gen_mids(pd)
     gen_assets(pd, "ready")
     F.approve(pd, "assets-approved", "Sam")
@@ -458,7 +504,7 @@ def _build(tmp):
     uploaded(pd, "final", 1, "artifacts")
     snap("final")
     order = ["discover", "scripts", "pick", "storyboard", "assets", "keyframes", "confirm", "drafts", "review", "final",
-             "storyboard-partial", "plan", "dense", "assets-error", "stale-approval", "long-content", "review-maxed"]
+             "generating", "generating-stopped", "building", "storyboard-partial", "plan", "dense", "assets-error", "stale-approval", "long-content", "review-maxed"]
     res = {k: out[k] for k in order}
     res["starting"] = {}
     res.update(picker_states(tmp, pd))

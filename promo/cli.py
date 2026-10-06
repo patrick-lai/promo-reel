@@ -9,7 +9,9 @@ import argparse
 import contextlib
 import json
 import os
+import shlex
 import shutil
+import subprocess
 import sys
 import time
 
@@ -142,19 +144,85 @@ def _step(spec, args, name):
     run_step(spec, args, next(s for s in plan(spec) if s["name"] == name))
 
 
-def do_build(spec, args):
+def build_steps(spec, args):
+    """The steps `promo build` walks, in order (a --shots build stops before assemble/contact)."""
+    out = []
+    for st in plan(spec):
+        if args.shots and st["name"].startswith("shot ") and st["name"][5:] not in args.shots:
+            continue
+        if args.shots and st["name"] in ("assemble", "contact"):
+            break
+        out.append(st)
+    return out
+
+
+# ---------------------------------------------------------------- live progress in a promo flow project (flow/job.json, promo/flowjob.py)
+CHECKS = "checks"
+STEP_LABEL = {CHECKS: ("Checking licences and footage", "check"), "sfx": ("Sound effects", "sfx"), "vo": ("Voice-over", "voice"),
+              "clip-audio": ("Sound from the clips", "sfx"), "music": ("Music edit", "music"), "events": ("Sound cues", "sfx"),
+              "mix": ("Mixing and mastering", "music"), "assemble": ("Putting the video together", "video"), "contact": ("Contact sheet", "image")}
+
+
+def _step_meta(name):
+    if name.startswith("shot "):
+        return dict(id=name, label="Shot " + name[5:], asset_kind="video")
+    label, kind = STEP_LABEL[name]
+    return dict(id=name, label=label, asset_kind=kind)
+
+
+def _flow_job(spec, args, c):
+    """A live job for `promo build` / `promo shot` when promo.yaml sits in a promo flow project, so the Stage and the chat card follow each step;
+    None for a plain project."""
+    fd = os.path.join(spec.root, "flow")
+    if not os.path.isfile(os.path.join(fd, "flow.json")):
+        return None
+    from . import flow as F
+    from . import flowjob as FJ
+    steps = build_steps(spec, args) if c == "build" else [st for sid in args.ids for st in plan(spec) if st["name"] == f"shot {sid}"]
+    cmd = f"promo -p {shlex.quote(spec.path)}" + (f" --scale {spec.scale:g}" if spec.scale != 1 else "") + (" build" if c == "build" else " shot " + " ".join(args.ids))
+    return FJ.Job(fd, "build", "Building the video" if c == "build" else "Rendering shots", [_step_meta(CHECKS)] + [_step_meta(st["name"]) for st in steps], 1,
+                  lambda: F.publish_live(spec.root), resume=cmd)
+
+
+def _step_picture(spec, st):
+    """What a finished step looks like: a still from a rendered shot (build/thumbs/<id>.jpg, remade when the shot changes), the contact sheet."""
+    if st["name"] == "contact":
+        return st["outputs"][0]
+    if not st["name"].startswith("shot "):
+        return None
+    seg = st["outputs"][0]
+    if not os.path.isfile(seg):
+        return None
+    out = os.path.join(spec.build, "thumbs", st["name"][5:] + ".jpg")
+    if os.path.isfile(out) and os.path.getmtime(out) >= os.path.getmtime(seg):
+        return out
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    r = subprocess.run(["ffmpeg", "-v", "error", "-y", "-threads", "2", "-i", seg, "-vf", "thumbnail=30,scale=480:-2", "-frames:v", "1", "-q:v", "4", out],
+                       capture_output=True, text=True)
+    if r.returncode or not os.path.isfile(out):
+        print(f"  no thumbnail for {st['name']}: {r.stderr.strip()[:200]}", file=sys.stderr)
+        return None
+    return out
+
+
+def _run_tracked(spec, args, st, job):
+    ran = run_step(spec, args, st)
+    if job:
+        job.item(st["name"], _step_picture(spec, st), None, skipped=not ran)
+
+
+def do_build(spec, args, job=None):
     A.gate(spec)
     errs = spec.validate()
     if errs:
         raise SpecError("; ".join(errs))
     FT.gate(spec, set(args.shots) if args.shots else None)
-    for st in plan(spec):
-        if args.shots and st["name"].startswith("shot ") and st["name"][5:] not in args.shots:
-            continue
-        if args.shots and st["name"] in ("assemble", "contact"):
-            print("partial build (--shots): skipping assemble/contact")
-            break
-        run_step(spec, args, st)
+    if job:
+        job.item(CHECKS, None, None)
+    for st in build_steps(spec, args):
+        _run_tracked(spec, args, st, job)
+    if args.shots:
+        print("partial build (--shots): skipping assemble/contact")
 
 
 def cmd_status(spec, args):
@@ -474,22 +542,40 @@ def dispatch(spec, args):
         return r, print_grid, 0 if r["ok"] else 1
     if c in ("sfx", "vo", "clip-audio", "music", "mix", "build", "events", "shot", "assemble", "contact"):
         from .lock import heavy_lock
-        with heavy_lock(f"promo {c}"):          # box-wide lock: never overlap two heavy jobs
-            return _dispatch_heavy(spec, args, c)
+        job = _flow_job(spec, args, c) if c in ("build", "shot") else None
+        log = None
+        if job:
+            def log(m):
+                print(m, file=sys.stderr, flush=True)
+                job.wait("Waiting for another render on this Mac to finish")
+        try:
+            with heavy_lock(f"promo {c}", log=log):          # box-wide lock: never overlap two heavy jobs
+                if job:
+                    job.wait(None)
+                out = _dispatch_heavy(spec, args, c, job)
+        except BaseException as e:
+            if job:
+                job.close(stopped=True, error=None if isinstance(e, KeyboardInterrupt) else e)
+            raise
+        if job:
+            job.close()
+        return out
     return None, None, 0
 
 
-def _dispatch_heavy(spec, args, c):
+def _dispatch_heavy(spec, args, c, job=None):
     if c in ("sfx", "vo", "clip-audio", "music", "mix", "build", "events", "shot"):
         A.gate(spec)          # licence gate: music/vo_model/sfx must carry licence + source_url
     if c == "shot":
         FT.gate(spec, set(args.ids))      # clips used by these shots exist and match their sha256
         for sid in args.ids:
             spec.shot(sid)
+        if job:
+            job.item(CHECKS, None, None)
         for sid in args.ids:
-            _step(spec, args, f"shot {sid}")
+            _run_tracked(spec, args, next(s for s in plan(spec) if s["name"] == f"shot {sid}"), job)
     elif c == "build":
-        do_build(spec, args)
+        do_build(spec, args, job)
     elif c in ("sfx", "vo", "clip-audio", "music", "events", "mix", "assemble", "contact"):
         if c == "clip-audio" and not any(st["name"] == c for st in plan(spec)):
             raise SpecError("no shot has an `audio:` key")
