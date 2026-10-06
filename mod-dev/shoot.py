@@ -313,13 +313,22 @@ UICHECK = r"""(async () => {
     await wait(500);
     ok('a new cadence is a message to the agent', /action density -> \[mod:promo-flow\] Sam wants storyboard frames every 2 seconds for story A\. Run: promo flow density --story A --every 2/.test(log()), log().slice(0, 300));
   }
+  if (step === 'pick') {
+    const badge = () => Q('#badgeText').textContent;
+    ok('before sending, the pick gate is the person\'s turn', badge() === 'Your turn', badge());
+    Q('.choice input').click(); await wait(200);
+    await click('#btnPrimary');
+    await until(() => /Sent/.test(Q('#gateNote').textContent));
+    ok('after sending the picks the badge is not Your turn', badge() === 'With the agent', badge());
+    ok('and the header line says it was sent', /Sent/.test(Q('#stateLine').textContent), Q('#stateLine').textContent);
+  }
   return out;
 })()"""
 
 
 def uicheck(sh):
     bad = 0
-    for st in ["plan", "dense"]:
+    for st in ["plan", "dense", "pick"]:
         mod = sh.open(st, 520, 1000, False)
         for r in sh.js(UICHECK, mod) or []:
             bad += not r["pass"]

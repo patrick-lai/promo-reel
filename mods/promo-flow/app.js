@@ -270,8 +270,10 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     else if (isStarting()) el.stepNo.textContent = "Starting";
     el.stageName.textContent = noConn ? "Promo flow" : isStarting() ? "Promo flow" : S.doc.stage_label || STAGE_LABEL[S.doc.stage] || "Promo flow";
     const sm = S.summary || {};
-    el.stateLine.textContent = noConn ? "No answer from the host yet." : S.readonly ? "Archived. Read only." : isStarting() ? "Setting up your video." : sm.status || "";
-    const badge = noConn ? "attention" : isStarting() ? "working" : BADGE_TEXT[sm.badge] ? sm.badge : "working";
+    el.stateLine.textContent = noConn ? "No answer from the host yet." : S.readonly ? "Archived. Read only." : isStarting() ? "Setting up your video." : S.justSent || S.pending ? "Sent. Waiting for the agent to pick it up." : sm.status || "";
+    /* Once the person has sent their answer the ball is with the agent, whatever the last summary says: never show "Your turn" with nothing left to do. */
+    const sent = !!(S.pending || S.justSent || S.sending);
+    const badge = noConn ? "attention" : isStarting() || (sent && sm.badge === "waiting") ? "working" : BADGE_TEXT[sm.badge] ? sm.badge : "working";
     const bt = noConn ? "Not connected" : S.readonly ? "Read only" : BADGE_TEXT[badge];
     el.badge.dataset.badge = S.readonly && !noConn ? "readonly" : badge;
     el.badgeText.textContent = bt;
