@@ -496,8 +496,11 @@ def add_draft(pd, file, note=""):
 
 def round_start(pd, feedback):
     st = load(pd)
+    if st["stage"] == "drafts" and all(o for o, _ in checks(pd, st)):
+        st["stage"] = "review"                       # feedback on a registered draft is the review stage starting; the person need not wait for an `advance`
+        log(st, "advance -> review")
     if st["stage"] != "review":
-        raise FlowError("rounds run in the `review` stage (advance from `drafts` first)")
+        raise FlowError("rounds run in the `review` stage, once a draft is registered (`promo flow draft add`)")
     if open_round(st):
         raise FlowError("a round is already open")
     if not feedback.strip():
@@ -654,11 +657,12 @@ def ask(pd, st):
     if stage == "confirm":
         return dict(header="Go?", multiSelect=False, question="Generate the first drafts now?",
                     options=[dict(label="Yes, generate drafts", description="all keyframes and assets are real"), dict(label="Not yet", description="more changes first")])
-    if stage == "review" and open_round(st) is None:
+    # A registered draft is the decision, whether the flow has formally entered `review` yet or not: the buttons come with the video.
+    if (stage == "drafts" and ok) or (stage == "review" and open_round(st) is None):
         n = len(cycle_rounds(st))
         q = f"All {MAX_ROUNDS} rounds are used. Approve the draft, or restate the direction." if n >= MAX_ROUNDS else "Watched the draft? Approve it, or send feedback."
         return dict(header="Draft", multiSelect=False, question=q,
-                    options=[dict(label="Approve", description="submit as final"), dict(label="Feedback", description="tell me what to change; the council checks intent first")])
+                    options=[dict(label="Approve", description="submit as final"), dict(label="Feedback and iterate", description="tell me what to change; the council checks intent first")])
     if stage == "final":
         return dict(header="Final", multiSelect=False, question="Final is in. Want more changes?", options=[dict(label="Done", description="stop here"), dict(label="More feedback", description="council reviews again")])
     return None
@@ -721,10 +725,10 @@ def _gate(pd, st):
         return dict(gate="scripts-picked", kind="pick", question=a["question"], approve_label="Continue", changes_label="Send changes", options=a["options"],
                     picks_min=1, picks_max=MAX_PICKS, stage=stage)
     kinds = dict(discover=("style", "style"), storyboard=("storyboard-approved", "approve"), assets=("assets-approved", "approve"),
-                 confirm=("final-confirmation", "confirm"), review=("draft-approved", "draft"))
+                 confirm=("final-confirmation", "confirm"), drafts=("draft-approved", "draft"), review=("draft-approved", "draft"))
     if a is None or stage not in kinds:
         return None
-    labels = dict(style=("Use this style", "Describe another"), approve=("Approve", "Send changes"), confirm=("Generate drafts", "Not yet"), draft=("Approve draft", "Send feedback"))
+    labels = dict(style=("Use this style", "Describe another"), approve=("Approve", "Send changes"), confirm=("Generate drafts", "Not yet"), draft=("Approve", "Feedback and iterate"))
     g, k = kinds[stage]
     out = dict(gate=g, kind=k, question=a["question"], approve_label=labels[k][0], changes_label=labels[k][1], options=a["options"] if k == "style" else [], stage=stage)
     if any(x["id"] == stage for x in stale):

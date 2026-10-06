@@ -1481,7 +1481,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
           h("p", { text: "Nothing has been published. Watch it once more with sound, download it below, then post it yourself. To change something, send feedback and the agent starts another round." }),
           credits.length ? h("p", { class: "tl-note", text: "Credits to keep: " + credits.join(" \u00b7 ") }) : null)));
       }
-      if (d.stage === "review") left.append(h("ul", { class: "watch-list", "aria-label": "What to check" }, ["Does it match the storyboard you approved?", "Is every caption and voice line true for what is on screen?", "Does the pacing and music feel right with the sound on?"].map((t) => h("li", { text: t }))));
+      if (d.stage === "review" || d.stage === "drafts") left.append(h("ul", { class: "watch-list", "aria-label": "What to check" }, ["Does it match the storyboard you approved?", "Is every caption and voice line true for what is on screen?", "Does the pacing and music feel right with the sound on?"].map((t) => h("li", { text: t }))));
       left.append(shareBlock(it));
     } else {
       const since = d.stage === "drafts" ? hhmm(d.stage_since) : "";
@@ -1608,6 +1608,8 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     };
     el.btn1.hidden = el.btn2.hidden = true;
     el.btn2.removeAttribute("data-quiet");
+    /* The draft decision is two real choices, not approve-or-a-footnote: "Feedback and iterate" is a coloured button next to "Approve". */
+    if (m.mode === "gate" && m.g && m.g.kind === "draft" && !S.compose) el.btn2.dataset.tone = "accent"; else el.btn2.removeAttribute("data-tone");
     el.gate.hidden = m.mode === "none" || (S.settingsOpen && (m.mode === "gate" || m.mode === "work"));
     el.gate.dataset.layout = "stack";
     el.btn1.removeAttribute("aria-describedby");

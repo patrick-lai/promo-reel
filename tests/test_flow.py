@@ -163,6 +163,29 @@ def test_round_cap(pd):
     assert F.snapshot(pd)["rounds_used"] == 1
 
 
+def test_a_registered_draft_is_the_decision_with_approve_and_feedback(pd, tmp_path):
+    """The buttons come with the video: at `drafts` with a draft on file the Stage asks approve / feedback, and either answer moves the flow into review."""
+    st = F.load(pd)
+    st["stage"] = "drafts"
+    F.save(pd, st)
+    assert F.snapshot(pd)["gate"] is None                                   # nothing to watch yet: no question
+    dr = str(tmp_path / "d.mp4")
+    write(dr, "v")
+    F.add_draft(pd, dr)
+    s = F.snapshot(pd)
+    assert s["gate"]["kind"] == "draft" and s["gate"]["gate"] == "draft-approved" and s["gate"]["stage"] == "drafts"
+    assert s["gate"]["approve_label"] == "Approve" and s["gate"]["changes_label"] == "Feedback and iterate"
+    assert s["summary"]["badge"] == "waiting" and s["summary"]["primary"] == "Watch draft"
+    assert F.round_start(pd, "the hook is slow") == 1 and F.load(pd)["stage"] == "review"      # feedback at drafts starts review
+    st = F.load(pd)
+    st["rounds"] = []
+    st["stage"] = "drafts"
+    F.save(pd, st)
+    F.approve(pd, "draft-approved", "Pat")                                 # approval at drafts lands too
+    st = F.load(pd)
+    assert st["stage"] == "review" and F.gate_ok(pd, st, "draft-approved") and F.advance(pd) == "final"
+
+
 def test_an_answer_that_arrives_one_stage_early_is_not_refused(pd, tmp_path):
     """The Stage shows the pick gate while the flow is still at `scripts`; the person's pick must land, not bounce with 'belongs to a later stage'."""
     F.discover(pd, "dialogue film", [], True)
