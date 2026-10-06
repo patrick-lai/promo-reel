@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import copy
+import datetime
 import json
 import math
 import os
@@ -24,6 +25,7 @@ from promo import assetplan as AP  # noqa: E402
 from promo import boardedit as BE  # noqa: E402
 from promo import brief as BR  # noqa: E402
 from promo import flow as F  # noqa: E402
+from promo import home  # noqa: E402
 from promo import share as SH  # noqa: E402
 
 INTENT = "Make a 60 second promo for Acme Tasks: tell it what you want at night, wake up to merged pull requests. Calm, real product footage, no hype."
@@ -261,9 +263,77 @@ def round_files(tmp, pd, n, verdict, feedback_urls=3):
     return co, re_
 
 
+def aged(pd, days):
+    """Move every timestamp of a flow `days` back, so the picker's "last active" and its most-recent-first order read like real history."""
+    fp = os.path.join(pd, "flow", "flow.json")
+    st = json.load(open(fp))
+    back = lambda at: (datetime.datetime.fromisoformat(at) - datetime.timedelta(days=days)).isoformat(timespec="seconds")  # noqa: E731
+    for x in (st.get("log") or []) + (st.get("activity") or []) + list(st["gates"].values()):
+        x["at"] = back(x["at"])
+    json.dump(st, open(fp, "w"), indent=2)
+
+
+def picker_states(tmp, finished):
+    """States of the promo-projects mod (the /promo-resume picker) over small real flow projects at different steps, plus `finished` (the full fixture project) copied in."""
+    base = os.path.join(tmp, "picker")
+    if os.path.isdir(base):
+        shutil.rmtree(base)
+    if os.path.exists(home.recent_path()):
+        os.remove(home.recent_path())              # `finished` itself was remembered when it started; the picker shows its copy only
+    shutil.copytree(finished, os.path.join(base, "acme-tasks-hero"), symlinks=True)
+    aged(os.path.join(base, "acme-tasks-hero"), 9)
+    tour = os.path.join(base, "acme-onboarding-tour")
+    F.init(tour, "A 45 second tour of Acme onboarding for new admins: invite the team, connect the repo, first task done. Captions only, no voice.")
+    F.discover(tour, "Calm product hero", [], True)
+    F.advance(tour)
+    for sid, title, logline in SCRIPTS[:3]:
+        F.add_script(tour, sid, title, logline, text=f"# {title}\n\n{logline}\n\n" + "\n".join(f"{i + 1}. {b}" for i, b in enumerate(BEATS[sid])))
+    write(os.path.join(tmp, "tour-council.md"), "x" * 300)
+    F.add_council(tour, "scripts", os.path.join(tmp, "tour-council.md"))
+    F.advance(tour)
+    F.approve(tour, "scripts-picked", "Sam", ["A"])
+    F.advance(tour)
+    gen_boards(tour, ("A",))
+    aged(tour, 1)
+    teaser = os.path.join(base, "acme-mobile-teaser")
+    F.init(teaser, "Vertical 20 second teaser of Acme Tasks on mobile for the launch post. Punchy, music-led.")
+    F.discover(teaser, "Kinetic anime opening", STYLE_REFS, False)
+    F.advance(teaser)
+    for sid, title, logline in SCRIPTS[:2]:
+        F.add_script(teaser, sid, title, logline, text=f"# {title}\n\n{logline}")
+    F.note(teaser, "Drafting the third script", "plan")
+    oct_ = os.path.join(base, "release-notes-october")
+    F.init(oct_, "Release notes video for October: the three biggest changes, with captions.")
+    aged(oct_, 3)
+    broken = os.path.join(base, "half-copied-project", "flow")
+    os.makedirs(broken)
+    write(os.path.join(broken, "flow.json"), "{ not json")
+    tour_id = F.project_id(tour)
+    out = {"picker": F.picker(), "picker-search": F.picker("mobile teaser"), "picker-resumed": F.picker(resumed=tour_id)}
+    os.environ["PROMO_PROJECTS"] = os.path.join(tmp, "picker-empty")
+    os.environ["PROMO_CONFIG"] = os.path.join(tmp, "picker-empty", "config.yaml")
+    out["picker-empty"] = F.picker()
+    out["picker-starting"] = {}
+    return out
+
+
 def build(keep=None):
     tmp = keep or tempfile.mkdtemp(prefix="promo-flow-fixtures-")
     os.makedirs(tmp, exist_ok=True)
+    saved = {k: os.environ.get(k) for k in ("PROMO_CONFIG", "PROMO_PROJECTS")}
+    os.environ["PROMO_CONFIG"] = os.path.join(tmp, "config", "config.yaml")       # `promo flow init` remembers flows: keep fixtures out of the person's own list
+    os.environ["PROMO_PROJECTS"] = os.path.join(tmp, "picker")
+    try:
+        return _build(tmp)
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+
+def _build(tmp):
     pd = os.path.join(tmp, "proj")
     if os.path.isdir(pd):
         shutil.rmtree(pd)
@@ -391,6 +461,7 @@ def build(keep=None):
              "storyboard-partial", "plan", "dense", "assets-error", "stale-approval", "long-content", "review-maxed"]
     res = {k: out[k] for k in order}
     res["starting"] = {}
+    res.update(picker_states(tmp, pd))
     return res, tmp
 
 

@@ -4,6 +4,7 @@
   /api/stages          [{id, title, status, badge}] canned states built by fixtures.py through the real `promo flow snapshot`
   /api/state/<id>      {version, summary, state}: `$file` objects already resolved to `$media` like the daemon does
   /media/<upload_id>   the file, with Range support
+  ?mod=promo-projects  the resume picker: stages picker* (fixture projects at several steps; --real-picker adds your own as `picker-real`)
   --project DIR        serve a REAL project as stage `live`: every request re-reads `promo flow snapshot`, and POST /api/action runs the real
                        `promo flow` command behind the click (approve / pick / generate = `promo flow make`, settings = `promo config output`, against a throwaway
                        config file unless PROMO_CONFIG is set), so the whole flow can be driven by hand.
@@ -62,8 +63,8 @@ def doc(name):
     if name == "live":
         STAGES["live"] = flow.snapshot(LIVE["project"])
     st = STAGES[name]
-    if name == "starting":
-        return {"summary": {"title": "Promo flow", "status": "Starting", "badge": "working"}, "state": {}}
+    if not st:
+        return {"summary": {"title": "Resume a promo" if name.startswith("picker") else "Promo flow", "status": "Starting", "badge": "working"}, "state": {}}
     r = resolve(st)
     return {"summary": r["summary"], "state": r}
 
@@ -193,12 +194,16 @@ def run_action(pd, name, payload):
     return {"ok": True, "pending": False}
 
 
-def start(port=0, keep=None, project=None):
-    """Build the fixtures and serve; returns (server, thread, url). With `project`, a real flow project is served as stage `live`."""
+def start(port=0, keep=None, project=None, real_picker=False):
+    """Build the fixtures and serve; returns (server, thread, url). With `project`, a real flow project is served as stage `live`;
+    with `real_picker`, the person's own past projects as picker stage `picker-real` (read only: clicks are not run)."""
+    real = flow.picker() if real_picker else None                 # read before the line below swaps in a temporary config
     os.environ.setdefault("PROMO_CONFIG", os.path.join(tempfile.mkdtemp(prefix="promo-flow-config-"), "config.yaml"))     # Save in the settings pane never touches your real config
     states, tmp = fixtures.build(keep)
     STAGES.clear()
     STAGES.update(states)
+    if real:
+        STAGES["picker-real"] = real
     if project:
         LIVE["project"] = os.path.abspath(project)
         STAGES["live"] = flow.snapshot(LIVE["project"])
@@ -213,8 +218,9 @@ def main():
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--keep", help="build the fixture project in this dir and keep it")
     ap.add_argument("--project", help="a real `promo flow` project dir, served as stage `live` (default stage then)")
+    ap.add_argument("--real-picker", action="store_true", help="also serve your own past projects as stage `picker-real` of ?mod=promo-projects")
     a = ap.parse_args()
-    srv, t, url = start(a.port, a.keep, a.project)
+    srv, t, url = start(a.port, a.keep, a.project, a.real_picker)
     print(f"mod harness: {url}/dev/harness.html{'?stage=live' if a.project else ''}   (Ctrl-C to stop)")
     try:
         t.join()

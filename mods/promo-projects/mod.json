@@ -1,0 +1,17 @@
+{
+  "id": "promo-projects",
+  "name": "Resume a promo",
+  "version": "0.1.0",
+  "protocol": 2,
+  "description": "Search past promo projects, peek at where each one stopped, and pick one up in this thread.",
+  "entry": "index.html",
+  "surface": "stage",
+  "state_limit_kb": 512,
+  "slash": {"name": "promo-resume", "description": "Find a past promo project, peek at where it stopped, and carry on with it here", "args": "a name or words to search for"},
+  "activate": {"message": "[mod:promo-projects] {by} wants to pick up a past promo project. Their search words, verbatim: {args}. Run: promo flow projects --out /tmp/promo-projects.json (add --query with their words when there are any), then commissionctl mod publish promo-projects --file /tmp/promo-projects.json. Let them choose; do not resume anything yourself."},
+  "actions": {
+    "resume": {"guard": {"state": "/pickable", "payload": "pickable"}, "message": "[mod:promo-projects] {by} picked \"{title}\" (stopped at {stage_label}) to carry on in this thread. Run: promo flow resume {id}, then publish its promo-flow state with the --project dir it prints, then promo flow projects --resumed {id} --out /tmp/promo-projects.json and publish promo-projects. Carry on from where it stopped, with --project on every promo flow command."},
+    "find": {"guard": {"state": "/pickable", "payload": "pickable"}, "message": "[mod:promo-projects] {by} cannot see their project in the list. What they said about it: {text}. Look for a folder with flow/flow.json that matches (their projects dir, recent work folders), then promo flow resume PATH and publish promo-projects again with promo flow projects; if nothing matches, say where you looked."}
+  },
+  "skill": "agent/SKILL.md"
+}

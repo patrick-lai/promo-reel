@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Resume a promo</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app" id="app" data-boot="loading" data-view="list">
+  <header class="top" id="top">
+    <div class="top-row">
+      <h1 id="heading">Resume a promo</h1>
+      <span class="badge" id="badge" data-badge="working"><i class="dot"></i><span id="badgeText">Loading</span></span>
+    </div>
+    <div class="search">
+      <label class="sr" for="q">Search projects</label>
+      <input id="q" type="search" autocomplete="off" spellcheck="false" placeholder="Search by name, idea or step">
+      <kbd id="slashKey" aria-hidden="true">/</kbd>
+    </div>
+    <div class="filters" id="filters" role="group" aria-label="Show"></div>
+  </header>
+  <div class="banner" id="banner" role="status" hidden></div>
+  <div class="body" id="body">
+    <section class="list" id="list" aria-label="Projects"></section>
+    <section class="peek" id="peek" aria-label="Project details" tabindex="-1"></section>
+  </div>
+  <div class="sr" id="live" aria-live="polite"></div>
+</div>
+<script src="logic.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -32,6 +32,9 @@ for the AskUserQuestion widget; `promo flow board` writes the dashboard page (st
                                                   a final as <project>_final_vN (every `final add` is the next version)
     promo flow board [--out F]                    write the dashboard HTML
     promo flow snapshot [--out F]                 the promo-flow mod state: `commissionctl mod publish promo-flow --file F` (mods/promo-flow/)
+    promo flow projects [--query Q] [--resumed ID] [--out F]   every past flow project (projects dir + flows remembered from elsewhere), most recent first;
+                                                  with --out, the promo-projects mod state (the /promo-resume picker, mods/promo-projects/)
+    promo flow resume ID|NAME|PATH                pick a past project up in this thread: prints its dir (use --project DIR from then on) and where it stopped
 """
 from __future__ import annotations
 
@@ -47,11 +50,11 @@ import sys
 from . import assetplan as AP
 from . import boardedit as BE
 from . import brief as BR
+from . import home
 from . import plandocs as PD
 from . import previews as PV
 from . import share as SH
 from . import storyboard as SB
-from . import home
 from .home import resolve as _resolve
 
 STAGES = ["discover", "scripts", "pick", "storyboard", "assets", "keyframes", "confirm", "drafts", "review", "final"]
@@ -165,6 +168,7 @@ def init(pd, intent, force=False):
               drafts=[], rounds=[], cycle=1, finals=[], log=[])
     log(st, "init")
     save(pd, st)
+    home.remember(pd)
     return st
 
 
@@ -893,6 +897,19 @@ def _docs(pd, st):
     return out
 
 
+def _steps(st, stale):
+    cur = STAGES.index(st["stage"])
+    stale_ids = {x["id"] for x in stale}
+    finished = _finished(st, stale)
+    steps = []
+    for i, sg in enumerate(STAGES):
+        state = "current" if i == cur and not finished else "done" if (i < cur or finished) else "todo"
+        if sg in stale_ids and i < cur:
+            state = "stale"
+        steps.append(dict(id=sg, label=LABEL[sg], state=state, stale=sg in stale_ids))
+    return steps
+
+
 def snapshot(pd):
     """The mod state of `mods/promo-flow` (`commissionctl mod publish promo-flow --file F`): `summary` for the chat card, `steps`, the gate, and every
     media file as a `{"$file": abs path}` object the host turns into an upload. Schema: mods/promo-flow/README.md."""
@@ -962,16 +979,8 @@ def snapshot(pd):
         elif n["kind"] == "asset":
             to_make.append(dict(kind="asset", id=n["id"], label=n["id"], detail=n.get("how") or "", asset_kind=n.get("asset_kind"), source=n.get("source")))
     used = len(cycle_rounds(st))
-    cur = STAGES.index(st["stage"])
     stale = _stale(pd, st)
-    stale_ids = {x["id"] for x in stale}
-    finished = _finished(st, stale)
-    steps = []
-    for i, sg in enumerate(STAGES):
-        state = "current" if i == cur and not finished else "done" if (i < cur or finished) else "todo"
-        if sg in stale_ids and i < cur:
-            state = "stale"
-        steps.append(dict(id=sg, label=LABEL[sg], state=state, stale=sg in stale_ids))
+    steps = _steps(st, stale)
     since = (st.get("log") or [{}])[-1].get("at")
     docs = _docs(pd, st)
     place = st.get("place") or dict(zip(("project", "repo"), home.current_project()))
@@ -999,6 +1008,96 @@ def status_text(s):
     if s["ask"]:
         L.append(f"ask the person: {s['ask']['question']}  [{' | '.join(o['label'] for o in s['ask']['options'])}]")
     return "\n".join(L)
+
+
+# ---- resume a past project (mods/promo-projects) -----------------------------------------------------------------------------------------
+PEEK_FRAMES = 4
+PEEK_VIDEOS = 6          # the host copies every `$file` on publish, so only the most recent projects carry their latest cut
+
+
+def project_id(pd):
+    return hashlib.sha1(os.path.realpath(pd).encode()).hexdigest()[:10]
+
+
+def _when(at):
+    return datetime.datetime.fromisoformat(at).timestamp()
+
+
+def peek(pd):
+    """One past project as the resume picker shows it: what it is, where it stopped, what is waiting, and a few real frames and its latest cut."""
+    st = load(pd)
+    gate = _gate(pd, st)
+    pc = plain_checks(pd, st)
+    used = len(cycle_rounds(st))
+    sm = _summary(pd, st, gate, pc, used)
+    stale = _stale(pd, st)
+    picked = [s["title"] for s in st["scripts"] if s["id"] in st["picks"]]
+    bds = boards(pd, st)
+    stills = []
+    for _, b, d in bds:
+        for s in b.get("scenes") or []:
+            p = os.path.join(d, (s.get("start") or {}).get("image") or "")
+            if os.path.isfile(p) and not SB.is_slate(p):
+                stills.append(p)
+    step = max(1, len(stills) // PEEK_FRAMES)
+    frames = [_media(p) for p in stills[::step][:PEEK_FRAMES]]
+    cut, cut_label = (st["finals"][-1], f"Final {len(st['finals'])}") if st["finals"] else (st["drafts"][-1], f"Draft {len(st['drafts'])}") if st["drafts"] else (None, None)
+    times = [x["at"] for x in (st.get("log") or []) + (st.get("activity") or [])]
+    gate_stage = {g: sg for sg, g in GATE_OF.items()}
+    states = [AP.state(a, pd) for a in AP.load(fdir(pd))]
+    first = (st["intent"].split(".")[0] or "Untitled promo").strip()
+    return dict(id=project_id(pd), name=os.path.basename(os.path.normpath(pd)), path=os.path.abspath(pd), title=_clip(picked[0] if picked else first, 80),
+                intent=_clip(st["intent"], 600), style=(st.get("discover") or {}).get("style"), stage=st["stage"], stage_label=LABEL[st["stage"]],
+                badge=sm["badge"], status=sm["status"], steps=_steps(st, stale), question=gate["question"] if gate else None,
+                open=[t for ok, t in pc if not ok][:3], started=times[0] if times else None, updated=max(times, key=_when) if times else None,
+                picked=picked, counts=dict(scripts=len(st["scripts"]), scenes=sum(len(b.get("scenes") or []) for _, b, _ in bds), assets=len(states),
+                                           assets_ready=states.count("ready"), drafts=len(st["drafts"]), finals=len(st["finals"]), rounds_used=used, rounds_max=MAX_ROUNDS),
+                approvals=[dict(label=LABEL[gate_stage[g]], by=v["by"], at=v["at"], fresh=gate_ok(pd, st, g)) for g, v in st["gates"].items() if g in gate_stage],
+                notes=[dict(at=x["at"], text=x["text"]) for x in (st.get("activity") or [])[-3:][::-1]], frames=frames,
+                video=_media(cut["file"]) if cut else None, video_label=cut_label)
+
+
+def picker(query="", resumed=None):
+    """The promo-projects mod state (`commissionctl mod publish promo-projects --file F`): every past flow project, most recent first. Schema: mods/promo-projects/README.md."""
+    cards = []
+    for pd in home.flow_projects():
+        try:
+            cards.append(peek(pd))
+        except (FlowError, OSError, ValueError, KeyError) as e:
+            print(f"promo flow projects: cannot read {pd}: {e}", file=sys.stderr)
+            cards.append(dict(id=project_id(pd), name=os.path.basename(os.path.normpath(pd)), path=os.path.abspath(pd), error="This project's flow could not be read.", updated=None))
+    cards.sort(key=lambda c: _when(c["updated"]) if c["updated"] else 0, reverse=True)
+    for c in cards[PEEK_VIDEOS:]:
+        c["video"] = None
+    done = next((c for c in cards if c["id"] == resumed and not c.get("error")), None) if resumed else None
+    if resumed and not done:
+        raise FlowError(f"no readable project with id {resumed}: `promo flow projects` lists them")
+    if done:
+        summary = dict(title=_clip("Resumed: " + done["title"], 80), status=f"Picked up at {done['stage_label']}. It carries on in the Promo flow pane.", badge="done")
+    elif cards:
+        summary = dict(title="Resume a promo project", status=f"{len(cards)} past {'project' if len(cards) == 1 else 'projects'}. Pick one to carry on in this thread.", badge="waiting")
+    else:
+        summary = dict(title="Resume a promo project", status="No past promo projects found. Start one with /promo-flow.", badge="attention")
+    return dict(summary=summary, query=_clip(query or "", 80), pickable=done is None, projects=cards, resumed=done and dict(id=done["id"], title=done["title"], stage_label=done["stage_label"], at=now()))
+
+
+def resume(ref):
+    """`ref` is a picker id, a project name or a path. Returns the project dir, remembered so the picker finds it again from any thread."""
+    pd = next((d for d in home.flow_projects() if ref in (project_id(d), os.path.basename(os.path.normpath(d)))), None)
+    if pd is None and os.path.isfile(os.path.join(home.resolve(ref), "flow", "flow.json")):
+        pd = home.resolve(ref)
+    if pd is None:
+        raise FlowError(f"no promo flow project matches {ref!r}: `promo flow projects` lists them")
+    load(pd)
+    home.remember(pd)
+    note(pd, "Picked up again in a new thread", done=True)
+    return os.path.abspath(pd)
+
+
+def projects_text(cards):
+    if not cards:
+        return "no promo flow projects (promo flow init starts one)"
+    return "\n".join(f"{c['id']}  {c['name']:<28} " + (c["error"] if c.get("error") else f"{c['stage_label']:<20} {c['updated'] or '-':<26} {c['title']}") + f"\n            {c['path']}" for c in cards)
 
 
 # ---- real previews ---------------------------------------------------------------------------------------------------------------------
@@ -1147,6 +1246,8 @@ def main(argv=None):
     p = P("note"); p.add_argument("text"); p.add_argument("--kind", default="other", choices=NOTE_KINDS); p.add_argument("--done", action="store_true")
     p = P("board"); p.add_argument("--out")
     p = P("snapshot"); p.add_argument("--out")
+    p = P("projects"); p.add_argument("--query", default=""); p.add_argument("--resumed"); p.add_argument("--out")
+    P("resume").add_argument("ref")
     p = P("share"); p.add_argument("what", choices=["detect", "draft", "final"]); p.add_argument("n", nargs="?", type=int)
     p.add_argument("--to", choices=SH.DESTS); p.add_argument("--by"); p.add_argument("--access", choices=SH.ACCESS)
     a = ap.parse_args(argv)
@@ -1242,6 +1343,17 @@ def main(argv=None):
                 print(a.out)
             else:
                 print(doc)
+        elif a.cmd == "projects":
+            pk = picker(a.query, a.resumed)
+            if a.out:
+                os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
+                open(a.out, "w").write(json.dumps(pk, indent=2))
+                print(a.out)
+            else:
+                print(projects_text(pk["projects"]))
+        elif a.cmd == "resume":
+            pd = resume(a.ref)
+            print(f"resumed {pd}\nuse --project {pd} on every promo flow command in this thread\n" + status_text(status(pd)))
         elif a.cmd == "note":
             note(pd, a.text, a.kind, a.done)
         elif a.cmd == "board":

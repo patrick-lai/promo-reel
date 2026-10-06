@@ -24,6 +24,7 @@ brief, references and rounds are all relative to its own directory (a shared man
 from __future__ import annotations
 
 import glob
+import json
 import os
 import re
 import subprocess
@@ -218,6 +219,43 @@ def set_output(text: str, cwd: str | None = None) -> str | None:
     cfg.pop("projects_dir", None)
     save_config(cfg)
     return t
+
+
+def recent_path() -> str:
+    return os.path.join(os.path.dirname(config_path()), "recent.json")
+
+
+def _recent() -> list[str]:
+    try:
+        with open(recent_path()) as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return []
+
+
+def remember(pd) -> None:
+    """A flow started or resumed outside the projects dir is only found again by `promo flow projects` through this list."""
+    pd = os.path.abspath(pd)
+    paths = [pd] + [p for p in _recent() if p != pd]
+    p = recent_path()
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    tmp = p + f".{os.getpid()}.tmp"
+    with open(tmp, "w") as f:
+        json.dump(paths, f, indent=1)
+    os.replace(tmp, p)
+
+
+def flow_projects() -> list[str]:
+    """Every promo flow project on this machine that still exists: folders of the projects dir, then remembered flows from elsewhere."""
+    base = projects_dir()
+    cands = [os.path.join(base, n) for n in sorted(os.listdir(base))] if os.path.isdir(base) else []
+    seen, out = set(), []
+    for d in cands + _recent():
+        real = os.path.realpath(d)
+        if real not in seen and os.path.isfile(os.path.join(d, "flow", "flow.json")):
+            seen.add(real)
+            out.append(d)
+    return out
 
 
 def main(argv):

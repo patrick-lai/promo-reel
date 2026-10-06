@@ -6,6 +6,12 @@ import pytest
 import localproj
 
 
+@pytest.fixture(autouse=True)
+def _private_config(tmp_path, monkeypatch):
+    """`promo flow init` remembers every flow in the config dir; tests must not add their throwaway projects to the person's real list."""
+    monkeypatch.setenv("PROMO_CONFIG", str(tmp_path / "promo-config" / "config.yaml"))
+
+
 def _mentions_missing(exc, seen=None):
     seen = seen or set()
     while exc is not None and id(exc) not in seen:

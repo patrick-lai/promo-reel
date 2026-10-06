@@ -1,6 +1,7 @@
 import json
 import os
 import subprocess
+import shutil
 
 import pytest
 from PIL import Image
@@ -846,3 +847,40 @@ def test_flow_init_says_when_the_save_location_is_unreachable(tmp_path, monkeypa
     monkeypatch.chdir(tmp_path)
     assert F.main(["init", "clip", "--intent", INTENT]) == 1
     assert "save location" in capsys.readouterr().err
+
+def _last_active(pd, at):
+    st = F.load(pd)
+    for x in st["log"]:
+        x["at"] = at
+    F.save(pd, st)
+
+
+def test_picker_lists_every_flow_most_recent_first(tmp_path, monkeypatch):
+    base = tmp_path / "projects"
+    monkeypatch.setenv("PROMO_PROJECTS", str(base))
+    old, new = str(base / "old-launch"), str(tmp_path / "elsewhere" / "night-teaser")
+    F.init(old, "Launch film for Acme. Calm.")
+    F.init(new, "Night teaser for Acme. Punchy.")                      # outside the projects dir: found because init remembered it
+    _last_active(old, "2026-09-01T10:00:00+00:00")
+    _last_active(new, "2026-10-01T10:00:00+00:00")
+    write(str(base / "half-copied" / "flow" / "flow.json"), "{ not json")
+    os.makedirs(base / "not-a-flow")
+    pk = F.picker("teaser")
+    assert [c["name"] for c in pk["projects"]] == ["night-teaser", "old-launch", "half-copied"]
+    assert pk["projects"][2]["error"] and pk["query"] == "teaser" and pk["pickable"] is True
+    card = pk["projects"][0]
+    assert card["title"] == "Night teaser for Acme" and card["stage_label"] == "Style & references" and card["question"]
+    shutil.rmtree(new)
+    assert [c["name"] for c in F.picker()["projects"]] == ["old-launch", "half-copied"]
+
+
+def test_resume_by_id_closes_the_picker(tmp_path, monkeypatch):
+    monkeypatch.setenv("PROMO_PROJECTS", str(tmp_path / "projects"))
+    pd = str(tmp_path / "projects" / "acme")
+    F.init(pd, INTENT)
+    pid = F.picker()["projects"][0]["id"]
+    assert F.main(["resume", pid]) == 0
+    assert F.load(pd)["activity"][-1]["text"] == "Picked up again in a new thread"
+    pk = F.picker(resumed=pid)
+    assert pk["pickable"] is False and pk["resumed"]["id"] == pid and pk["summary"]["badge"] == "done"
+    assert F.main(["resume", "no-such-project"]) == 1
