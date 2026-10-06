@@ -25,5 +25,5 @@ live2d/node_modules/
 # stay on the box (needed by `promo refs check`; regenerate with `promo refs add`); only the DOSSIER.md write-up is tracked
 projects/*/reference/*/*
 !projects/*/reference/*/DOSSIER.md
-# projects live outside the repo by default-friendly: `promo config projects-dir ~/promo-projects` (or $PROMO_PROJECTS); anything under projects/ stays local
+# projects live outside the repo by default-friendly: `promo config output ~/promo-projects` (or $PROMO_PROJECTS); anything under projects/ stays local
 projects/

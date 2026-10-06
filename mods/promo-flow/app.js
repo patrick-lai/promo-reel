@@ -8,7 +8,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   const SHORT = { discover: "Style", scripts: "Scripts", pick: "Pick", storyboard: "Storyboard", assets: "Assets", keyframes: "Keyframes", confirm: "Confirm", drafts: "Drafts", review: "Review", final: "Final" };
   const STAGE_TAB = { scripts: "scripts", pick: "scripts", storyboard: "storyboard", assets: "assets", keyframes: "storyboard", confirm: "storyboard", drafts: "draft", review: "draft", final: "draft" };
   const BADGE_TEXT = { working: "With the agent", waiting: "Your turn", done: "Done", attention: "Needs attention" };
-  const ACTION_WORD = { approve: "your approval", pick: "your picks", changes: "your changes", feedback: "your feedback", generate: "your request", request: "your request", density: "your request", share: "your upload request" };
+  const ACTION_WORD = { approve: "your approval", pick: "your picks", changes: "your changes", feedback: "your feedback", generate: "your request", request: "your request", density: "your request", share: "your upload request", settings: "your folder choice" };
   const KIND_ICON = { script: "doc", treatment: "spark", shotlist: "table", direction: "film", edit: "cut", audio: "music", capture: "camera", schedule: "clock", deliverables: "download", risks: "shield", research: "link", review: "refresh", notes: "doc" };
   const QUICK = [["Full script", "Write the full script as a document I can read: voice-over, on-screen text and action for every scene."], ["Shot list", "Add a shot list: one row per shot with time, picture, camera, caption, voice and proof."],
     ["Edit plan", "Add an edit plan: the cut list on the timeline with transitions, rhythm and what holds still."], ["Audio plan", "Add an audio plan: voice lines, music cues, sound effects and mix targets."],
@@ -22,7 +22,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
 
   const $ = (id) => ctx.root.getElementById(id);
   const root = ctx.root.host;
-  const el = { sc: $("scroller"), app: $("app"), stepNo: $("stepNo"), badge: $("badge"), badgeText: $("badgeText"), stageName: $("stageName"), stepsBtn: $("stepsBtn"), stateLine: $("stateLine"),
+  const el = { sc: $("scroller"), app: $("app"), stepNo: $("stepNo"), badge: $("badge"), badgeText: $("badgeText"), stageName: $("stageName"), stepsBtn: $("stepsBtn"), settingsBtn: $("settingsBtn"), stateLine: $("stateLine"),
     stepper: $("stepper"), curLab: $("curLab"), stepsList: $("stepsList"), banners: $("banners"), working: $("working"), tabs: $("tabs"), content: $("content"), gate: $("gate"), gateNote: $("gateNote"),
     compose: $("compose"), note: $("note"), noteLabel: $("noteLabel"), noteHint: $("noteHint"), gateErr: $("gateErr"), btn2: $("btnSecondary"), btn1: $("btnPrimary"),
     lb: $("lightbox"), toast: $("toast"), live: $("live") };
@@ -30,7 +30,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   const S = {
     booted: false, version: null, summary: {}, doc: {}, pending: null, offline: false, readonly: false,
     tab: null, userTab: false, stage: null, picks: new Set(), style: null, ownStyle: "", boardIdx: 0, draftSel: null, earlier: false, filter: null, checksOpen: false,
-    seen: new Set(), ref: "", compose: false, composeKind: null, reader: null, sbView: "scenes", docGroup: null, docQ: "", docBase: null, docOpened: new Set(), reqHint: "", sending: null, justSent: null, stall: false, err: "", stale: null, stash: null, updated: false, stepsOpen: false, lastAction: null, title: "", lastBadge: "", noState: false,
+    seen: new Set(), ref: "", settingsOpen: false, setSel: null, setText: "", compose: false, composeKind: null, reader: null, sbView: "scenes", docGroup: null, docQ: "", docBase: null, docOpened: new Set(), reqHint: "", sending: null, justSent: null, stall: false, err: "", stale: null, stash: null, updated: false, stepsOpen: false, lastAction: null, title: "", lastBadge: "", noState: false,
   };
 
   /* ---------------- tiny DOM helper ---------------- */
@@ -218,6 +218,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   const hasDoc = () => Object.keys(S.doc || {}).length > 0;
   const readable = () => !hasDoc() || (typeof S.doc.stage === "string" && Array.isArray(S.doc.steps));
   const isStarting = () => !hasDoc();
+  const hasSettings = () => !!(S.doc && S.doc.settings && S.doc.settings.output);
   const steps = () => (isStarting() ? STAGE_IDS.map((id, i) => ({ id, label: STAGE_LABEL[id], state: i === 0 ? "current" : "todo" })) : arr(S.doc.steps));
   const gate = () => (S.doc && S.doc.gate) || null;
   const stageIdx = () => STAGE_IDS.indexOf(S.doc.stage);
@@ -290,6 +291,8 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     el.curLab.classList.toggle("right", cur >= 6);
     el.stepsBtn.replaceChildren(ic("chevron"));
     el.stepsBtn.hidden = !hasDoc();
+    el.settingsBtn.hidden = !hasSettings();
+    el.settingsBtn.setAttribute("aria-pressed", String(S.settingsOpen));
     el.stepsBtn.setAttribute("aria-expanded", String(S.stepsOpen));
     el.stepsList.hidden = !S.stepsOpen || !hasDoc();
     const title = clip("Promo flow: " + el.stageName.textContent, 40);
@@ -420,7 +423,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     pickTab(bs[j].dataset.tab);
     bs[j].focus();
   }
-  function pickTab(id) { if (S.tab === id && !S.reader) return; S.reader = null; S.tab = id; S.userTab = true; S.updated = false; render(); el.sc.scrollTop = 0; }
+  function pickTab(id) { if (S.tab === id && !S.reader && !S.settingsOpen) return; S.reader = null; S.settingsOpen = false; S.tab = id; S.userTab = true; S.updated = false; render(); el.sc.scrollTop = 0; }
 
   /* ---------------- content ---------------- */
   let lastSig = "", tick = 0;
@@ -441,6 +444,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     if (S.noState && !hasDoc()) sig = "noconn";
     else if (!readable()) sig = "bad";
     else if (isStarting()) sig = "start";
+    else if (S.settingsOpen) sig = "settings|" + JSON.stringify([S.doc.settings, S.readonly, S.offline, !!S.pending, !!S.justSent, !!S.sending, S.err]);
     else if (!list.length) sig = "overview|" + JSON.stringify([sliceFor(null, true), gate(), S.style, S.readonly, !!S.pending]);
     else if (S.reader) sig = "reader|" + S.reader.key + "|" + JSON.stringify(sliceFor(S.tab, false)) + S.readonly;
     else sig = S.tab + "|" + JSON.stringify(sliceFor(S.tab, true)) + "|" + [...S.picks].join() + "|" + S.style + S.boardIdx + S.draftSel + S.earlier + S.filter + S.readonly + !!S.pending + !!S.justSent + !!S.sending + S.sbView + S.docGroup + S.docQ + (S.compose ? S.composeKind : "");
@@ -455,6 +459,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     if (S.noState && !hasDoc()) view = viewNoConn();
     else if (!readable()) view = viewBad();
     else if (isStarting()) view = viewStarting();
+    else if (S.settingsOpen) view = viewSettings();
     else if (!list.length) view = viewOverview();
     else if (S.reader) view = viewReader();
     else view = ({ scripts: viewScripts, storyboard: viewStoryboard, assets: viewAssets, draft: viewDraft, plan: viewPlan }[S.tab] || viewOverview)();
@@ -491,6 +496,67 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   function viewStarting() {
     return h("div", { class: "pane empty fill" }, h("div", { class: "ring" }, ic("spark")), h("h2", { text: "Your request is with the agent" }),
       h("p", { text: "Steps appear here as the agent publishes them." }));
+  }
+
+  /* ---------------- settings: where videos are saved ---------------- */
+  const OUTPUT_CHOICES = [
+    { id: "home", title: "Your home folder", note: "Out of your repos, one folder for each project." },
+    { id: "repo", title: "Inside this project", note: "A promo-reel folder in the repo you are working in." },
+    { id: "custom", title: "A folder you choose", note: "For an external drive, or anywhere else." },
+    { id: "default", title: "Where promo-reel keeps them", note: "The folder inside promo-reel itself. This is the default." },
+  ];
+  function openSettings() {
+    const o = S.doc.settings.output;
+    S.settingsOpen = true; S.err = ""; S.setSel = o.mode; S.setText = o.mode === "custom" ? o.template : "";
+    render(true);
+    el.sc.scrollTop = 0;
+    const t = el.content.querySelector('[data-k="settings-title"]');
+    if (t) t.focus({ preventScroll: true });
+  }
+  function closeSettings() { S.settingsOpen = false; render(true); el.settingsBtn.focus(); }
+  el.settingsBtn.addEventListener("click", () => (S.settingsOpen ? closeSettings() : openSettings()));
+
+  function viewSettings() {
+    const d = S.doc.settings, o = d.output;
+    const locked = S.readonly || o.locked;
+    const waiting = !!(S.pending || S.justSent || S.sending);
+    const radios = {};
+    const field = h("input", { id: "where", type: "text", maxlength: "300", value: S.setText, disabled: locked, placeholder: "/Volumes/My Drive/promo-reel/{project}/{slug}", spellcheck: "false", autocomplete: "off", "data-k": "settings-field",
+      oninput: (e) => { S.setText = e.target.value; S.setSel = "custom"; radios.custom.checked = true; update(); } });
+    const problem = h("p", { class: "warnline", role: "alert", hidden: true }, ic("alert"), h("span"));
+    const next = h("code", { class: "set-path", "aria-live": "polite" });
+    const save = h("button", { class: "btn primary", type: "button", onclick: () => { if (!save.disabled) send("settings", { output: S.setSel === "custom" ? S.setText.trim() : S.setSel }); } });
+    function update() {
+      const custom = S.setSel === "custom";
+      const bad = custom && S.setText.trim() ? PF.outputProblem(S.setText) : "";
+      next.textContent = custom ? (S.setText.trim() && !bad ? PF.previewOutput(S.setText, o) : "") : o.presets[S.setSel].example;
+      problem.hidden = !bad;
+      problem.lastChild.textContent = bad;
+      const dirty = PF.outputDirty(o, S.setSel, S.setText);
+      save.disabled = locked || S.offline || waiting || !dirty || (custom && !!PF.outputProblem(S.setText));
+      save.textContent = !dirty ? "Saved" : waiting ? "Sent to the agent" : "Save this folder";
+    }
+    const cards = OUTPUT_CHOICES.map((c) => {
+      radios[c.id] = h("input", { type: "radio", name: "where", value: c.id, checked: S.setSel === c.id, disabled: locked, onchange: () => { S.setSel = c.id; update(); if (c.id === "custom") field.focus(); } });
+      return h("label", { class: "card choice radio" }, radios[c.id], h("div", { class: "row" }, h("span", { class: "box" }, ic("check")),
+        h("div", { class: "body" }, h("div", { class: "t" }, h("b", { text: c.title })), h("p", { class: "logline", text: c.note }),
+          c.id === "custom" ? null : h("code", { class: "set-path", text: o.presets[c.id].example }))));
+    });
+    const box = h("div", { class: "stack", onkeydown: (e) => { if (e.key === "Escape") { e.preventDefault(); closeSettings(); } } },
+      h("div", null, h("h2", { class: "h2", text: "Where files are saved", tabindex: "-1", "data-k": "settings-title" }),
+        h("p", { class: "set-sub", text: "Every new video gets its own folder here: scripts, storyboards, recordings and renders. Videos you already started stay where they are." })),
+      d.saved_in ? h("div", null, h("p", { class: "set-label", text: "This video is in" }), h("code", { class: "set-path", text: d.saved_in })) : null,
+      o.available ? null : h("p", { class: "warnline", role: "alert" }, ic("alert"), h("span", { text: "The saved folder can't be reached right now. If it is on a drive, plug it in, or pick another folder." })),
+      o.locked ? h("p", { class: "set-sub", text: "This computer sets the folder itself (PROMO_PROJECTS), so it can't be changed here." }) : null,
+      h("div", { class: "choices", role: "radiogroup", "aria-label": "Where to save new videos" }, cards),
+      h("div", { class: "own" }, h("label", { for: "where", text: "Your folder" }), field,
+        h("p", { class: "set-sub", text: "{project} is the name of the repo you work in. {slug} is the video's short name; it is added at the end if you leave it out." })),
+      problem,
+      S.err ? h("p", { class: "warnline", role: "alert" }, ic("alert"), h("span", { text: S.err })) : null,
+      h("div", null, h("p", { class: "set-label", text: "The next video goes to" }), next),
+      h("div", { class: "set-actions" }, h("button", { class: "btn ghost", type: "button", text: "Close", onclick: closeSettings }), save));
+    update();
+    return h("div", { class: "pane" }, box);
   }
 
   /* A small drawn sample of each look, so the choice is not just a name. It is a hint of the style, not a frame of the video. */
@@ -1459,7 +1525,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     };
     el.btn1.hidden = el.btn2.hidden = true;
     el.btn2.removeAttribute("data-quiet");
-    el.gate.hidden = m.mode === "none";
+    el.gate.hidden = m.mode === "none" || (S.settingsOpen && (m.mode === "gate" || m.mode === "work"));
     el.gate.dataset.layout = "stack";
     el.btn1.removeAttribute("aria-describedby");
     if (m.mode === "readonly") { note("This thread is archived. You can read everything, but nothing can be sent.", { lock: true }); S.compose = false; }
@@ -1573,6 +1639,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     if (S.stage !== S.doc.stage) { S.stage = S.doc.stage; S.userTab = false; S.sentPicks = null; S.draftSel = null; S.earlier = false; S.filter = null; S.boardIdx = 0; S.seen = new Set(); S.sbView = "scenes"; }
     if (!S.userTab || !list.some((t) => t.id === S.tab)) S.tab = list.some((t) => t.id === cur) ? cur : list.length ? list[list.length - 1].id : null;
     if (!list.length) S.tab = null;
+    if (S.settingsOpen && !hasSettings()) S.settingsOpen = false;
     renderHeader();
     renderWorking();
     renderBanners();
@@ -1604,6 +1671,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       const cleared = (key != null && key !== S.justSent.key) || (S.justSent.saw && !S.pending);
       if (cleared) { S.justSent = null; clearTimeout(S.stallTimer); S.stall = false; }
     }
+    if (S.justSent && S.justSent.name === "settings" && hasSettings() && !PF.outputDirty(S.doc.settings.output, S.setSel, S.setText)) { S.justSent = null; clearTimeout(S.stallTimer); S.stall = false; }
     if (S.pending && !S.stallTimer) startStall();
     if (!S.pending && !S.justSent) { clearTimeout(S.stallTimer); S.stallTimer = 0; S.stall = false; }
     const g = gate();
@@ -1652,6 +1720,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   el.stepNo.textContent = "Loading";
   el.gate.hidden = true;
   el.stepsBtn.replaceChildren(ic("chevron"));
+  el.settingsBtn.replaceChildren(ic("folder"));
   onAccent();
   startBootTimer();
   post({ type: "ready" });

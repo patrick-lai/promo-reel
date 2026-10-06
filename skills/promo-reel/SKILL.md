@@ -5,7 +5,7 @@ description: Make or update a product promo / demo video from real app footage w
 
 # promo-reel
 
-Start with THE FLOW (below). Everything lives in `<projects dir>/<name>/` (default `projects/`, see `promo config`) (promo.yaml, assets.yaml, footage/manifest.yaml, shots.py plugin). Run commands from the repo root:
+Start with THE FLOW (below). Everything lives in `<save location>/<name>/` (see `promo config output`; default `projects/`) (promo.yaml, assets.yaml, footage/manifest.yaml, shots.py plugin). Run commands from the repo root:
 `promo -p projects/<name>/promo.yaml <cmd>` (venv python: `python -m promo ...`).
 
 ## THE FLOW (default: use it for every new video; the person stays in the loop)
@@ -42,7 +42,7 @@ Post a `promo flow note` at every fan-out and fan-in so the Stage shows what is 
 Session UI: `status --json` carries the `ask` payload (question + options) for AskUserQuestion; `promo flow board` writes the dashboard HTML (stepper, scripts, storyboards with
 start->end frames, the asset gallery, drafts, rounds): publish it as an Artifact or show it as a widget so the person SEES the plan. Inside CommissionAI the widget is the `promo-flow` mod (`mods/promo-flow/`, README there): `promo flow snapshot --out f.json` then `commissionctl mod publish promo-flow --file f.json`; the person's clicks arrive as `[mod:promo-flow] ...` messages. Slash command: `/promo-flow` (`.claude/commands/promo-flow.md`).
 **Upload (only when the person asks).** Where their `twg` is signed in and Atlassian Artifacts or Loom is on their site (`promo flow share detect`; the snapshot checks it), the Drafts tab offers Upload per draft and final. The click reaches you as `[mod:promo-flow] ... wants Draft 5 uploaded to ...`: run `promo flow share draft|final N --to artifacts|loom --by "NAME"` and publish. One canonical name per item: draft N is `<project>_draft_N` (edited and shared again it refreshes the same Artifacts link; Loom cannot replace, so it adds a copy), a final is `<project>_final_vN` (every `final add` is the next version, never overwritten). Private unless they ask for `--access open`. Never upload on your own.
-Projects can live outside the repo: `promo config projects-dir`. The older STEP 0 / Workflow sections below are the details behind stages 1, 6-9.
+Projects live where the person chose, never in the repo you are working in unless they picked that: `promo config output` shows it (home `~/.promo-reel/{project}/{slug}`, repo `./promo-reel/{slug}`, any folder such as an external drive, or promo-reel's own `projects/`); in the Stage it is the folder button. `promo flow init` and `promo new` use it, and a bare project name finds a video there. The older STEP 0 / Workflow sections below are the details behind stages 1, 6-9.
 
 ## The handoff: promo-reel asks, YOU deliver (it never decides how)
 Run `promo -p projects/<n>/promo.yaml needs [--json]` at the start and after every change. It lists what is still missing and the exact command that

@@ -6,7 +6,7 @@ description: Publish the promo flow to the person's Stage pane (the promo-flow m
 The person sees and decides in the Stage pane; you do the work with `promo flow` (see the promo-reel skill, THE FLOW).
 
 **Starting.** If the person typed `/promo-flow <request>` or clearly asked for a produced video (promo, hero, demo, trailer), go ahead. Otherwise ask first with the ask
-widget ("Use the promo flow for this?") and start only on yes. Then `promo flow init <name> --intent "<their words, exact>"` and publish.
+widget ("Use the promo flow for this?") and start only on yes. Then `promo flow init <name> --intent "<their words, exact>"` and publish. The project folder comes from the person's save location (`promo config output`, the folder button in the Stage), not from the repo you are working in; never `cd` into the repo to scaffold or write project files there.
 
 **Publish after every change** (a stage advanced, a script/board/asset/draft/round was added, an approval landed):
 1. `promo flow snapshot --out /tmp/promo-flow.json` (run it in the project; media become `{"$file": abs path}` objects)
@@ -17,6 +17,7 @@ Never edit the JSON by hand. The first publish activates the mod in this thread.
 - `approved <gate>` or `picked scripts A B`: run the exact `promo flow approve ... --by "NAME"` the message names (NAME is the person), `promo flow advance`, then publish.
   If the approve command says the gate belongs to a later stage, `promo flow advance` first, then approve.
 - `wants the real thing made, not placeholders: <what>`: run `promo flow make` (storyboard frames as real images, then a sample of every asset: concept still, short clip, audio excerpt), publish. If a sample fails (no source file for the music, no generator logged in), say exactly what is missing instead of publishing a placeholder.
+- `chose where new videos are saved: <where>`: run the exact `promo config output "<where>"` the message names, then publish. It only changes where NEW videos go; never move the current one. If the command refuses (a drive that is not plugged in, a bad path), say why in one sentence in the chat and publish nothing new.
 - `asked for changes on <stage>: <text>` (also "Style: ..." from the discover step): do the work, regenerate what changed, `promo flow board`, publish. Do not approve.
   A "Style: X. Reference: URL" message is `promo flow discover --style "X" --ref URL`; "Style: X. No reference link." is `promo flow discover --style "X" --no-refs`; then `promo flow advance`.
 - `sent draft feedback (round n of 5): <text>`: `promo flow round start --feedback "<text verbatim>"`, council, one batch, one draft, `round close`, publish.

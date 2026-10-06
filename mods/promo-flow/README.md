@@ -54,6 +54,9 @@ Every path below that says `file` is `{"$file": "<absolute path>"}` (the host tu
                  line, its age, one dot per item (hollow = in flight, solid = done, colour = kind) and the last three lines; `summary.status` is "Now: <latest note>" while working
     checks     [{ok, text}]  plain sentences from the same conditions as `promo flow status` ("2 of 4 keyframes done, 2 left")
     approvals  {gate: {by, at, fresh}}
+    settings   {output: {template, source: env|config|default, mode: home|repo|default|custom, locked, available, project, repo, home, example, presets{home|repo|default: {template, example}}}, saved_in}
+                 the folder button in the header opens "Where files are saved": `mode` is the selected card, `presets[x].example` the path each card would use for the next video, `locked` (PROMO_PROJECTS is set)
+                 disables it, `available: false` warns that the saved folder can't be reached (unplugged drive), `saved_in` is this video's own folder. Hidden when `settings` is absent
     gate       null | {gate, kind: style|pick|approve|confirm|draft, stage, question, approve_label, changes_label, options[], picks_min?, picks_max?, stale?}
                  a stale earlier approval takes over the gate ("Approve again", kind approve, stage = that step)
 
@@ -65,7 +68,7 @@ Every path below that says `file` is `{"$file": "<absolute path>"}` (the host tu
 
 **Storyboard tab**: a view switch (Scenes | Frames in time) and a cadence control (Start and end, every 10 s, every 5 s, every 2 s, Other...) that sends `density`. Frames in time lists every frame in time order with its clock time; a scene with more than two mid frames shows them as a film strip. When a board has a density, the storyboard gate needs those frames as real images too.
 
-Actions: `approve`, `pick`, `changes`, `feedback`, `generate {what}`, `request {text, where}` (an ask for content: documents, scripts, plans, scene changes), `density {story, every, what}` (every 0 = back to start and end frames); `share {kind: draft|final, n, item, dest, dest_label}` (the agent runs `promo flow share <kind> <n> --to <dest> --by NAME`).
+Actions: `approve`, `pick`, `changes`, `feedback`, `generate {what}`, `request {text, where}` (an ask for content: documents, scripts, plans, scene changes), `density {story, every, what}` (every 0 = back to start and end frames); `share {kind: draft|final, n, item, dest, dest_label}` (the agent runs `promo flow share <kind> <n> --to <dest> --by NAME`), `settings {output}` (`home`, `repo`, `default` or a folder; the agent runs `promo config output`, then republishes).
 
 `gate.gate` is what the `approve` and `pick` actions guard on (`/gate/gate` vs payload `gate`). The first state after activation is `{}` with summary status "Starting": the app shows its Getting started screen.
 The `readonly` flag on the host `state` message (archived thread) disables every send. Actions: `approve {gate, draft?}` (at the draft gate `draft` is the latest draft's id), `pick {gate, picks: "A B"}`, `changes {stage, text}`, `feedback {round, max_rounds, text}`.
@@ -74,7 +77,7 @@ The style step has no flow gate, so the person's choice goes as `changes {stage:
 ## Develop
     .venv/bin/python mod-dev/serve.py            # builds a fixture project, serves http://127.0.0.1:8765/dev/harness.html
     .venv/bin/python mod-dev/shoot.py            # screenshots to /tmp/promo-flow-shots/v1/ (headless Chrome)
-    .venv/bin/python mod-dev/serve.py --project PROJECT_DIR   # drive a REAL project: stage `live` re-reads `promo flow snapshot`, clicks run the real flow commands (approve, pick, generate = `promo flow make`)
+    .venv/bin/python mod-dev/serve.py --project PROJECT_DIR   # drive a REAL project: stage `live` re-reads `promo flow snapshot`, clicks run the real flow commands (approve, pick, generate = `promo flow make`, settings = `promo config output` against a throwaway config unless PROMO_CONFIG is set)
     .venv/bin/python mod-dev/shoot.py --base http://127.0.0.1:8765 --tabs storyboard,assets   # screenshots of that live stage
     .venv/bin/python mod-dev/fixtures.py --keep /tmp/pf-fix --dump /tmp/pf-snapshots   # the canned states as JSON files
     .venv/bin/python -m pytest tests/test_flow.py -q

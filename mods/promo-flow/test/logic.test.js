@@ -210,3 +210,27 @@ test("clock times never print 0:010 or 0:60", () => {
   assert.equal(L.clockT(125), "2:05");
   assert.equal(L.clockT(14.5), "0:14.5");
 });
+
+const out = { project: "shop", repo: "/work/shop", home: "/Users/me", mode: "home", template: "~/.promo-reel/{project}/{slug}" };
+test("save folder: values the CLI would refuse never get sent", () => {
+  assert.equal(L.outputProblem("/Volumes/Drive/promo-reel/{project}/{slug}"), "");
+  assert.equal(L.outputProblem("/Volumes/My Drive/promo-reel"), "");
+  assert.match(L.outputProblem("  "), /Type the folder/);
+  assert.match(L.outputProblem('/Volumes/x"; rm -rf ~; "'), /can't contain/);
+  assert.match(L.outputProblem("/x/$HOME"), /can't contain/);
+  assert.match(L.outputProblem("/x/{who}/{slug}"), /Only \{project\} and \{slug\}.*\{who\}/);
+  assert.match(L.outputProblem("/x/{slug}/more"), /last folder/);
+});
+test("save folder: the preview shows where the next video lands", () => {
+  assert.equal(L.previewOutput("/Volumes/Drive/{project}", out), "/Volumes/Drive/shop/<slug>");
+  assert.equal(L.previewOutput("~/clips/{slug}", out), "/Users/me/clips/<slug>");
+  assert.equal(L.previewOutput("./promo-reel", out), "/work/shop/promo-reel/<slug>");
+});
+test("save folder: Save is offered only when the choice differs from what is saved", () => {
+  assert.equal(L.outputDirty(out, "home", ""), false);
+  assert.equal(L.outputDirty(out, "repo", ""), true);
+  assert.equal(L.outputDirty(out, "custom", "/Volumes/D"), true);
+  const custom = { ...out, mode: "custom", template: "/Volumes/D/{slug}" };
+  assert.equal(L.outputDirty(custom, "custom", "/Volumes/D"), false);
+  assert.equal(L.outputDirty(custom, "custom", "/Volumes/E"), true);
+});

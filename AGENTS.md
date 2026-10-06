@@ -1,6 +1,6 @@
 # AGENTS.md: how to make a product promo video with promo-reel
 
-Short version for agents: `skills/promo-reel/SKILL.md`. Capture-script contract: `capture/README.md`. Start a project from `templates/new-project` or `promo new <name> --style X` (example projects live in your projects dir, not in this repo).
+Short version for agents: `skills/promo-reel/SKILL.md`. Capture-script contract: `capture/README.md`. Start a project from `templates/new-project` or `promo new <name> --style X` (example projects live in your projects dir, not in this repo). Where new projects are saved is a user setting, `promo config output` (e.g. `~/.promo-reel/{project}/{slug}`, `./promo-reel/{slug}` or a folder on an external drive); never write project files into the repo you are working in unless that is the chosen location.
 
 This file is the operating manual for any AI agent (or human) picking up a promo-video job.
 Read it top to bottom before touching footage. The pipeline is mechanical; taste and truth are not.

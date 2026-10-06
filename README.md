@@ -4,7 +4,7 @@ A declarative, agent-runnable pipeline for **product promo videos made from real
 
 - **Agents start here:** [`skills/promo-reel/SKILL.md`](skills/promo-reel/SKILL.md) (short), [`skills/promo-video-route/SKILL.md`](skills/promo-video-route/SKILL.md) (which video model / Higgsfield vs Runway), and [`AGENTS.md`](AGENTS.md) (the full workflow, team rules, and what still needs a human).
 - **Capture handoff:** [`capture/README.md`](capture/README.md) and `projects/<name>/footage/manifest.yaml`.
-- **Starting a project:** [`templates/new-project/`](templates/new-project/) or `promo new <name> --style hero|anime-opening|livestream|horizon|cinematic-story`. Example projects live in your projects dir (`promo config projects-dir`; by default the gitignored `projects/`), not in this repo.
+- **Starting a project:** [`templates/new-project/`](templates/new-project/) or `promo new <name> --style hero|anime-opening|livestream|horizon|cinematic-story`. Projects are saved where you choose (`promo config output home|repo|default|<folder with {project}/{slug}>`, or the folder button in the promo-flow Stage; by default the gitignored `projects/`), so they can live on an external drive and not in this repo.
 
 ## Install
 ```

@@ -5,7 +5,8 @@
   /api/state/<id>      {version, summary, state}: `$file` objects already resolved to `$media` like the daemon does
   /media/<upload_id>   the file, with Range support
   --project DIR        serve a REAL project as stage `live`: every request re-reads `promo flow snapshot`, and POST /api/action runs the real
-                       `promo flow` command behind the click (approve / pick / generate = `promo flow make`), so the whole flow can be driven by hand.
+                       `promo flow` command behind the click (approve / pick / generate = `promo flow make`, settings = `promo config output`, against a throwaway
+                       config file unless PROMO_CONFIG is set), so the whole flow can be driven by hand.
 """
 from __future__ import annotations
 
@@ -17,6 +18,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import unquote, urlparse
@@ -27,7 +29,7 @@ MODS = os.path.join(ROOT, "mods")
 sys.path.insert(0, HERE)
 sys.path.insert(0, ROOT)
 import fixtures  # noqa: E402
-from promo import flow  # noqa: E402
+from promo import flow, home  # noqa: E402
 
 MAX_FILE = {"image": 12 << 20, "audio": 100 << 20, "video": 100 << 20}
 UPLOADS: dict[str, str] = {}
@@ -170,6 +172,11 @@ def run_action(pd, name, payload):
     elif name == "pick":
         flow.approve(pd, "scripts-picked", BY, payload["picks"].split())
         flow.advance(pd)
+    elif name == "settings":
+        try:
+            home.set_output(payload["output"])
+        except home.ConfigError as e:
+            return {"ok": False, "error": str(e)}
     elif name == "generate":
         job = subprocess.Popen([sys.executable, "-m", "promo", "flow", "--project", pd, "make"], cwd=ROOT, env={**os.environ, "PYTHONPATH": ROOT},
                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
@@ -188,6 +195,7 @@ def run_action(pd, name, payload):
 
 def start(port=0, keep=None, project=None):
     """Build the fixtures and serve; returns (server, thread, url). With `project`, a real flow project is served as stage `live`."""
+    os.environ.setdefault("PROMO_CONFIG", os.path.join(tempfile.mkdtemp(prefix="promo-flow-config-"), "config.yaml"))     # Save in the settings pane never touches your real config
     states, tmp = fixtures.build(keep)
     STAGES.clear()
     STAGES.update(states)

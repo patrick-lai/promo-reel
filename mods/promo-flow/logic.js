@@ -300,7 +300,27 @@
   const DENSITY_CHOICES = [{ every: 0, label: "Start and end" }, { every: 10, label: "Every 10 s" }, { every: 5, label: "Every 5 s" }, { every: 2, label: "Every 2 s" }];
   const clockT = (s) => { const t = Math.round(Math.max(0, s || 0) * 10), m = Math.floor(t / 600), rem = t - m * 600, sec = Math.floor(rem / 10), fr = rem % 10; return m + ":" + String(sec).padStart(2, "0") + (fr ? "." + fr : ""); };
 
-  const api = { arr, mref, fileBad, missingFile, missingAll, hasPreview, noFrame, sceneStatus, model, finalState, seenRule, seenKey, missingRule, previewRule, downloadName, wordsOf, parseBlocks, inline, plain, paginate, outline, findPages, markSplit, readMinutes, frameTimeline, DENSITY_CHOICES, clockT, shareRows };
+  /* The settings pane's "where are videos saved" field. promo/home.py (parse_output) has the final say; this only keeps a bad value from being sent
+     and shows where the next video would go. */
+  const withSlug = (t) => { t = String(t || "").trim().replace(/\/+$/, ""); return t.endsWith("/{slug}") ? t : t + "/{slug}"; };
+  function outputProblem(text) {
+    const t = String(text || "").trim();
+    if (!t) return "Type the folder to save into.";
+    if (/["`$\\\u0000-\u001f]/.test(t)) return "The folder can't contain quotes, backticks, $ or backslashes.";
+    const bad = (t.match(/\{[^}]*\}/g) || []).find((x) => x !== "{project}" && x !== "{slug}");
+    if (bad) return "Only {project} and {slug} can be used, not " + bad + ".";
+    if (t.includes("{slug}") && !(t.endsWith("/{slug}") && t.split("{slug}").length === 2)) return "{slug} has to be the last folder.";
+    return "";
+  }
+  /* `out` is the snapshot's settings.output (project, repo, home). A relative folder is relative to the repo, like the CLI. */
+  function previewOutput(text, out) {
+    const t = withSlug(text).replace(/\{project\}/g, out.project).replace(/\{slug\}/g, "<slug>");
+    if (t.startsWith("~/")) return out.home + t.slice(1);
+    return t.startsWith("/") ? t : out.repo + "/" + t.replace(/^\.\//, "");
+  }
+  const outputDirty = (out, sel, text) => sel !== out.mode || (sel === "custom" && withSlug(text) !== out.template);
+
+  const api = { arr, mref, fileBad, missingFile, missingAll, hasPreview, noFrame, sceneStatus, model, finalState, seenRule, seenKey, missingRule, previewRule, downloadName, wordsOf, parseBlocks, inline, plain, paginate, outline, findPages, markSplit, readMinutes, frameTimeline, DENSITY_CHOICES, clockT, shareRows, outputProblem, previewOutput, outputDirty };
   root.PF = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof window !== "undefined" ? window : globalThis);

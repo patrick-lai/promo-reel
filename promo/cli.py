@@ -265,7 +265,10 @@ def cmd_new(args):
         raise SystemExit(f"template not found: {src}")
     name = os.path.basename(os.path.normpath(args.name))
     from . import home as _home
-    dest = args.dir or (args.name if os.sep in args.name else os.path.join(_home.projects_dir(), args.name))
+    try:
+        dest = args.dir or (args.name if os.sep in args.name else _home.project_dir(args.name))
+    except _home.ConfigError as e:
+        raise SystemExit(str(e))
     if os.path.exists(dest) and os.listdir(dest):
         raise SystemExit(f"{dest} exists and is not empty")
     shutil.copytree(src, dest, dirs_exist_ok=True)
@@ -401,8 +404,8 @@ def build_parser():
     sub.add_parser("refs", help="study references for real: add (watch WITH transcript + scaffold DOSSIER.md) | check | show (see `promo refs -h`)")
     sub.add_parser("compare-ref", help="draft vs each reference: sheet rows + metrics incl. speech/LUFS/tempo (see `promo compare-ref -h`)")
     sub.add_parser("flow", help="the gated production flow with the person in the loop: init | status | discover | script | council | approve | asset | needs | advance | draft | round | final | revise | board (see `promo flow -h`)")
-    sub.add_parser("config", help="user config: `promo config projects-dir [PATH]` (projects may live outside this repo), `promo config heavy-lock [PATH]`")
-    sub.add_parser("projects", help="list the projects in the projects dir (PROMO_PROJECTS / config / <repo>/projects)")
+    sub.add_parser("config", help="user config: `promo config output [home|repo|default|PATH]` (where new videos are saved: outside this repo, on an external drive), `promo config heavy-lock [PATH]`")
+    sub.add_parser("projects", help="list the projects in the save location (PROMO_PROJECTS / `promo config output` / <repo>/projects)")
     sub.add_parser("rubric", help="PASS/FAIL of a scores file (or a review .md) against evals/rubric.yaml (see `promo rubric -h`)")
     sub.add_parser("live2d", help="Live2D host renderer: fetch | models | render | lag (see `promo live2d -h`)")
     return ap
@@ -532,12 +535,12 @@ def main(argv=None):
     if argv[:1] == ["flow"]:            # `promo flow ...`: the gated production flow (scripts -> storyboard -> assets -> drafts -> council rounds)
         from . import flow
         return flow.main(argv[1:])
-    if argv[:1] == ["config"]:          # `promo config projects-dir|heavy-lock [PATH]`
+    if argv[:1] == ["config"]:          # `promo config output|projects-dir|heavy-lock [VALUE]`
         from . import home
         return home.main(argv[1:])
-    if argv[:1] == ["projects"]:        # `promo projects`: list the projects in the projects dir
+    if argv[:1] == ["projects"]:        # `promo projects`: list the projects in the save location
         from . import home
-        print(f"projects dir: {home.projects_dir()}")
+        print(f"save location: {home.output_template()[0]}")
         for p in home.list_projects():
             print(f"  {p['name']:<28} brief={'yes' if p['brief'] else 'no ':<3} rounds={p['rounds']}  {p['path']}")
         return 0

@@ -1,5 +1,6 @@
 import json
 import os
+import subprocess
 
 import pytest
 from PIL import Image
@@ -816,3 +817,32 @@ def test_retiming_or_adding_a_scene_keeps_the_frame_grid_and_per_scene_density_k
     assert SB.load(d)["density"] == {"every_s": 5}
     with pytest.raises(BE.BoardError, match="no scene 99"):
         BE.density(fd, [("C", SB.load(d), d)], every=5, scene="99")
+
+def test_flow_init_without_a_name_saves_to_the_chosen_place_not_the_current_repo(tmp_path, monkeypatch):
+    from promo import home
+    monkeypatch.setenv("PROMO_CONFIG", str(tmp_path / "c.yaml"))
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.delenv("PROMO_PROJECTS", raising=False)
+    shop = tmp_path / "shop"
+    shop.mkdir()
+    subprocess.run(["git", "init", "-q", str(shop)], check=True)
+    monkeypatch.chdir(shop)
+    home.main(["output", "home"])
+    assert F.main(["init", "--intent", INTENT]) == 0
+    assert F.main(["init", "--intent", INTENT]) == 0
+    saved = sorted(os.listdir(tmp_path / "home" / ".promo-reel" / "shop"))
+    assert saved == ["make-a-60s-promo-for-acme-tasks-tell-it", "make-a-60s-promo-for-acme-tasks-tell-it-2"]
+    assert os.listdir(shop) == [".git"]
+    monkeypatch.chdir(tmp_path / "home" / ".promo-reel" / "shop" / saved[0])
+    out = F.snapshot(os.getcwd())["settings"]
+    assert out["output"]["project"] == "shop" and out["output"]["mode"] == "home"
+    assert out["saved_in"].endswith(saved[0])
+
+
+def test_flow_init_says_when_the_save_location_is_unreachable(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("PROMO_CONFIG", str(tmp_path / "c.yaml"))
+    monkeypatch.setenv("PROMO_PROJECTS", str(tmp_path / "file" / "drive"))
+    (tmp_path / "file").write_text("not a folder")
+    monkeypatch.chdir(tmp_path)
+    assert F.main(["init", "clip", "--intent", INTENT]) == 1
+    assert "save location" in capsys.readouterr().err

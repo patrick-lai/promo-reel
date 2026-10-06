@@ -51,6 +51,7 @@ from . import plandocs as PD
 from . import previews as PV
 from . import share as SH
 from . import storyboard as SB
+from . import home
 from .home import resolve as _resolve
 
 STAGES = ["discover", "scripts", "pick", "storyboard", "assets", "keyframes", "confirm", "drafts", "review", "final"]
@@ -137,6 +138,19 @@ def _activity(st):
     return out[-ACTIVITY_MAX:]
 
 
+def _new_project_dir(name, intent):
+    """Folder for a new video in the configured save location (`promo config output`). Without a name the slug comes from the request, and a
+    taken one gets -2, -3 so a second video never lands on the first one's flow."""
+    if name:
+        return home.project_dir(name)
+    base = home.slugify(intent)
+    pd, n = home.project_dir(base), 1
+    while os.path.exists(os.path.join(pd, "flow", "flow.json")):
+        n += 1
+        pd = home.project_dir(f"{base}-{n}")
+    return pd
+
+
 def init(pd, intent, force=False):
     p = os.path.join(fdir(pd), "flow.json")
     if os.path.exists(p) and not force:
@@ -146,8 +160,9 @@ def init(pd, intent, force=False):
     os.makedirs(pd, exist_ok=True)
     if not BR.exists(pd):
         BR.init(pd, intent=intent)
-    st = dict(version=1, stage="discover", intent=intent, discover=None, scripts=[], councils={}, picks=[], gates={}, drafts=[], rounds=[],
-              cycle=1, finals=[], log=[])
+    project, repo = home.current_project()
+    st = dict(version=1, stage="discover", intent=intent, place=dict(project=project, repo=repo), discover=None, scripts=[], councils={}, picks=[], gates={},
+              drafts=[], rounds=[], cycle=1, finals=[], log=[])
     log(st, "init")
     save(pd, st)
     return st
@@ -959,6 +974,7 @@ def snapshot(pd):
         steps.append(dict(id=sg, label=LABEL[sg], state=state, stale=sg in stale_ids))
     since = (st.get("log") or [{}])[-1].get("at")
     docs = _docs(pd, st)
+    place = st.get("place") or dict(zip(("project", "repo"), home.current_project()))
     return dict(summary=_summary(pd, st, gate, pc, used), title=_clip((st["intent"].split(".")[0] or "Production"), 80), intent=st["intent"],
                 stage=st["stage"], stage_label=LABEL[st["stage"]], stage_since=since, cycle=st["cycle"], rounds_used=used, rounds_max=MAX_ROUNDS, steps=steps,
                 stale_steps=stale,
@@ -966,6 +982,7 @@ def snapshot(pd):
                 scripts=scripts, docs=docs, councils=councils, boards=bl, assets=assets, to_make=to_make, drafts=drafts, finals=finals, rounds=rounds,
                 share=dict(destinations=[dict(id=d, label=SH.LABEL[d], note=SH.NOTE[d], in_place=d == "artifacts") for d in SH.available(st)]),
                 checks=[dict(ok=o, text=t) for o, t in pc], gate=gate, activity=_activity(st),
+                settings=dict(output=home.output_info(place["project"], place["repo"]), saved_in=os.path.abspath(pd)),
                 approvals={k: dict(by=v["by"], at=v["at"], fresh=gate_ok(pd, st, k)) for k, v in st["gates"].items()})
 
 
@@ -1134,10 +1151,9 @@ def main(argv=None):
     p.add_argument("--to", choices=SH.DESTS); p.add_argument("--by"); p.add_argument("--access", choices=SH.ACCESS)
     a = ap.parse_args(argv)
     pd = a.project or os.getcwd()
-    if a.cmd == "init" and a.name and not a.project:
-        from . import home
-        pd = os.path.join(home.projects_dir(), a.name) if os.sep not in a.name else a.name
     try:
+        if a.cmd == "init" and not a.project:
+            pd = a.name if a.name and os.sep in a.name else _new_project_dir(a.name, a.intent)
         if a.cmd == "init":
             init(pd, a.intent, a.force)
             print(f"flow started in {pd}/flow ; brief locked with the exact words.\n" + status_text(status(pd)))
@@ -1230,7 +1246,7 @@ def main(argv=None):
             note(pd, a.text, a.kind, a.done)
         elif a.cmd == "board":
             print(dashboard(pd, a.out))
-    except (FlowError, BR.BriefError, SH.ShareError, PD.DocError, BE.BoardError) as e:
+    except (FlowError, BR.BriefError, SH.ShareError, PD.DocError, BE.BoardError, home.ConfigError) as e:
         print(f"promo flow: {e}", file=sys.stderr)
         return 1
     return 0

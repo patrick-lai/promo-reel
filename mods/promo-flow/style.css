@@ -870,3 +870,12 @@ button.fr:hover { border-color: var(--c-accent); }
 .btn.ghost.sm { border-color: var(--c-line); }
 .dens .btn.sm { min-height: 32px; }
 .doc-page mark.cur { background: var(--c-accent); color: var(--on-accent); }
+
+/* settings: where videos are saved */
+.title-btns { display: flex; align-items: center; margin-right: -8px; }
+.title-btns .icon-btn { margin: -4px 0; }
+.icon-btn[aria-pressed="true"] { background: var(--c-tint); color: var(--c-accent); }
+.set-sub { color: var(--c-dim); font-size: 13.5px; margin-top: 4px; }
+.set-label { font-size: 13px; font-weight: 600; }
+.set-path { display: block; margin-top: 4px; font: 12.5px var(--b-mono); color: var(--c-dim); overflow-wrap: anywhere; user-select: all; -webkit-user-select: all; }
+.set-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
