@@ -158,7 +158,8 @@ def test_round_cap(pd):
     # the person restates the direction instead of approving: a new cycle opens from review, so a used-up review is never a dead end
     assert F.revise(pd, "slower, warmer, no music") == 1
     st = F.load(pd)
-    assert st["stage"] == "review" and st["cycle"] == 2 and F.open_round(st)["feedback"] == "slower, warmer, no music"
+    r = F.open_round(st)
+    assert st["stage"] == "review" and st["cycle"] == 2 and r and r["feedback"] == "slower, warmer, no music"
     assert F.snapshot(pd)["rounds_used"] == 1
 
 
@@ -192,12 +193,54 @@ def test_discover_asks_again_when_the_style_is_on_file_but_references_are_not(pd
     assert F.snapshot(pd)["gate"] is None and F.advance(pd) == "scripts"
 
 
+def fake_commissionctl(tmp_path, monkeypatch, exit_code=0, say=""):
+    """A `commissionctl` on PATH that records its arguments and answers like the daemon."""
+    d = tmp_path / "bin"
+    d.mkdir()
+    log = tmp_path / "publish.log"
+    exe = d / "commissionctl"
+    exe.write_text(f"#!/bin/sh\necho \"$@\" >> '{log}'\n" + (f"echo '{say}'\n" if say else "") + f"exit {exit_code}\n")
+    exe.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{d}:{os.environ['PATH']}")
+    monkeypatch.setenv("COMMISSION_THREAD_TOKEN", "t")
+    monkeypatch.delenv("PROMO_FLOW_PUBLISH")
+    return log
+
+
+def test_every_change_inside_a_commissionai_thread_reaches_the_stage(pd, monkeypatch, tmp_path, capsys):
+    """The Stage once showed `pick`, unpicked, for hours after the pick: the agent changed the flow and never published. Now the command does it."""
+    log = fake_commissionctl(tmp_path, monkeypatch, say="stored")
+    assert F.main(["--project", pd, "note", "Drawing the storyboard", "--kind", "render"]) == 0
+    assert F.main(["--project", pd, "discover", "--style", "Horizon film", "--no-refs"]) == 0
+    calls = log.read_text().splitlines()
+    state = os.path.join(pd, "flow", "state.json")
+    assert calls == [f"mod publish promo-flow --file {state}"] * 2
+    s = json.load(open(state))
+    assert s["stage"] == "discover" and s["style"]["style"] == "Horizon film" and s["gate"] is None
+    assert "Stage updated" in capsys.readouterr().err
+    assert F.main(["--project", pd, "status"]) == 0 and len(log.read_text().splitlines()) == 2        # reading does not publish
+    monkeypatch.setenv("PROMO_FLOW_PUBLISH", "0")
+    assert F.main(["--project", pd, "advance"]) == 0 and len(log.read_text().splitlines()) == 2        # the opt-out for tests and the harness
+
+
+def test_a_failed_publish_is_an_error_the_agent_sees(pd, monkeypatch, tmp_path, capsys):
+    fake_commissionctl(tmp_path, monkeypatch, exit_code=3, say="mods.too_big: the state is over the limit")
+    assert F.main(["--project", pd, "note", "x"]) == 1
+    err = capsys.readouterr().err
+    assert "Stage was not updated" in err and "over the limit" in err
+    assert any(a["text"] == "x" for a in F.load(pd)["activity"])                       # the flow change itself stands; only the Stage is behind
+    monkeypatch.delenv("COMMISSION_THREAD_TOKEN")
+    assert F.main(["--project", pd, "note", "y"]) == 0                                  # outside a thread there is no Stage to update
+    assert F.main(["--project", pd, "publish"]) == 1 and "not inside a CommissionAI thread" in capsys.readouterr().err
+
+
 def test_mod_dev_host_refuses_the_same_files_as_the_daemon(tmp_path):
     """mod-dev/serve.py stands in for CommissionAI: a `$file` that is not an image, audio or video must fail there too, or a publish bug passes every local check."""
+    import importlib
     import sys
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     sys.path.insert(0, os.path.join(root, "mod-dev"))
-    import serve
+    serve = importlib.import_module("serve")
     md, png = tmp_path / "A.md", tmp_path / "a.png"
     md.write_text("# Script")
     img(str(png))

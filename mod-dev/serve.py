@@ -201,6 +201,7 @@ def start(port=0, keep=None, project=None, real_picker=False):
     with `real_picker`, the person's own past projects as picker stage `picker-real` (read only: clicks are not run)."""
     real = flow.picker() if real_picker else None                 # read before the line below swaps in a temporary config
     os.environ.setdefault("PROMO_CONFIG", os.path.join(tempfile.mkdtemp(prefix="promo-flow-config-"), "config.yaml"))     # Save in the settings pane never touches your real config
+    os.environ["PROMO_FLOW_PUBLISH"] = "0"                        # this harness IS the host here: the clicks it runs must not publish to a real Stage
     states, tmp = fixtures.build(keep)
     STAGES.clear()
     STAGES.update(states)

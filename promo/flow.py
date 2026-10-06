@@ -34,6 +34,9 @@ page (stepper, scripts, storyboards, assets, drafts, rounds) to show.
                                                   a final as <project>_final_vN (every `final add` is the next version)
     promo flow board [--out F]                    write the dashboard HTML
     promo flow snapshot [--out F]                 the promo-flow mod state: `commissionctl mod publish promo-flow --file F` (mods/promo-flow/)
+    promo flow publish                            snapshot + publish to the Stage of this CommissionAI thread. Every command above that changes the
+                                                  flow does this by itself when it runs inside a thread (COMMISSION_THREAD_TOKEN), so the Stage can
+                                                  never lag behind the flow; PROMO_FLOW_PUBLISH=0 turns that off (tests, the mod-dev harness)
     promo flow projects [--query Q] [--resumed ID] [--out F]   every past flow project (projects dir + flows remembered from elsewhere), most recent first;
                                                   with --out, the promo-projects mod state (the /promo-resume picker, mods/promo-projects/)
     promo flow resume ID|NAME|PATH                pick a past project up in this thread: prints its dir (use --project DIR from then on) and where it stopped
@@ -47,6 +50,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 
 from . import assetplan as AP
@@ -1045,6 +1049,42 @@ def snapshot(pd):
                 approvals={k: dict(by=v["by"], at=v["at"], fresh=gate_ok(pd, st, k)) for k, v in st["gates"].items()}))
 
 
+PUBLISH_AFTER = {"init", "advance", "discover", "script", "doc", "plan", "story", "scene", "density", "council", "approve", "asset", "frames", "make",
+                 "draft", "round", "final", "revise", "note", "resume", "share"}
+PUBLISH_TIMEOUT_S = 300          # the host copies every frame and clip on publish
+
+
+def in_thread():
+    return bool(os.environ.get("COMMISSION_THREAD_TOKEN")) and os.environ.get("PROMO_FLOW_PUBLISH") != "0"
+
+
+def publish(pd, explicit=False):
+    """Write the snapshot and publish it to this CommissionAI thread's Stage; the path of the state file, or None outside a thread.
+    A flow once sat at `pick` in the Stage for hours after the person had picked, because the agent changed the flow and never published:
+    every command that changes the flow calls this, so what the person sees is what the flow is."""
+    if not in_thread():
+        if explicit:
+            raise FlowError("not inside a CommissionAI thread (COMMISSION_THREAD_TOKEN is not set): `promo flow snapshot --out F`, then your host's publish")
+        return None
+    exe = shutil.which("commissionctl")
+    if not exe:
+        raise FlowError("inside a CommissionAI thread but `commissionctl` is not on PATH: the Stage was not updated")
+    share_detect(pd)
+    out = os.path.join(fdir(pd), "state.json")
+    with open(out, "w") as f:
+        json.dump(snapshot(pd), f)
+    try:
+        r = subprocess.run([exe, "mod", "publish", "promo-flow", "--file", out], capture_output=True, text=True, timeout=PUBLISH_TIMEOUT_S, stdin=subprocess.DEVNULL)
+    except subprocess.TimeoutExpired:
+        raise FlowError(f"the Stage was not updated: `commissionctl mod publish` gave no answer within {PUBLISH_TIMEOUT_S} s")
+    said = (r.stdout + "\n" + r.stderr).strip()
+    if r.returncode != 0:
+        raise FlowError("the Stage was not updated: `commissionctl mod publish` failed\n" + said[-600:])
+    if said:
+        print(said, file=sys.stderr)            # the host names any file it could not copy: that is for the agent to fix, not to miss
+    return out
+
+
 def status_text(s):
     L = [f"stage: {s['label']}  ({s['stage']})   cycle {s['cycle']}   rounds {s['rounds_used']}/{s['rounds_max']}"]
     L += [f"  [{'x' if c['ok'] else ' '}] {c['text']}" for c in s["checks"]]
@@ -1297,12 +1337,14 @@ def main(argv=None):
     p = P("note"); p.add_argument("text"); p.add_argument("--kind", default="other", choices=NOTE_KINDS); p.add_argument("--done", action="store_true")
     p = P("board"); p.add_argument("--out")
     p = P("snapshot"); p.add_argument("--out")
+    P("publish")
     p = P("projects"); p.add_argument("--query", default=""); p.add_argument("--resumed"); p.add_argument("--out")
     P("resume").add_argument("ref")
     p = P("share"); p.add_argument("what", choices=["detect", "draft", "final"]); p.add_argument("n", nargs="?", type=int)
     p.add_argument("--to", choices=SH.DESTS); p.add_argument("--by"); p.add_argument("--access", choices=SH.ACCESS)
     a = ap.parse_args(argv)
     pd = a.project or os.getcwd()
+    rc = 0
     try:
         if a.cmd == "init" and not a.project:
             pd = a.name if a.name and os.sep in a.name else _new_project_dir(a.name, a.intent)
@@ -1347,7 +1389,7 @@ def main(argv=None):
                 for x in AP.load(fdir(pd)):
                     print(f"{x['id']:<20} {x['kind']:<10} {x['source']:<9} {AP.state(x, pd):<6} scenes {','.join(x['scenes'])}  {x['how']}")
             elif a.action == "make":
-                return make_assets(pd, a.id, a.force, a.provider, a.jobs)
+                rc = make_assets(pd, a.id, a.force, a.provider, a.jobs)
             else:
                 if not (a.id and len(a.id) == 1 and a.kind and a.source):
                     raise FlowError("asset add needs one --id and --kind --source --scenes --how")
@@ -1360,10 +1402,10 @@ def main(argv=None):
                 st["gates"].pop("assets-approved", None)
                 save(pd, st)
         elif a.cmd == "frames":
-            return make_frames(pd, a.story, a.scene, tuple(a.which), a.force, a.provider, a.jobs, a.limit)
+            rc = make_frames(pd, a.story, a.scene, tuple(a.which), a.force, a.provider, a.jobs, a.limit)
         elif a.cmd == "make":
             frames_rc = make_frames(pd, None, None, tuple(a.which), a.force, a.provider, a.jobs)
-            return make_assets(pd, None, a.force, a.provider, a.jobs) or frames_rc          # a failed frame must not stop the audio samples
+            rc = make_assets(pd, None, a.force, a.provider, a.jobs) or frames_rc          # a failed frame must not stop the audio samples
         elif a.cmd == "draft":
             add_draft(pd, a.file, a.note)
         elif a.cmd == "round":
@@ -1409,10 +1451,14 @@ def main(argv=None):
             note(pd, a.text, a.kind, a.done)
         elif a.cmd == "board":
             print(dashboard(pd, a.out))
+        if a.cmd == "publish" or a.cmd in PUBLISH_AFTER:
+            out = publish(pd, explicit=a.cmd == "publish")
+            if out:
+                print(f"Stage updated: {out}", file=sys.stderr)
     except (FlowError, BR.BriefError, SH.ShareError, PD.DocError, BE.BoardError, home.ConfigError) as e:
         print(f"promo flow: {e}", file=sys.stderr)
         return 1
-    return 0
+    return rc
 
 
 if __name__ == "__main__":
