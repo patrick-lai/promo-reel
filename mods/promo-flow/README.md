@@ -88,6 +88,11 @@ Inside a CommissionAI thread every flow command that changes state publishes its
 The `readonly` flag on the host `state` message (archived thread) disables every send. Actions: `approve {gate, draft?}` (at the draft gate `draft` is the latest draft's id), `pick {gate, picks: "A B"}`, `changes {stage, text}`, `feedback {round, max_rounds, text}`.
 The style step has no flow gate, so the person's choice goes as `changes {stage: "discover", text: "Style: ..."}`.
 
+**Design reviews.** `evals/mod-design-rubric.yaml` is the bar; `evals/mod-design-review-2026-10-07.md` records the last council round (current
+screenshots vs grok-drawn north-star mockups, one Sonnet judge per page) and what the "v7" block of `style.css` changed because of it. Section
+headings share one style (`.sec-h`, count beside it); the footer's primary is outlined while a run is on (`.gate[data-busy]`); the current stepper
+segment fills with a run's real progress (`--p`).
+
 ## Develop
     .venv/bin/python mod-dev/serve.py            # builds a fixture project, serves http://127.0.0.1:8765/dev/harness.html
     .venv/bin/python mod-dev/shoot.py            # screenshots to /tmp/promo-flow-shots/v1/ (headless Chrome)

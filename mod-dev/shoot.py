@@ -173,7 +173,7 @@ SELFCHECK = """(async () => {
     const badge = +document.querySelector('.tab[data-tab=assets] .n').textContent;
     const c = document.querySelector('.counter');
     const sum = [...c.querySelectorAll('button b')].reduce((a, b) => a + +b.textContent, 0);
-    const cards = document.querySelector('.gallery').children.length;
+    const cards = [...document.querySelectorAll('.gallery')].reduce((n, g) => n + g.children.length, 0);
     const sb = document.querySelector('.tab[data-tab=storyboard] .n');
     out.push({ story: stories[i] ? stories[i].dataset.k : '-', badge, total: +c.dataset.total, sum, cards, sbBadge: sb ? +sb.textContent : null });
   }
@@ -454,6 +454,8 @@ def scroll(px):
 
 
 EXTRAS = [
+    ("picker-520", "picker", 520, 900, True, "&mod=promo-projects", None),
+    ("picker-900-light", "picker", 900, 900, False, "&mod=promo-projects", None),
     ("generating-520", "generating", 520, 900, True, "", None),
     ("generating-380-light", "generating", 380, 900, False, "", None),
     ("generating-stopped-520", "generating-stopped", 520, 900, True, "", None),

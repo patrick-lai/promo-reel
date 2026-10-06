@@ -154,19 +154,28 @@ window.commissionMods["promo-projects"] = function mount(ctx) {
     const i = steps.findIndex((s) => s.state === "current");
     return i < 0 ? "All " + steps.length + " steps done" : "Step " + (i + 1) + " of " + steps.length + ": " + p.stage_label;
   }
+  /* "3 scripts · 5 scenes · 4/9 assets ready · 1 draft": only what is there, zeros left out. */
+  function countsLine(c) {
+    const parts = [c.scripts ? c.scripts + (c.scripts === 1 ? " script" : " scripts") : "", c.scenes ? c.scenes + (c.scenes === 1 ? " scene" : " scenes") : "",
+      c.assets ? c.assets_ready + "/" + c.assets + " assets ready" : "", c.drafts ? c.drafts + (c.drafts === 1 ? " draft" : " drafts") : "", c.finals ? c.finals + (c.finals === 1 ? " final" : " finals") : ""].filter(Boolean);
+    return parts.length ? h("span", { class: "row-counts", text: parts.join(" · ") }) : null;
+  }
   function row(p, shownSel) {
     const now = Date.now();
     const isSel = p.id === shownSel;
     const tag = p.id === resumed() ? h("span", { class: "chip ok", text: "Resumed here" }) : p.error ? h("span", { class: "chip bad", text: "Can't read" }) : h("span", { class: "chip " + PP.bucket(p), text: ROW_BADGE[p.badge] || "In progress" });
-    return h("li", null, h("button", { type: "button", class: "row", "data-id": p.id, "aria-current": isSel ? "true" : null, onclick: () => open(p.id), onkeydown: rowKeys },
-      still(arr(p.frames)[0], "", "thumb"),
+    const frames = arr(p.frames).slice(0, 3);
+    /* The row carries its real frames (none drawn = none shown), the step as a thin bar, honest counts, and on the selected row the one action itself. */
+    const go = isSel && !p.error && !resumed() ? h("button", { class: "btn primary row-go", type: "button", disabled: !canSend() ? true : null, "aria-label": "Resume " + (p.title || p.name) + " in this thread",
+      onclick: () => send("resume", { pickable: true, id: p.id, title: p.title, stage_label: p.stage_label }) }, S.sending || S.pending ? "Opening…" : "Resume", ic("resume")) : null;
+    return h("li", { class: "rowwrap" + (isSel ? " sel" : "") }, h("button", { type: "button", class: "row", "data-id": p.id, "aria-current": isSel ? "true" : null, onclick: () => open(p.id), onkeydown: rowKeys },
       h("span", { class: "row-main" },
-        h("span", { class: "row-title" }, highlight(p.title || p.name)),
-        h("span", { class: "row-name mono" }, highlight(p.name)),
-        p.error ? h("span", { class: "row-status", text: p.error }) : [h("span", { class: "row-step" }, meter(p), h("span", { text: stepText(p) })),
-          h("span", { class: "row-status" }, highlight(p.question || p.status))],
-        h("span", { class: "row-foot" }, tag, p.updated ? h("span", { class: "row-when", text: "Active " + PP.ago(p.updated, now) }) : null)),
-      ic("chevron", "chev")));
+        h("span", { class: "row-head" }, h("span", { class: "row-title" }, highlight(p.title || p.name)), h("span", { class: "row-tag", text: p.stage_label || "" }), p.updated ? h("span", { class: "row-when", text: PP.ago(p.updated, now) }) : null),
+        frames.length ? h("span", { class: "row-frames", "data-n": String(frames.length), "aria-hidden": "true" }, frames.map((f) => still(f, "", "fr"))) : null,
+        p.error ? h("span", { class: "row-status", text: p.error }) : [h("span", { class: "row-status" }, highlight(p.question || p.status)), countsLine(p.counts || {})],
+        h("span", { class: "row-foot" }, tag, h("span", { class: "row-name mono" }, highlight(p.name))),
+        bar(p)),
+      ic("chevron", "chev")), go);
   }
   function visible() { return PP.search(projects(), S.q, S.filter); }
   function renderList() {

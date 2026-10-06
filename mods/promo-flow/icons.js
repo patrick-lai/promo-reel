@@ -19,6 +19,7 @@
     link: '<path d="M8.5 5H5a1.5 1.5 0 0 0-1.5 1.5v8A1.5 1.5 0 0 0 5 16h8a1.5 1.5 0 0 0 1.5-1.5V11M11 3.5h5.5V9M16.5 3.5L9 11"/>',
     lock: '<rect x="4.5" y="9" width="11" height="7.5" rx="2"/><path d="M7 9V6.5a3 3 0 0 1 6 0V9"/>',
     list: '<path d="M7 5.5h9M7 10h9M7 14.5h9M3.5 5.5h.1M3.5 10h.1M3.5 14.5h.1"/>',
+    search: '<circle cx="9" cy="9" r="5"/><path d="M13 13l4 4"/>',
     clock: '<circle cx="10" cy="10" r="7"/><path d="M10 6v4l2.5 2"/>',
     plus: '<path d="M10 4v12M4 10h12"/>',
     download: '<path d="M10 3.5v9M6 9l4 4 4-4M4 16h12"/>',

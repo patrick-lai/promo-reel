@@ -935,3 +935,109 @@ button.jb-tile:hover { border-color: var(--c-accent); }
 .jb-note.warn { color: var(--c-warn); }
 .jb-act { margin-top: 10px; }
 .jb-act .load { min-height: 32px; padding: 0 12px; border: 1px solid var(--c-line); background: var(--c-raised); border-radius: var(--r-md); font-weight: 600; font-size: 12px; cursor: pointer; color: var(--c-ink); }
+
+/* ================= v7: one iteration from the design council (see docs below in README) ================= */
+/* header: a tighter status line; the current step segment fills with a run's real progress */
+.state-line { -webkit-line-clamp: 2; }
+.stepper .current .seg { position: relative; overflow: hidden; background: color-mix(in srgb, var(--c-accent) 40%, var(--c-line)); }
+.stepper .current .seg::after { content: ""; position: absolute; inset: 0; background: var(--c-accent); transform-origin: left; transform: scaleX(var(--p, 1)); transition: transform .5s ease-out; }
+/* while the agent's run is on, the footer is calm: no filled button competes with "With the agent" */
+.gate[data-busy="1"] .btn.primary:not(:disabled) { background: transparent; border-color: var(--c-accent); color: var(--c-accent); }
+
+/* one heading style for every section: small, muted, the count beside it */
+.sec-h { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 12px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; color: var(--c-dim); }
+.sec-h > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sec-h .n { font-size: 11px; min-width: 18px; height: 18px; padding: 0 6px; display: inline-grid; place-items: center; border-radius: 9px; background: var(--c-well); border: 1px solid var(--c-line); color: var(--c-dim); letter-spacing: 0; }
+.sec-h .sec-open { margin-left: auto; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--c-warn); font-size: 12px; white-space: nowrap; }
+.sec-h .chip, .sec-h .sub { text-transform: none; letter-spacing: 0; font-weight: 500; }
+.sec-h + * { margin-top: 8px; }
+
+/* style step: the request as a quote card, a two-up style grid with the sample on top */
+.req { display: flex; gap: 10px; padding: 12px 14px; }
+.req-q { flex: none; font: 700 34px/0.8 Georgia, serif; color: var(--c-accent); opacity: .7; margin-top: 4px; }
+.req-body { min-width: 0; flex: 1; display: grid; gap: 6px; }
+.req .quote { border: 0; padding: 0; font-size: 14.5px; line-height: 1.5; }
+.req-meta { font-size: 12px; color: var(--c-dim); }
+.choice.style .row { gap: 10px; }
+@container (min-width: 480px) {
+  .choices.styles { grid-template-columns: 1fr 1fr; }
+  .choice.style { padding: 10px; }
+  .choice.style .row { flex-direction: column; align-items: stretch; }
+  .choice.style .sty, .choice.style .thumb { width: 100%; height: auto; aspect-ratio: 16/9; }
+  .choice.style .box { position: absolute; top: 18px; left: 18px; z-index: 1; background: rgba(0,0,0,.45); border-color: rgba(255,255,255,.75); }
+  .choice.style:has(input:checked) .box { background: var(--c-accent); border-color: var(--c-accent); }
+  .choice.style .sty em, .choice.style .sty i.pill { z-index: 0; }
+  .choice.style .logline { font-size: 13px; color: var(--c-dim); }
+}
+.choice:has(input:checked) { box-shadow: 0 0 0 1px var(--c-accent); }
+
+/* storyboard: one toolbar row, scenes before the preview */
+.sb-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
+.sb-tools .dens-note { flex-basis: 100%; }
+.sb-tools .dens { flex-wrap: nowrap; }
+.animatic { margin-top: 4px; }
+
+/* assets: counter chips with the state's colour, groups by kind under quiet headings, no coloured card strips */
+.counter { gap: 6px; }
+.counter button { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px 0 10px; border: 1px solid var(--c-line); border-radius: 18px; background: var(--c-raised); color: var(--c-ink); font-size: 13px; }
+.counter button b { font-variant-numeric: tabular-nums; }
+.counter .cdot { width: 8px; height: 8px; border-radius: 50%; background: var(--c-line); flex: none; }
+.counter .c-ready .cdot { background: var(--c-ok); } .counter .c-mock .cdot { background: var(--c-warn); } .counter .c-todo .cdot { background: color-mix(in srgb, var(--c-dim) 45%, var(--c-line)); } .counter .c-missing .cdot { background: var(--c-bad); }
+.counter button[aria-pressed="true"] { border-color: var(--c-ink); background: var(--c-well); box-shadow: inset 0 0 0 1px var(--c-ink); }
+.counter button:disabled { opacity: .45; }
+.stackbar { margin: 2px 0 0; }
+.asset-group { display: grid; gap: 8px; }
+.asset[data-kind] { border-top: 1px solid var(--c-line); }
+.asset.a-flat .pv, .asset.a-flat .pv.mock { height: 44px; aspect-ratio: auto; border-radius: var(--r-sm); border: 1px dashed var(--c-line); background: transparent; }
+.asset.a-flat .pv .mid { flex-direction: row; display: flex; align-items: center; gap: 6px; }
+.asset.a-flat .pv .mid .ic { width: 16px; height: 16px; }
+@container (min-width: 600px) { .asset.a-flat .pv, .asset.a-flat .pv.mock { height: 44px; aspect-ratio: auto; border: 0; border-bottom: 1px dashed var(--c-line); border-radius: 0; } }
+
+/* plan: requests on one scrolling row, documents first; search with its glyph; one-line previews */
+.ask-card { padding: 0; background: none; border: 0; gap: 6px; }
+.ask-h b { font-size: 13px; }
+.ask-row { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding: 2px 2px 6px; margin: -2px -2px -6px; }
+.ask-row::-webkit-scrollbar { display: none; }
+.qchip { flex: none; }
+.qchip.other { color: var(--c-dim); font-weight: 600; }
+.qchip.other .ic { display: none; }
+.find-wrap { position: relative; }
+.find-wrap .ic { position: absolute; left: 11px; top: 50%; width: 16px; height: 16px; margin-top: -8px; color: var(--c-dim); pointer-events: none; }
+.find-wrap .doc-find { padding-left: 34px; }
+.doc-tools .seg-ctl.wrap { flex-wrap: nowrap; overflow-x: auto; }
+.dc-p { -webkit-line-clamp: 1; }
+.doc-card { padding: 10px 12px; }
+
+/* drafts: the file as one row with its one action; quiet section headings; uploads as a list */
+.file-id { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; gap: 10px; align-items: center; margin-top: 10px; }
+.file-ic { width: 36px; height: 36px; border-radius: var(--r-md); background: var(--c-well); border: 1px solid var(--c-line); display: grid; place-items: center; color: var(--c-dim); }
+.file-ic .ic { width: 18px; height: 18px; }
+.file-main { min-width: 0; display: grid; gap: 1px; }
+.file-main b { font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-meta { display: flex; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--c-dim); min-width: 0; }
+.file-meta .path { font-family: var(--b-mono); color: var(--c-dim); overflow-wrap: anywhere; user-select: all; -webkit-user-select: all; }
+.file-meta .dur:empty { display: none; }
+.watch-list { margin-top: 0; }
+.rounds-col .sec-h { margin-bottom: 8px; }
+.share { margin-top: 4px; padding: 0; border: 0; border-radius: 0; gap: 0; }
+.share .sec-h { padding-bottom: 8px; }
+.share-row { min-height: 44px; padding: 6px 0; border-top: 1px solid var(--c-line); }
+.share-row .btn.ghost[data-quiet] { margin-left: auto; }
+
+/* final: the ready block carries the one filled action; credits as label / value rows */
+.done-card .done-main { min-width: 0; flex: 1; display: grid; gap: 6px; }
+.done-acts { margin-top: 6px; }
+.done-acts .dl { width: 100%; justify-content: center; min-height: 44px; font-size: 14px; background: var(--c-accent); color: var(--on-accent); border-color: transparent; }
+.done-acts .dl .ic { color: currentColor; }
+.done-acts .dl:hover:not(:disabled) { background: var(--c-accent); opacity: .92; }
+.credits { display: grid; }
+.credit { display: grid; grid-template-columns: minmax(0, 140px) minmax(0, 1fr); gap: 12px; padding: 8px 0; border-top: 1px solid var(--c-line); font-size: 13px; }
+.credit dt { color: var(--c-dim); overflow-wrap: anywhere; }
+.credit dd { overflow-wrap: anywhere; }
+.credit:last-child { border-bottom: 1px solid var(--c-line); }
+
+/* working: the log is a timestamped grid with the kind's dot; the legend carries counts */
+.wk-feed li { display: grid; grid-template-columns: auto 12px minmax(0, 1fr); gap: 8px; align-items: center; padding: 3px 0; border-bottom: 1px solid color-mix(in srgb, var(--c-line) 60%, transparent); }
+.wk-feed li:last-child { border-bottom: 0; }
+.wk-feed .t { font-variant-numeric: tabular-nums; }
+.wk-feed li span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

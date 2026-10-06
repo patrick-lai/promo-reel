@@ -195,3 +195,23 @@ h1 { font-size: 18px; line-height: 1.25; font-weight: 650; letter-spacing: -.01e
 
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes sk { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+
+/* v2: the row carries its frames, the step as a thin rule, honest counts, and (selected) the one Resume action */
+.rowwrap { position: relative; }
+.row-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.row-head .row-title { flex: 1 1 auto; -webkit-line-clamp: 1; }
+.row-tag { flex: none; font-size: 11px; font-weight: 600; color: var(--c-dim); padding: 1px 7px; border: 1px solid var(--c-line); border-radius: 9px; white-space: nowrap; }
+.row-head .row-when { flex: none; }
+.row-frames { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; margin: 4px 0 2px; }
+.row-frames[data-n="1"] { grid-template-columns: minmax(0, 1fr) 2fr; }
+.row-frames[data-n="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)) 1fr; }
+.row-frames .still { border-radius: 4px; }
+.row-counts { font-size: 12px; color: var(--c-dim); font-variant-numeric: tabular-nums; }
+.row .bar { margin-top: 6px; }
+.row .bar li { height: 2px; }
+.row-foot .row-name { flex: 1 1 auto; min-width: 0; }
+.rowwrap.sel .row { border-color: var(--c-accent); box-shadow: 0 0 0 1px var(--c-accent); padding-bottom: 54px; }
+.rowwrap.sel .row .chev { display: none; }
+.row-go { position: absolute; right: 10px; bottom: 10px; min-height: 36px; padding: 0 14px; font-size: 13px; }
+.chip.turn { background: transparent; border-color: var(--c-line); color: var(--c-ink); padding-left: 6px; }
+.chip.turn::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--c-accent); margin-right: 6px; }
