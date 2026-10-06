@@ -7,7 +7,9 @@
 State lives in `<project>/flow/flow.json` (+ scripts/, boards/, council/, rounds/, assets.json, dashboard.html). Gates are HUMAN approvals
 (`promo flow approve <gate> --by NAME`, an agent name is refused, same rule as `promo brief confirm`) and go stale when the thing approved
 changes afterwards. `promo flow status --json` is what the session UI reads: the checklist, the blockers and an `ask` payload (question + options)
-for the AskUserQuestion widget; `promo flow board` writes the dashboard page (stepper, scripts, storyboards, assets, drafts, rounds) to show.
+for the host's question widget. Inside CommissionAI the question is carried by the published Stage state (`promo flow snapshot`) and the agent ends
+its turn: a blocking question widget there holds the thread and the person's click can never reach it. `promo flow board` writes the dashboard
+page (stepper, scripts, storyboards, assets, drafts, rounds) to show.
 
     promo flow init <name> --intent TEXT          start (also creates the locked brief with the user's exact words)
     promo flow status [--json]                    where we are, what blocks, what to ask the person next
@@ -318,8 +320,14 @@ def approve(pd, gate, by, picks=None, note=""):
     if gate not in GATE_OF.values():
         raise FlowError(f"gate must be one of {', '.join(GATE_OF.values())}")
     stage = [s for s, g in GATE_OF.items() if g == gate][0]
-    if STAGES.index(stage) > STAGES.index(st["stage"]):
-        raise FlowError(f"gate `{gate}` belongs to stage `{stage}`; the flow is at `{st['stage']}`")
+    # The Stage shows the pick gate while the flow is still at `scripts`, so the person's answer may arrive one stage early: walk forward
+    # through stages whose checks already pass instead of refusing (an agent that gets the refusal has nothing it can do but ask again).
+    while STAGES.index(stage) > STAGES.index(st["stage"]):
+        bad = [t for ok, t in checks(pd, st) if not ok]
+        if bad:
+            raise FlowError(f"gate `{gate}` belongs to stage `{stage}`; the flow is at `{st['stage']}` and cannot leave it:\n  - " + "\n  - ".join(bad))
+        st["stage"] = STAGES[STAGES.index(st["stage"]) + 1]
+        log(st, f"advance -> {st['stage']}")
     if gate == "scripts-picked":
         ids = [s["id"] for s in st["scripts"]]
         if not picks or any(p not in ids for p in picks):
@@ -490,7 +498,8 @@ def round_start(pd, feedback):
         raise FlowError("--feedback is required: the person's words, verbatim")
     n = len(cycle_rounds(st)) + 1
     if n > MAX_ROUNDS:
-        raise FlowError(f"{MAX_ROUNDS} rounds used in this cycle: ask the person to approve the draft, or to restate the direction (`promo flow revise`)")
+        raise FlowError(f"{MAX_ROUNDS} rounds used in this cycle: the person approves the draft, or restates the direction, which starts a new cycle "
+                        f"(`promo flow revise --feedback \"<their words>\"`)")
     st["rounds"].append(dict(cycle=st["cycle"], n=n, feedback=feedback, started=now(), drafts_at_start=len(st["drafts"])))
     st["gates"].pop("draft-approved", None)
     log(st, f"round {st['cycle']}.{n} start")
@@ -561,9 +570,12 @@ def share_upload(pd, kind, n, dest, by, access=None):
 
 
 def revise(pd, feedback):
+    """A new cycle (council again, MAX_ROUNDS more rounds): after the final, or at the review stage once every round of the cycle is used and the
+    person restates the direction instead of approving. Without the second case the flow could only leave a used-up review by approving."""
     st = load(pd)
-    if st["stage"] != "final":
-        raise FlowError("revise is for after the final")
+    at_cap = st["stage"] == "review" and len(cycle_rounds(st)) >= MAX_ROUNDS and open_round(st) is None
+    if st["stage"] != "final" and not at_cap:
+        raise FlowError("revise is for after the final, or at `review` once all %d rounds of the cycle are used (until then: `promo flow round start`)" % MAX_ROUNDS)
     if not feedback.strip():
         raise FlowError("--feedback is required: the person's words, verbatim")
     st["cycle"] += 1
@@ -616,12 +628,14 @@ def needs(pd, st=None):
 
 
 def ask(pd, st):
-    """The question the session should put to the person next (AskUserQuestion payload), or None when the agent has work to do first."""
+    """The question the session should put to the person next (question + options for the host's widget), or None when the agent has work to do first."""
     stage = st["stage"]
     ok = all(o for o, _ in checks(pd, st))
-    if stage == "discover" and not (st.get("discover") or {}).get("style"):
-        return dict(header="Style", multiSelect=False, question="What style of content do you want?",
-                    options=[dict(label=a, description=b) for a, b in STYLES[:4]])
+    if stage == "discover" and not ok:
+        # A style recorded without a word about references leaves the stage with nothing to ask and nothing to do: ask again, naming the style.
+        style = (st.get("discover") or {}).get("style")
+        q = f"Style is set to {style}. Add a reference link, or continue without one?" if style else "What style of content do you want?"
+        return dict(header="Style", multiSelect=False, question=q, options=[dict(label=a, description=b) for a, b in STYLES[:4]])
     if stage == "scripts" and ok:
         return dict(header="Scripts", multiSelect=True, question="Which script(s) should go to storyboards?",
                     options=[dict(label=f"{s['id']}: {s['title']}", description=s["logline"]) for s in st["scripts"][:4]])
@@ -652,7 +666,7 @@ def ask_in_stage(pd, st):
 def hints(pd, st):
     s = st["stage"]
     return dict(
-        discover="Ask the person (AskUserQuestion) what style they want and for any reference videos/material; record with `promo flow discover`. Study references with `promo refs add`.",
+        discover="Ask the person what style they want and for any reference videos/material (the published Stage state carries the question); record both with `promo flow discover --style ... --ref URL | --no-refs`. Study references with `promo refs add`.",
         scripts=f"Write {MIN_SCRIPTS}+ scripts with different angles (any length: `script add --file -` then `script append` for the next parts; the Stage reads them page by page); run the council (evals/council-flow.md, scripts lens set) 1-2 rounds and record with `promo flow council scripts`; `promo flow script add`. Then ask which to progress.",
         pick="Ask which script(s) to progress (multi-select); record the answer with `approve scripts-picked --picks ... --by NAME`.",
         storyboard="Per picked story build the board with `promo flow story` + `scene add` (or write flow/boards/<id>/board.json); a denser board on request (`promo flow density --every 5`); then `promo flow frames` MAKES every scene's START and END frame as a real image (a text slate does not count), `promo flow board`, SHOW the page, iterate until they approve.",
@@ -660,7 +674,7 @@ def hints(pd, st):
         keyframes="Make the remaining keyframes (`promo flow make`) and replace every mock and sample with the real file (`promo flow needs`), then advance.",
         confirm="Show the final summary (board + assets) and get the explicit go for drafts.",
         drafts="Build the first drafts (promo build, draft encode), register with `promo flow draft add`, advance, SHOW them.",
-        review="Take the person's feedback verbatim: `round start`; run the council (lens 0 intent + web research of the topic and examples of good videos); apply one batch; build one draft; `round close`. Max %d rounds." % MAX_ROUNDS,
+        review="Take the person's feedback verbatim: `round start`; run the council (lens 0 intent + web research of the topic and examples of good videos); apply one batch; build one draft; `round close`. Max %d rounds; at the cap their restated direction is `promo flow revise --feedback` (a new cycle)." % MAX_ROUNDS,
         final="Deliver; keep iterating on feedback with `promo flow revise` (council again).")[s]
 
 
@@ -889,15 +903,46 @@ def _read(path):
         return ""
 
 
+MOD_MANIFEST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "mods", "promo-flow", "mod.json")
+BODY_MISSING = "The file is missing. Ask the agent to add it again."
+
+
+def state_budget():
+    """Bytes a published state may take: the mod's own `state_limit_kb` less room for the host's media objects (bigger than our `$file` ones)."""
+    with open(MOD_MANIFEST) as f:
+        return json.load(f)["state_limit_kb"] * 1024 - 64 * 1024
+
+
+def _text_body(path):
+    """`body` fields of a script or document. The host copies only image, audio and video files, so the text itself goes in the state; `_fit_bodies`
+    drops the biggest ones with a note when the whole state would not fit."""
+    if not os.path.isfile(path):
+        return dict(body=None, body_note=BODY_MISSING)
+    return dict(body=_read(path), body_note=None)
+
+
+def _fit_bodies(snap):
+    """Keep the state inside the mod's limit: while it is too big, replace the largest script or document body with a note that says so."""
+    budget = state_budget()
+    items = [x for x in snap["scripts"] + snap["docs"] if isinstance(x.get("body"), str)]
+    items.sort(key=lambda x: len(x["body"].encode()), reverse=True)
+    for x in items:
+        if len(json.dumps(snap).encode()) <= budget:
+            break
+        x["body"] = None
+        x["body_note"] = f"Too long to show here ({x['words']:,} words). Ask the agent to split it into parts."
+    return snap
+
+
 def _docs(pd, st):
-    """The planning documents for the Plan tab, grouped order: the text itself travels as a file (`body`), so a 30 000-word script never touches the state size limit."""
+    """The planning documents for the Plan tab, grouped order."""
     out = []
     for d in st.get("docs") or []:
         p = os.path.join(fdir(pd), d["file"])
         text = _read(p)
         label, group = PD.KINDS.get(d["kind"], PD.KINDS["notes"])
         out.append(dict(id=d["id"], title=d["title"], kind=d["kind"], kind_label=label, group=group, story=d.get("story"), summary=d.get("summary") or "", updated=d.get("updated"),
-                        source=d.get("source") or "agent", words=PD.words(text), headings=PD.headings(text, 40), preview=PD.preview(text), body=_media(p)))
+                        source=d.get("source") or "agent", words=PD.words(text), headings=PD.headings(text, 40), preview=PD.preview(text), **_text_body(p)))
     out.sort(key=lambda x: (PD.GROUPS.index(x["group"]), x["updated"] or ""))
     return out
 
@@ -916,8 +961,8 @@ def _steps(st, stale):
 
 
 def snapshot(pd):
-    """The mod state of `mods/promo-flow` (`commissionctl mod publish promo-flow --file F`): `summary` for the chat card, `steps`, the gate, and every
-    media file as a `{"$file": abs path}` object the host turns into an upload. Schema: mods/promo-flow/README.md."""
+    """The mod state of `mods/promo-flow` (`commissionctl mod publish promo-flow --file F`): `summary` for the chat card, `steps`, the gate, every
+    image / audio / video file as a `{"$file": abs path}` object the host turns into an upload, and script / document text inline. Schema: mods/promo-flow/README.md."""
     st = load(pd)
     f = fdir(pd)
     picks = set(st["picks"])
@@ -926,7 +971,7 @@ def snapshot(pd):
         sp = os.path.join(f, s["file"])
         text = _read(sp)
         scripts.append(dict(id=s["id"], title=s["title"], logline=s["logline"], picked=s["id"] in picks, verdict=None, beats=_beats(sp), words=PD.words(text),
-                            headings=PD.headings(text, 40), body=_media(sp)))
+                            headings=PD.headings(text, 40), **_text_body(sp)))
     bl = []
     bds = boards(pd, st)
     for sid, b, d in bds:
@@ -989,7 +1034,7 @@ def snapshot(pd):
     since = (st.get("log") or [{}])[-1].get("at")
     docs = _docs(pd, st)
     place = st.get("place") or dict(zip(("project", "repo"), home.current_project()))
-    return dict(summary=_summary(pd, st, gate, pc, used), title=_clip((st["intent"].split(".")[0] or "Production"), 80), intent=st["intent"],
+    return _fit_bodies(dict(summary=_summary(pd, st, gate, pc, used), title=_clip((st["intent"].split(".")[0] or "Production"), 80), intent=st["intent"],
                 stage=st["stage"], stage_label=LABEL[st["stage"]], stage_since=since, cycle=st["cycle"], rounds_used=used, rounds_max=MAX_ROUNDS, steps=steps,
                 stale_steps=stale,
                 style=(st.get("discover") or {}) and dict(style=st["discover"].get("style"), refs=st["discover"].get("refs", []), no_refs=st["discover"].get("no_refs", False)) or None,
@@ -997,7 +1042,7 @@ def snapshot(pd):
                 share=dict(destinations=[dict(id=d, label=SH.LABEL[d], note=SH.NOTE[d], in_place=d == "artifacts") for d in SH.available(st)]),
                 checks=[dict(ok=o, text=t) for o, t in pc], gate=gate, activity=_activity(st),
                 settings=dict(output=home.output_info(place["project"], place["repo"]), saved_in=os.path.abspath(pd)),
-                approvals={k: dict(by=v["by"], at=v["at"], fresh=gate_ok(pd, st, k)) for k, v in st["gates"].items()})
+                approvals={k: dict(by=v["by"], at=v["at"], fresh=gate_ok(pd, st, k)) for k, v in st["gates"].items()}))
 
 
 def status_text(s):

@@ -110,13 +110,21 @@
     return null;
   }
 
+  /* The text of a script or planning document travels inline (the host copies only image, audio and video files): {text} when it is there,
+     else {error} with the agent's note (the file is missing, or it was too long for the state). */
+  function bodyOf(x) {
+    if (x && typeof x.body === "string") return { text: x.body };
+    return { error: (x && x.body_note) || "This document has no text yet. Ask the agent to add it again." };
+  }
+
+  const slugOf = (label) => String(label || "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "").slice(0, 60).replace(/-+$/, "");
   /* File name for a saved draft: the host's own file name when it carries an extension, else the label as a slug plus .mp4. */
   function downloadName(r, label) {
     const name = String((r && r.name) || "").trim();
     if (/^.+\.[A-Za-z][A-Za-z0-9]{0,7}$/.test(name)) return name;
-    const slug = String(label || "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "").slice(0, 60).replace(/-+$/, "");
-    return (slug || "promo") + ".mp4";
+    return (slugOf(label) || "promo") + ".mp4";
   }
+  const textFileName = (label) => (slugOf(label) || "document") + ".md";
 
   /* Where a draft or final can be uploaded and where it already is, one row per destination the host's twg can reach (`doc.share.destinations`).
      `edited` = the file changed after the upload. A draft is the same item when edited: Artifacts refreshes it behind the same link, Loom cannot replace so it adds a copy.
@@ -320,7 +328,7 @@
   }
   const outputDirty = (out, sel, text) => sel !== out.mode || (sel === "custom" && withSlug(text) !== out.template);
 
-  const api = { arr, mref, fileBad, missingFile, missingAll, hasPreview, noFrame, sceneStatus, model, finalState, seenRule, seenKey, missingRule, previewRule, downloadName, wordsOf, parseBlocks, inline, plain, paginate, outline, findPages, markSplit, readMinutes, frameTimeline, DENSITY_CHOICES, clockT, shareRows, outputProblem, previewOutput, outputDirty };
+  const api = { arr, mref, fileBad, missingFile, missingAll, hasPreview, noFrame, sceneStatus, model, finalState, seenRule, seenKey, missingRule, previewRule, bodyOf, downloadName, textFileName, wordsOf, parseBlocks, inline, plain, paginate, outline, findPages, markSplit, readMinutes, frameTimeline, DENSITY_CHOICES, clockT, shareRows, outputProblem, previewOutput, outputDirty };
   root.PF = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof window !== "undefined" ? window : globalThis);

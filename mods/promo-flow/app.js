@@ -113,24 +113,14 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     M.cache.set(r.upload_id, entry);
     return entry.p;
   }
-  /* A document travels as a file like any other media: its text is read from the blob here, never put in the state (a long script would not fit). */
+  /* A script or document arrives as text inside the state (the host copies only image, audio and video files). Its pages are kept per document
+     so a refresh (the agent added a part, the step moved on) repaints the reader without re-paginating or flashing a skeleton. */
   const T = { cache: new Map() };
-  const blobText = (b) => (b.text ? b.text() : new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result)); fr.onerror = () => rej(fr.error); fr.readAsText(b); }));
-  function getText(r) {
-    const hit = T.cache.get(r.upload_id);
-    if (hit) return hit.p;
-    const entry = { pages: null };
-    entry.p = new Promise((resolve, reject) => {
-      const id = "m" + ++M.seq;
-      M.queue.push(() => {
-        const timer = setTimeout(() => { M.waiting.delete(id); reject(new Error("The host did not answer in time.")); pumpMedia(); }, 30000);
-        M.waiting.set(id, { resolve, reject, timer, r, text: true });
-        post({ type: "media", id, upload_id: r.upload_id });
-      });
-      pumpMedia();
-    }).then((txt) => { entry.pages = PF.paginate(txt); entry.words = PF.wordsOf(txt); return entry; }, (e) => { T.cache.delete(r.upload_id); throw e; });
-    T.cache.set(r.upload_id, entry);
-    return entry.p;
+  function textPages(key, text) {
+    const k = key + "|" + text.length;
+    let hit = T.cache.get(k);
+    if (!hit) { hit = { pages: PF.paginate(text) }; T.cache.set(k, hit); }
+    return hit.pages;
   }
   function onMediaReply(m) {
     const w = M.waiting.get(m.id);
@@ -138,7 +128,6 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     M.waiting.delete(m.id);
     clearTimeout(w.timer);
     pumpMedia();
-    if (m.blob && w.text) { blobText(m.blob).then(w.resolve, w.reject); return; }
     if (m.blob) {
       let b = m.blob;
       if (!b.type && w.r.mime) b = new Blob([b], { type: w.r.mime });
@@ -159,7 +148,8 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       else if (x && typeof x === "object") { if (x.$media && x.$media.upload_id) live.add(x.$media.upload_id); else Object.values(x).forEach(walk); }
     })(S.doc);
     for (const id of [...M.cache.keys()]) if (!live.has(id)) revoke(id);
-    for (const id of [...T.cache.keys()]) if (!live.has(id)) T.cache.delete(id);
+    const texts = new Set(readables().map((x) => { const b = PF.bodyOf(x); return b.text ? x.key + "|" + b.text.length : null; }));
+    for (const k of [...T.cache.keys()]) if (!texts.has(k)) T.cache.delete(k);
   }
 
   const ioMap = new WeakMap();
@@ -574,6 +564,8 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     const box = h("div", { class: "stack" });
     box.append(h("div", null, h("h2", { class: "h2", text: "Your request" }), h("div", { class: "quote", style: "margin-top:8px" }, showMore(d.intent || "", 280))));
     if (g && g.kind === "style" && !S.readonly) {
+      /* Asked again (a style is on file, references are not): the style they chose stays selected, so one click answers the reference question. */
+      if (!S.style && !S.ownStyle.trim() && d.style && d.style.style) S.style = d.style.style;
       box.append(h("div", null, h("h2", { class: "h2", text: "Pick a style" }),
         h("div", { class: "choices", role: "radiogroup", "aria-label": "Style", style: "margin-top:10px" }, arr(g.options).map((o) => {
           const th = o.thumb && mref(o.thumb);
@@ -616,8 +608,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       const picked = s.picked || (!pickMode && S.sentPicks && S.sentPicks.has(s.id));
       const title = h("div", { class: "t" }, h("span", { class: "id", text: s.id }), h("b", { text: s.title }),
         picked && !pickMode ? h("span", { class: "chip ok" }, ic("check"), "Picked") : null, s.verdict ? h("span", { class: "chip", text: s.verdict }) : null);
-      const sr = mref(s.body);
-      const read = sr && !sr.error ? h("button", { type: "button", class: "btn ghost sm read-btn", "data-k": "open-script:" + s.id, onclick: (e) => { e.preventDefault(); e.stopPropagation(); openReader("script:" + s.id); } }, ic("doc"), "Read the full script" + (s.words ? " \u00b7 " + wordsLabel(s.words) : "")) : null;
+      const read = PF.bodyOf(s).text ? h("button", { type: "button", class: "btn ghost sm read-btn", "data-k": "open-script:" + s.id, onclick: (e) => { e.preventDefault(); e.stopPropagation(); openReader("script:" + s.id); } }, ic("doc"), "Read the full script" + (s.words ? " \u00b7 " + wordsLabel(s.words) : "")) : null;
       const body = h("div", { class: "body" }, strip, title, h("div", { class: "logline" }, showMore(s.logline || "", 200, "c3")),
         read, beats.length ? h("ol", { class: "beats", "aria-label": all.length > 2 ? "Opening and closing beats" : "Beats" }, beats.map((b) => h("li", { text: b })), all.length > 2 ? h("li", { class: "more-beats", text: all.length + " beats in total" }) : null) : null);
       if (pickMode) {
@@ -645,10 +636,10 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   }
 
   /* ----- plan: scripts and production documents, read page by page ----- */
-  /* Everything readable in one list: the scripts the agent wrote and the planning documents it added. The text is a file, never part of the state. */
+  /* Everything readable in one list: the scripts the agent wrote and the planning documents it added. */
   function readables() {
     const d = S.doc, out = [];
-    for (const s of arr(d.scripts)) out.push({ src: "script", key: "script:" + s.id, id: s.id, title: s.title, kind: "script", kind_label: "Script · story " + s.id, group: "Script", words: s.words || 0, preview: s.logline, headings: arr(s.headings), body: s.body, story: s.id, picked: !!s.picked, updated: null });
+    for (const s of arr(d.scripts)) out.push({ src: "script", key: "script:" + s.id, id: s.id, title: s.title, kind: "script", kind_label: "Script · story " + s.id, group: "Script", words: s.words || 0, preview: s.logline, headings: arr(s.headings), body: s.body, body_note: s.body_note, story: s.id, picked: !!s.picked, updated: null });
     for (const x of arr(d.docs)) out.push({ ...x, src: "doc", key: "doc:" + x.id });
     return out;
   }
@@ -705,7 +696,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     return h("div", { class: "pane" }, box);
   }
   function docCard(x) {
-    const r = mref(x.body), bad = !r || r.error;
+    const b = PF.bodyOf(x), bad = !!b.error;
     const fresh = S.docBase && !S.docBase.has(x.key) && !S.docOpened.has(x.key);
     const meta = [x.kind_label, x.words ? wordsLabel(x.words) : null, x.words ? minutes(x.words) : null].filter(Boolean).join(" · ");
     return h("button", { type: "button", class: "card doc-card" + (bad ? " bad" : ""), "data-k": "open-" + x.key, disabled: bad, "aria-label": "Read " + x.title + (fresh ? " (new)" : ""), onclick: () => openReader(x.key) },
@@ -713,7 +704,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       h("span", { class: "dc-body" },
         h("span", { class: "dc-t" }, h("b", { text: x.title }), fresh ? h("span", { class: "chip new", text: "New" }) : null, x.picked ? h("span", { class: "chip ok" }, ic("check"), "Picked") : null, x.story && x.src === "doc" ? h("span", { class: "chip", text: "Story " + x.story }) : null),
         h("span", { class: "dc-m", text: meta + (x.updated ? " · " + ago(x.updated) : "") }),
-        bad ? h("span", { class: "dc-p err", text: "The file is missing. Ask the agent to add it again." }) : (x.summary || x.preview) ? h("span", { class: "dc-p", text: clip(x.summary || x.preview, 220) }) : null),
+        bad ? h("span", { class: "dc-p err", text: b.error }) : (x.summary || x.preview) ? h("span", { class: "dc-p", text: clip(x.summary || x.preview, 220) }) : null),
       h("span", { class: "dc-go" }, ic("right")));
   }
 
@@ -759,7 +750,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
 
   function viewReader() {
     const R = S.reader, it = findReadable(R.key);
-    const r = mref(it.body);
+    const b = PF.bodyOf(it);
     /* A refresh (the agent added pages, the step moved on) rebuilds this view: keep the reader's place and the focus in the find box. */
     const keepY = R.built ? el.sc.scrollTop : null;
     const ae = ctx.root.activeElement;
@@ -768,16 +759,13 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     const back = h("button", { type: "button", class: "rd-back", "data-k": "rd-back", onclick: closeReader }, ic("left"), h("span", { text: ({ plan: "Plan", scripts: "Scripts", storyboard: "Storyboard" })[R.from] || "Back" }));
     const meta = [it.kind_label, it.words ? wordsLabel(it.words) : null, it.words ? minutes(it.words) : null].filter(Boolean);
     const head = h("header", { class: "rd-head" }, back, h("h2", { class: "rd-title", text: it.title }),
-      h("div", { class: "rd-meta" }, meta.map((m) => h("span", { class: "chip", text: m })), r && !r.error ? downloadButton(r, it.title) : null));
+      h("div", { class: "rd-meta" }, meta.map((m) => h("span", { class: "chip", text: m })),
+        b.text ? downloadButton(it.title, PF.textFileName(it.title), () => Promise.resolve(URL.createObjectURL(new Blob([b.text], { type: "text/markdown" })))) : null));
     const body = h("div", { class: "rd-body" });
     const wrap = h("article", { class: "reader", "aria-label": it.title }, head, body);
-    const fail = (msg) => body.replaceChildren(h("div", { class: "mid bad", role: "alert" }, ic("alert"), h("span", { text: msg }), r && !r.error ? h("button", { class: "load", type: "button", text: "Try again", onclick: () => { T.cache.delete(r.upload_id); load(); } }) : null));
     function load() {
-      if (!r || r.error) return fail("This document's file is missing. Ask the agent to add it again.");
-      const cached = T.cache.get(r.upload_id);
-      if (cached && cached.pages) return paint(cached.pages);                    // no skeleton flash when only the step moved on
-      body.replaceChildren(h("div", { class: "pane skel", "aria-busy": "true", "aria-label": "Loading the document" }, h("div", { class: "sk", style: "height:18px;width:50%" }), h("div", { class: "sk", style: "height:60px" }), h("div", { class: "sk", style: "height:60px" }), h("div", { class: "sk", style: "height:60px" })));
-      getText(r).then((entry) => paint(entry.pages), () => fail("Couldn't load this document."));
+      if (b.error) return body.replaceChildren(h("div", { class: "mid bad", role: "alert" }, ic("alert"), h("span", { text: b.error })));
+      paint(textPages(it.key, b.text));
     }
     function paint(pages) {
       R.page = Math.max(0, Math.min(R.page, pages.length - 1));
@@ -1331,7 +1319,8 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   const hhmm = (iso) => { const t = Date.parse(iso || ""); if (isNaN(t)) return ""; const dt = new Date(t), tm = dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); return dt.toDateString() === new Date().toDateString() ? tm : dt.toLocaleDateString([], { day: "numeric", month: "short" }) + ", " + tm; };
   /* Saves the draft through the same blob the player uses: getMedia reuses the cached object URL or asks the host, even while the player still shows its manual load tile.
      The URL stays in the cache for the player, so it is never revoked here. */
-  function downloadButton(r, label) {
+  /* `getUrl` resolves to an object URL of the file to save as `name` (a draft from the host's blob, a document from its text). */
+  function downloadButton(label, name, getUrl) {
     const btn = h("button", { type: "button", class: "dl", "aria-label": "Download " + label });
     const box = h("span", { class: "dl-box" }, btn);
     const paint = (state) => {
@@ -1343,7 +1332,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       if (state === "error") box.prepend(h("span", { class: "dl-err", role: "alert" }, ic("alert"), "Couldn't prepare the download."));
     };
     const save = (url) => {
-      const a = h("a", { href: url, download: PF.downloadName(r, label), hidden: "" });
+      const a = h("a", { href: url, download: name, hidden: "" });
       ctx.root.append(a);
       a.click();
       a.remove();
@@ -1353,7 +1342,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       const refocus = ctx.root.activeElement === btn;
       const settle = (state) => { paint(state); if (refocus && btn.isConnected) btn.focus(); };
       paint("busy");
-      getMedia(r).then((u) => { save(u); say("Download started for " + label); settle("idle"); }, () => settle("error"));
+      getUrl().then((u) => { save(u); say("Download started for " + label); settle("idle"); }, () => settle("error"));
     };
     btn.addEventListener("click", run);
     paint("idle");
@@ -1393,7 +1382,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
         v.addEventListener("loadedmetadata", () => { if (v.duration && isFinite(v.duration)) dur.textContent = fmtTime(v.duration) + (v.videoWidth ? " · " + v.videoWidth + "×" + v.videoHeight : ""); });
         return v;
       }, { manual: r.size > BIG_DRAFT, manualText: "Load video (" + fmtSize(r.size) + ")" });
-      const meta = h("div", { class: "filerow" }, h("span", { text: it.label + (it.after ? " · after " + it.after : "") }), dur, it.final && it.rel ? h("span", { class: "path", text: it.rel }) : null, r && !r.error ? downloadButton(r, it.label) : null);
+      const meta = h("div", { class: "filerow" }, h("span", { text: it.label + (it.after ? " · after " + it.after : "") }), dur, it.final && it.rel ? h("span", { class: "path", text: it.rel }) : null, r && !r.error ? downloadButton(it.label, PF.downloadName(r, it.label), () => getMedia(r)) : null);
       left.append(h("div", null, player, meta, it.note ? h("p", { class: "sub", style: "margin-top:4px", text: it.note }) : null));
       if (d.stage === "final" && PF.finalState(d).ok) {
         const credits = arr(d.assets).filter((x) => x.licence && (x.kind === "music" || x.kind === "voice" || x.kind === "sfx")).map((x) => (KIND_LABEL[x.kind] || x.kind) + ": " + x.licence);

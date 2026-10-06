@@ -9,6 +9,13 @@ const frames = { start: { path: ok("s") }, end: { path: ok("e") } };
 const asset = (id, kind, source, state, scenes, path) => ({ id, kind, source, state, scenes, path: path === undefined ? (state === "ready" ? ok(id) : null) : path });
 const scene = (id, source, extra) => ({ id, source, ...frames, ...extra });
 
+test("a script or document reads from its inline text; a missing or too-long one shows the agent's note instead", () => {
+  assert.deepEqual(L.bodyOf({ body: "# A\n\nOne." }), { text: "# A\n\nOne." });
+  assert.equal(L.bodyOf({ body: null, body_note: "Too long to show here (120,000 words). Ask the agent to split it into parts." }).error, "Too long to show here (120,000 words). Ask the agent to split it into parts.");
+  assert.match(L.bodyOf({ body: { $file: "/x/A.md" } }).error, /Ask the agent/);          // an older state shape never reads as text
+  assert.equal(L.textFileName("Full script: Wake up to merged PRs"), "full-script-wake-up-to-merged-prs.md");
+});
+
 test("real scene covered by a mock asset is Mock in plan, never Captured", () => {
   const as = [asset("a", "recording", "real", "ready", ["03"]), asset("b", "recording", "real", "mock", ["03"])];
   assert.equal(L.sceneStatus(scene("03", "real"), as).label, "Mock in plan");

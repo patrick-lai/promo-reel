@@ -148,11 +148,62 @@ def test_round_cap(pd):
     st = F.load(pd)
     st["stage"] = "review"
     st["drafts"] = [dict(file="/x", at="", cycle=1)]
+    with pytest.raises(F.FlowError, match="after the final"):
+        F.revise(pd, "too early")                                        # with rounds left, feedback is a round, not a new cycle
     for n in range(1, 6):
-        st["rounds"].append(dict(cycle=1, n=n, feedback="f", started="", drafts_at_start=0, closed=dict(verdict="YES")))
+        st["rounds"].append(dict(cycle=1, n=n, feedback="f", started="", drafts_at_start=0, closed=dict(verdict="YES", dir="rounds/x")))
     F.save(pd, st)
     with pytest.raises(F.FlowError, match="5 rounds"):
         F.round_start(pd, "more")
+    # the person restates the direction instead of approving: a new cycle opens from review, so a used-up review is never a dead end
+    assert F.revise(pd, "slower, warmer, no music") == 1
+    st = F.load(pd)
+    assert st["stage"] == "review" and st["cycle"] == 2 and F.open_round(st)["feedback"] == "slower, warmer, no music"
+    assert F.snapshot(pd)["rounds_used"] == 1
+
+
+def test_an_answer_that_arrives_one_stage_early_is_not_refused(pd, tmp_path):
+    """The Stage shows the pick gate while the flow is still at `scripts`; the person's pick must land, not bounce with 'belongs to a later stage'."""
+    F.discover(pd, "dialogue film", [], True)
+    F.advance(pd)
+    sf = str(tmp_path / "s.md")
+    write(sf, "script")
+    for i in "ABC":
+        F.add_script(pd, i, "T" + i, "L", sf)
+    with pytest.raises(F.FlowError, match="cannot leave it") as e:
+        F.approve(pd, "scripts-picked", "Pat", ["A"])                   # the scripts stage is not ready (no council yet): say why
+    assert "council" in str(e.value) and F.load(pd)["stage"] == "scripts"
+    cf = str(tmp_path / "c.md")
+    write(cf, "x" * 300)
+    F.add_council(pd, "scripts", cf)
+    assert F.snapshot(pd)["gate"]["gate"] == "scripts-picked"
+    F.approve(pd, "scripts-picked", "Pat", ["A"])
+    st = F.load(pd)
+    assert st["stage"] == "pick" and st["picks"] == ["A"] and F.gate_ok(pd, st, "scripts-picked")
+    assert F.advance(pd) == "storyboard"
+
+
+def test_discover_asks_again_when_the_style_is_on_file_but_references_are_not(pd):
+    F.discover(pd, "Horizon film", [], False)                            # style recorded, nothing said about references: not ready, and nothing for the agent to make
+    s = F.snapshot(pd)
+    assert s["gate"] and s["gate"]["kind"] == "style" and "Horizon film" in s["gate"]["question"] and "reference" in s["gate"]["question"]
+    assert s["summary"]["badge"] == "waiting"
+    F.discover(pd, "Horizon film", [], True)
+    assert F.snapshot(pd)["gate"] is None and F.advance(pd) == "scripts"
+
+
+def test_mod_dev_host_refuses_the_same_files_as_the_daemon(tmp_path):
+    """mod-dev/serve.py stands in for CommissionAI: a `$file` that is not an image, audio or video must fail there too, or a publish bug passes every local check."""
+    import sys
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sys.path.insert(0, os.path.join(root, "mod-dev"))
+    import serve
+    md, png = tmp_path / "A.md", tmp_path / "a.png"
+    md.write_text("# Script")
+    img(str(png))
+    out = serve.resolve({"a": {"$file": str(md)}, "b": {"$file": str(png)}})
+    assert out["a"]["$media"] is None and "only images, audio and video" in out["a"]["$error"]
+    assert out["b"]["$media"]["mime"] == "image/png"
 
 
 def test_storyboard_problems_and_dashboard(pd):
@@ -633,7 +684,8 @@ def test_a_script_of_any_length_is_added_in_parts_and_snapshotted_as_a_file(pd, 
     assert n > 4000
     sc = F.snapshot(pd)["scripts"][0]
     assert sc["words"] == n and sc["title"] == "Alpha" and sc["headings"][0]["title"] == "Full script"
-    assert sc["body"]["$file"].endswith("scripts/A.md")                      # the text travels as a file, never in the state
+    assert sc["body"] == open(os.path.join(pd, "flow", "scripts", "A.md")).read() and sc["body_note"] is None     # the host copies only media files: text goes inline
+    assert not any("$file" in d and d["$file"].endswith(".md") for d in walk(F.snapshot(pd)))
     with pytest.raises(F.FlowError, match="no script"):
         F.add_script(pd, "Z", None, None, text="x", append=True)
     with pytest.raises(F.FlowError, match="--title"):
@@ -661,14 +713,16 @@ def test_planning_documents_are_added_replaced_appended_and_removed(pd):
     assert any(a["text"] == "Removed from the plan: full-script" for a in F.snapshot(pd)["activity"])
 
 
-def test_doc_groups_are_ordered_and_state_stays_small_for_huge_documents(pd):
+def test_doc_groups_are_ordered_and_state_stays_inside_the_mod_limit_for_huge_documents(pd):
     F.doc_put(pd, "z-notes", kind="notes", text="# N\n\nx")
     F.doc_put(pd, "a-shots", kind="shotlist", text="# S\n\nx")
     F.doc_put(pd, "b-script", kind="script", text="# " + "w " * 10 + "\n\n" + ("lorem ipsum dolor " * 30 + "\n\n") * 4000)       # ~ 1 MB of text
     snap = F.snapshot(pd)
     assert [d["group"] for d in snap["docs"]] == ["Script", "Direction", "Notes"]
-    assert len(json.dumps(snap)) < 40_000                                    # the host's state limit is 1 MB: bodies are files
-    assert snap["docs"][0]["words"] > 100_000
+    assert len(json.dumps(snap).encode()) <= F.state_budget() < 1024 * 1024        # mod.json state_limit_kb: a publish must never be refused for size
+    big, small = snap["docs"][0], snap["docs"][1]
+    assert big["words"] > 100_000 and big["body"] is None and "Too long" in big["body_note"] and "split" in big["body_note"]
+    assert small["body"].startswith("# S") and small["body_note"] is None           # only the biggest body goes; the rest still read in the Stage
 
 
 def test_templates_are_built_from_the_real_board_and_assets(pd):

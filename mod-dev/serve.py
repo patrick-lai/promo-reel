@@ -32,7 +32,7 @@ sys.path.insert(0, ROOT)
 import fixtures  # noqa: E402
 from promo import flow, home  # noqa: E402
 
-MAX_FILE = {"image": 12 << 20, "audio": 100 << 20, "video": 100 << 20}
+MAX_FILE = {"image": 12 << 20, "audio": 100 << 20, "video": 100 << 20}      # the kinds the daemon copies; anything else (a .md, a .json) it refuses by name
 UPLOADS: dict[str, str] = {}
 STAGES: dict[str, dict] = {}
 LIVE: dict[str, object] = {"project": None, "jobs": []}
@@ -51,7 +51,9 @@ def resolve(x):
             return {"$media": None, "$error": "file not found: " + os.path.basename(p)}
         mime = mimetypes.guess_type(p)[0] or "application/octet-stream"
         size = os.path.getsize(p)
-        if size > MAX_FILE.get(mime.split("/")[0], 12 << 20):
+        if mime.split("/")[0] not in MAX_FILE:
+            return {"$media": None, "$error": f"{os.path.basename(p)}: only images, audio and video can be shown"}
+        if size > MAX_FILE[mime.split("/")[0]]:
             return {"$media": None, "$error": f"{os.path.basename(p)} is too large ({size >> 20} MB)"}
         uid = hashlib.sha256((p + str(size)).encode()).hexdigest()[:24]
         UPLOADS[uid] = p
