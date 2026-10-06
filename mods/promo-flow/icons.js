@@ -21,6 +21,7 @@
     list: '<path d="M7 5.5h9M7 10h9M7 14.5h9M3.5 5.5h.1M3.5 10h.1M3.5 14.5h.1"/>',
     clock: '<circle cx="10" cy="10" r="7"/><path d="M10 6v4l2.5 2"/>',
     plus: '<path d="M10 4v12M4 10h12"/>',
+    download: '<path d="M10 3.5v9M6 9l4 4 4-4M4 16h12"/>',
     refresh: '<path d="M16 9a6 6 0 1 0-1.4 4.6M16 4v5h-5"/>',
     spark: '<path d="M10 3l1.6 4.4L16 9l-4.4 1.6L10 15l-1.6-4.4L4 9l4.4-1.6z"/>',
     scene: '<rect x="3" y="5" width="14" height="10" rx="2"/><path d="M3 8h14"/>'

@@ -102,3 +102,15 @@ test("a sample that failed to attach is no preview", () => {
   assert.equal(L.hasPreview({ ...asset("m", "music", "licensed", "todo", ["01"]), sample: bad }), false);
   assert.equal(L.hasPreview({ ...asset("m", "music", "licensed", "todo", ["01"]), sample: ok("t") }), true);
 });
+
+test("download name: the host's file name wins when it has an extension", () => {
+  assert.equal(L.downloadName({ name: "promo-1080.mp4" }, "Final"), "promo-1080.mp4");
+  assert.equal(L.downloadName({ name: "draft v2.webm" }, "Draft 2"), "draft v2.webm");
+});
+test("download name: no extension falls back to the label as a slug plus .mp4", () => {
+  assert.equal(L.downloadName({ name: "final" }, "Draft 2 · after round 1"), "draft-2-after-round-1.mp4");
+  assert.equal(L.downloadName({ name: "promo-1.0" }, "Final 1080"), "final-1080.mp4");
+  assert.equal(L.downloadName({}, "Zweiter Entwurf: Überarbeitung"), "zweiter-entwurf-überarbeitung.mp4");
+  assert.equal(L.downloadName(null, " · ! "), "promo.mp4");
+  assert.equal(L.downloadName({ name: "x." }, "a".repeat(80) + " tail").length, 60 + ".mp4".length);
+});

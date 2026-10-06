@@ -986,6 +986,36 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
 
   /* ----- draft ----- */
   const hhmm = (iso) => { const t = Date.parse(iso || ""); if (isNaN(t)) return ""; const dt = new Date(t), tm = dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); return dt.toDateString() === new Date().toDateString() ? tm : dt.toLocaleDateString([], { day: "numeric", month: "short" }) + ", " + tm; };
+  /* Saves the draft through the same blob the player uses: getMedia reuses the cached object URL or asks the host, even while the player still shows its manual load tile.
+     The URL stays in the cache for the player, so it is never revoked here. */
+  function downloadButton(r, label) {
+    const btn = h("button", { type: "button", class: "dl", "aria-label": "Download " + label });
+    const box = h("span", { class: "dl-box" }, btn);
+    const paint = (state) => {
+      btn.disabled = state === "busy";
+      if (state === "busy") btn.setAttribute("aria-busy", "true");
+      else btn.removeAttribute("aria-busy");
+      btn.replaceChildren(ic(state === "error" ? "refresh" : "download"), h("span", { text: state === "busy" ? "Preparing…" : state === "error" ? "Try again" : "Download" }));
+      box.querySelector(".dl-err")?.remove();
+      if (state === "error") box.prepend(h("span", { class: "dl-err", role: "alert" }, ic("alert"), "Couldn't prepare the download."));
+    };
+    const save = (url) => {
+      const a = h("a", { href: url, download: PF.downloadName(r, label), hidden: "" });
+      ctx.root.append(a);
+      a.click();
+      a.remove();
+    };
+    const run = () => {
+      /* Disabling the focused button drops keyboard focus, so hand it back once the button is enabled again. */
+      const refocus = ctx.root.activeElement === btn;
+      const settle = (state) => { paint(state); if (refocus && btn.isConnected) btn.focus(); };
+      paint("busy");
+      getMedia(r).then((u) => { save(u); say("Download started for " + label); settle("idle"); }, () => settle("error"));
+    };
+    btn.addEventListener("click", run);
+    paint("idle");
+    return box;
+  }
   function viewDraft() {
     const d = S.doc;
     const drafts = arr(d.drafts), finals = arr(d.finals);
@@ -1020,12 +1050,12 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
         v.addEventListener("loadedmetadata", () => { if (v.duration && isFinite(v.duration)) dur.textContent = fmtTime(v.duration) + (v.videoWidth ? " · " + v.videoWidth + "×" + v.videoHeight : ""); });
         return v;
       }, { manual: r.size > BIG_DRAFT, manualText: "Load video (" + fmtSize(r.size) + ")" });
-      const meta = h("div", { class: "filerow" }, h("span", { text: it.label + (it.after ? " · after " + it.after : "") }), dur, it.final && it.rel ? h("span", { class: "path", text: it.rel }) : null);
+      const meta = h("div", { class: "filerow" }, h("span", { text: it.label + (it.after ? " · after " + it.after : "") }), dur, it.final && it.rel ? h("span", { class: "path", text: it.rel }) : null, r && !r.error ? downloadButton(r, it.label) : null);
       left.append(h("div", null, player, meta, it.note ? h("p", { class: "sub", style: "margin-top:4px", text: it.note }) : null));
       if (d.stage === "final" && PF.finalState(d).ok) {
         const credits = arr(d.assets).filter((x) => x.licence && (x.kind === "music" || x.kind === "voice" || x.kind === "sfx")).map((x) => (KIND_LABEL[x.kind] || x.kind) + ": " + x.licence);
         left.prepend(h("div", { class: "card done-card" }, h("div", { class: "done-ic" }, ic("check")), h("div", null, h("b", { text: "Your promo is ready" }),
-          h("p", { text: "Nothing has been published. Watch it once more with sound, then post it yourself. To change something, send feedback and the agent starts another round." }),
+          h("p", { text: "Nothing has been published. Watch it once more with sound, download it below, then post it yourself. To change something, send feedback and the agent starts another round." }),
           credits.length ? h("p", { class: "tl-note", text: "Credits to keep: " + credits.join(" \u00b7 ") }) : null)));
       }
       if (d.stage === "review") left.append(h("ul", { class: "watch-list", "aria-label": "What to check" }, ["Does it match the storyboard you approved?", "Is every caption and voice line true for what is on screen?", "Does the pacing and music feel right with the sound on?"].map((t) => h("li", { text: t }))));

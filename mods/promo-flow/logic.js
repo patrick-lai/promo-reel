@@ -110,7 +110,15 @@
     return null;
   }
 
-  const api = { arr, mref, fileBad, missingFile, missingAll, hasPreview, noFrame, sceneStatus, model, finalState, seenRule, seenKey, missingRule, previewRule };
+  /* File name for a saved draft: the host's own file name when it carries an extension, else the label as a slug plus .mp4. */
+  function downloadName(r, label) {
+    const name = String((r && r.name) || "").trim();
+    if (/^.+\.[A-Za-z][A-Za-z0-9]{0,7}$/.test(name)) return name;
+    const slug = String(label || "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "").slice(0, 60).replace(/-+$/, "");
+    return (slug || "promo") + ".mp4";
+  }
+
+  const api = { arr, mref, fileBad, missingFile, missingAll, hasPreview, noFrame, sceneStatus, model, finalState, seenRule, seenKey, missingRule, previewRule, downloadName };
   root.PF = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof window !== "undefined" ? window : globalThis);
