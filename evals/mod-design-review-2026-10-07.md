@@ -39,3 +39,31 @@ What this iteration changed (mods/promo-flow/app.js, style.css "v7"; mods/promo-
 
 Not done (needs state the mod does not have, or a second iteration): per-script council verdict chips, "Started N ago" on the Preparing state,
 grouping the picker by whose turn it is, scene cards with a five-column facts row at 900 px.
+
+## Round 2: the same nine judges on the after-shots (`shots/ux/after`, 7 Oct 2026, later the same day)
+
+Fresh Sonnet judges, one per page, scored only the real page (the north-star mockup was shown as reference, invented data not rewarded).
+Pass needs mean >= 4.2, nothing under 3, and next_step >= 4 and truth >= 4. **No page passes yet.** Seven of nine moved up; nothing is under 3
+anywhere; the hard minimums now fail on only four pages.
+
+| page | before | after | hard minimums | the one thing still in the way |
+|---|---|---|---|---|
+| Style & references | 3.7 | 3.64 | next_step 3.5 | the only button is a disabled grey outline; the radio rings vanish over busy samples; no "describe your own" or references area |
+| Pick stories | 3.5 | 3.75 | next_step 3.5 | disabled primary is the lowest-contrast thing on the page; three "Read the full script" buttons out-shout it |
+| Storyboard | 3.6 | 3.78 | met | four control rows before the first frame at 520; timeline ticks clipped, chip widths uneven |
+| Asset plan | 3.7 | 3.83 | met | uneven card heights in the 900 grid; 140 px thumbnails at 520; "Details" link is a 16 px target; question says Approve, button says Review story B |
+| Plan tab + reader | 3.7 | 3.56 | truth 3.5 | Plan badge said 17 while the list said 20 (fixed below); chips clip to "+ Captu"; native select in the reader; half the pane is controls |
+| Review rounds | 3.6 | 3.88 | met | two orange-toned buttons; link chips in the rounds column out-shout the feedback; rounds invisible at 520 |
+| Working states | 3.6 | 3.71 | next_step 3.5 | footer still offers "Review story B" while the badge says With the agent; "Send files" on Keyframes is grey text; six empty dashed tiles |
+| Final | 3.4 | 4.07 | met | spinner over the idle player; "Final / Final delivered. / The final is delivered." said three times; credits clipped by the footer |
+| Resume picker | 3.9 | 3.94 | met | the outlined card is an in-progress project while the badge says Your turn; titles cut to "Wake up to merge…" |
+
+Before/after means are from different judge runs and are noisy at the 0.1 level; the direction and the named faults are what to act on.
+
+Fixed from this round: the Plan tab badge now counts the same list the tab shows (documents plus full scripts), so badge, "All" chip and
+list agree.
+
+Recurring asks across the nine, for the next iteration: (1) a disabled primary must still look like the primary and say why it is
+disabled; (2) one filled button per surface, the second footer button neutral; (3) the footer must agree with the badge about whose turn it
+is, and show a quiet "Waiting for the agent" while a run is on; (4) less chrome before the first content at 520 (storyboard controls, plan
+chips, progress panel); (5) nothing sliced by the sticky gate bar: pad the scroll area by the footer's height; (6) say every number once.

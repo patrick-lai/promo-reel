@@ -231,7 +231,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     if (arr(d.scripts).length) t.push({ id: "scripts", label: "Scripts", n: d.scripts.length });
     if (b) t.push({ id: "storyboard", label: "Storyboard", n: arr(b.scenes).length });
     if (arr(d.assets).length) { const m = model(); t.push({ id: "assets", label: "Assets", n: m.total, title: "Assets: " + m.total + " rows for this story (" + m.n.ready + " ready, " + m.n.mock + " mock, " + m.n.todo + " to make" + (m.n.missing ? ", " + m.n.missing + " missing" : "") + ")" }); }
-    if (arr(d.docs).length || (arr(d.scripts).length && stageIdx() >= STAGE_IDS.indexOf("scripts"))) t.push({ id: "plan", label: "Plan", n: arr(d.docs).length || null, title: "Plan: full scripts and production documents. Ask the agent to add more." });
+    if (arr(d.docs).length || (arr(d.scripts).length && stageIdx() >= STAGE_IDS.indexOf("scripts"))) t.push({ id: "plan", label: "Plan", n: readables().length || null, title: "Plan: full scripts and production documents. Ask the agent to add more." });
     if (arr(d.drafts).length || arr(d.finals).length || arr(d.rounds).length || stageIdx() >= STAGE_IDS.indexOf("drafts")) t.push({ id: "draft", label: "Drafts", n: arr(d.drafts).length + arr(d.finals).length || null });
     return t;
   }

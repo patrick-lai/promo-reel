@@ -236,7 +236,7 @@ UICHECK = r"""(async () => {
     await click('#tab-plan');
     const cards = QA('.doc-card').length, chip = +Q('[data-k=g-all] .n').textContent;
     ok('plan lists every script and document', cards === chip && cards === 20, cards + ' cards, chip ' + chip);
-    ok('tab badge counts the documents', +Q('.tab[data-tab=plan] .n').textContent === 17);
+    ok('tab badge counts what the tab lists', +Q('.tab[data-tab=plan] .n').textContent === cards, Q('.tab[data-tab=plan] .n').textContent);
     await click('[data-k=g-Script]');
     ok('group filter narrows the list', QA('.doc-card').length === 6, QA('.doc-card').length);
     await click('[data-k=g-all]');
