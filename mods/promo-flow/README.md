@@ -112,7 +112,13 @@ segment fills with a run's real progress (`--p`). The round-3 block adds the gat
 the accent (tinted, with the note saying why it is off), one filled button per surface (the draft's "Feedback and iterate" is a strong neutral
 outline, `data-tone="strong"`), the footer waits with the agent while a run is on ("Waiting for the agent: 8 of 20 images done", only the
 navigation button stays live, and the badge reads With the agent), the capture ask "Send files" is the one filled button of its surface, and a
-soft fade above the gate shows that content continues under it.
+soft fade above the gate shows that content continues under it. The round-4 passes (rubric v2, 10 points, pass at 8; asks and status in
+`evals/round4-asks.md`) add: while a blind pick waits, the badge reads "Your turn · 1 pick", the note says "Pick an end card, then ...", and
+Approve is soft (outlined, `aria-disabled`; clicking it scrolls to the pick); a stopped run with a resume command makes "Ask the agent to
+carry on" the primary, and without one "Make the rest"; while the autopilot runs the footer is the one Stop (`data-k="ap-stop"`) and a
+waiting pick says so; queued job items are a count, never blank tiles (`JOB_QUEUE_TILES = 0`); the state line drops its "Also open for you"
+tail while the agent holds the turn; the storyboard's timeline marks any scene with a frame not made (`k-unmade`) and the frames count
+carries "N not made"; the asset group's open line says "1 to record · 1 to make"; the Plan tab's empty search offers "Clear search".
 
 ## Develop
     .venv/bin/python mod-dev/serve.py            # builds a fixture project, serves http://127.0.0.1:8765/dev/harness.html

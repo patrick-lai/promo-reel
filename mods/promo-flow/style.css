@@ -1132,3 +1132,241 @@ button.jb-tile:hover { border-color: var(--c-accent); }
 .pick-card.fold:not([open]) > summary .sub { display: none; }
 .pick-card.fold > summary b { flex: 1 1 auto; }
 .pick-card.fold > summary .sub { flex-basis: 100%; }
+
+/* round 4 (judges' exact asks on the 10-point rubric, 7 Oct 2026) */
+/* gate: the off primary reads at 4.5:1; beside an off primary the second button is a plain ghost */
+.btn.primary:disabled { color: var(--c-dim); opacity: 1; }
+.gate-actions:has(.btn.primary:disabled) .btn.ghost:not([data-quiet]) { border-color: transparent; color: var(--c-dim); }
+.gate-note .txt { -webkit-line-clamp: 3; }
+@container (max-width: 419px) { .gate[data-layout="bar"] .gate-note { display: none; } }
+/* style: four cards in a row from 760, the ring beside the title, a caption that says these are sketches */
+@container (min-width: 760px) { .choices.styles { grid-template-columns: repeat(4, minmax(0, 1fr)); } .choice.style .logline { -webkit-line-clamp: 3; } }
+.choice.style .box { position: static; background: transparent; border: 2px solid var(--c-dim); box-shadow: none; }
+.choice.style:has(input:checked) .box { background: var(--c-accent); border-color: var(--c-accent); }
+.choice.style .row { position: relative; }
+.choice.style .body .t { display: flex; align-items: center; gap: 8px; }
+.h2-row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.h2-row .sub { font-size: 12px; }
+/* pick: the read link sits on the logline's edge and wraps; wide panes show the whole logline */
+.btn.sm.read-btn { padding: 0; min-width: 0; white-space: normal; text-align: left; }
+@container (min-width: 760px) { .scripts .clamp.c3 { -webkit-line-clamp: unset; display: block; } .scripts .clamp.c3 + .more { display: none; } .scripts .t b { font-size: 17px; } }
+/* tabs: count pills at every width */
+@container (max-width: 439px) { .tab .n { display: inline-grid; font-size: 10px; min-width: 16px; height: 16px; padding: 0 4px; background: var(--c-well); position: static; margin: 0; line-height: normal; } }
+/* storyboard: taller timeline with the number as a corner badge; dashed warn outline where a frame is not made */
+.tl button { height: 56px; }
+@container (max-width: 439px) { .tl button { height: 44px; } }
+.tl .tl-th { opacity: 1; }
+.tl button .fill { background: transparent; display: block; }
+.tl button .fill .no { position: absolute; top: 3px; left: 3px; font: 600 10px var(--b-mono); font-style: normal; line-height: 1; padding: 2px 4px; border-radius: 3px; background: rgba(0,0,0,.6); color: #fff; text-shadow: none; }
+.tl button:not(:has(.tl-th)) .fill { background: var(--c-line); }
+.tl button.k-todo .fill { border: 1.5px dashed var(--c-warn); background: transparent; }
+.tl button.k-todo .fill::after { content: ""; position: absolute; right: 4px; top: 4px; width: 6px; height: 6px; border-radius: 50%; background: var(--c-warn); }
+.tl-leg i.t { border-color: var(--c-warn); }
+.tl button[aria-current="true"] .fill { background-color: transparent; outline: 2px solid var(--c-ink); outline-offset: -2px; }
+.tl button:hover .fill { background-color: color-mix(in srgb, var(--c-ink) 12%, transparent); }
+.board-row { flex-wrap: wrap; }
+.board-row .seg-ctl { flex: 0 1 auto; }
+.scene-h .time { font-family: inherit; font-variant-numeric: tabular-nums; }
+.frames.mids .fr.empty { aspect-ratio: auto !important; min-height: 44px; padding: 6px 10px; display: flex; align-items: center; gap: 8px; }
+.frames.mids .fr.empty .lbl { position: static; }
+.frames.mids .fr.empty b { font-weight: 500; font-size: 12px; }
+/* lightbox: the toggle and caption sit under the frame, centred */
+.lb-info { justify-items: center; text-align: center; }
+.lb-info .tg { justify-self: center; }
+/* assets: the card is a column with Details at its foot; wide cards share a row and align their foot */
+.gallery .asset { grid-template-rows: auto 1fr; }
+.asset details.more { align-self: end; margin-top: 4px; border-top: 1px solid var(--c-line); padding-top: 2px; width: 100%; }
+.counter button[aria-pressed="true"] { box-shadow: 0 0 0 1px var(--c-accent); border-color: var(--c-accent); }
+.counter button { cursor: pointer; }
+@container (min-width: 480px) and (max-width: 599px) { .asset:not(.compact):not(.a-audio):not(.a-flat) { grid-template-columns: 40% minmax(0, 1fr); } .asset:not(.compact):not(.a-audio):not(.a-flat) .pv { width: 100%; height: auto; aspect-ratio: 16 / 9; } }
+/* plan: chips wrap on narrow panes; two columns of documents on wide ones; group headings carry a rule */
+@container (max-width: 560px) { .doc-tools .seg-ctl.wrap { flex-wrap: wrap; overflow: visible; } }
+@container (min-width: 760px) { .doc-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.doc-card .dc-p { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; white-space: normal; }
+.doc-group .sec-h { font-size: 13px; text-transform: none; letter-spacing: 0; color: var(--c-ink); border-bottom: 1px solid var(--c-line); padding-bottom: 6px; margin-top: 8px; }
+.doc-group .sec-h .n { font-size: 11px; }
+/* reader: find, matches and contents on one row where there is room; the pager has no band and no clipped label */
+.rd-toc { -webkit-appearance: none; appearance: none; min-height: 36px; font: inherit; font-weight: 600; font-size: 13px; padding-right: 28px; background-image: linear-gradient(45deg, transparent 50%, var(--c-dim) 50%), linear-gradient(135deg, var(--c-dim) 50%, transparent 50%); background-position: calc(100% - 15px) 50%, calc(100% - 10px) 50%; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; }
+@container (min-width: 480px) { .rd-tools { grid-template-columns: minmax(0, 1fr) minmax(140px, 220px); align-items: center; } .rd-tools .rd-found { grid-column: 1 / -1; } }
+.pager { background: transparent; }
+.pager .pg-l { white-space: normal; overflow: visible; text-overflow: clip; }
+.compose textarea { max-height: 120px; }
+/* for-you: previews capped so the draft stays on the first screen; plain Left/Right; neutral card with an accent edge */
+.pk-media { aspect-ratio: auto; height: 120px; }
+@container (min-width: 760px) { .pk-media { height: 200px; } .foryou { grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); align-items: start; } }
+.pick-card { border-color: var(--c-line); border-left: 3px solid var(--c-accent); }
+.pk-acts .pk-main { min-height: 44px; border: 1px solid var(--c-line); font-weight: 500; font-size: 15px; }
+.pk-acts .btn.ghost:not(.pk-main) { min-height: 44px; }
+.pick-card.fold:not([open]) { padding: 0 12px; min-height: 44px; border-left-width: 1px; border-left-color: var(--c-line); }
+.pick-card.fold:not([open]) > summary { min-height: 44px; }
+.pick-card.fold .pk-tag { background: transparent; color: var(--c-dim); border-color: var(--c-line); }
+@container (max-width: 600px) { .as-card { padding: 0; border: 0; background: transparent; border-top: 1px solid var(--c-line); border-radius: 0; padding-top: 8px; } }
+.as-list li .btn { margin-left: auto; }
+.verify, .judged, .sub.judged { margin-top: 0; }
+.pins-h .sub { font-size: 12px; }
+.rounds-more > summary { list-style: none; cursor: pointer; min-height: 36px; display: flex; align-items: center; font-size: 13px; font-weight: 600; color: var(--c-dim); }
+.rounds-more > summary::-webkit-details-marker { display: none; }
+.rounds-more[open] > summary { margin-bottom: 8px; }
+.rounds-more { display: grid; gap: 10px; }
+/* working: build tiles keep their whole name; the starting pane sits at the top */
+.jb-tile .jb-cap { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; line-height: 1.15; }
+.jb-tile.item { border-color: color-mix(in srgb, var(--c-ok) 45%, var(--c-line)); }
+.jb-tile.active { border-color: var(--c-accent); }
+.jb-tile.queued { opacity: .5; }
+.pane.empty.fill.prep { align-content: start; padding-top: 72px; }
+/* assets: the state chip carries the counter's colour as a dot; a missing file marks its card */
+.chip.st::before { content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--c-dim); display: inline-block; }
+.chip.st-real::before { background: var(--c-ok); }
+.chip.st-real { color: var(--c-ok); border-color: color-mix(in srgb, var(--c-ok) 45%, transparent); }
+.asset[data-eff="missing"] { box-shadow: inset 3px 0 0 var(--c-bad); }
+.asset.flash { animation: flash 1.2s ease-out 1; }
+@keyframes flash { 0% { box-shadow: 0 0 0 3px var(--c-accent), inset 3px 0 0 var(--c-bad); } 100% { box-shadow: 0 0 0 0 transparent, inset 3px 0 0 var(--c-bad); } }
+.warnline { flex-wrap: wrap; }
+.seg-ctl .unmade { font-size: 11px; font-weight: 500; color: var(--c-warn); margin-left: 4px; }
+
+/* round 4, second pass (judges' asks on the 10-point rubric) */
+/* gate: beside an off primary the second button keeps ink and a border, so only the primary looks off; a soft primary while a pick is pending */
+.gate-actions:has(.btn.primary:disabled) .btn.ghost:not([data-quiet]) { border-color: var(--c-line); color: var(--c-ink); }
+.btn.primary.soft { background: transparent; border-color: var(--c-accent); color: var(--c-accent); opacity: .7; }
+.pane { padding-bottom: 48px; }
+/* style: the Selected label sits in the card's top row, not beside the logline */
+.choice.style { position: relative; }
+.choice.style:has(input:checked)::after { top: 10px; right: 12px; }
+/* pick: a short quiet link with the word count after it; equal cards on wide panes; beats say what they are */
+.read-btn { font-weight: 500; text-decoration-color: color-mix(in srgb, var(--c-dim) 40%, transparent); white-space: nowrap; }
+.read-btn:hover { text-decoration-color: currentColor; }
+.read-btn .rb-n { font-weight: 400; color: var(--c-dim); text-decoration: none; margin-left: 6px; }
+.read-btn .rb-n::before { content: "\00b7\00a0"; }
+.choices.scripts { align-items: stretch; }
+.scripts .choice .body { display: flex; flex-direction: column; }
+.scripts .beats { margin-top: auto; padding-top: 8px; }
+.beats li.opens::before, .beats li.ends::before { content: "Opens"; width: auto; height: auto; border: 0; border-radius: 0; font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--c-dim); padding-top: 2px; min-width: 34px; }
+.beats li.ends::before { content: "Ends"; }
+/* tabs on a narrow pane: smaller padding so all four fit */
+@container (max-width: 439px) { .tab { padding: 0 7px; font-size: 14px; gap: 4px; } .tab .n { min-width: 15px; height: 15px; padding: 0 3px; } }
+/* storyboard: tiles keep the whole still; any scene with a frame not made is marked; one row of controls on narrow panes; fact rows */
+.tl button { height: auto; aspect-ratio: 16 / 9; max-height: 56px; }
+.tl .tl-th { filter: brightness(.92); }
+.tl button.k-unmade .fill { border: 1.5px dashed var(--c-warn); }
+.tl button.k-unmade .fill::after { content: ""; position: absolute; right: 4px; bottom: 4px; width: 6px; height: 6px; border-radius: 50%; background: var(--c-warn); }
+@container (max-width: 439px) { .warnline .load { padding: 0 8px; } }
+.fact .k { text-transform: uppercase; letter-spacing: .05em; font-size: 10.5px; opacity: .8; }
+.fact.main .v, .fact.span .v { font-size: 14px; font-weight: 500; }
+.facts { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.facts .fact { flex: 1 1 100%; }
+.facts .fact.minor { flex: 1 1 140px; }
+/* assets: the Details row sits at the card's foot on wide panes; the sample badge clears the play disc; a quiet banner for samples; narrow cards stack */
+@container (min-width: 600px) { .gallery .asset .bd { display: flex; flex-direction: column; } .gallery .asset details.more { margin-top: auto; } }
+.pv .tag { top: auto; bottom: 4px; }
+.warnline.soft { border-color: color-mix(in srgb, var(--c-warn) 45%, var(--c-line)); background: color-mix(in srgb, var(--c-warn) 8%, var(--c-raised)); color: var(--c-ink); }
+.warnline.soft .ic { color: var(--c-warn); }
+@container (max-width: 439px) { .asset:not(.compact):not(.a-audio):not(.a-flat) { grid-template-columns: minmax(0, 1fr); } .asset:not(.compact):not(.a-audio):not(.a-flat) .pv { width: 100%; height: auto; aspect-ratio: 16 / 9; } }
+/* plan and reader */
+.ask-card.fold > summary { min-height: 40px; }
+.pager .btn:disabled { opacity: .45; }
+.pager .pg-l { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.no-match { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+@container (max-width: 479px) { .rd-meta .dl span { display: none; } .rd-meta .dl { min-width: 36px; padding: 0 9px; } .rd-meta .dl-box { margin-left: auto; } }
+/* review: 16:9 previews with the label on them, no letterbox; four answers on one row; amber for warnings and open rows */
+.pk-media { aspect-ratio: 16 / 9; height: auto; width: min(100%, 213px); margin: 0 auto; }
+@container (min-width: 760px) { .pk-media { height: auto; width: min(100%, 356px); } }
+.pk-box .pk-lab { position: absolute; left: 6px; top: 6px; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; padding: 1px 6px; border-radius: 3px; background: rgba(0,0,0,.6); color: #fff; }
+.pk-acts { display: grid; grid-template-columns: 1fr 1fr auto auto; gap: 6px; }
+@container (max-width: 439px) { .pk-acts { grid-template-columns: 1fr 1fr; } }
+.pick-card.later { border-left-color: var(--c-line); }
+.verify[data-state="warned"] .ic { color: var(--c-warn); }
+.ck-list li[data-change="open"] .ic { color: var(--c-warn); }
+@container (max-width: 439px) { .as-list li .btn { margin-left: 0; flex-basis: 100%; justify-content: flex-start; padding-left: 0; } }
+/* final: credits stack on narrow panes */
+@container (max-width: 520px) { .credit { grid-template-columns: minmax(0, 1fr); gap: 2px; } .credit dd { font-size: 12.5px; color: var(--c-dim); } }
+/* working: tile names keep clear of the icon */
+.jb-tile .jb-cap { padding: 0 4px; }
+/* the council's note wraps whatever it holds; wide panes open it */
+.council p { overflow-wrap: anywhere; min-width: 0; }
+.council { min-width: 0; }
+.pk-box { position: relative; width: min(100%, 213px); margin: 0 auto; }
+@container (min-width: 760px) { .pk-box { width: min(100%, 356px); } }
+.pk-box .pk-media { width: 100%; }
+.rounds-col > section { margin-top: 16px; }
+
+/* round 4, third pass */
+/* an off or soft primary keeps readable ink on its tint */
+.btn.primary:disabled { color: var(--c-ink); opacity: .8; }
+.btn.primary.soft { color: var(--c-ink); opacity: .85; }
+.gate::before { top: -36px; height: 36px; }
+/* style: shorter sketches on narrow panes; the dark sketch keeps an edge */
+@container (max-width: 759px) { .choice.style .sty, .choice.style .thumb { aspect-ratio: 2 / 1; } }
+.choice.style .sty, .choice.style .thumb { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c-ink) 14%, transparent); }
+/* pick: only the words of the read link are underlined; roomier cards on wide panes; Show more is a real target */
+.read-btn { text-decoration: none; }
+.read-btn .rb-t { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: color-mix(in srgb, var(--c-dim) 40%, transparent); }
+.read-btn:hover .rb-t { text-decoration-color: currentColor; }
+@container (min-width: 760px) { .scripts .choice { padding: 20px; } .scripts .t b { font-size: 18px; } .scripts .logline .clamp { font-size: 15.5px; line-height: 1.5; } .scripts .beats { font-size: 13.5px; } }
+.more { color: var(--c-ink); opacity: .75; min-height: 36px; }
+/* storyboard: equal 16:9 cells (two rows of four on narrow panes); fact values sit under their labels */
+.tl button { flex: 1 1 0 !important; }
+@container (max-width: 600px) { .tl { flex-wrap: wrap; gap: 3px; } .tl button { flex: 0 0 calc(25% - 3px) !important; max-height: none; } }
+.facts { align-items: flex-start; }
+.tl-note { white-space: normal; }
+/* assets: the card is a column on wide panes with Details at its foot; a to-make chip is grey and dashed; banner buttons are 36 px */
+@container (min-width: 600px) { .gallery .asset:not(.compact) { display: flex; flex-direction: column; } .gallery .asset:not(.compact) .bd { flex: 1 1 auto; display: flex; flex-direction: column; } .gallery .asset:not(.compact) .pv { flex: none; } }
+.chip.todo { color: var(--c-dim); border-style: dashed; }
+.chip.todo::before { content: ""; width: 6px; height: 6px; border-radius: 50%; border: 1px solid var(--c-dim); display: inline-block; }
+.warnline .load { min-height: 36px; }
+.sec-open { color: var(--c-dim); }
+/* review: the preview label sits bottom-left on a solid pill; the pin button aligns to the column; a choice row on narrow panes */
+.pk-box .pk-lab { top: auto; bottom: 8px; left: 8px; background: rgba(0,0,0,.7); }
+.pins-h .btn { padding-left: 0; }
+@container (max-width: 439px) { .as-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; align-items: start; } .as-list .as-t { grid-column: 1; } .as-list .chip { grid-column: 1; grid-row: 2; justify-self: start; } .as-list li .btn { grid-column: 2; grid-row: 1; flex-basis: auto; margin-left: auto; padding-left: 12px; } }
+/* final: credit labels read; one section gap in the rounds column */
+.credit { grid-template-columns: minmax(0, 45%) minmax(0, 1fr); }
+.credit dt { color: var(--c-ink); opacity: .75; }
+.rounds-col > section, .rounds-more { margin-top: 24px; }
+/* working: the activity grid keeps only coloured steps */
+.wk-dots .dt.empty { display: none; }
+.btn.sm.read-btn { white-space: nowrap; display: inline-flex; align-items: center; }
+
+/* round 4, fourth pass */
+/* pick: the body sits flush with the checkbox on wide panes, the title alone indents past it; the read link wraps as a unit and is a 36 px target */
+@container (min-width: 760px) { .scripts .choice .body { margin-left: -34px; } .scripts .choice .body .t { padding-left: 34px; } .scripts .choice .body .strip { margin-left: 34px; } }
+.btn.sm.read-btn { white-space: normal; flex-wrap: wrap; min-height: 36px; }
+.read-btn .rb-t, .read-btn .rb-n { white-space: nowrap; }
+/* storyboard: the badge sits on the still's floor; the sticky timeline compacts once the scenes scroll */
+.tl button .fill .no { top: auto; bottom: 3px; }
+.tlwrap.compact .tl { flex-wrap: nowrap; gap: 2px; }
+.tlwrap.compact .tl button { flex: 1 1 0 !important; height: 28px; aspect-ratio: auto; max-height: 28px; }
+.tlwrap.compact .tl button .fill .no { bottom: 2px; left: 2px; padding: 1px 3px; font-size: 9px; }
+.tlwrap.compact .tl-leg, .tlwrap.compact .tl-note { display: none; }
+/* assets: cards keep their own height on wide panes; the divider spans the card; quiet open line and Details */
+@container (min-width: 600px) { .gallery { align-items: start; } .gallery .asset:not(.compact) details.more { align-self: stretch; } }
+.sec-h .sec-open { color: var(--c-dim); }
+.asset details.more>summary { color: var(--c-ink); opacity: .8; text-decoration: none; }
+/* plan: a tighter top stack; bordered find chevrons; room at the filter's edge */
+.ask-card.fold { margin-bottom: -4px; }
+.doc-tools .seg-ctl.wrap { padding-right: 12px; }
+.doc-tools .seg-ctl.wrap button { min-height: 34px; padding: 0 10px; }
+.rd-findrow .icon-btn.sm { width: 36px; height: 36px; border: 1px solid var(--c-line); border-radius: var(--r-md); display: grid; place-items: center; }
+/* fourth pass, continued */
+.gate[data-layout="bar"] .gate-note { display: flex; }
+@container (max-width: 419px) { .gate[data-layout="bar"] .gate-note { display: flex; } .gate[data-layout="bar"] { grid-template-columns: minmax(0, 1fr); } }
+@container (max-width: 439px) { .tabs { -webkit-mask-image: linear-gradient(to right, transparent, #000 16px, #000 calc(100% - 16px), transparent); mask-image: linear-gradient(to right, transparent, #000 16px, #000 calc(100% - 16px), transparent); } }
+.rounds-more > summary { min-height: 44px; border-top: 1px solid var(--c-line); border-bottom: 1px solid var(--c-line); color: var(--c-ink); }
+.rounds-more > summary::after { content: ""; margin-left: auto; width: 7px; height: 7px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); }
+.rounds-more[open] > summary::after { transform: rotate(-135deg); }
+.rounds-col > section, .rounds-more { margin-top: 12px; }
+.rounds-col .foryou { margin-bottom: 12px; }
+.warnline.live { border-color: var(--c-line); background: var(--c-raised); color: var(--c-ink); }
+.warnline.live .ic { color: var(--c-dim); }
+.pk-acts .pk-main:disabled { border-color: var(--c-line); opacity: .6; }
+.prep-steps { margin-top: 8px; display: grid; gap: 4px; font-size: 13px; color: var(--c-dim); text-align: left; counter-reset: p; }
+.prep-steps li { display: flex; gap: 8px; align-items: center; }
+.prep-steps li::before { counter-increment: p; content: counter(p); width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--c-line); font-size: 10px; display: grid; place-items: center; flex: none; }
+.prep-steps li.current { color: var(--c-ink); font-weight: 600; }
+.prep-steps li.current::before { background: var(--c-accent); border-color: var(--c-accent); color: var(--on-accent); }
+.pane.empty.fill.prep { padding-top: 48px; }
+/* the for-you strip inside the rounds column fits its width */
+.rounds-col .foryou, .rounds-col .pick-card { min-width: 0; }
+.rounds-col .pk-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.rounds-col .pk-box { width: 100%; }
+.rounds-col .pk-acts { grid-template-columns: 1fr 1fr; }
+.rounds-col .pk-acts .btn { min-width: 0; overflow: hidden; text-overflow: ellipsis; }

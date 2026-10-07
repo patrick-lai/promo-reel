@@ -1,10 +1,14 @@
-version: 1
+version: 2
 name: Stage widget design (promo-flow mod)
-scale: "1 (fails) .. 5 (excellent); half points allowed"
+scale: "1 (fails) .. 10 (nothing a careful designer would still change); whole points. 5 = usable but a designer would redo it, 7 = good with named faults, 8 = ship it, 9-10 = reference quality. (v1 used 1..5 with pass at 4.2; a v1 score times two is the rough v2 equivalent.)"
 pass:
-  mean_min: 4.2
-  none_below: 3
-  hard_min: {next_step: 4, truth: 4}
+  mean_min: 8
+  none_below: 6
+  hard_min: {next_step: 8, truth: 8}
+judging: >
+  Score the page as it is in the screenshots, nothing else. For every criterion under 8 the judge names the exact change that would bring
+  it to 8: the element, what is wrong, and what it should look like or say instead; the agent implements the asks as written, so vague
+  asks ("more polish") are not useful. Invented data (fake numbers, placeholders presented as real) is a truth fail, never a plus.
 context: >
   The widget fills the host's Stage (right pane, 380-900 px wide, full height) beside a chat. It is used all day by one person who must
   stay in control of a video production: see where they are, see what is planned (storyboard start/end frames, every asset incl. audio, drafts),

@@ -116,3 +116,29 @@ Asks for round 4: (1) the blind pick card is a one-line row that expands on ever
 contents into one row and drops the repeated title in the pager; (3) timeline pills become corner badges; (4) card state chips use the counter
 colours and ready gets a quiet green dot; (5) the generating state line (agent side, `promo/flow.py` summary) drops "Also open for you"
 while a run is on; (6) the picker list at 900 clamps titles to one line and shows the full title in the pane header.
+
+## Round 4 on the 10-point rubric (v2: pass = mean >= 8, nothing under 6, next_step and truth >= 8)
+
+The person asked for exact feedback and an 8+ bar, so `evals/mod-design-rubric.yaml` moved to a 10-point scale (v1 x2 is the rough
+equivalent) and every judge now lists, for each criterion under 8, the element, what is wrong and the exact change. The asks and their
+status live in `evals/round4-asks.md`; each pass below implemented the asks, reshot every state (`shots/ux/r4-after`, `r5-after`,
+`r6-after`) and rescored with nine fresh Sonnet judges.
+
+| page | pass A (before) | pass B | pass C | pass D | hard minimums at D |
+|---|---|---|---|---|
+| Style & references | 7.3 | 8.0 | 7.9 | 8.1 | met |
+| Pick stories | 7.3 | 7.6 | 7.9 | 7.6 | met |
+| Storyboard | 7.4 | 7.1 (truth 7) | 7.7 | 7.7 | truth 7 (lightbox count, fixed in pass E) |
+| Asset plan | 7.6 | 7.7 | 7.4 | 8.0 | met |
+| Plan tab + reader | 7.5 | 7.6 | 7.6 | 7.5 | truth 7 (contents label, fixed in pass E) |
+| Review rounds | 7.1 (truth 7) | 7.5 | 7.6 | 7.9 | met |
+| Working states | 6.9 (next_step 6, truth 7) | 7.3 (next_step 6, truth 7) | 7.4 | 7.8 | met |
+| Final | 7.5 | 8.1 | 8.0 | 7.9 | met |
+| Resume picker | 7.7 | 7.6 | 7.8 | 7.8 | met |
+
+Every hard minimum is met from pass C on; the means sit between 7.4 and 8.0, with judge-to-judge noise of about 0.3 (the same page
+scored 8.0 and 7.9 on near-identical shots). What each pass changed is in `evals/round4-asks.md` and the "round 4" blocks of
+`mods/promo-flow/style.css` and `mods/promo-projects/style.css`. Pass D (in progress) takes the pass-C asks: readable ink on an off or
+soft primary, 2:1 sketches on narrow panes, equal 16:9 timeline cells, a column card with Details at its foot, a grey dashed To make
+chip, a PLACEHOLDER tag on a to-make sample, the reader hiding a repeated title, the footer not repeating the panel's count, a failed tile
+that says so, and the activity grid without the grey flow-step squares.

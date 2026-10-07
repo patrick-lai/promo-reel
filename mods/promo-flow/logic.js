@@ -331,7 +331,7 @@
   /* The live panel for a preview run (snapshot `job`, promo/flowjob.py). `now` is ms since the epoch, passed in so the clock is the caller's.
      Tiles fill left to right: made (or failed) items, then the ones being made now, then a row of the queue; a long run keeps its newest pictures. */
   const JOB_NOUN = { frames: ["image", "images"], samples: ["sample", "samples"], build: ["step", "steps"] };
-  const JOB_TILES = 24, JOB_QUEUE_TILES = 3, JOB_DONE_SHOWN_MIN = 10;
+  const JOB_TILES = 24, JOB_QUEUE_TILES = 0, JOB_DONE_SHOWN_MIN = 10;
   /* A run writes a heartbeat every minute (promo/flowjob.py HEARTBEAT_S): three missed beats and it is no longer shown as alive. A rendered
      shot can take many minutes, so "slow" (a gentle note, spinner kept) waits longer for builds than for one generated picture. */
   const JOB_ALIVE_S = 180, JOB_SLOW_S = { build: 900 }, JOB_SLOW_DEFAULT_S = 240;
@@ -354,7 +354,7 @@
     const shown = items.slice(-room);
     const tiles = [...shown.map((x) => ({ type: x.ok ? "item" : "failed", item: x })), ...active.map((x) => ({ type: "active", item: x })),
       ...Array.from({ length: job.state === "running" ? queuedShown : 0 }, (_, i) => ({ type: "queued", n: i }))];
-    const eta = job.state === "running" && finished >= 2 ? Math.round((elapsed / finished) * (job.total - finished)) : null;
+    const eta = job.state === "running" && finished >= 3 ? Math.round((elapsed / finished) * (job.total - finished)) : null;
     const n = (k) => k + " " + (k === 1 ? one : many);
     const title = job.state === "running" ? job.label
       : job.state === "done" ? (job.kind === "build" ? "Finished " + n(job.done) + (skipped ? ", " + skipped + " unchanged" : "") : "Made " + n(job.done)) + (job.failed ? ", " + job.failed + " failed" : "")

@@ -254,7 +254,7 @@ UICHECK = r"""(async () => {
     ok('focus moves to the page', root.activeElement === Q('.doc-page'));
     const toc = Q('[data-k=rd-toc]');
     toc.selectedIndex = toc.options.length - 1; toc.dispatchEvent(new Event('change')); await wait(300);
-    const want = +toc.options[toc.options.length - 1].textContent.match(/p\.(\d+)$/)[1];
+    const want = +toc.options[toc.options.length - 1].value + 1;  /* the option names the section; its value is the page index */
     ok('contents jumps to the chosen heading', new RegExp('Page ' + want + ' of ' + n).test(Q('.pg-l').textContent) && Q('[data-k=pg-prev-top]').disabled === false, Q('.pg-l').textContent + ' want p.' + want);
     await click('[data-k=pg-next-bot]'); await click('[data-k=pg-next-bot]'); await click('[data-k=pg-next-bot]');
     ok('the last page has no Next', Q('[data-k=pg-next-top]').disabled && Q('[data-k=pg-next-bot]').disabled && new RegExp('Page ' + n + ' of ' + n).test(Q('.pg-l').textContent), Q('.pg-l').textContent);
@@ -319,7 +319,7 @@ UICHECK = r"""(async () => {
   }
   if (step === 'review') {
     ok('the draft says what was checked on this very file', /^Checked on this file: 10 passed, 1 warning\. Not checked: vo-script/.test((Q('.verify') || {}).textContent || ''), (Q('.verify') || {}).textContent);
-    ok('the checks list every check with what changed', QA('.ck-list li').length === 6 && /1 fixed · 0 broken · 1 open/.test(Q('.ck-board .sec-h').textContent), QA('.ck-list li').length + ' ' + Q('.ck-board .sec-h').textContent);
+    ok('the checks list every check with what changed', QA('.ck-list li').length === 6 && /1 fixed · 0 broken · 1 still open/.test(Q('.ck-board .sec-h').textContent), QA('.ck-list li').length + ' ' + Q('.ck-board .sec-h').textContent);
     ok('the hidden control never reaches the person', !QA('.ck-list .ck-what').some((e) => /Klingon|periscope|pizza|dinosaur|opera|audience|Snow falls/.test(e.textContent)));
     ok('the blind comparison is reported', /blind judge preferred draft 3/.test(Q('.judged').textContent));
     ok('the look pairs are shown', QA('.lk-pair').length >= 1);

@@ -168,12 +168,15 @@ window.commissionMods["promo-projects"] = function mount(ctx) {
     /* The row carries its real frames (none drawn = none shown), the step as a thin bar, honest counts, and on the selected row the one action itself. */
     const go = isSel && !p.error && !resumed() ? h("button", { class: "btn primary row-go", type: "button", disabled: !canSend() ? true : null, "aria-label": "Resume " + (p.title || p.name) + " in this thread",
       onclick: () => send("resume", { pickable: true, id: p.id, title: p.title, stage_label: p.stage_label }) }, S.sending || S.pending ? "Opening…" : "Resume", ic("resume")) : null;
-    return h("li", { class: "rowwrap" + (isSel ? " sel" : "") }, h("button", { type: "button", class: "row", "data-id": p.id, "aria-current": isSel ? "true" : null, onclick: () => open(p.id), onkeydown: rowKeys },
+    const steps = arr(p.steps), stepIdx = steps.findIndex((s) => s.state === "current");
+    const stepNo = isSel && steps.length ? h("span", { class: "row-stepno", text: "Step " + (stepIdx < 0 ? steps.length : stepIdx + 1) + " of " + steps.length }) : null;
+    return h("li", { class: "rowwrap" + (isSel ? " sel" : ""), "data-bucket": PP.bucket(p) }, h("button", { type: "button", class: "row", "data-id": p.id, "aria-current": isSel ? "true" : null, onclick: () => open(p.id), onkeydown: rowKeys },
       h("span", { class: "row-main" },
         h("span", { class: "row-head" }, h("span", { class: "row-title" }, highlight(p.title || p.name)), h("span", { class: "row-tag", text: p.stage_label || "" }), p.updated ? h("span", { class: "row-when", text: PP.ago(p.updated, now) }) : null),
-        frames.length ? h("span", { class: "row-frames", "data-n": String(frames.length), "aria-hidden": "true" }, frames.map((f) => still(f, "", "fr"))) : null,
+        frames.length ? h("span", { class: "row-frames", "data-n": String(frames.length), "aria-hidden": "true" }, frames.map((f) => still(f, "", "fr")),
+          p.counts && p.counts.scenes ? h("span", { class: "row-fcap", text: frames.length + " of " + p.counts.scenes + " scenes, start frames" }) : null) : null,
         p.error ? h("span", { class: "row-status", text: p.error }) : [h("span", { class: "row-status" }, highlight(p.question || p.status)), countsLine(p.counts || {})],
-        h("span", { class: "row-foot" }, tag, h("span", { class: "row-name mono" }, highlight(p.name))),
+        h("span", { class: "row-foot" }, tag, h("span", { class: "row-name mono" }, highlight(p.name)), stepNo),
         bar(p)),
       ic("chevron", "chev")), go);
   }
@@ -281,7 +284,8 @@ window.commissionMods["promo-projects"] = function mount(ctx) {
     const frames = arr(p.frames);
     const when = [p.started ? "Started " + PP.day(p.started, now) : "", p.updated ? "last active " + PP.ago(p.updated, now) : ""].filter(Boolean).join(", ");
     const body = p.error ? [h("p", { class: "msg bad" }, ic("alert"), h("span", { text: p.error }))] : [
-      frames.length ? h("div", { class: "frames", "data-n": String(frames.length) }, frames.map((f, i) => still(f, "Storyboard frame " + (i + 1) + " of " + p.title))) : null,
+      frames.length ? h("div", { class: "frames", "data-n": String(frames.length) }, frames.map((f, i) => still(f, "Storyboard frame " + (i + 1) + " of " + p.title)),
+        c.scenes ? h("p", { class: "fcap muted small", text: frames.length + " of " + c.scenes + " scenes, start frames" }) : null) : null,
       cutPlayer(p),
       h("section", { class: "card where" },
         h("h3", { text: "Where it stopped" }),

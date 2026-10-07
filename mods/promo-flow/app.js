@@ -263,11 +263,14 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     else if (isStarting()) el.stepNo.textContent = "Starting";
     el.stageName.textContent = noConn ? "Promo flow" : isStarting() ? "Promo flow" : S.doc.stage_label || STAGE_LABEL[S.doc.stage] || "Promo flow";
     const sm = S.summary || {};
-    el.stateLine.textContent = noConn ? "No answer from the host yet." : S.readonly ? "Archived. Read only." : isStarting() ? "Setting up your video." : S.justSent || S.pending ? "Sent. Waiting for the agent to pick it up." : sm.status || "";
+    const trimTail = (t) => (t || "").replace(/\s*Now:.*$/s, "");
+    const noAlso = (t) => (t || "").replace(/\s*Also open for you:.*$/s, "");
+    el.stateLine.textContent = noConn ? "No answer from the host yet." : S.readonly ? "Archived. Read only." : isStarting() ? "Setting up your video." : S.justSent || S.pending ? "Sent. Waiting for the agent to pick it up." : (sm.badge === "waiting" ? noAlso(sm.status) : trimTail(noAlso(sm.status))) || "";
     /* Once the person has sent their answer the ball is with the agent, whatever the last summary says: never show "Your turn" with nothing left to do. */
     const sent = !!(S.pending || S.justSent || S.sending);
     const badge = noConn ? "attention" : isStarting() || ((sent || jobRunning() || apLive()) && sm.badge === "waiting") ? "working" : BADGE_TEXT[sm.badge] ? sm.badge : "working";
-    const bt = noConn ? "Not connected" : S.readonly ? "Read only" : BADGE_TEXT[badge];
+    const pend = hasDoc() && badge === "waiting" ? PF.forYou(S.doc).pairs.length : 0;
+    const bt = noConn ? "Not connected" : S.readonly ? "Read only" : BADGE_TEXT[badge] + (pend ? " \u00b7 " + pend + (pend === 1 ? " pick" : " picks") : "");
     el.badge.dataset.badge = S.readonly && !noConn ? "readonly" : badge;
     el.badgeText.textContent = bt;
     if (S.lastBadge && S.lastBadge !== bt) say("Status: " + bt);
@@ -321,8 +324,9 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       el.working.dataset.key = key;
       const last = act[act.length - 1];
       const shown = act.slice(-DOTS);
-      const dots = shown.map((x, i) => {
-        const live = i === shown.length - 1 && !x.done && x.kind !== "milestone";
+      /* The grid shows the coloured steps; flow steps are only a count in the legend. */
+      const dots = shown.filter((x) => x.kind !== "milestone").map((x, i, coloured) => {
+        const live = i === coloured.length - 1 && !x.done;
         return h("i", { class: "dt k-" + (ACT_KIND[x.kind] ? x.kind : "other") + (x.done ? " done" : "") + (live ? " live" : ""), title: clock(x.at) + " · " + x.text });
       });
       for (let i = shown.length; i < Math.min(DOTS, 24); i++) dots.push(h("i", { class: "dt empty", "aria-hidden": "true" }));
@@ -364,10 +368,10 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     const x = t.item || {};
     const cls = "jb-tile " + t.type + (x.skipped ? " skip" : "") + (pop ? " pop" : "");
     /* Build steps are mostly icons (voice, music, mix): their name is the only way to tell them apart. Frames carry their scene in the picture. */
-    const cap = () => (S.doc.job.kind === "build" ? h("span", { class: "jb-cap", "aria-hidden": "true", text: x.label }) : "");
+    const cap = () => (S.doc.job.kind === "build" ? h("span", { class: "jb-cap", "aria-hidden": "true", text: x.label + (x.skipped ? " \u00b7 unchanged" : "") }) : "");
     if (t.type === "queued") return h("div", { class: cls, "aria-hidden": "true" });
     if (t.type === "active") return h("div", { class: cls, title: "Making now: " + x.label }, h("i", { class: "spin", "aria-hidden": "true" }), cap());
-    if (t.type === "failed") return h("div", { class: cls, title: x.label + ": couldn't be made" }, ic("alert"), cap());
+    if (t.type === "failed") return h("div", { class: cls, title: x.label + ": couldn't be made" }, ic("alert"), S.doc.job.kind === "build" ? cap() : h("span", { class: "jb-cap", "aria-hidden": "true", text: "failed" }));
     const r = mref(x.path);
     const slot = h("span", { class: "jb-slot" });
     const name = x.label + (x.skipped ? " (unchanged)" : "");
@@ -558,7 +562,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     else if (S.reader) view = viewReader();
     else view = ({ scripts: viewScripts, storyboard: viewStoryboard, assets: viewAssets, draft: viewDraft, plan: viewPlan }[S.tab] || viewOverview)();
     const fy = !S.settingsOpen && !S.reader && hasDoc() && readable() ? forYou() : null;
-    if (fy) view.prepend(fy);
+    if (fy) { const rc = S.tab === "draft" && S.doc.stage !== "final" && el.sc.clientWidth >= 760 ? view.querySelector(".rounds-col") : null; if (rc) rc.prepend(fy); else if (S.doc.stage === "final") view.append(fy); else view.prepend(fy); }
     el.content.replaceChildren(view);
     el.sc.scrollTop = keepScroll;
     el.content.setAttribute("aria-labelledby", S.tab ? "tab-" + S.tab : "");
@@ -577,7 +581,8 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   }
   /* A blind pick: the two options as Left and Right, never by name, so the answer is about what they see and hear. */
   function pickCard(p) {
-    const blocked = !canAsk() || !p.ready;
+    const later = apLive();
+    const blocked = !canAsk() || !p.ready || later;
     const side = (k) => {
       const r = p[k] && mref(p[k]);
       const slot = h("div", { class: "pk-media", style: "position:relative" });
@@ -585,13 +590,14 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       else lazyInto(slot, r, (u) => (p.media === "image" ? h("img", { src: u, alt: (k === "left" ? "Left" : "Right") + " option" })
         : p.media === "video" ? h("video", { src: u, controls: "", preload: "metadata", playsinline: "", "aria-label": (k === "left" ? "Left" : "Right") + " option" })
           : h("audio", { src: u, controls: "", preload: "metadata", "aria-label": (k === "left" ? "Left" : "Right") + " option" })), { compact: true });
-      return h("figure", { class: "pk-side" }, slot, h("figcaption", { text: k === "left" ? "Left" : "Right" }));
+      /* The label sits beside the slot, not in it: the loader replaces the slot's children. */
+      return h("figure", { class: "pk-side" }, h("div", { class: "pk-box" }, slot, h("span", { class: "pk-lab", "aria-hidden": "true", text: k === "left" ? "Left" : "Right" })));
     };
     const ans = [["left", "Left"], ["right", "Right"], ["same", "No difference"], ["unsure", "Can't tell"]];
     /* On a delivered final the pick folds to its question, so the ready block and Download come first. */
     const folded = S.doc.stage === "final";
-    return h(folded ? "details" : "section", { class: "card pick-card" + (folded ? " fold" : ""), "aria-label": "Your pick: " + p.question },
-      h(folded ? "summary" : "div", { class: "pk-h" }, h("b", { text: p.question }), folded ? h("span", { class: "chip accent pk-tag", text: "Your pick" }) : null, h("span", { class: "sub", text: "You don't see which option is which, so only what you see and hear decides." })),
+    return h(folded ? "details" : "section", { class: "card pick-card" + (folded ? " fold" : "") + (later ? " later" : ""), "aria-label": "Your pick: " + p.question },
+      h(folded ? "summary" : "div", { class: "pk-h" }, h("b", { text: p.question }), folded ? h("span", { class: "chip accent pk-tag", text: "Your pick" }) : null, h("span", { class: "sub", text: later ? "Waiting for your pick after the stop." : "You don't see which option is which, so only what you see and hear decides." })),
       h("div", { class: "pk-row" }, side("left"), side("right")),
       h("div", { class: "pk-acts", role: "group", "aria-label": "Your pick" }, ans.map(([k, l], i) => h("button", { type: "button", class: "btn " + (i < 2 ? "ghost pk-main" : "ghost"), "data-quiet": i < 2 ? null : "1",
         "data-k": "pk-" + p.id + "-" + k, disabled: blocked, onclick: () => send("ab", { pair: p.id, side: k, label: l, question: p.question }) }, l))));
@@ -601,8 +607,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     return h("section", { class: "card ap-card", "data-state": a.state, "aria-label": "The agent working on its own" },
       h("div", { class: "ap-h" }, busy ? h("i", { class: "spin" }) : ic(a.goal_met ? "check" : a.live ? "clock" : "alert"), h("span", { text: a.line })),
       h("div", { class: "ap-bar", role: "progressbar", "aria-label": "Time used", "aria-valuemin": "0", "aria-valuemax": String(a.minutes), "aria-valuenow": String(Math.round(a.used_min || 0)) }, h("i", { style: "width:" + Math.round(a.pct * 100) + "%" })),
-      a.live ? h("div", { class: "ap-acts" }, h("button", { type: "button", class: "btn ghost", "data-quiet": "1", "data-k": "ap-stop", disabled: !canAsk(), text: "Stop and show me the draft",
-        onclick: () => send("autopilot", { op: "stop", minutes: 0, what: "stop now" }) })) : null);
+      a.live ? h("p", { class: "sub", text: "Stop it from the footer to decide now." }) : null);
   }
   function assumeCard(list) {
     return h("section", { class: "card as-card", "aria-label": "Choices the agent made" }, secH("Choices the agent made for you", list.length),
@@ -642,7 +647,8 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   function viewStarting() {
     return h("div", { class: "pane empty fill prep", role: "status" }, h("div", { class: "ring" }, ic("spark")),
       h("h2", null, "Preparing", h("span", { class: "dots", "aria-hidden": "true" }, h("i", { text: "." }), h("i", { text: "." }), h("i", { text: "." }))),
-      h("p", { text: "The plan appears here as soon as it is ready." }));
+      h("p", { text: "The plan appears here as soon as it is ready." }),
+      h("ol", { class: "prep-steps", "aria-label": "The ten steps" }, Object.values(STAGE_LABEL).map((l, i) => h("li", { class: i === 0 ? "current" : "", text: l }))));
   }
 
   /* ---------------- settings: where videos are saved ---------------- */
@@ -723,7 +729,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     if (g && g.kind === "style" && !S.readonly) {
       /* Asked again (a style is on file, references are not): the style they chose stays selected, so one click answers the reference question. */
       if (!S.style && !S.ownStyle.trim() && d.style && d.style.style) S.style = d.style.style;
-      box.append(h("div", null, h("h2", { class: "h2", text: "Pick a style" }),
+      box.append(h("div", null, h("div", { class: "h2-row" }, h("h2", { class: "h2", text: "Pick a style" }), h("span", { class: "sub", text: "Sketches of each look, not your footage." })),
         h("div", { class: "choices styles", role: "radiogroup", "aria-label": "Style", style: "margin-top:10px" }, arr(g.options).map((o) => {
           const th = o.thumb && mref(o.thumb);
           const tslot = th && !th.error ? h("div", { class: "thumb", style: "position:relative" }) : styleArt(o.label);
@@ -765,9 +771,9 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       const picked = s.picked || (!pickMode && S.sentPicks && S.sentPicks.has(s.id));
       const title = h("div", { class: "t" }, h("span", { class: "id", text: s.id }), h("b", { text: s.title }),
         picked && !pickMode ? h("span", { class: "chip ok" }, ic("check"), "Picked") : null, s.verdict ? h("span", { class: "chip", text: s.verdict }) : null);
-      const read = PF.bodyOf(s).text ? h("button", { type: "button", class: "btn ghost sm read-btn", "data-k": "open-script:" + s.id, onclick: (e) => { e.preventDefault(); e.stopPropagation(); openReader("script:" + s.id); } }, ic("doc"), "Read the full script" + (s.words ? " \u00b7 " + wordsLabel(s.words) : "")) : null;
+      const read = PF.bodyOf(s).text ? h("button", { type: "button", class: "btn ghost sm read-btn", "data-k": "open-script:" + s.id, onclick: (e) => { e.preventDefault(); e.stopPropagation(); openReader("script:" + s.id); } }, ic("doc"), h("span", { class: "rb-t", text: "Read full script" }), s.words ? h("span", { class: "rb-n", text: wordsLabel(s.words) }) : null) : null;
       const body = h("div", { class: "body" }, strip, title, h("div", { class: "logline" }, showMore(s.logline || "", 200, "c3")),
-        read, beats.length ? h("ol", { class: "beats", "aria-label": all.length > 2 ? "Opening and closing beats" : "Beats" }, beats.map((b) => h("li", { text: b })), all.length > 2 ? h("li", { class: "more-beats", text: all.length + " beats in total" }) : null) : null);
+        read, beats.length ? h("ol", { class: "beats", "aria-label": all.length > 2 ? "Opening and closing beats" : "Beats" }, beats.map((b, i) => h("li", { class: all.length > 2 ? (i === 0 ? "opens" : "ends") : "", text: b })), all.length > 2 ? h("li", { class: "more-beats", text: all.length + " beats in total" }) : null) : null);
       if (pickMode) {
         const inp = h("input", { type: "checkbox", value: s.id, checked: S.picks.has(s.id), "aria-label": s.id + ": " + s.title, onchange: () => {
           if (inp.checked) S.picks.add(s.id); else S.picks.delete(s.id);
@@ -778,14 +784,14 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       } else list.append(h("div", { class: "card choice static" + (picked ? " picked" : arr(d.scripts).some((o) => o.picked) ? " passed" : "") }, h("div", { class: "row" }, body)));
     }
     /* The council's note is context, not the decision: one folded row, so three script cards fit the first screen. */
-    if (d.councils && d.councils.scripts) box.append(h("details", { class: "card council fold" }, h("summary", { text: "What the council said about the scripts" }), h("p", { text: d.councils.scripts })));
+    if (d.councils && d.councils.scripts) box.append(h("details", { class: "card council fold", open: el.sc.clientWidth >= 760 ? "" : null }, h("summary", { text: "What the council said about the scripts" }), h("p", { text: d.councils.scripts })));
     if (!pickMode && d.stage === "storyboard" && !arr(d.boards).length) {
       box.append(h("div", { class: "card drawing", role: "status" }, h("div", { class: "dr-h" }, h("i", { class: "spin" }), h("b", { text: "Your storyboard is being drawn" })),
         h("p", { text: "The agent is turning your pick into scenes, each with a start and an end picture. They appear here as soon as they exist, and you approve them before anything else is made." }),
         h("div", { class: "dr-tiles", "aria-hidden": "true" }, [0, 1, 2, 3, 4].map(() => h("i", { class: "sk" })))));
     }
     box.append(list);
-    const c = STAGE_TAB[d.stage] === "scripts" ? checksLine() : null;
+    const c = STAGE_TAB[d.stage] === "scripts" && !pickMode ? checksLine() : null;
     if (c) box.append(c);
     return h("div", { class: "pane" }, box);
   }
@@ -823,7 +829,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     const blocked = !canAsk();
     /* One row of requests: the documents, not the asking, own this tab. */
     const quick = h("div", { class: "ask-row", role: "group", "aria-label": "Ask the agent to add something" },
-      QUICK.map(([label, text]) => h("button", { type: "button", class: "qchip", disabled: blocked, "data-k": "q-" + label, onclick: () => openRequest(text, "What should the agent add? Edit the request if you like.") }, ic("plus"), label)),
+      QUICK.map(([label, text]) => h("button", { type: "button", class: "qchip", disabled: blocked, "data-k": "q-" + label, onclick: () => openRequest(text, "What should the agent add? Edit the request if you like.", label) }, ic("plus"), label)),
       h("button", { type: "button", class: "qchip other", disabled: blocked, "data-k": "q-other", text: "Something else…", onclick: () => openRequest("", "Say what you want the agent to add to the plan.") }));
     fadeX(quick);
     box.append(h("details", { class: "ask-card fold", open: all.length ? null : "" },
@@ -844,9 +850,10 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       box.append(bar);
     }
     const shown = all.filter((x) => (!S.docGroup || x.group === S.docGroup) && (!q || ((x.title || "") + " " + (x.summary || "") + " " + (x.preview || "") + " " + (x.kind_label || "")).toLowerCase().includes(q)));
-    if (!shown.length) box.append(h("p", { class: "muted", role: "status", text: "No document matches." }));
+    if (!shown.length) box.append(h("p", { class: "muted no-match", role: "status" }, h("span", { text: q ? "No documents match \u201c" + S.docQ.trim() + "\u201d." : "No documents in this group." }),
+      h("button", { type: "button", class: "btn ghost sm", "data-k": "doc-clear", text: q ? "Clear search" : "Show all", onclick: () => { S.docQ = ""; S.docGroup = null; render(true); } })));
     for (const g of groups) {
-      const inG = shown.filter((x) => x.group === g);
+      const inG = shown.filter((x) => x.group === g).sort((a, b2) => (b2.picked ? 1 : 0) - (a.picked ? 1 : 0));
       if (!inG.length) continue;
       box.append(h("section", { class: "doc-group", "aria-label": g }, secH(g, inG.length), h("div", { class: "doc-list" }, inG.map(docCard))));
     }
@@ -944,13 +951,13 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       const prevHit = h("button", { type: "button", class: "icon-btn sm", "aria-label": "Previous match", onclick: () => hit(-1) }, ic("left"));
       const nextHit = h("button", { type: "button", class: "icon-btn sm", "aria-label": "Next match", onclick: () => hit(1) }, ic("right"));
       const toc = pages.length > 1 ? h("select", { class: "rd-toc", "aria-label": "Jump to", "data-k": "rd-toc", onchange: (e) => { go(+e.target.value); } },
-        outline.filter((o) => o.level <= 2 || pages.length < 14).map((o) => h("option", { value: String(o.page), selected: o.page === R.page }, (o.level > 1 ? "  " : "") + o.title + " · p." + (o.page + 1)))) : null;
+        outline.filter((o) => o.level <= 2 || pages.length < 14).map((o) => h("option", { value: String(o.page), selected: o.page === R.page }, (o.level > 1 ? "  " : "") + o.title))) : null;
       const tools = h("div", { class: "rd-tools" }, h("div", { class: "rd-findrow" }, find, prevHit, nextHit), found, toc);
       const page = h("div", { class: "doc-page", tabindex: "-1" });
       const pgBar = h("div", { class: "pg-bar", "aria-hidden": "true" }, h("i"));
       const top = h("nav", { class: "pager top", "aria-label": "Pages" }), bot = h("nav", { class: "pager bot", "aria-label": "Pages" });
       const navParts = (cls) => [h("button", { type: "button", class: "btn ghost sm", "data-k": "pg-prev-" + cls, disabled: R.page === 0, onclick: () => go(R.page - 1) }, ic("left"), "Previous"),
-        h("span", { class: "pg-l", text: "Page " + (R.page + 1) + " of " + pages.length + (pages[R.page].title && !/^Page \d+$/.test(pages[R.page].title) ? " \u00b7 " + clip(pages[R.page].title, 36) : "") }),
+        h("span", { class: "pg-l", text: "Page " + (R.page + 1) + " of " + pages.length + (pages[R.page].title && !/^Page \d+$/.test(pages[R.page].title) && pages[R.page].title !== it.title ? " \u00b7 " + pages[R.page].title : "") }),
         h("button", { type: "button", class: "btn ghost sm", "data-k": "pg-next-" + cls, disabled: R.page === pages.length - 1, onclick: () => go(R.page + 1) }, "Next", ic("right"))];
       const hits = () => PF.findPages(pages, R.q);
       const before = (pg) => hits().filter((x) => x.page < pg).reduce((n, x) => n + x.n, 0);
@@ -972,6 +979,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       function go(i) {
         if (i < 0 || i >= pages.length) return;
         R.page = i;
+        if (toc) toc.value = String([...toc.options].map((o) => +o.value).filter((p) => p <= i).pop() ?? i);
         draw();
         el.sc.scrollTop = Math.max(0, wrap.getBoundingClientRect().top - el.sc.getBoundingClientRect().top + el.sc.scrollTop - (el.tabs.hidden ? 0 : el.tabs.offsetHeight) - 4);
         page.focus({ preventScroll: true });
@@ -981,6 +989,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
         const p = pages[R.page];
         const nodes = p.blocks.map((b) => blockNode(b, R.q)).filter(Boolean);
         page.replaceChildren(...nodes);
+        if (R.page === 0 && nodes[0] && nodes[0].classList && nodes[0].classList.contains("md-h1") && nodes[0].textContent.trim() === (it.title || "").trim()) nodes[0].hidden = true;
         if (R.mi != null) { const k = R.mi - before(R.page), ms = page.querySelectorAll("mark"); if (k >= 0 && k < ms.length) ms[k].classList.add("cur"); }
         const hs = hits(), total = hs.reduce((a, x) => a + x.n, 0);
         found.textContent = R.q.trim().length < 2 ? "" : total ? total + " " + plural(total, "match", "matches") + " on " + hs.length + " " + plural(hs.length, "page", "pages") : "No match";
@@ -1026,12 +1035,14 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     return wrap;
   }
   /* The one honest answer to a placeholder: ask the agent to make the real thing (frames as images, a sample of every asset). */
-  function makeBanner(text, what) {
+  function makeBanner(text, what, label) {
     const blocked = S.readonly || S.offline || !!S.pending || !!S.justSent || !!S.sending;
+    const short = text.replace(/\s*\([^)]*\)/g, "").replace(/ (are|is) not a real image yet/, " not made yet");
+    if (hasDoc() && S.doc.job && S.doc.job.state === "stopped") return h("div", { class: "warnline", role: "status" }, ic("alert"), h("span", { text: short + (S.doc.job.resume ? " The run stopped: carry on from the footer." : " The run stopped: make the rest from the footer.") }));
     /* While the agent runs (frames, a build, or on its own) the line states the fact; the ask comes back when the run is over. */
-    if (jobRunning() || apLive()) return h("div", { class: "warnline", role: "status" }, ic("alert"), h("span", { text: text + (jobRunning() && S.doc.job.kind !== "build" ? " Being made now: see the progress above." : " Ask the agent once its run is done.") }));
-    return h("div", { class: "warnline", role: "status" }, ic("alert"), h("span", { text }),
-      h("button", { class: "load", type: "button", disabled: blocked, text: "Ask the agent to make them", onclick: () => send("generate", { what }) }));
+    if (jobRunning() || apLive()) return h("div", { class: "warnline live", role: "status" }, ic("clock"), h("span", { text: short + (jobRunning() && S.doc.job.kind !== "build" ? " Being made now: see the progress above." : " Waiting on the agent's run.") }));
+    return h("div", { class: "warnline", role: "status" }, ic("alert"), h("span", { text: short }),
+      h("button", { class: "load", type: "button", disabled: blocked, text: label ? label.replace(/^Ask the agent to /, "").replace(/^m/, "M") : "Make them", "aria-label": label || "Ask the agent to make them", onclick: () => send("generate", { what }) }));
   }
   function viewStoryboard() {
     const d = S.doc, boards = arr(d.boards), b = curBoard();
@@ -1041,10 +1052,13 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     const scenes = arr(b.scenes);
     const total = Math.max(b.duration_s || 0, ...scenes.map((x) => x.end_s || 0), 1);
     if (confirm) box.append(confirmCard(boards));
-    box.append(h("div", { class: "board-row" }, boards.length > 1 ? storySwitch(boards) : h("div", { class: "ttl", text: b.title })));
+    const boardRow = h("div", { class: "board-row" }, boards.length > 1 ? storySwitch(boards) : h("div", { class: "ttl", text: b.title }));
+    box.append(boardRow);
+    const tools = scenes.length && !confirm ? sbTools(b, scenes) : null;
+    if (tools) boardRow.append(tools.firstChild);
     const unmade = PF.previewRule(d, "storyboard-approved");
     if (unmade && !confirm) box.append(makeBanner(unmade.note.replace(/ Ask the agent.*$/, ""), "storyboard frames"));
-    if (scenes.length && !confirm) box.append(sbTools(b, scenes));
+    if (tools && tools.childNodes.length) box.append(tools);
     /* The scenes are what the person came to see; the paced preview comes after them (`preview` below). */
     const preview = S.sbView !== "time" && scenes.some((x) => x.start && mref(x.start.path) && !(mref(x.start.path) || {}).error) ? animatic(b, scenes) : null;
     if (d.stage === "keyframes") box.append(keyframeGrid(b));
@@ -1057,17 +1071,18 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       return h("div", { class: "pane" }, box);
     }
     const tl = h("div", { class: "tlwrap" }, h("div", { class: "tl", role: "group", "aria-label": "Timeline: jump to a scene" }, scenes.map((x) =>
-      h("button", { type: "button", class: "k-" + sceneStatus(x).cls, "data-sid": x.id, style: "flex:" + Math.max((x.end_s - x.start_s), 0.5) + " 1 0", title: "Scene " + x.id + " " + x.beat + ", " + num(x.start_s) + " to " + num(x.end_s) + " s. " + STILLS,
-        "aria-label": "Scene " + x.id + ", " + x.beat, onclick: () => jumpScene(b.id, x.id) }, tlThumb(x), h("span", { class: "fill", text: x.id })))),
+      h("button", { type: "button", class: "k-" + sceneStatus(x).cls + (PF.frameTimeline(b).some((f) => f.scene === x && !(f.f && mref(f.f.path) && !mref(f.f.path).error)) ? " k-unmade" : ""), "data-sid": x.id, style: "flex:" + Math.max((x.end_s - x.start_s), 0.5) + " 1 0", title: "Scene " + x.id + " " + x.beat + ", " + num(x.start_s) + " to " + num(x.end_s) + " s. " + STILLS,
+        "aria-label": "Scene " + x.id + ", " + x.beat, onclick: () => jumpScene(b.id, x.id) }, tlThumb(x), h("span", { class: "fill" }, h("i", { class: "no", text: x.id }))))),
       confirm ? null : h("div", { class: "tl-leg" }, [["r", "real", "All real assets ready"], ["s", "stills", "Stills only"], ["m", "mock", "Mock in plan"], ["g", "gen", "Generated"], ["t", "todo", beforeAssets() ? "Frames not made yet" : "To capture / not made"]]
         .filter(([, k]) => scenes.some((x) => sceneStatus(x).cls === k)).map(([c, , label]) => h("span", null, h("i", { class: c }), label))),
-      confirm ? null : h("p", { class: "tl-note", text: scenes.length + (scenes.length === 1 ? " scene" : " scenes") + " · " + num(total) + " s · " + (b.aspect || "16:9") + " · Frames are storyboard stills, not footage." }));
+      confirm ? null : h("p", { class: "tl-note", text: scenes.length + (scenes.length === 1 ? " scene" : " scenes") + " · " + num(total) + " s · " + (b.aspect || "16:9") + " · Frames are storyboard stills, not footage." + (PF.frameTimeline(b).some((f) => !(f.f && mref(f.f.path) && !mref(f.f.path).error)) ? " Dashed = a frame not made." : "") }));
     if (!confirm) box.append(tl);
     if (logline) box.append(logline);
     const ar = String(b.aspect || "16:9").replace(":", "/");
     const flat = [];
     const grid = h("div", { class: "scenes" });
     for (const x of scenes) grid.append(sceneCard(b, x, flat, ar, confirm));
+    flat.unmade = Math.max(0, PF.frameTimeline(b).length - flat.length);
     box.append(grid);
     if (preview) box.append(preview);
     const c = d.stage === "storyboard" ? checksLine() : null;
@@ -1077,14 +1092,15 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       let cur = null;
       for (const n of grid.children) { if (n.getBoundingClientRect().top <= top) cur = n.dataset.sid; else break; }
       for (const bt of tl.querySelectorAll("button")) bt.setAttribute("aria-current", String(bt.dataset.sid === cur));
+      tl.classList.toggle("compact", el.sc.scrollTop > 160);
     };
     return h("div", { class: "pane" }, box);
   }
   /* View switch + "how many frames": the person asks for a cadence ("every 5 s") and the agent adds and draws those frames. */
   function sbTools(b, scenes) {
     const all = PF.frameTimeline(b), made = all.filter((x) => x.f && mref(x.f.path) && !mref(x.f.path).error).length;
-    const view = h("div", { class: "seg-ctl", role: "group", "aria-label": "View" }, [["scenes", "Scenes", scenes.length], ["time", "Frames in time", all.length]].map(([k, l, n]) =>
-      h("button", { type: "button", "data-k": "sbv-" + k, "aria-pressed": String(S.sbView === k), onclick: () => { S.sbView = k; render(true); el.sc.scrollTop = 0; } }, l, h("span", { class: "n", text: String(n) }))));
+    const view = h("div", { class: "seg-ctl", role: "group", "aria-label": "View" }, [["scenes", "Scenes", scenes.length, 0], ["time", "Frames in time", all.length, all.length - made]].map(([k, l, n, unmade]) =>
+      h("button", { type: "button", "data-k": "sbv-" + k, "aria-pressed": String(S.sbView === k), title: unmade ? unmade + " of " + n + " frames not made yet" : null, onclick: () => { S.sbView = k; render(true); el.sc.scrollTop = 0; } }, l, h("span", { class: "n", text: String(n) }), unmade ? h("span", { class: "unmade", text: unmade + " not made" }) : null)));
     const cur = b.density || 0;
     const choices = PF.DENSITY_CHOICES.slice();
     if (cur && !choices.some((c) => c.every === cur)) choices.push({ every: cur, label: "Every " + num(cur) + " s" });
@@ -1287,7 +1303,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   const LB = { items: [], i: 0, opener: null, open: false, parts: null };
   const inertTargets = () => [el.sc, el.gate];
   function openLightbox(items, i) {
-    LB.items = items; LB.i = i; LB.opener = ctx.root.activeElement; LB.open = true;
+    LB.items = items; LB.i = i; LB.opener = ctx.root.activeElement; LB.open = true; LB.unmade = items.unmade || 0;
     const title = h("div", { class: "cap" }), cnt = h("span", { class: "cnt" });
     const prev = h("button", { class: "l nav prev", type: "button", "aria-label": "Previous frame", onclick: () => lbGo(-1) }, ic("left"));
     const next = h("button", { class: "l nav next", type: "button", "aria-label": "Next frame", onclick: () => lbGo(1) }, ic("right"));
@@ -1314,7 +1330,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     const s = it.ctx.scene;
     title.replaceChildren("Scene " + s.id + " · " + s.beat, h("small", { text: num(s.start_s) + "–" + num(s.end_s) + " s" }),
       h("span", { class: "lb-chip", text: "Storyboard still" + (sceneStatus(s).label ? " \u00b7 " + sceneStatus(s).label : "") }));
-    cnt.textContent = LB.i + 1 + " of " + LB.items.length + " frames";
+    cnt.textContent = "Frame " + (LB.i + 1) + " of " + LB.items.length + (LB.unmade ? " \u00b7 " + LB.unmade + " more not made yet (" + (LB.items.length + LB.unmade) + " in all)" : "");
     prev.disabled = LB.i === 0; next.disabled = LB.i === LB.items.length - 1;
     const hasS = LB.items.some((x) => x.ctx.scene === s && x.ctx.kind === "start"), hasE = LB.items.some((x) => x.ctx.scene === s && x.ctx.kind === "end");
     tgS.disabled = !hasS; tgE.disabled = !hasE;
@@ -1381,9 +1397,14 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     box.append(cnt);
     if (m.total) box.append(h("div", { class: "stackbar", "aria-hidden": "true" }, ["ready", "mock", "todo", "missing"].filter((k) => m.n[k]).map((k) => h("i", { class: "s-" + k, style: "flex:" + m.n[k] + " 1 0", title: m.n[k] + " " + k }))));
     const miss = missingAll(), here = m.n.missing, other = miss - here;
-    if (miss) box.append(h("div", { class: "warnline", role: "alert" }, ic("alert"), h("span", { text: (here ? here + " " + plural(here, "file is", "files are") + " missing." : "No files missing in this story.") + (other > 0 ? " " + other + " " + plural(other, "file is", "files are") + " missing (other story)." : "") })));
-    const bare = arr(d.assets).filter((a) => !PF.hasPreview(a)).length;
-    if (bare) box.append(makeBanner(bare + " " + plural(bare, "asset has", "assets have") + " nothing to look at or hear yet.", "asset samples"));
+    const missed = m.items.filter((x) => x.eff === "missing");
+    const named = missed.length === 1 ? (missed[0].a.label || missed[0].a.id) + "." + (missed[0].scenes.length ? (missed[0].scenes.length === 1 ? " Scene " : " Scenes ") + sceneRange(missed[0].scenes) + " will have no " + (KIND_MEDIA[missed[0].a.kind] === "audio" ? "sound" : "picture") + "." : "") : "";
+    const showIt = missed.length ? h("button", { type: "button", class: "load", "data-k": "show-missing", text: missed.length === 1 ? "Show it" : "Show them", onclick: () => { const n = el.content.querySelector('[data-eff="missing"]'); if (n) { n.scrollIntoView({ block: "center", behavior: "smooth" }); n.classList.add("flash"); } } }) : null;
+    if (miss) box.append(h("div", { class: "warnline", role: "alert" }, ic("alert"), h("span", null, here && named ? h("b", { text: "File missing: " }) : null, (here ? named || here + " " + plural(here, "file is", "files are") + " missing." : "No files missing in this story.") + (other > 0 ? " " + other + " " + plural(other, "file is", "files are") + " missing (other story)." : "")), showIt));
+    const missIds = new Set(missed.map((x) => x.a.id));
+    const bareList = arr(d.assets).filter((a) => !PF.hasPreview(a) && !missIds.has(a.id)), bare = bareList.length;
+    const bareName = bare ? (bareList[0].label || bareList[0].id) + (bare > 1 ? " and " + (bare - 1) + " more have" : " has") + " nothing to look at or hear yet." : "";
+    if (bare) { const bb = makeBanner(bareName, "asset samples", bare === 1 ? "Ask the agent to make it" : "Ask the agent to make them"); bb.classList.add("soft"); box.append(bb); }
     const shown = m.items.filter((x) => !S.filter || x.eff === S.filter).sort((a, b) => RANK[a.eff] - RANK[b.eff] || a.i - b.i);
     /* Grouped by what the thing is (recordings, pictures, music, voice, sounds, keyframes), each group one grid: the kind reads from the heading, the state from the chip. */
     const groupOf = (x) => (x.type === "keyframe" ? "keyframes" : KIND_GROUP[x.a.kind] || "other");
@@ -1391,8 +1412,11 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       const inG = shown.filter((x) => groupOf(x) === gid);
       if (!inG.length) continue;
       const open = inG.filter((x) => x.eff !== "ready").length;
+      const isCapture = (x) => x.type !== "keyframe" && (x.a.kind === "recording" || x.a.kind === "screenshot") && (x.eff === "mock" || x.eff === "todo");
+      const nRec = inG.filter(isCapture).length, nMiss = inG.filter((x) => x.eff === "missing").length, nMake = open - nRec - nMiss;
+      const openLine = [nRec ? nRec + " to record" : "", nMake ? nMake + " to make" : "", nMiss ? nMiss + " missing" : ""].filter(Boolean).join(" \u00b7 ");
       box.append(h("section", { class: "asset-group", "aria-label": label },
-        secH(label, inG.length, open ? h("span", { class: "sec-open", text: open + " open" }) : null),
+        secH(label, inG.length, open ? h("span", { class: "sec-open", text: openLine }) : null),
         h("div", { class: "gallery", "data-count": String(inG.length) }, inG.map((x) => (x.type === "keyframe" ? keyframeRow(x.t) : !PF.hasPreview(x.a) && (x.eff === "todo" || x.eff === "missing") ? assetRow(x) : assetTile(x))))));
     }
     const c = STAGE_TAB[d.stage] === "assets" ? checksLine() : null;
@@ -1410,7 +1434,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     const a = x.a;
     const sc = x.scenes;
     const fb = KIND_MEDIA[a.kind] || "file";
-    return h("article", { class: "card asset compact" }, h("div", { class: "gl" }, glyphFor(fb)),
+    return h("article", { class: "card asset compact", "data-eff": x.eff, "data-aid": a.id }, h("div", { class: "gl" }, glyphFor(fb)),
       h("div", { class: "bd" }, h("div", { class: "nm", title: a.id, text: a.label || a.id }), sc.length ? h("div", { class: "sc", text: (sc.length === 1 ? "Scene " : "Scenes ") + sceneRange(sc) }) : null,
         h("div", { class: "kind" }, h("span", { class: "chip", text: (KIND_LABEL[a.kind] || a.kind) + " \u00b7 " + a.source }), a.source === "licensed" && !a.licence ? h("span", { class: "chip warn", text: "No licence on file" }) : null, h("span", { class: "chip bad", text: x.eff === "missing" ? "File missing" : "To make" }))),
       a.how && a.source === "generated" ? h("details", { class: "prompt rw-how" }, h("summary", { text: "View prompt" }), h("p", { text: scrubPaths(a.how) })) : null);
@@ -1461,8 +1485,8 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     rg.addEventListener("input", () => { if (a.duration) a.currentTime = a.duration * rg.value / 1000; });
     return h("div", { class: "audio" }, pp, rg, tm);
   }
-  const STATE_CHIP = { mock: ["Mock", "warn"], todo: ["To make", "bad"], missing: ["File missing", "bad"] };
-  const stateChip = (eff, sampled) => (eff === "todo" && sampled ? ["To make", "warn"] : STATE_CHIP[eff]);
+  const STATE_CHIP = { mock: ["Mock", "warn"], todo: ["To make", "todo"], missing: ["File missing", "bad"] };
+  const stateChip = (eff) => STATE_CHIP[eff];
   function assetTile(x) {
     const a = x.a, eff = x.eff;
     const real = x.r && !x.r.error ? x.r : null;
@@ -1490,18 +1514,18 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       };
       lazyInto(slot, src, build, { manual: src.size > BIG_VIDEO, manualText: "Load video (" + fmtSize(src.size) + ")" });
     } else slot.append(h("div", { class: "mid" }, ic("scene"), h("span", { text: src.name || a.id })));
-    if (sampled) pv.append(h("span", { class: "tag", text: "SAMPLE" }));
+    if (sampled) pv.append(h("span", { class: "tag", text: eff === "todo" ? "PLACEHOLDER" : "SAMPLE" }));
     else if (src && eff === "mock") pv.append(h("span", { class: "tag", text: "MOCK" }));
     const sc = x.scenes;
     const how = scrubPaths(a.how);
     const lic = [a.licence ? "Licence: " + a.licence : "", a.note && !/^https?:/i.test(a.note) ? a.note : ""].filter(Boolean).join(" · ");
     const url = a.note && /^https:\/\//i.test(a.note) ? a.note : "";
-    const sc_ = stateChip(eff, sampled);
+    const sc_ = stateChip(eff);
     const more = [sampled && a.sample_note ? h("div", { class: "how", text: "Sample: " + a.sample_note }) : null,
       how && !(( eff === "mock" || eff === "todo") && (a.kind === "recording" || a.kind === "screenshot")) ? (a.source === "generated" ? h("details", { class: "prompt" }, h("summary", { text: "View prompt" }), h("p", { text: how })) : h("div", { class: "how" }, showMore(how, 90, "c2"))) : null,
       lic || url ? h("div", { class: "lic" }, lic, lic && url ? " \u00b7 " : "", url ? h("button", { type: "button", text: host(url), title: url, onclick: () => post({ type: "open-url", url }) }) : null) : null].filter(Boolean);
-    return h("article", { class: "card asset" + (isAudio ? " a-audio" : "") + (!src && fallback === "audio" ? " a-flat" : ""), "data-kind": a.kind }, pv, h("div", { class: "bd" }, h("div", { class: "nm", title: a.id, text: a.label || a.id }),
-      h("div", { class: "kind" }, h("span", { class: "chip", text: (KIND_LABEL[a.kind] || a.kind) + (eff === "ready" ? " · " + a.source : "") }), sc_ ? h("span", { class: "chip " + sc_[1], text: sc_[0] }) : null,
+    return h("article", { class: "card asset" + (isAudio ? " a-audio" : "") + (!src && fallback === "audio" ? " a-flat" : ""), "data-kind": a.kind, "data-eff": eff, "data-aid": a.id }, pv, h("div", { class: "bd" }, h("div", { class: "nm", title: a.id, text: a.label || a.id }),
+      h("div", { class: "kind" }, h("span", { class: "chip", text: KIND_LABEL[a.kind] || a.kind }), sc_ ? h("span", { class: "chip " + sc_[1], text: sc_[0] }) : eff === "ready" ? h("span", { class: "chip st st-" + a.source, text: cap(a.source) }) : null,
         a.source === "licensed" && !a.licence ? h("span", { class: "chip warn", text: "No licence on file" }) : null),
       sc.length ? h("div", { class: "sc", text: (sc.length === 1 ? "Scene " : "Scenes ") + sceneRange(sc) }) : null,
       how && (eff === "mock" || eff === "todo") && (a.kind === "recording" || a.kind === "screenshot") ? h("div", { class: "torec" }, h("b", { text: "To record: " }), how) : null,
@@ -1543,6 +1567,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   }
   function viewDraft() {
     const d = S.doc;
+    S.credEl = null;
     const drafts = arr(d.drafts), finals = arr(d.finals);
     const left = h("div", { class: "stack" });
     const getItem = (k) => { if (!k) return null; const i = +k.slice(1); return k[0] === "f" ? finals[i] && { ...finals[i], final: true } : drafts[i]; };
@@ -1590,8 +1615,10 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
         left.prepend(h("div", { class: "card done-card" }, h("div", { class: "done-ic" }, ic("check")), h("div", { class: "done-main" }, h("b", { text: "Your promo is ready" }),
           h("p", { text: "Nothing has been published. Watch it once more with sound, then post it yourself. To change something, ask for changes and the agent starts another round." }),
           dl ? h("div", { class: "done-acts" }, dl) : null)));
-        if (credits.length) left.append(h("section", { "aria-label": "Credits" }, secH("Credits to keep", credits.length),
-          h("dl", { class: "credits" }, credits.map((x) => h("div", { class: "credit" }, h("dt", { text: (KIND_LABEL[x.kind] || x.kind) + (x.label ? " \u00b7 " + x.label : "") }), h("dd", { text: x.licence }))))));
+        if (credits.length) S.credEl = h("section", { "aria-label": "Credits" }, secH("Credits to keep", credits.length),
+          h("dl", { class: "credits" }, credits.map((x) => h("div", { class: "credit" }, h("dt", { text: (KIND_LABEL[x.kind] || x.kind) + (x.label ? " \u00b7 " + x.label : "") }), h("dd", { text: x.licence })))));
+        else S.credEl = null;
+        if (S.credEl) left.append(S.credEl);
       }
       if (d.stage === "review" || d.stage === "drafts") left.append(h("section", { "aria-label": "What to check" }, secH("What to check"),
         h("ul", { class: "watch-list" }, ["Does it match the storyboard you approved?", "Is every caption and voice line true for what is on screen?", "Does the pacing and music feel right with the sound on?"].map((t) => h("li", { text: t })))));
@@ -1609,8 +1636,10 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       const op = rounds.find((r) => r.open);
       const chip = op ? "Round " + op.n + " of " + max + " in progress" : d.stage === "review" && used < max ? "Next: round " + (used + 1) + " of " + max : used + " of " + max + " rounds used";
       right = h("div", { class: "rounds-col" }, secH("Rounds", null, h("span", { class: "chip", text: chip })),
-        rounds.length ? h("div", { class: "rounds" }, rounds.slice().reverse().map(roundCard)) : h("p", { class: "sub", text: "No feedback yet. Watch the draft, then approve it or send feedback." }));
+        rounds.length ? roundsList(rounds) : h("p", { class: "sub", text: "No feedback yet. Watch the draft, then approve it or send feedback." }));
     }
+    /* On a wide pane the credits sit under the rounds, so the left column is the video and its file. */
+    if (right && S.credEl && el.sc.clientWidth >= 760) right.append(S.credEl);
     return h("div", { class: "pane" }, h("div", { class: "draft-grid" + (right ? "" : " one") }, left, right));
   }
   /* Under a draft: what was checked on this very file, the person's notes pinned to it, how it did on every check, its look against the
@@ -1619,7 +1648,8 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     const n = +it.id.slice(1), latest = drafts.length;
     const v = it.verify;
     const out = [];
-    if (v) out.push(h("p", { class: "verify", "data-state": v.state }, ic(v.state === "checked" ? "check" : v.state === "failed" ? "alert" : "clock"), h("span", { text: v.line })));
+    const soft = v && v.state === "checked" && /warning|not checked/i.test(v.line || "");
+    if (v) out.push(h("p", { class: "verify", "data-state": soft ? "warned" : v.state }, ic(v.state === "checked" && !soft ? "check" : v.state === "failed" || soft ? "alert" : "clock"), h("span", { text: v.line })));
     if (it.judged) out.push(h("p", { class: "sub judged", text: it.judged + "." }));
     out.push(pinBlock(it, n));
     out.push(checksBlock(it), lookBlock(it));
@@ -1646,8 +1676,8 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     const CH = { fixed: ["Fixed", "ok"], broken: ["Broken", "bad"], open: ["Still open", "warn"], held: ["Holds", ""] };
     const ICON = { pass: "check", fail: "alert", unmeasured: "clock" };
     return h("section", { class: "ck-board", "aria-label": "Checks on " + it.label },
-      secH("Checks on this draft", b.total, h("span", { class: "chip " + (b.broken ? "bad" : b.open ? "warn" : "ok"), text: b.fixed + " fixed · " + b.broken + " broken · " + b.open + " open" })),
-      h("ul", { class: "ck-list" }, arr(b.rows).map((r) => h("li", { "data-status": r.status, title: r.status === "unmeasured" ? "Nobody has measured this on this draft yet" : "" }, ic(ICON[r.status] || "clock"),
+      secH("Checks on this draft", b.total, h("span", { class: "chip " + (b.broken ? "bad" : b.open ? "warn" : "ok"), text: b.fixed + " fixed · " + b.broken + " broken · " + b.open + " still open" })),
+      h("ul", { class: "ck-list" }, arr(b.rows).map((r) => h("li", { "data-status": r.status, "data-change": r.change || "", title: r.status === "unmeasured" ? "Nobody has measured this on this draft yet" : "" }, ic(ICON[r.status] || "clock"),
         h("span", { class: "ck-what", text: r.what }), r.scene ? h("span", { class: "chip", text: "Scene " + r.scene }) : null, h("span", { class: "chip " + (CH[r.change] || ["", ""])[1], text: (CH[r.change] || [r.change])[0] })))));
   }
   function lookBlock(it) {
@@ -1703,6 +1733,13 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
         r.note ? h("span", { class: "sub", text: r.note }) : null)));
   }
   function linkChip(u) { return h("button", { type: "button", class: "lchip", title: u, onclick: () => { if (/^https:\/\//i.test(u)) post({ type: "open-url", url: u }); } }, h("span", { text: host(u) }), ic("link")); }
+  /* The latest round open; the earlier ones fold under one line. */
+  function roundsList(rounds) {
+    const rev = rounds.slice().reverse();
+    const box = h("div", { class: "rounds" }, roundCard(rev[0]));
+    if (rev.length > 1) box.append(h("details", { class: "rounds-more" }, h("summary", { text: "Earlier rounds (" + (rev.length - 1) + ")" }), ...rev.slice(1).map(roundCard)));
+    return box;
+  }
   function roundCard(r) {
     const v = r.open ? ["In progress", "accent"] : VERDICT[r.verdict] || [r.verdict ? "Intent: " + r.verdict : "Closed", ""];
     const sc = Object.entries(r.scores || {});
@@ -1732,7 +1769,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       const done = d.stage === "final" && fin.ok;
       m.mode = "work"; m.done = done;
       const yours = !done && d.summary && d.summary.badge === "waiting";
-      m.note = done ? "Download it above, or ask for changes." : yours ? "Recorded? Send the file " + (captureNeeded() === 1 ? "path" : "paths") + " here." : fin.registered ? "A final is registered, but its file is missing." : "Waiting on the agent. Nothing for you to do yet.";
+      m.note = done ? "Download above, or ask for changes." : yours ? "Recorded? Send the file " + (captureNeeded() === 1 ? "path" : "paths") + " here." : fin.registered ? "A final is registered, but its file is missing." : "Waiting on the agent. Nothing for you to do yet.";
       m.secondary = done ? "Ask for changes" : yours ? "" : "Add a note";
       if (yours) m.primary = "Send files";
       m.changes = "changes"; m.placeholder = done ? "What should change in the final?" : yours ? "Where are the recordings? Paste the file paths, or say they are attached in the chat." : "Add a note for the agent."; m.sendLabel = yours ? "Send" : "Send note";
@@ -1750,13 +1787,13 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       const n = S.picks.size;
       const lim = g.picks_max;
       /* The button says the outcome: what is about to happen, or what is needed before anything can. */
-      m.primary = n ? "Storyboard " + (n === 1 ? "this story" : "these " + n) : lim && lim > 1 ? "Pick 1 or " + lim + " stories" : "Pick a story";
+      m.primary = n ? "Storyboard " + (n === 1 ? "this story" : "these " + n + " stories") : lim && lim > 1 ? "Pick 1 or " + lim + " stories" : "Pick a story";
       m.primaryDisabled = n === 0;
-      m.note = !n ? "Tick the stories to turn into storyboards." : lim && n >= lim ? n + " picked. That is the limit: untick one to swap." : n + " picked." + (lim ? " You can pick " + (lim - n) + " more." : "");
+      m.note = !n ? "None picked yet." + (lim ? " Choose up to " + lim + "." : "") : lim && n >= lim ? n + " picked. Untick one to change." : n + " picked." + (lim ? " You can pick " + (lim - n) + " more." : "");
     } else if (g.kind === "style") {
       const name = S.ownStyle.trim() ? "this style" : S.style ? clip(S.style, 26) : "";
       m.primary = name ? "Use " + name + " and write scripts" : "Choose a style"; m.primaryDisabled = !name;
-      if (m.primaryDisabled) m.note = "Choose a style, or describe your own";
+      m.note = m.primaryDisabled ? "Choose a style, or describe your own" : cap(name) + " selected. Next: scripts to choose from.";
     } else m.primary = g.approve_label || "Approve";
     const mr = PF.missingRule(d, g.gate) || PF.previewRule(d, g.gate);
     if (g.kind === "approve" && mr) { m.primaryDisabled = true; m.note = mr.note; }
@@ -1778,7 +1815,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       m.reviewTab = gt;
       m.primary = "Review " + tabs.find((t) => t.id === gt).label;
       m.primaryDisabled = false;
-      m.note = "Open " + tabs.find((t) => t.id === gt).label + " before you decide.";
+      m.note = S.tab === "plan" ? "Plan is for reference. Review the " + tabs.find((t) => t.id === gt).label.toLowerCase() + " when ready." : "Open " + tabs.find((t) => t.id === gt).label + " before you decide.";
     }
     if (!m.reviewTab && (g.kind === "approve" || g.kind === "confirm")) {
       const un = PF.seenRule(d, g.gate, S.seen);
@@ -1787,11 +1824,16 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     if (S.stale && S.stale.changedGate) { m.primaryDisabled = true; m.note = "This step changed. Review the update first."; }
     if (jobRunning() && m.mode === "gate") {
       const jv = PF.jobView(d.job, Date.now());
-      const wait = jv ? "Waiting for the agent: " + jv.done + " of " + jv.total + " " + jv.many + " done" + (jv.failed ? ", " + jv.failed + " failed." : ".") : "Waiting for the agent.";
+      const wait = "Waiting for the agent.";
       const nav = !!(m.reviewTab || m.reviewStory);
       if (!nav) m.primaryDisabled = true;
       m.note = nav ? wait + " Meanwhile, " + m.note.charAt(0).toLowerCase() + m.note.slice(1) : wait + " Decide when it finishes.";
-    } else if (apLive() && m.mode === "gate") { m.primaryDisabled = true; m.note = "The agent is working on its own. Stop it above if you want to decide now."; }
+    } else if (apLive() && m.mode === "gate") { m.apStop = true; m.primary = "Stop and show me the draft"; m.primaryDisabled = false; m.secondary = ""; m.note = "The agent is working on its own."; }
+    const jv0 = hasDoc() && d.job && d.job.state === "stopped" ? PF.jobView(d.job, Date.now()) : null;
+    if (jv0 && jv0.resume && m.mode === "gate" && !S.compose) { m.carryOn = jv0; m.primary = "Ask the agent to carry on"; m.primaryDisabled = false; m.note = jv0.title + ". Carry on, or review and send changes."; }
+    else if (jv0 && m.mode === "gate" && !S.compose && (PF.previewRule(d, g && g.gate) || PF.missingRule(d, g && g.gate))) { m.makeRest = true; m.primary = "Make the rest"; m.primaryDisabled = false; m.note = jv0.title + ". Make the rest to carry on" + (m.reviewStory ? ", then open story " + m.reviewStory.board + " before you decide." : "."); m.reviewStory = null; m.reviewTab = null; }
+    const pend = hasDoc() && m.mode === "gate" && m.g && m.g.kind === "draft" ? PF.forYou(d).pairs.length : 0;
+    if (pend && !m.carryOn && !m.apStop && !m.makeRest) { m.pendPick = true; m.note = "Pick an end card to approve, or send feedback" + (m.round && m.max ? " (round " + m.round + " of " + m.max + ")" : "") + "."; }
     return m;
   }
 
@@ -1813,7 +1855,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     el.gate.dataset.busy = jobRunning() || apLive() ? "1" : "";          // while the agent's run is on, the bar is calm: the header already says whose turn it is
     el.btn1.removeAttribute("aria-describedby");
     if (m.mode === "readonly") { note("This thread is archived. You can read everything, but nothing can be sent.", { lock: true }); S.compose = false; }
-    else if (m.mode === "starting") note("Preparing. The first step appears here when it is ready.", { dot: true });
+    else if (m.mode === "starting") note("Nothing for you to do yet.", { dot: true });
     else if (m.mode === "wait") {
       const jv = jobRunning() ? PF.jobView(S.doc.job, Date.now()) : null;
       if (jv) note("Sent " + (ACTION_WORD[m.name] || "your reply") + ". The agent picks it up when the " + jv.many + " above are done (" + (jv.done + jv.failed) + " of " + jv.total + ").", { spin: true });
@@ -1836,23 +1878,27 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       if (S.compose) { el.btn1.textContent = busy ? "Sending" : m.sendLabel; el.btn1.disabled = busy || !el.note.value.trim() || offlineBlocked() || !!(S.stale && S.stale.changedGate); }
       else { el.btn1.textContent = busy ? "Sending" : m.primary; el.btn1.disabled = busy || !!m.primaryDisabled || offlineBlocked(); }
     }
+    /* The footer's Stop is the one Stop while the autopilot runs (the harness and the agent know it as ap-stop). */
+    if (m.apStop && !S.compose) el.btn1.dataset.k = "ap-stop"; else delete el.btn1.dataset.k;
+    el.btn1.classList.toggle("soft", !!m.pendPick && !S.compose);
+    if (m.pendPick && !S.compose) el.btn1.setAttribute("aria-disabled", "true"); else el.btn1.removeAttribute("aria-disabled");
     if (m.mode === "work" && S.compose) { el.btn1.hidden = false; el.btn1.textContent = busy ? "Sending" : m.sendLabel; el.btn1.disabled = busy || !el.note.value.trim() || offlineBlocked(); el.btn2.textContent = "Cancel"; el.btn2.disabled = busy; }
     else if (m.mode === "work") { el.btn2.textContent = m.secondary; el.btn2.disabled = busy || offlineBlocked(); }
     const composing = S.compose && (m.mode === "gate" || m.mode === "work");
     el.compose.hidden = !composing;
     if (composing) {
-      el.noteLabel.textContent = m.placeholder; el.note.placeholder = m.placeholder;
+      el.noteLabel.textContent = S.composeKind === "request" && S.reqTitle ? "Request: " + S.reqTitle : m.placeholder; el.note.placeholder = m.placeholder;
       el.noteHint.textContent = (IS_MAC ? "Cmd" : "Ctrl") + "+Enter to send. Esc to cancel.";
     }
     el.gateErr.hidden = !S.err;
     el.gateErr.textContent = S.err;
   }
 
-  function openCompose() { S.compose = true; S.composeKind = null; renderGate(); el.note.focus(); }
+  function openCompose() { S.compose = true; S.composeKind = null; S.reqTitle = ""; renderGate(); el.note.focus(); }
   /* Ask the agent to add or change something (a document, a script, more frames). The text goes into the same note box as every other message, so dictation works. */
-  function openRequest(text, hint) {
+  function openRequest(text, hint, title) {
     if (S.readonly || S.pending || S.justSent || S.sending) return;
-    S.compose = true; S.composeKind = "request"; S.reqHint = hint || "";
+    S.compose = true; S.composeKind = "request"; S.reqHint = hint || ""; S.reqTitle = title || "";
     el.note.value = text || "";
     renderGate();
     el.note.focus();
@@ -1884,6 +1930,10 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       return send("changes", { stage: m.stage, text });
     }
     if (m.mode === "work") { openCompose(); return; }
+    if (m.apStop) return send("autopilot", { op: "stop", minutes: 0, what: "stop now" });
+    if (m.carryOn) return send("resume", { what: m.carryOn.title.toLowerCase() + ": " + S.doc.job.label.toLowerCase(), command: m.carryOn.resume });
+    if (m.makeRest) return send("generate", { what: "the rest of the " + (S.doc.job.kind === "frames" ? "storyboard frames" : "asset samples") });
+    if (m.pendPick) { const pc = el.content.querySelector(".pick-card"); if (pc) { pc.scrollIntoView({ block: "start", behavior: "smooth" }); const b = pc.querySelector('[data-k$="-left"]'); if (b) b.focus({ preventScroll: true }); } return; }
     const g = m.g;
     if (m.reviewTab) { pickTab(m.reviewTab); return; }
     if (m.reviewStory) { const bi = arr(S.doc.boards).findIndex((x) => x.id === m.reviewStory.board); if (bi >= 0) { S.boardIdx = bi; S.tab = m.reviewStory.tab; S.userTab = true; render(true); el.sc.scrollTop = 0; } return; }
