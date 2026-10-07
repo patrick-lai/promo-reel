@@ -368,7 +368,25 @@
   const clockS = (s) => { s = Math.floor(Math.max(0, s)); const hh = Math.floor(s / 3600), mm = Math.floor(s / 60) % 60, ss = String(s % 60).padStart(2, "0"); return hh ? hh + ":" + String(mm).padStart(2, "0") + ":" + ss : mm + ":" + ss; };
   const aboutS = (s) => (s < 50 ? "under a minute" : s < 90 ? "about a minute" : "about " + Math.round(s / 60) + " min");
 
-  const api = { jobView, clockS, aboutS, arr, mref, fileBad, missingFile, missingAll, hasPreview, noFrame, sceneStatus, model, finalState, seenRule, seenKey, missingRule, previewRule, bodyOf, downloadName, textFileName, wordsOf, parseBlocks, inline, plain, paginate, outline, findPages, markSplit, readMinutes, frameTimeline, DENSITY_CHOICES, clockT, shareRows, outputProblem, previewOutput, outputDirty };
+  /* What waits on the person outside the step's own gate: blind picks not answered yet, the agent's choices they have not overturned, and an
+     autopilot run while it is on (or ended, until the review moves on). A pick needs both sides to load before it can be answered. */
+  const AP_LIVE = { running: 1, paused: 1 };
+  function forYou(doc) {
+    const pairs = arr(doc.pairs).filter((p) => !p.answered).map((p) => ({ ...p, ready: usable(p.left) && usable(p.right) }));
+    const assumptions = arr(doc.assumptions).filter((a) => !a.overturned);
+    const ap = doc.autopilot || null;
+    const autopilot = ap && (AP_LIVE[ap.state] || doc.stage === "drafts" || doc.stage === "review") ? { ...ap, live: !!AP_LIVE[ap.state], pct: Math.min(1, Math.max(0, (ap.used_min || 0) / Math.max(1, ap.minutes || 1))) } : null;
+    return { pairs, assumptions, autopilot };
+  }
+  /* The autopilot offer: on the latest draft, while nothing runs, once that draft has checks it can be held to. */
+  function canAutopilot(doc, it) {
+    const ds = arr(doc.drafts);
+    if (!it || it !== ds[ds.length - 1] || !(doc.stage === "drafts" || doc.stage === "review")) return false;
+    if (doc.autopilot && AP_LIVE[doc.autopilot.state]) return false;
+    return !!(it.board && it.board.total);
+  }
+
+  const api = { forYou, canAutopilot, jobView, clockS, aboutS, arr, mref, fileBad, missingFile, missingAll, hasPreview, noFrame, sceneStatus, model, finalState, seenRule, seenKey, missingRule, previewRule, bodyOf, downloadName, textFileName, wordsOf, parseBlocks, inline, plain, paginate, outline, findPages, markSplit, readMinutes, frameTimeline, DENSITY_CHOICES, clockT, shareRows, outputProblem, previewOutput, outputDirty };
   root.PF = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof window !== "undefined" ? window : globalThis);

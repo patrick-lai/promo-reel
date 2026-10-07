@@ -20,9 +20,14 @@ Each finding is a URL + one or two lines. The editor turns accepted findings int
 Research never overrides the person's words: if a technique clashes with their intent, it is raised to them as a question, not applied.
 
 ## Round protocol (hill climb, max 5)
-1. The person's feedback, verbatim: `promo flow round start --feedback "<their words>"`. Re-read `promo brief show` first.
-2. Run all lenses in one message (lens 0 + research always). Merge, dedupe, sort by severity x 1/effort, apply the accepted changes in ONE batch.
-3. Build ONE draft, `promo flow draft add`, `promo compare-ref` against the references, then `promo flow round close`.
+1. The person's feedback, verbatim: `promo flow round start --feedback "<their words>" --by NAME`. Re-read `promo brief show` first. Each note becomes a check
+   (`promo flow check add --source feedback`). Every lens reads the round's `BRIEF.md` (path printed by `round start`) before anything else.
+2. Run all lenses in one message (lens 0 + research always). Merge, dedupe, sort by severity x 1/effort, apply the accepted changes in ONE batch. A recipe the batch
+   applies is marked with `promo flow recipe use ID`.
+3. Build ONE draft, `promo flow draft add FILE --report <its promo check report>`, `promo flow look`, `promo compare-ref` against the references.
+   Then measure: one reviewer per lens marks EVERY judge check of the brief on the new draft, pass or fail with evidence, the control included
+   (`promo flow check marks --file F --family claude --by <lens>`); `promo flow second-opinion` for a second family. Then the blind comparison:
+   `promo flow ab drafts`, one fresh judge sub-agent per order file (it sees only that file and QUESTION.md), `promo flow ab judge`. Then `promo flow round close`.
 4. Show the draft and the change list; ask: approve, or feedback (next round). Rounds are not for you to burn: stop early on the person's yes; at the cap,
    put it to them (approve / restate the direction).
 After the final, new feedback is `promo flow revise --feedback "..."` and the same council protocol runs again (a new cycle, 5 more rounds).

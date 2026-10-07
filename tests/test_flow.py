@@ -6,9 +6,11 @@ import shutil
 import pytest
 from PIL import Image
 
+from promo import abtest as AB
 from promo import assetplan as AP
 from promo import brief as BR
 from promo import flow as F
+from promo import flowcheck as FC
 from promo import previews as PV
 from promo import storyboard as SB
 
@@ -50,6 +52,19 @@ def board(pd, sid, make_imgs=True):
     return d
 
 
+def review_draft(pd, new_wins=True, family="claude"):
+    """What the council does before a round may close: every judge check marked on the new draft (the control as false) and the
+    blind comparison with the reviewed draft judged in both orders."""
+    for c in FC.judge_checks(F.load(pd)):
+        FC.mark(pd, c["id"], None, "fail" if c.get("control") else "pass", "seen in the stills", family)
+    jid, _ = AB.judge_pair(pd)
+    p = AB.pair(F.load(pd), jid)
+    want = p["draft"] if new_wins else p["against"]
+    for k, o in p["orders"].items():
+        AB.judge(pd, jid, k, "A" if o["A"] == want else "B", family=family)
+    return jid
+
+
 def test_init_locks_brief_and_cannot_skip(pd):
     assert BR.load(pd)["intent_verbatim"] == INTENT
     with pytest.raises(F.FlowError, match="cannot leave"):
@@ -61,7 +76,7 @@ def test_agent_cannot_approve(pd):
         F.approve(pd, "scripts-picked", "Claude", ["A"])
 
 
-def test_happy_path_and_gates(pd, tmp_path):
+def test_happy_path_and_gates(pd, tmp_path, sheets):
     F.discover(pd, "dialogue film", ["https://youtu.be/x"], False)
     assert F.advance(pd) == "scripts"
     sf = str(tmp_path / "s.md")
@@ -123,14 +138,20 @@ def test_happy_path_and_gates(pd, tmp_path):
     write(research, "see https://a.example/1 https://b.example/2")
     with pytest.raises(F.FlowError) as e:
         F.round_close(pd, council, research)
-    assert "new draft" in str(e.value) and "3 distinct" in str(e.value)
+    assert "new draft" in str(e.value) and "3 distinct" in str(e.value) and "not a check yet" in str(e.value)
     write(research, "https://a.example/1 https://b.example/2 https://c.example/3")
+    FC.add(pd, "The close-up of the ticket list is sharp", scene="02", source="feedback", by="Pat")
     F.add_draft(pd, dr, "v2")
+    with pytest.raises(F.FlowError, match="not measured on the new draft"):
+        F.round_close(pd, council, research)                         # a draft nobody looked at does not go to the person
+    review_draft(pd)
     r = F.round_close(pd, council, research)
     assert r["closed"]["verdict"] == "PARTIAL"
     # wrong intent hash is refused
     F.round_start(pd, "again")
+    FC.add(pd, "The hook lands in the first three seconds", source="feedback")
     F.add_draft(pd, dr, "v3")
+    review_draft(pd)
     write(council, "intent-check: intent_sha=deadbeef0000 verdict=YES intent=5 reference=5 lens=x")
     with pytest.raises(F.FlowError, match="different text"):
         F.round_close(pd, council, research)

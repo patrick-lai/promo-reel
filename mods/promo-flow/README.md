@@ -44,7 +44,17 @@ Every path below that says `file` is `{"$file": "<absolute path>"}` (the host tu
                  the mod shows a `ready` asset whose file is missing or failed as "File missing", never as ready, and disables Approve at the assets gate while any file is missing.
                  `label` is the human title (explicit `label`, else the first clause of `how`, else the id made readable); the raw `id` is only a tooltip
     to_make    [{kind: keyframe|asset, id, label, at?, detail, story?, scene?, which?, asset_kind?, source?}]   what `promo flow needs` lists; keyframe label is "Scene 03 · mid frame 1", at is "t=14.5 s"
-    drafts     [{id, label, note, path, name, rel, after, share_as, shared}]   after = "round 2" when the draft was made for that round; finals [{id, label, path, name, rel, share_as, shared}]
+    drafts     [{id, label, note, path, name, rel, after, share_as, shared, verify, board, look, pins, judged, restorable}]   after = "round 2" when the draft was made for that round; finals [{id, label, path, name, rel, share_as, shared}]
+                 verify {state: checked|failed|not_checked, line, passed, warned, failed, skipped[{gate, why}]}: what `promo check` measured on this very file (a report
+                 of another file is refused), skipped gates named with their reason, never counted as passed. board {line, fixed, broken, open, held, total, passing,
+                 rows[{id, what, scene, status: pass|fail|unmeasured, change: fixed|broken|open|held, source}]}: every check against the draft before it (the round's
+                 hidden control is never in it). look {mean, scenes[{scene, d, pair: file}]} | null: reference look distance, pair = reference left, draft right.
+                 pins [{id, at_s, scene, text, by}]: notes pinned to a moment. judged: the blind comparison line. restorable: the plan behind it is kept
+    pairs      [{id, question, scene, media: image|video|audio, left: file, right: file, answered: {side, by, at}|null}]   blind picks for the person; labels never sent
+    autopilot  {state: running|paused|done|blocked|out_of_time|stopped, minutes, used_min, left_min, passes, by, line, goal_met} | null
+    assumptions [{id, text, scene, overturned: {by, text, at}|null}]    choices the agent made without asking; "Change this" overturns one
+    scout      {app_scenes, real, missed, drawn}; per scene `scout: real|missed|drawn|null` + `scout_why`, per frame `real` (a screenshot of the real product)
+    lessons    [{id, line, videos}]   what this person said in earlier videos (Plan tab, "Forget")
     share      {destinations: [{id: artifacts|loom, label, note, in_place}]}   what `promo flow share detect` found for the host's twg user (an hour's cache; empty = no upload row at all).
                  Per draft/final: `share_as` is the canonical name it uploads as (`<project>_draft_N`, `<project>_final_vN`), `shared` is `{dest: {url, name, at, edited}}` for what is already up;
                  `edited` = the file changed since. The Drafts tab shows one row per destination: Upload; Update (Artifacts refreshes the same link); Upload again (Loom cannot replace, it adds a copy);
@@ -81,7 +91,14 @@ Every path below that says `file` is `{"$file": "<absolute path>"}` (the host tu
 
 **Storyboard tab**: a view switch (Scenes | Frames in time) and a cadence control (Start and end, every 10 s, every 5 s, every 2 s, Other...) that sends `density`. Frames in time lists every frame in time order with its clock time; a scene with more than two mid frames shows them as a film strip. When a board has a density, the storyboard gate needs those frames as real images too.
 
-Actions: `approve`, `pick`, `changes`, `feedback`, `generate {what}`, `request {text, where}` (an ask for content: documents, scripts, plans, scene changes), `density {story, every, what}` (every 0 = back to start and end frames); `share {kind: draft|final, n, item, dest, dest_label}` (the agent runs `promo flow share <kind> <n> --to <dest> --by NAME`), `settings {output}` (`home`, `repo`, `default` or a folder; the agent runs `promo config output`, then republishes).
+**Above every tab** (`PF.forYou`): an autopilot card while a run is on (clock, goal, "Stop and show me the draft"), each unanswered blind pick (Left / Right /
+No difference / Can't tell; disabled until both sides load) and the agent's choices with "Change this". **Drafts tab**, per draft: the check line of that file, the
+blind comparison, "Pin a note at this moment" (pauses the player, the note box asks "What should change at 0:14.5?"), the pinned notes (click seeks), the checks
+with Fixed / Broken / Still open / Holds, the look pairs, "Let the agent keep working" (30 min / 1 hour / 2 hours, only on the latest draft with checks,
+`PF.canAutopilot`) and on earlier drafts "Go back to this version" (the whole draft asks twice; one scene from a select).
+
+Actions: `pin {draft, at, when, text}`, `restore {draft, scene, what}`, `ab {pair, side, label, question}`, `autopilot {op: start|stop, minutes, what}`,
+`overturn {id, choice, text}`, `forget {id, text}`, `approve`, `pick`, `changes`, `feedback`, `generate {what}`, `request {text, where}` (an ask for content: documents, scripts, plans, scene changes), `density {story, every, what}` (every 0 = back to start and end frames); `share {kind: draft|final, n, item, dest, dest_label}` (the agent runs `promo flow share <kind> <n> --to <dest> --by NAME`), `settings {output}` (`home`, `repo`, `default` or a folder; the agent runs `promo config output`, then republishes).
 
 `gate.gate` is what the `approve` and `pick` actions guard on (`/gate/gate` vs payload `gate`). The first state after activation is `{}` with summary status "Starting": the app shows its Getting started screen.
 Inside a CommissionAI thread every flow command that changes state publishes itself (`promo flow publish` on demand; `PROMO_FLOW_PUBLISH=0` in tests and in this harness), so the Stage never shows a step the flow has left. The gate is the question: once a state with a `gate` is published the agent's turn ends and the person's click comes back as a message. A gate is published one stage early on purpose (the pick gate while the flow is still at `scripts`), and `promo flow approve` walks the flow forward through stages whose checks pass, so the answer lands wherever it arrives. The style gate is shown again when a style is on file but nothing was said about references (the mod keeps that style selected). At the review cap the secondary button sends `changes` ("Restate direction"), which the agent turns into `promo flow revise` (a new cycle). The draft gate appears the moment a draft is registered (stage `drafts` or `review`), with two coloured buttons, "Approve" and "Feedback and iterate" (`data-tone="accent"` on the secondary); `promo flow round start` and `approve draft-approved` move a `drafts` flow into `review` themselves.
@@ -103,5 +120,5 @@ segment fills with a run's real progress (`--p`).
 
 The harness plays the host: mounts the mod into its page in a shadow root like CommissionAI does, puts a stand-in Mic button in the dictate slot, switch stage, dark/light, pane width (380 / 520 / 900),
 offline, readonly, reduce motion, hold state (loading), media failures, a new version arriving mid-edit (with or without the step changing), and the bridge log with the rendered action messages.
-Stages: the ten flow stages plus `starting`, `storyboard-partial`, `plan` (17 documents, one of 12 000 words), `dense` (frames every 5 s), `assets-error`, `stale-approval`, `long-content`, `review-maxed`.
+Stages: the ten flow stages plus `autopilot` (a run in progress), `starting`, `storyboard-partial`, `plan` (17 documents, one of 12 000 words), `dense` (frames every 5 s), `assets-error`, `stale-approval`, `long-content`, `review-maxed`.
     .venv/bin/python mod-dev/shoot.py --check    # interaction checks in headless Chrome: reader paging, find, contents, requests, cadence, escaping

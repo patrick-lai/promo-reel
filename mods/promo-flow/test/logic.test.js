@@ -282,3 +282,25 @@ test("a finished run reads Made N and fades out after ten minutes; a stopped run
   assert.equal(stopped.title, "Stopped after 2 of 6 images");
   assert.deepEqual(stopped.tiles.map((t) => t.type), []);
 });
+
+test("what waits on the person: unanswered blind picks (answerable once both sides load), choices not overturned, a live autopilot run", () => {
+  const doc = { stage: "review",
+    pairs: [{ id: "p1", left: ok("l"), right: ok("r"), answered: null }, { id: "p2", left: ok("l"), right: bad, answered: null }, { id: "p3", left: ok("l"), right: ok("r"), answered: { side: "left" } }],
+    assumptions: [{ id: "a1", text: "Calm piano", overturned: null }, { id: "a2", text: "Old", overturned: { by: "Sam" } }],
+    autopilot: { state: "running", minutes: 60, used_min: 15 } };
+  const fy = L.forYou(doc);
+  assert.deepEqual(fy.pairs.map((p) => [p.id, p.ready]), [["p1", true], ["p2", false]]);
+  assert.deepEqual(fy.assumptions.map((a) => a.id), ["a1"]);
+  assert.equal(fy.autopilot.live, true);
+  assert.equal(fy.autopilot.pct, 0.25);
+  assert.equal(L.forYou({ ...doc, stage: "final", autopilot: { state: "done", minutes: 60, used_min: 20 } }).autopilot, null);   // an ended run leaves with the review
+});
+test("the agent may be left to work alone only on the latest draft, when it has checks and nothing is running", () => {
+  const d1 = { id: "d1", board: { total: 2 } }, d2 = { id: "d2", board: { total: 2 } };
+  const doc = { stage: "review", drafts: [d1, d2], autopilot: null };
+  assert.equal(L.canAutopilot(doc, d2), true);
+  assert.equal(L.canAutopilot(doc, d1), false);
+  assert.equal(L.canAutopilot({ ...doc, autopilot: { state: "paused" } }, d2), false);
+  const bare = { id: "d2", board: { total: 0 } };
+  assert.equal(L.canAutopilot({ ...doc, drafts: [d1, bare] }, bare), false);
+});

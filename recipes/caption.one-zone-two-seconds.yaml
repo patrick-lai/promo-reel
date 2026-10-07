@@ -1,0 +1,7 @@
+id: caption.one-zone-two-seconds
+kind: caption
+styles: [hero, cinematic-story, livestream]
+intent: "Captions are read, not glimpsed: one fixed zone, short lines, each held long enough to read twice."
+how: "Keep every caption <= ~35 characters in the fixed lower-middle zone, held >= 2 s; retime a shot rather than override the gate."
+check: "Every caption stays in one place, fits on one line and is on screen for at least 2 seconds."
+evidence: "AGENTS.md section 2 and the caption-hold / safe-zone gates of promo check."

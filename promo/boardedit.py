@@ -67,7 +67,7 @@ def _scene_by_id(b, sid):
 
 def _drop_image(d, f):
     for p in ((os.path.join(d, f["image"]),) if f.get("image") else ()):
-        for q in (p, p + ".gen.json"):
+        for q in (p, p + ".gen.json", p + ".real.json"):
             if os.path.isfile(q):
                 os.remove(q)
 

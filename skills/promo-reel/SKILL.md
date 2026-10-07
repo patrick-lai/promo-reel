@@ -27,8 +27,28 @@ Start with THE FLOW (below). Everything lives in `<save location>/<name>/` (see 
 | 6 | **keyframes** | generate the remaining keyframes, replace every mock (`promo flow needs`) | |
 | 7 | **confirm** | summary of board + assets | the explicit go (`approve final-confirmation`) |
 | 8 | **drafts** | build first drafts, `promo flow draft add`, SHOW them (SendUserFile) | |
-| 9 | **review** | <= 5 rounds: `round start --feedback "<verbatim>"`, council (lens 0 intent + web research of the topic and examples of good videos), one batch, one draft, `round close`; at the cap their restated direction is `promo flow revise --feedback "<verbatim>"` (a new cycle) | feedback or `approve draft-approved` |
+| 9 | **review** | <= 5 rounds: `round start --feedback "<verbatim>"`, every note becomes a check, council (lens 0 intent + web research of the topic and examples of good videos), one batch, one draft, measure it, blind-compare it, `round close` (see "Every draft is held to every note" below); at the cap their restated direction is `promo flow revise --feedback "<verbatim>"` (a new cycle) | feedback or `approve draft-approved` |
 | 10 | **final** | `final add`; further feedback = `promo flow revise` (new cycle, council again) | |
+
+### Every draft is held to every note (checks, round brief, blind comparison)
+- **Notes become checks.** After `round start`, turn each thing the person said into `promo flow check add --what "<what must be true>" --scene ID --source feedback --by NAME`
+  (a pin from the Stage, `promo flow pin add`, and an overturned choice, `promo flow assume overturn`, already are one). `--kind gate --gate NAME` reads a `promo check` gate;
+  `promo flow look` adds the reference-look check. Only the person retires a check (`check retire ID --why --by NAME`).
+- **The round brief.** `flow/rounds/<c>-<n>/BRIEF.md` is rewritten on every change: their words on top, the scoreboard, the drafts that lost, the look, what this
+  person said in earlier videos (`promo flow lessons`), recipes that fit (`promo flow recipe list --for ...`; mark one you apply with `recipe use ID`). Every
+  maker and reviewer sub-agent reads it FIRST.
+- **Measure the new draft.** `draft add FILE --report out/<name>-<tag>-check.json` (the report must be of that file), `promo flow look`, then every judge check marked by
+  the council (`check marks --file F --draft N --family claude --by LENS`, JSON lines `{"id","status":"pass|fail","evidence"}`), the hidden control included;
+  `promo flow second-opinion` adds grok as a second family (any family's fail wins). A family that calls the control true is discarded until it looks again.
+- **Blind comparison.** `promo flow ab drafts` writes two order sheets; give each to a fresh judge sub-agent with QUESTION.md, record `ab judge ID --order 1|2 --pick ...`.
+- `round close` refuses while a note is not a check, a check is unmeasured, something the reviewed draft got right broke, the control was not caught, or both orders
+  preferred the reviewed draft. Fix it, or `promo flow restore --draft N [--scene ID] --by NAME` (the person's call; `--undo K` reverses a restore).
+- **For the person:** `promo flow ab add --question Q --a F --b F` is a blind pick in the Stage; `promo flow assume add "<choice; say so to swap>"` records a choice you
+  made without asking as a card they can overturn; `promo flow scout add --story A --scene ID --file PNG --url U` puts the REAL screen in as an app scene's frame
+  (`scout miss --why` when it cannot be reached). The person can start `promo flow autopilot` from the Stage: work in passes (`autopilot pass begin` / `pass end`)
+  until it reports done, blocked (one `autopilot replan --note` after two passes that fixed nothing) or out of time. `NOTES.md` in the project is the video's
+  living memory (`promo flow notes add TEXT` for your own lines): read it first when you resume. `promo flow calibration` says how often the council's verdict
+  matched what the person did next.
 
 ### Fan out: spec once, build in parallel, agents review, then the person
 The loop is **spec -> parallel build -> agent review -> (repeat) -> person**; the person chooses whether to go round again. Do not do these one at a time.

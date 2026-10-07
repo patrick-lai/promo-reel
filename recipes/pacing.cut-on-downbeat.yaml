@@ -1,0 +1,7 @@
+id: pacing.cut-on-downbeat
+kind: pacing
+styles: [any]
+intent: "Cuts that land on the music's strong beats feel intended; cuts between beats feel like mistakes."
+how: "Place shot boundaries on bar lines (`promo grid`); put qa.cut_markers on the track's hits so the gate checks them."
+check: "The big cuts land on the music's strong beats or hits."
+evidence: "beat-grid gate of promo check, anime-opening bar-snapped cuts."

@@ -1,0 +1,7 @@
+id: hook.result-first
+kind: hook
+styles: [any]
+intent: "Open on the result the product gives (the merged PR, the finished report), not on the setup, so the first seconds answer \"why watch\"."
+how: "Move the proof shot to beats 0-4 of the timeline and hold it >= 2 s; the setup follows as the \"how\". The proof must be real footage with its evidence in the shot list."
+check: "The first 3 seconds show the product's real result on screen, readable."
+evidence: "AGENTS.md section 2 (every claim has evidence); horizon preset ends on its proof moment, hero openings that lead with it hold attention."

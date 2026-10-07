@@ -1041,3 +1041,55 @@ button.jb-tile:hover { border-color: var(--c-accent); }
 .wk-feed li:last-child { border-bottom: 0; }
 .wk-feed .t { font-variant-numeric: tabular-nums; }
 .wk-feed li span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* for you: blind picks, the agent's own choices, the autopilot run (above every tab) */
+.foryou { display: grid; gap: 10px; margin-bottom: 14px; }
+.pick-card { padding: 12px; display: grid; gap: 10px; border-color: color-mix(in srgb, var(--c-accent) 45%, var(--c-line)); }
+.pk-h { display: grid; gap: 2px; }
+.pk-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.pk-side { margin: 0; display: grid; gap: 4px; min-width: 0; }
+.pk-side figcaption { font-size: 12px; font-weight: 650; color: var(--c-dim); text-align: center; }
+.pk-media { aspect-ratio: 16 / 9; background: var(--c-well); border: 1px solid var(--c-line); border-radius: var(--r-sm); overflow: hidden; display: grid; place-items: center; }
+.pk-media img, .pk-media video { width: 100%; height: 100%; object-fit: contain; display: block; }
+.pk-media audio { width: 100%; }
+.pk-acts { display: flex; flex-wrap: wrap; gap: 6px; }
+.pk-acts .pk-main { flex: 1 1 120px; border-color: var(--c-line); }
+.ap-card { padding: 10px 12px; display: grid; gap: 8px; }
+.ap-h { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+.ap-h .ic { flex: none; color: var(--c-accent); }
+.ap-card[data-state="blocked"] .ap-h .ic, .ap-card[data-state="out_of_time"] .ap-h .ic { color: var(--c-warn); }
+.ap-bar { height: 4px; border-radius: 2px; background: var(--c-line); overflow: hidden; }
+.ap-bar i { display: block; height: 100%; background: var(--c-accent); }
+.ap-acts { display: flex; justify-content: flex-end; }
+.as-card { padding: 10px 12px; }
+.as-list li { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; padding: 6px 0; border-top: 1px solid var(--c-line); font-size: 13px; }
+.as-list li:first-child { border-top: 0; }
+.as-list .as-t { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; }
+
+/* drafts: what was checked on this file, pinned notes, checks, look, the way back */
+.verify { display: flex; gap: 6px; align-items: flex-start; font-size: 13px; color: var(--c-dim); margin-top: 6px; }
+.verify .ic { flex: none; margin-top: 2px; }
+.verify[data-state="checked"] .ic { color: var(--c-ok); }
+.verify[data-state="failed"] { color: var(--c-bad); }
+.judged { margin-top: 2px; }
+.pins-h { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
+.pin-list li { display: flex; gap: 8px; align-items: center; padding: 5px 0; border-top: 1px solid var(--c-line); font-size: 13px; }
+.pin-list .pin-t { min-width: 0; overflow-wrap: anywhere; }
+.ck-list li { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; padding: 6px 0; border-top: 1px solid var(--c-line); font-size: 13px; }
+.ck-list li .ic { flex: none; width: 14px; height: 14px; color: var(--c-dim); }
+.ck-list li[data-status="pass"] .ic { color: var(--c-ok); }
+.ck-list li[data-status="fail"] .ic { color: var(--c-bad); }
+.ck-list .ck-what { flex: 1 1 180px; min-width: 0; overflow-wrap: anywhere; }
+.lk-strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
+.lk-pair { margin: 0; flex: none; width: 220px; display: grid; gap: 4px; }
+.lk-img { display: block; aspect-ratio: 32 / 9; background: var(--c-well); border-radius: var(--r-sm); overflow: hidden; }
+.lk-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.lk-pair figcaption { font-size: 12px; color: var(--c-dim); }
+.ap-start { padding: 12px; display: grid; gap: 8px; }
+.restore .rs-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 6px; }
+.rs-scene { min-height: 36px; max-width: 100%; border: 1px solid var(--c-line); border-radius: var(--r-sm); background: var(--c-raised); color: var(--c-ink); padding: 0 8px; }
+
+/* plan: what carries over from earlier videos */
+.ls-list li { display: flex; gap: 8px; align-items: center; padding: 6px 0; border-top: 1px solid var(--c-line); font-size: 13px; }
+.ls-list .ls-t { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.pins-h .btn { display: inline-flex; align-items: center; gap: 6px; }

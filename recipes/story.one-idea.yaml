@@ -1,0 +1,7 @@
+id: story.one-idea
+kind: story
+styles: [any]
+intent: "A short promo carries one idea; every scene either sets it up, proves it or pays it off."
+how: "Write the one idea at the top of the shot list; cut or merge any scene whose caption does not serve it."
+check: "Every scene serves the one idea in the brief; none introduces a second feature story."
+evidence: "AGENTS.md section 1 (the one idea), council Story lens."

@@ -1,0 +1,7 @@
+id: pacing.hold-after-burst
+kind: pacing
+styles: [horizon, anime-opening]
+intent: "A burst of quick cuts reads as energy only when a calm hold follows it; without it the eye never lands."
+how: "After a run of half-beat or one-beat shots, give the next shot >= 3 s (horizon checks this) on the clearest real UI moment."
+check: "Every burst of fast cuts is followed by a hold of at least 3 seconds."
+evidence: "horizon preset rule (a burst must be followed by a hold >= 3 s), Opus 5.5 film reference study."

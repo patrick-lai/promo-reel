@@ -1,0 +1,7 @@
+id: end-card.hold-and-name
+kind: end-card
+styles: [any]
+intent: "The viewer needs time to read who made it and where to go."
+how: "Hold the end card >= 3 s with the name, the tagline from the brief and the URL (or \"URL off\"); no new information after it."
+check: "The end card holds for at least 3 seconds and shows the product name and the brief's end-card text."
+evidence: "AGENTS.md section 1 (end-card text), dawn end card of the horizon preset."

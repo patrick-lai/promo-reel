@@ -26,7 +26,17 @@ page (stepper, scripts, storyboards, assets, drafts, rounds) to show.
     promo flow asset make [--id X ...]            MAKE a real sample of each planned asset (concept still, short clip, audio excerpt) to look at / listen to
     promo flow make                               frames, then asset samples: everything the person has to see before approving
     promo flow advance                            move on when the checks pass and the gate is approved
-    promo flow draft add FILE ; promo flow round start --feedback TEXT ; promo flow round close --council F --research F
+    promo flow draft add FILE [--report CHECK.json] ; draft verify N --report F      the plan behind every draft is kept (restore); the report must be of this file
+    promo flow round start --feedback TEXT [--by NAME] ; round brief ; round close --council F --research F
+                                                  a round writes flow/rounds/<c>-<n>/BRIEF.md (every sub-agent reads it first) and can close only when the person's
+                                                  notes are checks, every check is measured on the new draft, nothing the reviewed draft got right broke, the hidden
+                                                  control was caught, and a blind comparison did not prefer the reviewed draft (promo/flowcheck.py, promo/abtest.py)
+    promo flow check add|mark|marks|retire|list ; pin add --at S --text T --by NAME ; look [--draft N]
+    promo flow ab add|pick|drafts|judge|list ; restore --draft N [--scene ID] --by NAME | --undo K --by NAME
+    promo flow autopilot start|pass begin|pass end|replan|pause|resume|stop|status ; assume add|overturn
+    promo flow scout list|add|miss                real screens of the product as the app scenes' storyboard frames
+    promo flow second-opinion [--draft N]         the judge checks put to a second model family (grok, headless)
+    promo flow lessons | recipe list|use|add | calibration | notes add|show      what carries over between videos (promo/lessons.py), NOTES.md
     promo flow final add FILE ; promo flow revise --feedback TEXT      after the final: more feedback, council again
     promo flow share detect                       is Atlassian Artifacts / Loom available to this twg user (the snapshot offers uploads only when it is)
     promo flow share draft|final [N] --to artifacts|loom --by NAME [--access private|open|shared]
@@ -54,15 +64,24 @@ import shutil
 import subprocess
 import sys
 
+from . import abtest as AB
 from . import assetplan as AP
+from . import autopilot as AU
 from . import boardedit as BE
 from . import brief as BR
+from . import flowcheck as FC
 from . import flowjob as FJ
+from . import genvideo as GV
 from . import home
+from . import lessons as LS
 from . import plandocs as PD
 from . import previews as PV
+from . import roundbrief as RB
+from . import scout as SC
 from . import share as SH
 from . import storyboard as SB
+from . import versions as VR
+from .compare_ref import CompareError
 from .home import resolve as _resolve
 
 STAGES = ["discover", "scripts", "pick", "storyboard", "assets", "keyframes", "confirm", "drafts", "review", "final"]
@@ -252,6 +271,7 @@ def round_problems(pd, st, r, council, research):
             out.append(f"intent-check quotes intent_sha={ic['sha']}, the brief's is {want}: the lens read a different text")
         if ic["verdict"] is None:
             out.append("intent-check has no verdict=YES|PARTIAL|NO")
+    out += FC.round_problems(pd, st, r) + AB.round_problems(st, r)
     return out, ic
 
 
@@ -344,11 +364,13 @@ def approve(pd, gate, by, picks=None, note=""):
             raise FlowError("a round is open: close it first")
         if not st["drafts"]:
             raise FlowError("no draft yet")
+        _calibrate(pd, st, "approved")
     else:
         pre = [t for ok, t in checks(pd, st, stage) if not ok and "approved" not in t and "confirmation" not in t]
         if pre:
             raise FlowError("not ready for approval:\n  - " + "\n  - ".join(pre))
     st["gates"][gate] = dict(by=by, at=now(), hash=gate_hash(pd, st, gate), note=note)
+    st["person"] = by
     log(st, f"approved {gate} by {by}")
     save(pd, st)
 
@@ -482,19 +504,35 @@ def add_council(pd, kind, file, note=""):
     return n
 
 
-def add_draft(pd, file, note=""):
+def add_draft(pd, file, note="", report=None):
+    """Register a draft, keep the plan it was built from (so it can be restored) and, with `report`, attach its own `promo check` report."""
     st = load(pd)
     if STAGES.index(st["stage"]) < STAGES.index("drafts"):
         raise FlowError("drafts start after the final confirmation")
     if not os.path.isfile(file):
         raise FlowError(f"no such file {file}")
-    st["drafts"].append(dict(file=os.path.abspath(file), note=note, at=now(), cycle=st["cycle"]))
+    sha = GV.sha256(file)
+    rec = dict(file=os.path.abspath(file), note=note, at=now(), cycle=st["cycle"], sha=sha)
+    if report:                                   # a report of another file refuses the draft before it is registered, so a retry adds no duplicate
+        rec["verify"] = dict(at=now(), report=os.path.abspath(report), rows=FC.report_rows(report, sha, "this draft"))
+    st["drafts"].append(rec)
     st["gates"].pop("draft-approved", None)
     log(st, f"draft {os.path.basename(file)}")
     save(pd, st)
+    n = len(st["drafts"])
+    VR.keep(pd, f"d{n}")
+    return n
 
 
-def round_start(pd, feedback):
+def _calibrate(pd, st, actual):
+    """What the council predicted at the last round close against what the person did next: once per round (the caller saves `st`)."""
+    last = next((r for r in reversed(st["rounds"]) if r.get("closed")), None)
+    if last and not last.get("calibrated"):
+        LS.calibrate(_project(pd), last["closed"]["verdict"], actual)
+        last["calibrated"] = True
+
+
+def round_start(pd, feedback, by=None):
     st = load(pd)
     if st["stage"] == "drafts" and all(o for o, _ in checks(pd, st)):
         st["stage"] = "review"                       # feedback on a registered draft is the review stage starting; the person need not wait for an `advance`
@@ -509,10 +547,21 @@ def round_start(pd, feedback):
     if n > MAX_ROUNDS:
         raise FlowError(f"{MAX_ROUNDS} rounds used in this cycle: the person approves the draft, or restates the direction, which starts a new cycle "
                         f"(`promo flow revise --feedback \"<their words>\"`)")
-    st["rounds"].append(dict(cycle=st["cycle"], n=n, feedback=feedback, started=now(), drafts_at_start=len(st["drafts"])))
+    if by:
+        st["person"] = human(by)
+    _calibrate(pd, st, "feedback")
+    r = dict(cycle=st["cycle"], n=n, feedback=feedback, started=now(), drafts_at_start=len(st["drafts"]), recipes=[])
+    st["rounds"].append(r)
+    key = FC.round_key(r)
+    # notes the person left between rounds (pins, overturned assumptions, checks from their words) belong to the round that takes them
+    for x in (st.get("checks") or []) + (st.get("pins") or []):
+        if x.get("round") is None and (x.get("source") in FC.PERSON_SOURCES or "check" in x):
+            x["round"] = key
+    FC.add_control(pd, st, r)
     st["gates"].pop("draft-approved", None)
-    log(st, f"round {st['cycle']}.{n} start")
+    log(st, f"round {key} start")
     save(pd, st)
+    RB.write_brief(pd)
     return n
 
 
@@ -530,9 +579,50 @@ def round_close(pd, council, research, note=""):
     shutil.copyfile(council, os.path.join(d, "council.md"))
     shutil.copyfile(research, os.path.join(d, "research.md"))
     r["closed"] = dict(at=now(), verdict=ic["verdict"], scores=ic.get("scores", {}), note=note, dir=os.path.relpath(d, pd))
+    if r.get("recipe_result") != "lost":
+        # a recipe is judged by its own check on the new draft (a round that closes broke nothing the reviewed draft had)
+        for rid, cid in (r.get("recipe_checks") or {}).items():
+            LS.credit(rid, FC.status(st, FC.find(st, cid), len(st["drafts"]) - 1)[0] == "pass")
+        r["recipe_result"] = "credited"
     log(st, f"round {r['cycle']}.{r['n']} closed verdict={ic['verdict']}")
     save(pd, st)
     return r
+
+
+def recipe_use(pd, rid, scene=None):
+    """Mark a recipe as applied in the open round: its `check` joins the checks, and the round's result is credited to it."""
+    st = load(pd)
+    r = open_round(st)
+    if not r:
+        raise FlowError("recipes are used inside a review round (`promo flow round start`)")
+    rec = next((x for x in LS.recipes(pd) if x["id"] == rid), None)
+    if rec is None:
+        raise FlowError(f"no recipe {rid}: `promo flow recipe list`")
+    if rec["state"] == "retired":
+        raise FlowError(f"recipe {rid} is retired ({rec['l']} lost, {rec['w']} won)")
+    if rid in r["recipes"]:
+        return r["recipe_checks"][rid]
+    cid = FC.add(pd, rec["check"], scene=scene, source="agent")
+    st = load(pd)
+    r = open_round(st)
+    r["recipes"].append(rid)
+    r.setdefault("recipe_checks", {})[rid] = cid
+    save(pd, st)
+    return cid
+
+
+def judged(pd, jid):
+    """After a judge answer: a new draft that lost both orders to the reviewed one is a loss for the recipes used in the round (once)."""
+    st = load(pd)
+    p = AB.pair(st, jid)
+    r = open_round(st)
+    res = AB.result(p)
+    if r and res["winner"] == r["drafts_at_start"] and p["against"] == r["drafts_at_start"] and r.get("recipe_result") != "lost":
+        for rid in r.get("recipes") or []:
+            LS.credit(rid, False)
+        r["recipe_result"] = "lost"
+        save(pd, st)
+    return res
 
 
 def add_final(pd, file):
@@ -677,14 +767,14 @@ def hints(pd, st):
     s = st["stage"]
     return dict(
         discover="Ask the person what style they want and for any reference videos/material (the published Stage state carries the question); record both with `promo flow discover --style ... --ref URL | --no-refs`. Study references with `promo refs add`.",
-        scripts=f"Write {MIN_SCRIPTS}+ scripts with different angles (any length: `script add --file -` then `script append` for the next parts; the Stage reads them page by page); run the council (evals/council-flow.md, scripts lens set) 1-2 rounds and record with `promo flow council scripts`; `promo flow script add`. Then ask which to progress.",
+        scripts=f"Read what this person said in earlier videos (`promo flow lessons`), then write {MIN_SCRIPTS}+ scripts with different angles (any length: `script add --file -` then `script append` for the next parts; the Stage reads them page by page); run the council (evals/council-flow.md, scripts lens set) 1-2 rounds and record with `promo flow council scripts`; `promo flow script add`. Then ask which to progress.",
         pick="Ask which script(s) to progress (multi-select); record the answer with `approve scripts-picked --picks ... --by NAME`.",
-        storyboard="Per picked story build the board with `promo flow story` + `scene add` (or write flow/boards/<id>/board.json); a denser board on request (`promo flow density --every 5`); then `promo flow frames` MAKES every scene's START and END frame as a real image (a text slate does not count), `promo flow board`, SHOW the page, iterate until they approve.",
+        storyboard="Per picked story build the board with `promo flow story` + `scene add` (or write flow/boards/<id>/board.json); a denser board on request (`promo flow density --every 5`); then `promo flow frames` MAKES every scene's START and END frame as a real image (a text slate does not count); for every app scene put in the REAL screen (`promo flow scout add`, or `scout miss --why`); `promo flow board`, SHOW the page, iterate until they approve.",
         assets="List every asset (screenshots, pictures, recordings, music, voice, sfx) with `promo flow asset add`, then `promo flow asset make` so each has a real sample to look at or hear (a placeholder is not a preview), publish, plan it out with the person.",
         keyframes="Make the remaining keyframes (`promo flow make`) and replace every mock and sample with the real file (`promo flow needs`), then advance.",
         confirm="Show the final summary (board + assets) and get the explicit go for drafts.",
         drafts="Build the first drafts (promo build, draft encode), register with `promo flow draft add`, advance, SHOW them.",
-        review="Take the person's feedback verbatim: `round start`; run the council (lens 0 intent + web research of the topic and examples of good videos); apply one batch; build one draft; `round close`. Max %d rounds; at the cap their restated direction is `promo flow revise --feedback` (a new cycle)." % MAX_ROUNDS,
+        review="Take the person's feedback verbatim: `round start`; turn each note into a check (`promo flow check add --source feedback`); every sub-agent reads the round's BRIEF.md first; run the council (lens 0 intent + web research of the topic and examples of good videos); apply one batch; build one draft (`draft add --report`); mark every check on it, compare it blind with the reviewed draft (`ab drafts`, one judge per order); `round close`. Max %d rounds; at the cap their restated direction is `promo flow revise --feedback` (a new cycle)." % MAX_ROUNDS,
         final="Deliver; keep iterating on feedback with `promo flow revise` (council again).")[s]
 
 
@@ -694,7 +784,9 @@ def status(pd):
     return dict(stage=st["stage"], label=LABEL[st["stage"]], cycle=st["cycle"], rounds_used=len(cycle_rounds(st)), rounds_max=MAX_ROUNDS,
                 checks=[dict(ok=o, text=t) for o, t in ch], ready=all(o for o, _ in ch), next=hints(pd, st), ask=ask(pd, st), ask_in_stage=ask_in_stage(pd, st),
                 needs=needs(pd, st), picks=st["picks"], gates={k: dict(by=v["by"], at=v["at"], fresh=gate_ok(pd, st, k)) for k, v in st["gates"].items()},
-                docs=[dict(id=d["id"], title=d["title"], kind=d["kind"]) for d in st.get("docs") or []], dashboard=os.path.join(fdir(pd), "dashboard.html"))
+                docs=[dict(id=d["id"], title=d["title"], kind=d["kind"]) for d in st.get("docs") or []], dashboard=os.path.join(fdir(pd), "dashboard.html"),
+                scoreboard=FC.scoreboard(st)["line"] if st["drafts"] else None, lessons=[x["line"] for x in LS.top(st.get("person"))],
+                autopilot=AU.view(st), round_brief=RB.brief_path(pd, open_round(st)) if open_round(st) else None, notes=RB.notes_path(pd))
 
 
 GATE_PRIMARY = dict(style="Choose style", pick="Pick scripts", approve="Review", confirm="Confirm go", draft="Watch draft")
@@ -876,6 +968,9 @@ def _summary(pd, st, gate, pc, rounds_used, job=None):
         cap = [x for x in AP.load(os.path.join(pd, "flow")) if x.get("kind") in ("recording", "screenshot") and AP.state(x, pd) in ("mock", "todo")] if stage == "keyframes" else []
         if cap:
             status, badge = f"Your turn: {len(cap)} {'recording' if len(cap) == 1 else 'recordings'} to capture from the real app. See the Assets tab, then send them to the agent.", "waiting"
+    ap = AU.view(st)
+    if ap and ap["state"] == "running" and not finished:
+        status, badge = _clip(ap["line"], 140), "working"
     line = None if finished else _job_line(st, job, gate)
     if line:
         # A run in progress is the agent's turn, whatever is also open: a card pinned on "your turn" over a busy agent reads as stuck.
@@ -1019,13 +1114,13 @@ def snapshot(pd):
                 x = x or {}
                 p = os.path.join(d, x["image"]) if x.get("image") else ""
                 slate = os.path.isfile(p) and SB.is_slate(p)
-                return dict(label=label, path=None if slate else _media(p), slate=slate, prompt=x.get("prompt"))
+                return dict(label=label, path=None if slate else _media(p), slate=slate, prompt=x.get("prompt"), real=os.path.isfile(p + ".real.json"))
             src = s.get("source")
             sc.append(dict(id=s["id"], beat=s.get("beat", ""), start_s=float(s["t"][0]), end_s=float(s["t"][1]), action=s.get("action", ""), caption=s.get("caption") or None,
                            voice=s.get("vo") or None, sound=s.get("sound") or None, camera=s.get("camera") or None, proof=s.get("proof") or None,
                            source=src if src in ("real", "generated", "mock") else "other", generated=src == "generated", start=fr("start", s.get("start")), end=fr("end", s.get("end")),
                            frames=[dict(fr(f"t={x.get('t', '?')}s", x), t=x.get("t") if isinstance(x.get("t"), (int, float)) else None, auto=bool(x.get("auto")))
-                                   for x in s.get("frames") or []]))
+                                   for x in s.get("frames") or []], scout=SC.state(d, s), scout_why=(s.get("scout_miss") or {}).get("why")))
         bl.append(dict(id=sid, title=b.get("title", sid), logline=b.get("logline", ""), aspect=b.get("aspect", "16:9"), density=b.get("density", {}).get("every_s"),
                        duration_s=float(max((s["end_s"] for s in sc), default=0)), scenes=sc))
     valid = {s["id"] for b in bl for s in b["scenes"]}
@@ -1051,7 +1146,7 @@ def snapshot(pd):
     rel = lambda p: os.path.relpath(p, pd) if p.startswith(pd) else os.path.basename(p)  # noqa: E731
     proj = _project(pd)
     drafts = [dict(id=f"d{i + 1}", label=f"Draft {i + 1}", note=d.get("note") or None, path=_media(d["file"]), name=os.path.basename(d["file"]), rel=rel(d["file"]),
-                   after=after.get(i, ""), **SH.view(st, proj, "draft", i + 1, d["file"])) for i, d in enumerate(st["drafts"])]
+                   after=after.get(i, ""), **SH.view(st, proj, "draft", i + 1, d["file"]), **_draft_extras(pd, st, i)) for i, d in enumerate(st["drafts"])]
     finals = [dict(id=f"f{i + 1}", label=f"Final {i + 1}", path=_media(x["file"]), name=os.path.basename(x["file"]), rel=rel(x["file"]),
                    **SH.view(st, proj, "final", i + 1, x["file"])) for i, x in enumerate(st["finals"])]
     councils = {k: _clip(open(os.path.join(f, v[-1]["file"])).read(), 900) for k, v in st["councils"].items() if v and os.path.isfile(os.path.join(f, v[-1]["file"]))}
@@ -1081,11 +1176,30 @@ def snapshot(pd):
                 share=dict(destinations=[dict(id=d, label=SH.LABEL[d], note=SH.NOTE[d], in_place=d == "artifacts") for d in SH.available(st)]),
                 checks=[dict(ok=o, text=t) for o, t in pc], gate=gate, activity=_activity(st), job=job,
                 settings=dict(output=home.output_info(place["project"], place["repo"]), saved_in=os.path.abspath(pd)),
-                approvals={k: dict(by=v["by"], at=v["at"], fresh=gate_ok(pd, st, k)) for k, v in st["gates"].items()}))
+                approvals={k: dict(by=v["by"], at=v["at"], fresh=gate_ok(pd, st, k)) for k, v in st["gates"].items()},
+                pairs=[AB.person_view(pd, p) for p in st.get("pairs") or [] if p["kind"] == "person"], autopilot=AU.view(st),
+                assumptions=[dict(id=a["id"], text=a["text"], scene=a.get("scene"), overturned=a.get("overturned")) for a in st.get("assumptions") or []],
+                scout=SC.summary(SC.listing(pd)), lessons=[dict(id=x["id"], line=x["line"], videos=x["videos"]) for x in LS.top(st.get("person"))]))
+
+
+def _draft_extras(pd, st, i):
+    """Per draft for the Stage: what was checked on this file, the checks it fixed, broke or left open, its look against the references,
+    the notes pinned to it, the blind comparison it was in, and whether its version can be restored."""
+    d = st["drafts"][i]
+    sb = FC.scoreboard(st, i + 1)
+    lk = d.get("look")
+    jp = next((p for p in reversed(st.get("pairs") or []) if p["kind"] == "judge" and p["draft"] == i + 1), None)
+    return dict(verify=FC.verify_view(d),
+                board=dict({k: sb[k] for k in ("line", "fixed", "broken", "open", "held", "total", "passing")},
+                           rows=[{k: x[k] for k in ("id", "what", "scene", "status", "change", "source")} for x in sb["rows"]]),
+                look=dict(mean=lk["mean"], scenes=[dict(scene=k, d=v["d"], pair=_media(v["pair"])) for k, v in sorted(lk["scenes"].items())]) if lk else None,
+                pins=[dict(id=p["id"], at_s=p["at_s"], scene=p.get("scene"), text=p["text"], by=p["by"]) for p in st.get("pins") or [] if p["draft"] == i + 1],
+                judged=AB.result(jp)["line"] if jp else None, restorable=os.path.isdir(os.path.join(fdir(pd), "versions", f"d{i + 1}")))
 
 
 PUBLISH_AFTER = {"init", "advance", "discover", "script", "doc", "plan", "story", "scene", "density", "council", "approve", "asset", "frames", "make",
-                 "draft", "round", "final", "revise", "note", "resume", "share"}
+                 "draft", "round", "final", "revise", "note", "resume", "share", "check", "pin", "look", "restore", "ab", "autopilot", "assume", "lessons",
+                 "recipe", "second-opinion", "scout", "notes"}
 PUBLISH_TIMEOUT_S = 300          # the host copies every frame and clip on publish
 
 
@@ -1128,6 +1242,14 @@ def status_text(s):
         L.append(f"plan documents: {', '.join(d['id'] for d in s['docs'])}")
     if s["needs"]:
         L.append(f"to make: {len(s['needs'])} (promo flow needs)")
+    if s.get("scoreboard"):
+        L.append(f"checks: {s['scoreboard']} (promo flow check list)")
+    if s.get("round_brief"):
+        L.append(f"round brief (every sub-agent reads it first): {s['round_brief']}")
+    if s.get("autopilot"):
+        L.append(f"autopilot: {s['autopilot']['line']}")
+    if s.get("lessons"):
+        L.append("this person said before: " + " | ".join(s["lessons"][:3]))
     if s["ready"]:
         L.append("ready: `promo flow advance`")
     if s["ask"]:
@@ -1370,6 +1492,181 @@ def _scene_cli(pd, a):
         print(BE.scene_set(fd, a.story, a.id, a.t, a.redraw, **fields, **extra))
 
 
+def _int(x, what):
+    try:
+        return int(x)
+    except (TypeError, ValueError):
+        raise FlowError(f"{what} must be a number, got {x!r}") from None
+
+
+def _check_cli(pd, a):
+    if a.action == "add":
+        print(f"check {FC.add(pd, a.what, a.scene, a.story, a.kind, a.gate, a.source, a.by)} added")
+    elif a.action == "mark":
+        if a.ok is None or not a.id:
+            raise FlowError("check mark ID needs --pass or --fail")
+        FC.mark(pd, a.id, a.draft, "pass" if a.ok else "fail", a.evidence, a.family, a.by)
+    elif a.action == "marks":
+        print(f"{FC.marks(pd, a.file, a.draft, a.family, a.by)} marks recorded")
+    elif a.action == "retire":
+        FC.retire(pd, a.id, a.why, a.by)
+    else:
+        st = load(pd)
+        sb = FC.scoreboard(st, a.draft) if st["drafts"] else dict(rows=[], line="no draft yet", void=[])
+        print(json.dumps(sb, indent=1) if a.json else FC.board_text(sb))
+        return False
+    return True
+
+
+def _ab_cli(pd, a):
+    if a.action == "add":
+        print(f"comparison {AB.add(pd, a.question, a.a, a.b, a.label_a, a.label_b, a.scene)} is on the Stage for the person")
+    elif a.action == "pick":
+        AB.pick(pd, a.id, a.side, a.by)
+    elif a.action == "drafts":
+        jid, d = AB.judge_pair(pd, a.draft, a.against)
+        print(f"{jid}: give {d}/order-1.png and {d}/order-2.png to two fresh judges (one order each) with {d}/QUESTION.md; then `promo flow ab judge {jid} --order 1 --pick A|B|tie|insufficient --family F`")
+    elif a.action == "judge":
+        AB.judge(pd, a.id, a.order, a.pick, a.defect, a.family)
+        print(judged(pd, a.id)["line"])
+    else:
+        for p in load(pd).get("pairs") or []:
+            print(f"{p['id']}  " + (AB.result(p)["line"] if p["kind"] == "judge" else f"{p['question']}  " + (f"answered: {p['picks'][-1]['choice']}" if p["picks"] else "waiting for the person")))
+        return False
+    return True
+
+
+def _autopilot_cli(pd, a):
+    if a.op == "start":
+        if not (a.minutes and a.by):
+            raise FlowError("autopilot start needs --minutes and --by (the person who set it going)")
+        AU.start(pd, a.minutes, a.by)
+    elif a.op == "pass":
+        if a.phase == "begin":
+            k = AU.begin(pd)
+            print(f"pass {k} started" if k else f"autopilot out of time: {AU.view(load(pd))['line']}. Show the person the latest draft")
+        elif a.phase == "end":
+            state, line = AU.end(pd)
+            print(f"autopilot {state}: {line}")
+        else:
+            raise FlowError("autopilot pass begin|end")
+    elif a.op == "replan":
+        AU.replan(pd, a.note)
+    elif a.op == "status":
+        v = AU.view(load(pd))
+        print(json.dumps(v, indent=1) if a.json else (v["line"] if v else "no autopilot run"))
+        return False
+    else:
+        AU.control(pd, a.op, a.by)
+    return True
+
+
+def _assume_cli(pd, a):
+    if a.action == "add":
+        print(f"assumption {AU.assume(pd, a.arg, a.scene)} is on the Stage as a card the person can overturn")
+    else:
+        print(f"overturned; check {AU.overturn(pd, a.arg, a.text, a.by)} carries it into the next round")
+    return True
+
+
+def _lessons_cli(pd, a):
+    if a.add:
+        by = human(a.by)
+        LS.record("note", by, _project(pd), a.add)
+        return True
+    if a.forget:
+        LS.forget(a.forget, human(a.by))
+        return True
+    rows = LS.top(a.who or load(pd).get("person"), n=1000 if a.all else LS.TOP, everyone=a.all)
+    print(json.dumps(rows, indent=1) if a.json else "\n".join(f"{x['id']}  {x['line']}" for x in rows) or "nothing recorded yet")
+    return False
+
+
+def _recipe_cli(pd, a):
+    if a.action == "use":
+        print(f"recipe {a.id} used this round; check {recipe_use(pd, a.id, a.scene)} measures it")
+        return True
+    if a.action == "add":
+        import yaml
+        r = yaml.safe_load(_body(a.file)) or {}
+        LS.validate(r)
+        d = os.path.join(fdir(pd), "recipes")
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, f"{r['id']}.yaml"), "w") as f:
+            yaml.safe_dump(r, f, sort_keys=False, allow_unicode=True)
+        print(f"recipe {r['id']} added to this project")
+        return True
+    st = load(pd)
+    rows = LS.retrieve(pd, a.style or (st.get("discover") or {}).get("style"), a.for_ or "", n=100) if (a.for_ or a.style) else LS.recipes(pd)
+    for r in rows:
+        print(f"{r['id']:<30} {r['kind']:<9} {r['state']:<8} {r['w']}W {r['l']}L  {r['intent']}")
+    return False
+
+
+def _calibration_cli(pd, a):
+    c = LS.calibration()
+    if a.json:
+        print(json.dumps(c, indent=1))
+    elif not c["n"]:
+        print("no prediction to compare yet: it fills as the person answers drafts after council rounds")
+    else:
+        print(f"the council's verdict matched what the person did next in {c['agree']} of {c['n']} rounds ({c['rate']:.0%})")
+        for k, v in sorted(c["table"].items()):
+            print(f"  council said {k:<8} then: approved {v['approved']}, more feedback {v['feedback']}")
+    return False
+
+
+def _second_cli(pd, a):
+    from . import second as SO
+    text, n = SO.run(pd, a.draft, a.provider, a.dry_run)
+    print(text if a.dry_run else f"{a.provider}: {n} marks recorded")
+    return not a.dry_run
+
+
+def _scout_cli(pd, a):
+    if a.action == "list":
+        rows = SC.listing(pd)
+        print(json.dumps(rows, indent=1) if a.json else "\n".join(f"{x['story']}/{x['scene']:<4} {x['state']:<7} {x['action']}" + (f"  ({x['why']})" if x["why"] else "") for x in rows) or "no app scenes")
+        return False
+    if not (a.story and a.scene):
+        raise FlowError("scout add|miss needs --story and --scene")
+    if a.action == "add":
+        SC.add(pd, a.story, a.scene, a.file, a.which, a.url)
+    else:
+        SC.miss(pd, a.story, a.scene, a.why)
+    return True
+
+
+def _notes_cli(pd, a):
+    if a.action == "add":
+        RB.add_note(pd, a.text)
+        return True
+    print(RB.write_notes(pd))
+    return False
+
+
+def _restore_cli(pd, a):
+    done, k = VR.restore(pd, a.draft, a.scene, a.shot, a.by, a.undo)
+    print(f"{done}. Rebuild the changed shots; `promo flow restore --undo {k} --by NAME` puts the files back as they were")
+    return True
+
+
+def _pin_cli(pd, a):
+    pid, scene = FC.pin(pd, a.draft, a.at, a.text, a.by, a.scene, a.story)
+    print(f"pinned {pid}" + (f" on scene {scene}" if scene else "") + ": it goes into the next round as a check")
+    return True
+
+
+def _look_cli(pd, a):
+    n, res = FC.look(pd, a.draft, a.story)
+    print(f"draft {n}: look distance {res['mean']:.3f} (0 = same look as the references); pair images in {os.path.join(fdir(pd), 'look', f'd{n}')}")
+    return True
+
+
+EXTRA = {"check": _check_cli, "pin": _pin_cli, "look": _look_cli, "restore": _restore_cli, "ab": _ab_cli, "autopilot": _autopilot_cli, "assume": _assume_cli,
+         "lessons": _lessons_cli, "recipe": _recipe_cli, "calibration": _calibration_cli, "second-opinion": _second_cli, "scout": _scout_cli, "notes": _notes_cli}
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="promo flow", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--project", type=_resolve, default=None, help="project dir or bare name (default: the cwd)")
@@ -1403,8 +1700,37 @@ def main(argv=None):
     p.add_argument("--force", action="store_true"); p.add_argument("--jobs", type=int, default=3); p.add_argument("--provider", default="auto"); p.add_argument("--limit", type=int)
     p = P("make"); p.add_argument("--which", nargs="+", default=["start", "end"], choices=["start", "end", "frames"]); p.add_argument("--jobs", type=int, default=3)
     p.add_argument("--force", action="store_true"); p.add_argument("--provider", default="auto")
-    p = P("draft"); p.add_argument("action", choices=["add"]); p.add_argument("file"); p.add_argument("--note", default="")
-    p = P("round"); p.add_argument("action", choices=["start", "close"]); p.add_argument("--feedback", default=""); p.add_argument("--council"); p.add_argument("--research"); p.add_argument("--note", default="")
+    p = P("draft"); p.add_argument("action", choices=["add", "verify"]); p.add_argument("file", help="add: the draft file; verify: the draft number")
+    p.add_argument("--note", default=""); p.add_argument("--report", help="the `promo check` report (out/<name>-<tag>-check.json) made for this very file")
+    p = P("round"); p.add_argument("action", choices=["start", "close", "brief"]); p.add_argument("--feedback", default=""); p.add_argument("--council"); p.add_argument("--research")
+    p.add_argument("--note", default=""); p.add_argument("--by")
+    p = P("check"); p.add_argument("action", choices=["add", "mark", "marks", "retire", "list"]); p.add_argument("id", nargs="?"); p.add_argument("--what"); p.add_argument("--scene")
+    p.add_argument("--story"); p.add_argument("--kind", default="judge", choices=FC.KINDS); p.add_argument("--gate"); p.add_argument("--source", default="agent", choices=FC.SOURCES)
+    p.add_argument("--by"); p.add_argument("--draft", type=int); g = p.add_mutually_exclusive_group(); g.add_argument("--pass", dest="ok", action="store_true", default=None)
+    g.add_argument("--fail", dest="ok", action="store_false"); p.add_argument("--evidence"); p.add_argument("--family"); p.add_argument("--file"); p.add_argument("--why")
+    p.add_argument("--json", action="store_true")
+    p = P("pin"); p.add_argument("action", choices=["add"]); p.add_argument("--draft", type=int); p.add_argument("--at", type=float, required=True); p.add_argument("--text", required=True)
+    p.add_argument("--by", required=True); p.add_argument("--scene"); p.add_argument("--story")
+    p = P("look"); p.add_argument("--draft", type=int); p.add_argument("--story")
+    p = P("restore"); p.add_argument("--draft", type=int); p.add_argument("--scene"); p.add_argument("--shot", action="append", default=[]); p.add_argument("--undo", type=int)
+    p.add_argument("--by", required=True)
+    p = P("ab"); p.add_argument("action", choices=["add", "pick", "drafts", "judge", "list"]); p.add_argument("id", nargs="?"); p.add_argument("--question"); p.add_argument("--a")
+    p.add_argument("--b"); p.add_argument("--label-a"); p.add_argument("--label-b"); p.add_argument("--scene"); p.add_argument("--side", choices=AB.SIDES); p.add_argument("--by")
+    p.add_argument("--draft", type=int); p.add_argument("--against", type=int); p.add_argument("--order", choices=["1", "2"]); p.add_argument("--pick", choices=AB.PICKS)
+    p.add_argument("--defect"); p.add_argument("--family")
+    p = P("autopilot"); p.add_argument("op", choices=["start", "pass", "replan", "pause", "resume", "stop", "status"]); p.add_argument("phase", nargs="?", choices=["begin", "end"])
+    p.add_argument("--minutes", type=int); p.add_argument("--by"); p.add_argument("--note"); p.add_argument("--json", action="store_true")
+    p = P("assume"); p.add_argument("action", choices=["add", "overturn"]); p.add_argument("arg", help="add: what you chose; overturn: its id"); p.add_argument("--scene")
+    p.add_argument("--text"); p.add_argument("--by")
+    p = P("lessons"); p.add_argument("--who"); p.add_argument("--all", action="store_true"); p.add_argument("--add"); p.add_argument("--forget"); p.add_argument("--by")
+    p.add_argument("--json", action="store_true")
+    p = P("recipe"); p.add_argument("action", choices=["list", "use", "add"]); p.add_argument("id", nargs="?"); p.add_argument("--style"); p.add_argument("--for", dest="for_")
+    p.add_argument("--scene"); p.add_argument("--file")
+    P("calibration").add_argument("--json", action="store_true")
+    p = P("second-opinion"); p.add_argument("--draft", type=int); p.add_argument("--provider", default="grok"); p.add_argument("--dry-run", action="store_true")
+    p = P("scout"); p.add_argument("action", choices=["list", "add", "miss"]); p.add_argument("--story"); p.add_argument("--scene"); p.add_argument("--file")
+    p.add_argument("--which", default="both", choices=["start", "end", "both"]); p.add_argument("--url"); p.add_argument("--why"); p.add_argument("--json", action="store_true")
+    p = P("notes"); p.add_argument("action", choices=["add", "show"]); p.add_argument("text", nargs="?")
     p = P("final"); p.add_argument("action", choices=["add"]); p.add_argument("file")
     P("revise").add_argument("--feedback", required=True)
     p = P("note"); p.add_argument("text"); p.add_argument("--kind", default="other", choices=NOTE_KINDS); p.add_argument("--done", action="store_true")
@@ -1480,10 +1806,18 @@ def main(argv=None):
             frames_rc = make_frames(pd, None, None, tuple(a.which), a.force, a.provider, a.jobs, live=True)
             rc = make_assets(pd, None, a.force, a.provider, a.jobs, live=True) or frames_rc          # a failed frame must not stop the audio samples
         elif a.cmd == "draft":
-            add_draft(pd, a.file, a.note)
+            if a.action == "add":
+                n = add_draft(pd, a.file, a.note, a.report)
+                print(f"draft {n} registered; its plan is kept for `promo flow restore --draft {n}`" + ("" if a.report else "; attach its check report with `promo flow draft verify`"))
+            else:
+                if not a.report:
+                    raise FlowError("draft verify needs --report out/<name>-<tag>-check.json")
+                print(FC.verify(pd, _int(a.file, "draft number"), a.report)["line"])
         elif a.cmd == "round":
             if a.action == "start":
-                print(f"round {round_start(pd, a.feedback)} of {MAX_ROUNDS} open")
+                print(f"round {round_start(pd, a.feedback, a.by)} of {MAX_ROUNDS} open; brief: {RB.brief_path(pd, open_round(load(pd)))}")
+            elif a.action == "brief":
+                print(RB.write_brief(pd) or "no round is open")
             else:
                 r = round_close(pd, a.council, a.research, a.note)
                 print(f"round closed: intent verdict {r['closed']['verdict']}")
@@ -1522,13 +1856,20 @@ def main(argv=None):
             print(f"resumed {pd}\nuse --project {pd} on every promo flow command in this thread\n" + status_text(status(pd)))
         elif a.cmd == "note":
             note(pd, a.text, a.kind, a.done)
+        elif a.cmd in EXTRA:
+            wrote = EXTRA[a.cmd](pd, a)
+            if not wrote:
+                return rc
         elif a.cmd == "board":
             print(dashboard(pd, a.out))
+        if a.cmd in PUBLISH_AFTER and os.path.isfile(os.path.join(fdir(pd), "flow.json")):
+            RB.write_brief(pd)
+            RB.write_notes(pd)
         if a.cmd == "publish" or a.cmd in PUBLISH_AFTER:
             out = publish(pd, explicit=a.cmd == "publish")
             if out:
                 print(f"Stage updated: {out}", file=sys.stderr)
-    except (FlowError, BR.BriefError, SH.ShareError, PD.DocError, BE.BoardError, home.ConfigError) as e:
+    except (FlowError, BR.BriefError, SH.ShareError, PD.DocError, BE.BoardError, home.ConfigError, CompareError) as e:
         print(f"promo flow: {e}", file=sys.stderr)
         return 1
     return rc

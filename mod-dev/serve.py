@@ -187,6 +187,16 @@ def run_action(pd, name, payload):
         return {"ok": True, "message": "making frames and samples (promo flow make)", "pending": False}
     elif name == "share":
         return {"ok": True, "message": f"upload {payload['item']} to {payload['dest_label']}: `promo flow share {payload['kind']} {payload['n']} --to {payload['dest']} --by NAME` is the agent's to run", "pending": True}
+    elif name in ("pin", "ab", "forget", "overturn", "restore", "autopilot"):
+        a = payload
+        argv = dict(pin=["pin", "add", "--draft", str(a.get("draft")), "--at", str(a.get("at")), "--text", str(a.get("text")), "--by", BY],
+                    ab=["ab", "pick", str(a.get("pair")), "--side", str(a.get("side")), "--by", BY],
+                    forget=["lessons", "--forget", str(a.get("id")), "--by", BY],
+                    overturn=["assume", "overturn", str(a.get("id")), "--text", str(a.get("text")), "--by", BY],
+                    restore=["restore", "--draft", str(a.get("draft")), "--by", BY] + (["--scene", str(a["scene"])] if a.get("scene") else []),
+                    autopilot=["autopilot", str(a.get("op")), "--by", BY] + (["--minutes", str(a["minutes"])] if a.get("op") == "start" else []))[name]
+        rc = flow.main(["--project", pd, *argv])
+        return {"ok": rc == 0, "error": f"promo flow {argv[0]} failed (see the harness console)", "pending": False}
     elif name == "density":
         args = ["--clear"] if not payload.get("every") else ["--every", str(payload["every"])]
         rc = flow.main(["--project", pd, "density", "--story", payload["story"], *args])

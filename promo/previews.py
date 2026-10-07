@@ -95,7 +95,8 @@ def _make_one(prompt, final, provider, size=FRAME_SIZE):
 
 
 def frame_targets(bds, scene=None, which=("start", "end"), force=False):
-    """[(label, board, scene, frame, path)] for frames that are not real images yet (all of them with force)."""
+    """[(label, board, scene, frame, path)] for frames that are not real images yet (all of them with force). A real screen of the product
+    (`promo flow scout`, `.real.json` sidecar) is never redrawn, not even with force: a generated picture would then pass for the product."""
     out = []
     for sid, b, d in bds:
         for s in b.get("scenes") or []:
@@ -104,6 +105,8 @@ def frame_targets(bds, scene=None, which=("start", "end"), force=False):
             for w, f in SB._frames(s, SB.which_for(b, which)):
                 if f.get("image"):
                     p = os.path.join(d, f["image"])
+                    if os.path.isfile(p + ".real.json"):
+                        continue
                     if force or not os.path.isfile(p) or SB.is_slate(p):
                         out.append((f"{sid}/{s['id']}/{w}", b, s, f, p))
     return out

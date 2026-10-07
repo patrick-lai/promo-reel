@@ -14,6 +14,19 @@ def _private_config(tmp_path, monkeypatch):
     monkeypatch.setenv("PROMO_FLOW_PUBLISH", "0")
 
 
+@pytest.fixture
+def sheets(monkeypatch):
+    """Blind comparison sheets without ffmpeg: one PNG per order."""
+    from PIL import Image
+    from promo import compare_ref as CR
+
+    def sheet(a, b, out, *args, **kw):
+        os.makedirs(os.path.dirname(out), exist_ok=True)
+        Image.new("RGB", (320, 180), (40, 40, 40)).save(out)
+        return out
+    monkeypatch.setattr(CR, "sheet", sheet)
+
+
 def _mentions_missing(exc, seen=None):
     seen = seen or set()
     while exc is not None and id(exc) not in seen:

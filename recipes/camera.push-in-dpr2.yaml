@@ -1,0 +1,7 @@
+id: camera.push-in-dpr2
+kind: camera
+styles: [any]
+intent: "A push-in onto UI text stays sharp only when the source has the pixels for it."
+how: "Push in on 2x (DPR 2) takes only; on a 1x take keep w >= 0.66 (<= 1.5x) or swap in the DPR 2 take. Read the footage-dpr WARN."
+check: "Text the camera pushes in on is crisp, not soft or blocky, at full size."
+evidence: "AGENTS.md section 3 (capture at DPR 2), footage-dpr gate."

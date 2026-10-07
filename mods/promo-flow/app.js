@@ -8,7 +8,10 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   const SHORT = { discover: "Style", scripts: "Scripts", pick: "Pick", storyboard: "Storyboard", assets: "Assets", keyframes: "Keyframes", confirm: "Confirm", drafts: "Drafts", review: "Review", final: "Final" };
   const STAGE_TAB = { scripts: "scripts", pick: "scripts", storyboard: "storyboard", assets: "assets", keyframes: "storyboard", confirm: "storyboard", drafts: "draft", review: "draft", final: "draft" };
   const BADGE_TEXT = { working: "With the agent", waiting: "Your turn", done: "Done", attention: "Needs attention" };
-  const ACTION_WORD = { approve: "your approval", pick: "your picks", changes: "your changes", feedback: "your feedback", generate: "your request", request: "your request", density: "your request", share: "your upload request", settings: "your folder choice" };
+  const ACTION_WORD = { approve: "your approval", pick: "your picks", changes: "your changes", feedback: "your feedback", generate: "your request", request: "your request", density: "your request", share: "your upload request", settings: "your folder choice",
+    pin: "your note", restore: "your restore request", ab: "your pick", autopilot: "your go", overturn: "your change", forget: "your request" };
+  /* Composer kinds beyond plain changes/feedback: the button says what sending does. */
+  const COMPOSE_SEND = { request: "Send request", overturn: "Send change", pin: "Pin note" };
   const KIND_ICON = { script: "doc", treatment: "spark", shotlist: "table", direction: "film", edit: "cut", audio: "music", capture: "camera", schedule: "clock", deliverables: "download", risks: "shield", research: "link", review: "refresh", notes: "doc" };
   const QUICK = [["Full script", "Write the full script as a document I can read: voice-over, on-screen text and action for every scene."], ["Shot list", "Add a shot list: one row per shot with time, picture, camera, caption, voice and proof."],
     ["Edit plan", "Add an edit plan: the cut list on the timeline with transitions, rhythm and what holds still."], ["Audio plan", "Add an audio plan: voice lines, music cues, sound effects and mix targets."],
@@ -459,7 +462,8 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   }
   function bannerAct(a) {
     if (a.startsWith("open:")) { S.tab = a.slice(5); S.userTab = true; S.updated = false; render(); el.sc.scrollTop = 0; return; }
-    if (a === "restore") { const t = S.stash.text; S.stash = null; S.compose = true; el.note.value = t; render(); el.note.focus(); return; }
+    /* A stashed pin or change keeps what it belonged to: restored as plain text it would go out as draft feedback and start a round. */
+    if (a === "restore") { const x = S.stash; S.stash = null; S.compose = true; S.composeKind = x.kind; S.composeData = x.data; S.reqHint = x.hint; el.note.value = x.text; render(); el.note.focus(); return; }
     if (a === "discard") S.stash = null;
     else if (a === "stale") S.stale = null;
     else if (a === "updated") S.updated = false;
@@ -522,7 +526,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     if (tab === "storyboard") return [d.boards, d.stage === "confirm" ? d.assets.map((a) => [a.kind, a.source, a.scenes]) : 0, d.stage === "keyframes" ? d.to_make : 0, common];
     if (tab === "assets") return [d.assets, d.to_make, d.boards, common];
     if (tab === "draft") return [d.drafts, d.finals, d.rounds, d.rounds_used, d.rounds_max, d.share, common];
-    if (tab === "plan") return [d.docs, d.scripts, d.boards && d.boards.map((b) => b.id), common];
+    if (tab === "plan") return [d.docs, d.scripts, d.boards && d.boards.map((b) => b.id), d.lessons, common];
     return [d.intent, d.style, common];
   }
   function renderContent(list, force) {
@@ -534,7 +538,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     else if (S.settingsOpen) sig = "settings|" + JSON.stringify([S.doc.settings, S.readonly, S.offline, !!S.pending, !!S.justSent, !!S.sending, S.err]);
     else if (!list.length) sig = "overview|" + JSON.stringify([sliceFor(null, true), gate(), S.style, S.readonly, !!S.pending]);
     else if (S.reader) sig = "reader|" + S.reader.key + "|" + JSON.stringify(sliceFor(S.tab, false)) + S.readonly;
-    else sig = S.tab + "|" + JSON.stringify(sliceFor(S.tab, true)) + "|" + [...S.picks].join() + "|" + S.style + S.boardIdx + S.draftSel + S.earlier + S.filter + S.readonly + !!S.pending + !!S.justSent + !!S.sending + S.sbView + S.docGroup + S.docQ + (S.compose ? S.composeKind : "") + jobRunning();
+    else sig = S.tab + "|" + JSON.stringify(sliceFor(S.tab, true)) + "|" + JSON.stringify([S.doc.pairs, S.doc.assumptions, S.doc.autopilot]) + "|" + [...S.picks].join() + "|" + S.style + S.boardIdx + S.draftSel + S.earlier + S.filter + S.readonly + !!S.pending + !!S.justSent + !!S.sending + S.sbView + S.docGroup + S.docQ + (S.compose ? S.composeKind : "") + jobRunning();
     if (!force && sig === lastSig) return;
     const keepScroll = sig.split("|")[0] === lastSig.split("|")[0] ? el.sc.scrollTop : 0;
     lastSig = sig;
@@ -550,6 +554,8 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     else if (!list.length) view = viewOverview();
     else if (S.reader) view = viewReader();
     else view = ({ scripts: viewScripts, storyboard: viewStoryboard, assets: viewAssets, draft: viewDraft, plan: viewPlan }[S.tab] || viewOverview)();
+    const fy = !S.settingsOpen && !S.reader && hasDoc() && readable() ? forYou() : null;
+    if (fy) view.prepend(fy);
     el.content.replaceChildren(view);
     el.sc.scrollTop = keepScroll;
     el.content.setAttribute("aria-labelledby", S.tab ? "tab-" + S.tab : "");
@@ -559,6 +565,54 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     if (S.scrollHook) S.scrollHook();
   }
   el.sc.addEventListener("scroll", () => { if (S.scrollHook) { cancelAnimationFrame(S.raf); S.raf = requestAnimationFrame(S.scrollHook); } }, { passive: true });
+
+  /* ---------------- for you: blind picks, the agent's own choices, the autopilot run ---------------- */
+  function forYou() {
+    const fy = PF.forYou(S.doc);
+    if (!fy.pairs.length && !fy.assumptions.length && !fy.autopilot) return null;
+    return h("div", { class: "foryou" }, fy.autopilot ? autopilotCard(fy.autopilot) : null, fy.pairs.map(pickCard), fy.assumptions.length ? assumeCard(fy.assumptions) : null);
+  }
+  /* A blind pick: the two options as Left and Right, never by name, so the answer is about what they see and hear. */
+  function pickCard(p) {
+    const blocked = !canAsk() || !p.ready;
+    const side = (k) => {
+      const r = p[k] && mref(p[k]);
+      const slot = h("div", { class: "pk-media", style: "position:relative" });
+      if (!r || r.error) slot.append(h("div", { class: "mid", role: "alert" }, ic("alert"), h("span", { text: r && r.error ? r.error : "This option is not available." })));
+      else lazyInto(slot, r, (u) => (p.media === "image" ? h("img", { src: u, alt: (k === "left" ? "Left" : "Right") + " option" })
+        : p.media === "video" ? h("video", { src: u, controls: "", preload: "metadata", playsinline: "", "aria-label": (k === "left" ? "Left" : "Right") + " option" })
+          : h("audio", { src: u, controls: "", preload: "metadata", "aria-label": (k === "left" ? "Left" : "Right") + " option" })), { compact: true });
+      return h("figure", { class: "pk-side" }, slot, h("figcaption", { text: k === "left" ? "Left" : "Right" }));
+    };
+    const ans = [["left", "Left"], ["right", "Right"], ["same", "No difference"], ["unsure", "Can't tell"]];
+    return h("section", { class: "card pick-card", "aria-label": "Your pick: " + p.question },
+      h("div", { class: "pk-h" }, h("b", { text: p.question }), h("span", { class: "sub", text: "You don't see which option is which, so only what you see and hear decides." })),
+      h("div", { class: "pk-row" }, side("left"), side("right")),
+      h("div", { class: "pk-acts", role: "group", "aria-label": "Your pick" }, ans.map(([k, l], i) => h("button", { type: "button", class: "btn " + (i < 2 ? "ghost pk-main" : "ghost"), "data-quiet": i < 2 ? null : "1",
+        "data-k": "pk-" + p.id + "-" + k, disabled: blocked, onclick: () => send("ab", { pair: p.id, side: k, label: l, question: p.question }) }, l))));
+  }
+  function autopilotCard(a) {
+    const busy = a.state === "running";
+    return h("section", { class: "card ap-card", "data-state": a.state, "aria-label": "The agent working on its own" },
+      h("div", { class: "ap-h" }, busy ? h("i", { class: "spin" }) : ic(a.goal_met ? "check" : a.live ? "clock" : "alert"), h("span", { text: a.line })),
+      h("div", { class: "ap-bar", role: "progressbar", "aria-label": "Time used", "aria-valuemin": "0", "aria-valuemax": String(a.minutes), "aria-valuenow": String(Math.round(a.used_min || 0)) }, h("i", { style: "width:" + Math.round(a.pct * 100) + "%" })),
+      a.live ? h("div", { class: "ap-acts" }, h("button", { type: "button", class: "btn ghost", "data-quiet": "1", "data-k": "ap-stop", disabled: !canAsk(), text: "Stop and show me the draft",
+        onclick: () => send("autopilot", { op: "stop", minutes: 0, what: "stop now" }) })) : null);
+  }
+  function assumeCard(list) {
+    return h("section", { class: "card as-card", "aria-label": "Choices the agent made" }, secH("Choices the agent made for you", list.length),
+      h("ul", { class: "as-list" }, list.map((a) => h("li", null, h("span", { class: "as-t", text: a.text }), a.scene ? h("span", { class: "chip", text: "Scene " + a.scene }) : null,
+        h("button", { type: "button", class: "btn ghost", "data-quiet": "1", "data-k": "as-" + a.id, disabled: !canAsk(), text: "Change this",
+          onclick: () => openKind("overturn", { id: a.id, choice: a.text }, "What do you want instead of: " + clip(a.text, 80) + "?") })))));
+  }
+  /* The composer for a note that belongs to something: overturning one of the agent's choices, or a note pinned to a moment of a draft. */
+  function openKind(kind, data, hint) {
+    if (!canAsk()) return;
+    S.compose = true; S.composeKind = kind; S.composeData = data; S.reqHint = hint || "";
+    el.note.value = "";
+    renderGate();
+    el.note.focus();
+  }
 
   function checksLine() {
     const cs = arr(S.doc.checks);
@@ -771,6 +825,8 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       h("div", { class: "ask-h" }, ic("spark"), h("b", { text: "Ask the agent to add" })), quick));
     if (!all.length) {
       box.append(h("div", { class: "empty card" }, h("div", { class: "ring" }, ic("doc")), h("h2", { text: "Nothing here yet" }), h("p", { text: "Pick one of the requests above, or say what you need. Full scripts and plans show up in this tab as soon as the agent writes them." })));
+      const ls0 = lessonsBlock();
+      if (ls0) box.append(ls0);
       return h("div", { class: "pane" }, box);
     }
     const groups = GROUP_ORDER.filter((g) => all.some((x) => x.group === g));
@@ -789,7 +845,17 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       if (!inG.length) continue;
       box.append(h("section", { class: "doc-group", "aria-label": g }, secH(g, inG.length), h("div", { class: "doc-list" }, inG.map(docCard))));
     }
+    const ls = lessonsBlock();
+    if (ls) box.append(ls);
     return h("div", { class: "pane" }, box);
+  }
+  /* What carries over from the person's notes in earlier videos (the agent reads it before writing); each line can be forgotten. */
+  function lessonsBlock() {
+    const ls = arr(S.doc.lessons);
+    if (!ls.length) return null;
+    return h("section", { class: "lessons", "aria-label": "Remembered from your earlier notes" }, secH("Remembered from your earlier notes", ls.length),
+      h("ul", { class: "ls-list" }, ls.map((x) => h("li", null, h("span", { class: "ls-t", text: x.line }),
+        h("button", { type: "button", class: "btn ghost", "data-quiet": "1", "data-k": "ls-" + x.id, disabled: !canAsk(), text: "Forget", onclick: () => send("forget", { id: x.id, text: x.line }) })))));
   }
   /* One quiet heading style for every section of a page: small, muted, with the count beside it. */
   function secH(text, n, extra) { return h("h3", { class: "sec-h" }, h("span", { text }), n != null ? h("span", { class: "n", text: String(n) }) : null, extra || null); }
@@ -1124,7 +1190,8 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     const mk = (f, label, extra) => frameEl(f, label, ar, flat, { scene: s, label: extra || label, kind: label === "START" ? "start" : label === "END" ? "end" : "mid" });
     const mids = arr(s.frames);
     const time = num(s.start_s) + "–" + num(s.end_s) + " s";
-    const facts = [["Happens", s.action, "span"], ["Caption", s.caption, "main"], ["Voice", s.voice, "main"], ["Sound", s.sound, "minor"], ["Camera", s.camera, "minor"], ["Proof", s.proof, "minor"]].filter((r) => r[1]);
+    const facts = [["Happens", s.action, "span"], ["Caption", s.caption, "main"], ["Voice", s.voice, "main"], ["Sound", s.sound, "minor"], ["Camera", s.camera, "minor"], ["Proof", s.proof, "minor"],
+      ["Screen", s.scout === "missed" ? "Not reachable: " + (s.scout_why || "no reason given") : null, "minor"]].filter((r) => r[1]);
     const rows = [h("div", { class: "frames" }, mk(s.start, "START"), h("span", { class: "arr" }, ic("arrow")), mk(s.end, "END"))];
     if (mids.length > 2) {
       const film = h("div", { class: "frames film", role: "group", "aria-label": "Frames through the scene, " + mids.length });
@@ -1139,7 +1206,14 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
         h("h3", { text: s.beat }), sourceChip(s), h("span", { class: "time", text: time }), ic("chevron")), h("div", { class: "inner" }, body));
     }
     return h("article", { class: "card scene", id, "data-sid": s.id, "aria-label": "Scene " + s.id + ": " + s.beat },
-      h("div", { class: "scene-h" }, h("span", { class: "num", text: s.id }), h("h3", { text: s.beat }), sourceChip(s), h("span", { class: "time", text: time })), body);
+      h("div", { class: "scene-h" }, h("span", { class: "num", text: s.id }), h("h3", { text: s.beat }), sourceChip(s), scoutChip(s), h("span", { class: "time", text: time })), body);
+  }
+  /* Whether an app scene's frames are the real product: a real screenshot, a screen the agent could not reach (with why), or still drawn. */
+  function scoutChip(s) {
+    if (s.scout === "real") return h("span", { class: "chip ok", title: "These frames are screenshots of the real product", text: "Real screen" });
+    if (s.scout === "missed") return h("span", { class: "chip warn", title: s.scout_why || "", text: "Screen not reachable" });
+    if (s.scout === "drawn" && S.doc.stage === "storyboard") return h("span", { class: "chip", title: "A drawn stand-in: the real screen is not in yet", text: "Drawn stand-in" });
+    return null;
   }
   function confirmCard(boards) {
     const sc = boards.flatMap((b) => arr(b.scenes));
@@ -1190,7 +1264,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   function frameEl(f, label, ar, flat, ctx) {
     const st = "--ar:" + ar;
     const r = f && mref(f.path);
-    const lab = h("span", { class: "lbl", text: label });
+    const lab = h("span", { class: "lbl", text: f && f.real ? label + " \u00b7 real" : label });
     if (!r) return h("div", { class: "fr empty", style: st }, lab, h("div", null, h("b", { text: f && f.slate ? "Placeholder, no image yet" : "No image yet" }), f && f.prompt ? h("div", { class: "p", text: f.prompt }) : null));
     if (r.error) return h("div", { class: "fr err", style: st }, lab, h("span", { text: r.error }));
     const idx = flat.length;
@@ -1491,6 +1565,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       else if (r.error) player.append(h("div", { class: "mid", role: "alert" }, ic("alert"), h("span", { text: r.error })));
       else lazyInto(player, r, (u) => {
         const v = h("video", { src: u + "#t=0.5", controls: "", preload: "metadata", playsinline: "", "aria-label": it.label });
+        S.vid = v;
         v.addEventListener("loadedmetadata", () => { if (v.duration && isFinite(v.duration)) dur.textContent = fmtTime(v.duration) + (v.videoWidth ? " · " + v.videoWidth + "×" + v.videoHeight : ""); });
         return v;
       }, { manual: r.size > BIG_DRAFT, manualText: "Load video (" + fmtSize(r.size) + ")" });
@@ -1500,6 +1575,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
         h("span", { class: "file-main" }, h("b", { text: it.label + (it.after ? " \u00b7 after " + it.after : "") }), h("span", { class: "file-meta" }, dur, it.rel ? h("span", { class: "path", text: it.rel }) : null)),
         delivered ? null : dl);
       left.append(h("div", null, player, meta, it.note ? h("p", { class: "sub", style: "margin-top:4px", text: it.note }) : null));
+      if (!it.final) left.append(...draftReview(it, drafts));
       if (delivered) {
         /* Delivered: one block says it is ready and carries the one action; credits are quiet label / value rows. */
         const credits = arr(d.assets).filter((x) => x.licence && (x.kind === "music" || x.kind === "voice" || x.kind === "sfx"));
@@ -1528,6 +1604,81 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
         rounds.length ? h("div", { class: "rounds" }, rounds.slice().reverse().map(roundCard)) : h("p", { class: "sub", text: "No feedback yet. Watch the draft, then approve it or send feedback." }));
     }
     return h("div", { class: "pane" }, h("div", { class: "draft-grid" + (right ? "" : " one") }, left, right));
+  }
+  /* Under a draft: what was checked on this very file, the person's notes pinned to it, how it did on every check, its look against the
+     references, and a way back to the version it was built from. */
+  function draftReview(it, drafts) {
+    const n = +it.id.slice(1), latest = drafts.length;
+    const v = it.verify;
+    const out = [];
+    if (v) out.push(h("p", { class: "verify", "data-state": v.state }, ic(v.state === "checked" ? "check" : v.state === "failed" ? "alert" : "clock"), h("span", { text: v.line })));
+    if (it.judged) out.push(h("p", { class: "sub judged", text: it.judged + "." }));
+    out.push(pinBlock(it, n));
+    out.push(checksBlock(it), lookBlock(it));
+    if (PF.canAutopilot(S.doc, it)) out.push(autopilotStart());
+    if (it.restorable && n !== latest) out.push(restoreBlock(it, n));
+    return out.filter(Boolean);
+  }
+  function pinBlock(it, n) {
+    const pins = arr(it.pins);
+    const seek = (t) => { if (S.vid && S.vid.isConnected) { S.vid.currentTime = t; S.vid.focus(); } };
+    const btn = h("button", { type: "button", class: "btn ghost", "data-quiet": "1", "data-k": "pin-" + n, disabled: !canAsk() }, ic("plus"), "Pin a note at this moment");
+    btn.addEventListener("click", () => {
+      const at = S.vid && S.vid.isConnected && isFinite(S.vid.currentTime) ? Math.round(S.vid.currentTime * 10) / 10 : 0;
+      if (S.vid && S.vid.isConnected) S.vid.pause();
+      openKind("pin", { draft: n, at, when: PF.clockT(at) }, "What should change at " + PF.clockT(at) + "?");
+    });
+    return h("section", { class: "pins", "aria-label": "Notes pinned to " + it.label }, h("div", { class: "pins-h" }, btn, h("span", { class: "sub", text: "Pause where something is wrong, then pin it: it goes to that scene." })),
+      pins.length ? h("ul", { class: "pin-list" }, pins.map((p) => h("li", null, h("button", { type: "button", class: "lchip", "data-k": "seek-" + p.id, title: "Go to " + PF.clockT(p.at_s), onclick: () => seek(p.at_s) }, ic("play"), PF.clockT(p.at_s)),
+        p.scene ? h("span", { class: "chip", text: "Scene " + p.scene }) : null, h("span", { class: "pin-t", text: p.text })))) : null);
+  }
+  function checksBlock(it) {
+    const b = it.board;
+    if (!b || !b.total) return null;
+    const CH = { fixed: ["Fixed", "ok"], broken: ["Broken", "bad"], open: ["Still open", "warn"], held: ["Holds", ""] };
+    const ICON = { pass: "check", fail: "alert", unmeasured: "clock" };
+    return h("section", { class: "ck-board", "aria-label": "Checks on " + it.label },
+      secH("Checks on this draft", b.total, h("span", { class: "chip " + (b.broken ? "bad" : b.open ? "warn" : "ok"), text: b.fixed + " fixed · " + b.broken + " broken · " + b.open + " open" })),
+      h("ul", { class: "ck-list" }, arr(b.rows).map((r) => h("li", { "data-status": r.status, title: r.status === "unmeasured" ? "Nobody has measured this on this draft yet" : "" }, ic(ICON[r.status] || "clock"),
+        h("span", { class: "ck-what", text: r.what }), r.scene ? h("span", { class: "chip", text: "Scene " + r.scene }) : null, h("span", { class: "chip " + (CH[r.change] || ["", ""])[1], text: (CH[r.change] || [r.change])[0] })))));
+  }
+  function lookBlock(it) {
+    const lk = it.look;
+    if (!lk) return null;
+    const strip = h("div", { class: "lk-strip" }, arr(lk.scenes).map((x) => {
+      const r = x.pair && mref(x.pair);
+      const slot = h("span", { class: "lk-img", style: "position:relative" });
+      if (r && !r.error) lazyInto(slot, r, (u) => h("img", { src: u, alt: "Scene " + x.scene + ": reference on the left, this draft on the right" }), { compact: true });
+      return h("figure", { class: "lk-pair" }, slot, h("figcaption", null, h("b", { text: "Scene " + x.scene }), " · " + x.d.toFixed(2)));
+    }));
+    fadeX(strip);
+    return h("section", { class: "look", "aria-label": "Look against your references" }, secH("Look against your references", null, h("span", { class: "chip", title: "0 is the same look as the references", text: "distance " + lk.mean.toFixed(2) })),
+      h("p", { class: "sub", text: "Your reference on the left, this draft on the right. Lower is closer; it may not grow from one draft to the next." }), strip);
+  }
+  function autopilotStart() {
+    const blocked = !canAsk();
+    return h("section", { class: "card ap-start", "aria-label": "Let the agent keep working" }, h("b", { text: "Let the agent keep working until every check passes" }),
+      h("p", { class: "sub", text: "It improves the draft on its own within the time you choose, and stops early when every check passes or when it stops making progress. Your review rounds are not used." }),
+      h("div", { class: "seg-ctl", role: "group", "aria-label": "Time limit" }, [[30, "30 min"], [60, "1 hour"], [120, "2 hours"]].map(([m, l]) =>
+        h("button", { type: "button", "data-k": "ap-" + m, disabled: blocked, text: "Up to " + l, onclick: () => send("autopilot", { op: "start", minutes: m, what: "up to " + l }) }))));
+  }
+  function restoreBlock(it, n) {
+    const boards = arr(S.doc.boards);
+    const scenes = boards.flatMap((b) => arr(b.scenes).map((s) => ({ ...s, story: b.id })));
+    const blocked = !canAsk();
+    const whole = h("button", { type: "button", class: "btn ghost", "data-quiet": "1", "data-k": "rs-all", disabled: blocked, text: "Go back to " + it.label });
+    whole.addEventListener("click", () => {
+      if (whole.dataset.armed) return send("restore", { draft: n, scene: "", what: it.label + ", all of it" });
+      whole.dataset.armed = "1";
+      whole.textContent = "Confirm: use " + it.label + "'s plan";
+      say("Press again to go back to " + it.label);
+    });
+    const sel = h("select", { class: "rs-scene", "aria-label": "Scene to bring back", "data-k": "rs-scene" }, scenes.map((s) => h("option", { value: String(s.id) }, (boards.length > 1 ? s.story + " · " : "") + "Scene " + s.id + ": " + clip(s.beat, 40))));
+    return h("section", { class: "restore", "aria-label": "Go back to " + it.label }, secH("Go back to this version"),
+      h("p", { class: "sub", text: "The plan this draft was built from is kept. Bring all of it back, or one scene. The current version is kept too, so this can be undone." }),
+      h("div", { class: "rs-row" }, whole),
+      scenes.length ? h("div", { class: "rs-row" }, sel, h("button", { type: "button", class: "btn ghost", "data-quiet": "1", "data-k": "rs-one", disabled: blocked, text: "Bring back this scene",
+        onclick: () => send("restore", { draft: n, scene: sel.value, what: "scene " + sel.value + " from " + it.label }) })) : null);
   }
   /* Upload options appear only for destinations the host's twg can reach; the click goes to the agent, which runs `promo flow share`. */
   function shareBlock(it) {
@@ -1631,7 +1782,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   function renderGate() {
     const m = gateModel();
     S.cur = m;
-    if (S.compose && S.composeKind === "request") { m.sendLabel = "Send request"; m.placeholder = S.reqHint || "What should the agent add or change?"; }
+    if (S.compose && COMPOSE_SEND[S.composeKind]) { m.sendLabel = COMPOSE_SEND[S.composeKind]; m.placeholder = S.reqHint || "What should the agent add or change?"; }
     const busy = !!S.sending;
     const note = (txt, opts = {}) => {
       el.gateNote.className = "gate-note";
@@ -1708,6 +1859,8 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     if (S.compose) {
       const text = el.note.value.trim().slice(0, MAX_NOTE);
       if (!text) return;
+      if (S.composeKind === "overturn") return send("overturn", { id: S.composeData.id, choice: S.composeData.choice, text });
+      if (S.composeKind === "pin") return send("pin", { draft: S.composeData.draft, at: S.composeData.at, when: S.composeData.when, text });
       if (S.composeKind === "request") return send("request", { text, where: ({ plan: "Plan", scripts: "Scripts", storyboard: "Storyboard", assets: "Assets", draft: "Drafts" })[S.tab] || "Stage" });
       if (m.g && m.g.kind === "style") return send("changes", { stage: "discover", text: "Style: " + text + refTail() });
       if (m.changes === "feedback") return send("feedback", { round: m.round, max_rounds: m.max, text });
@@ -1800,7 +1953,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     for (const p of [...S.picks]) if (!ids.has(p) || !g || g.kind !== "pick" || gateChanged) { S.picks.delete(p); cleared = true; }
     if ((S.style || S.ownStyle) && (!g || g.kind !== "style" || gateChanged)) { S.style = null; S.ownStyle = ""; S.ref = ""; cleared = true; }
     if (gateChanged) {
-      if (S.compose && el.note.value.trim()) { S.stash = { text: el.note.value.trim(), label: prevLabel || "the previous step" }; el.note.value = ""; }
+      if (S.compose && el.note.value.trim()) { S.stash = { text: el.note.value.trim(), label: prevLabel || "the previous step", kind: S.composeKind, data: S.composeData, hint: S.reqHint }; el.note.value = ""; }
       if (S.compose) { S.compose = false; S.composeKind = null; }
       if (cleared && !wasSent) toast("Your picks were cleared because the step changed");
       if (wasEditing) S.stale = { changedGate: true };

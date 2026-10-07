@@ -25,7 +25,7 @@ sys.path.insert(0, HERE)
 import serve  # noqa: E402
 
 CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-STAGES = ["discover", "scripts", "pick", "storyboard", "assets", "keyframes", "confirm", "drafts", "review", "final"]
+STAGES = ["discover", "scripts", "pick", "storyboard", "assets", "keyframes", "confirm", "drafts", "review", "autopilot", "final"]
 WIDTHS = [(380, 780), (520, 900), (900, 900)]
 
 
@@ -105,12 +105,16 @@ class Shooter:
     def __init__(self, base):
         self.base = base
         self.tmp = tempfile.mkdtemp(prefix="chrome-shoot-")
-        self.proc = subprocess.Popen([CHROME, "--headless=new", "--remote-debugging-port=9339", f"--user-data-dir={self.tmp}", "--hide-scrollbars", "--no-first-run",
+        # a port of its own: other agents on the box run these checks too, and two runs on one port drive each other's browser
+        with socket.socket() as sk:
+            sk.bind(("127.0.0.1", 0))
+            self.port = sk.getsockname()[1]
+        self.proc = subprocess.Popen([CHROME, "--headless=new", f"--remote-debugging-port={self.port}", f"--user-data-dir={self.tmp}", "--hide-scrollbars", "--no-first-run",
                                       "--disable-gpu", "--mute-audio", "--autoplay-policy=no-user-gesture-required", "--window-size=1200,1000", "about:blank"],
                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         for _ in range(60):
             try:
-                tabs = json.load(urllib.request.urlopen("http://127.0.0.1:9339/json/list"))
+                tabs = json.load(urllib.request.urlopen(f"http://127.0.0.1:{self.port}/json/list"))
                 break
             except Exception:  # noqa: BLE001
                 time.sleep(0.25)
@@ -313,6 +317,45 @@ UICHECK = r"""(async () => {
     await wait(500);
     ok('a new cadence is a message to the agent', /action density -> \[mod:promo-flow\] Sam wants storyboard frames every 2 seconds for story A\. Run: promo flow density --story A --every 2/.test(log()), log().slice(0, 300));
   }
+  if (step === 'review') {
+    ok('the draft says what was checked on this very file', /^Checked on this file: 10 passed, 1 warning\. Not checked: vo-script/.test((Q('.verify') || {}).textContent || ''), (Q('.verify') || {}).textContent);
+    ok('the checks list every check with what changed', QA('.ck-list li').length === 6 && /1 fixed · 0 broken · 1 open/.test(Q('.ck-board .sec-h').textContent), QA('.ck-list li').length + ' ' + Q('.ck-board .sec-h').textContent);
+    ok('the hidden control never reaches the person', !QA('.ck-list .ck-what').some((e) => /Klingon|periscope|pizza|dinosaur|opera|audience|Snow falls/.test(e.textContent)));
+    ok('the blind comparison is reported', /blind judge preferred draft 3/.test(Q('.judged').textContent));
+    ok('the look pairs are shown', QA('.lk-pair').length >= 1);
+    ok('the latest draft offers to keep working alone', !!Q('[data-k=ap-60]'));
+    await click('[data-k=pk-p1-left]');
+    ok('a blind pick reaches the agent as left or right', /action ab -> \[mod:promo-flow\] Sam answered the blind pick p1 \(Which end card\?\): Left\. Run: promo flow ab pick p1 --side left/.test(log()), log().slice(0, 300));
+    window.harness.setStage('autopilot'); await wait(400); window.harness.setStage('review'); await wait(900);
+    await click('[data-k=as-a1]');
+    ok('changing one of the agent\'s choices opens the note box', !Q('#compose').hidden && Q('#btnPrimary').textContent === 'Send change', Q('#btnPrimary').textContent);
+    Q('#note').value = 'Use the upbeat guitar track instead'; Q('#note').dispatchEvent(new Event('input')); await wait(100);
+    await click('#btnPrimary'); await wait(400);
+    ok('the change reaches the agent with the choice it replaces', /action overturn -> \[mod:promo-flow\] Sam wants something else than your choice "Kept the calm piano track/.test(log()), log().slice(0, 300));
+    window.harness.setStage('autopilot'); await wait(400); window.harness.setStage('review'); await wait(900);
+    await click('[data-k=pin-3]');
+    ok('pinning a note opens the note box at the video time', !Q('#compose').hidden && Q('#btnPrimary').textContent === 'Pin note' && /What should change at 0:00\.5\?/.test(Q('#noteLabel').textContent), Q('#noteLabel').textContent);
+    Q('#note').value = 'The cursor hides the merged count'; Q('#note').dispatchEvent(new Event('input')); await wait(100);
+    await click('#btnPrimary'); await wait(400);
+    ok('the pin reaches the agent with the draft and time', /action pin -> \[mod:promo-flow\] Sam pinned a note at 0:00\.5 of draft 3: The cursor hides the merged count\. Run: promo flow pin add --draft 3 --at 0\.5 /.test(log()), log().slice(0, 300));
+    window.harness.setStage('autopilot'); await wait(400); window.harness.setStage('review'); await wait(900);
+    await click('[data-k=dr-d0]');
+    ok('an earlier draft shows the person\'s pinned note', /The typed sentence takes too long to appear/.test(Q('.pin-list').textContent));
+    await click('[data-k=rs-all]');
+    ok('going back to a whole draft asks once more', /Confirm/.test(Q('[data-k=rs-all]').textContent) && !/action restore/.test(log()), Q('[data-k=rs-all]').textContent);
+    await click('[data-k=rs-all]'); await wait(400);
+    ok('then reaches the agent', /action restore -> \[mod:promo-flow\] Sam wants to go back to Draft 1, all of it\. Run: promo flow restore --draft 1/.test(log()), log().slice(0, 300));
+  }
+  if (step === 'autopilot') {
+    ok('the run shows its clock and goal', /Working until every check passes · 0 of 60 min · 5 of 6 checks pass/.test(Q('.ap-card').textContent), Q('.ap-card').textContent);
+    ok('no second start while it runs', !Q('[data-k=ap-60]'));
+    await click('[data-k=ap-stop]'); await wait(400);
+    ok('stop reaches the agent', /action autopilot -> \[mod:promo-flow\] Sam asked you to stop working on your own/.test(log()), log().slice(0, 300));
+  }
+  if (step === 'storyboard') {
+    ok('app scenes with a real screen say so', QA('.scene-h .chip').some((c) => c.textContent === 'Real screen') && QA('.fr .lbl').some((l) => /real/.test(l.textContent)));
+    ok('an unreachable screen says why', QA('.scene-h .chip').some((c) => c.textContent === 'Screen not reachable') && /reviewer account/.test(Q('#content').textContent));
+  }
   if (step === 'pick') {
     const badge = () => Q('#badgeText').textContent;
     ok('before sending, the pick gate is the person\'s turn', badge() === 'Your turn', badge());
@@ -328,7 +371,7 @@ UICHECK = r"""(async () => {
 
 def uicheck(sh):
     bad = 0
-    for st in ["plan", "dense", "pick"]:
+    for st in ["plan", "dense", "pick", "review", "autopilot", "storyboard"]:
         mod = sh.open(st, 520, 1000, False)
         for r in sh.js(UICHECK, mod) or []:
             bad += not r["pass"]

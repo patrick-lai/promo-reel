@@ -21,13 +21,17 @@ sys.path.insert(0, ROOT)
 
 from PIL import Image, ImageDraw, ImageFont  # noqa: E402
 
+from promo import abtest as AB  # noqa: E402
 from promo import assetplan as AP  # noqa: E402
+from promo import autopilot as AU  # noqa: E402
 from promo import boardedit as BE  # noqa: E402
 from promo import brief as BR  # noqa: E402
 from promo import flow as F  # noqa: E402
+from promo import flowcheck as FC  # noqa: E402
 from promo import flowjob as FJ  # noqa: E402
 from promo import home  # noqa: E402
 from promo import previews as PV  # noqa: E402
+from promo import scout as SC  # noqa: E402
 from promo import share as SH  # noqa: E402
 
 INTENT = "Make a 60 second promo for Acme Tasks: tell it what you want at night, wake up to merged pull requests. Calm, real product footage, no hype."
@@ -301,6 +305,31 @@ def round_files(tmp, pd, n, verdict, feedback_urls=3):
     return co, re_
 
 
+def council_marks(pd, fails=()):
+    """What the council does on a new draft before the round can close: every judge check marked (the hidden control as false, `fails` as
+    failing) and the draft compared blind with the one the person reviewed, both orders preferring the new one."""
+    for c in FC.judge_checks(F.load(pd)):
+        bad = c.get("control") or c["what"] in fails
+        FC.mark(pd, c["id"], None, "fail" if bad else "pass", "not on screen in any still" if bad else "visible in the scene's stills", "claude", "story lens")
+    jid, _ = AB.judge_pair(pd)
+    p = AB.pair(F.load(pd), jid)
+    for k, o in p["orders"].items():
+        AB.judge(pd, jid, k, "A" if o["A"] == p["draft"] else "B", family="claude")
+
+
+def check_report(tmp, pd, n, skipped=True):
+    """A `promo check` report for draft n's own file, as `promo check` writes it after a build."""
+    rows = [dict(gate=g, status="PASS", msg=m) for g, m in (("assets", "manifest complete"), ("footage", "7 referenced clips present, sha256 match"), ("timeline", "9 shots contiguous"),
+                                                            ("beat-grid", "all cuts on beats"), ("duration", "60.000s"), ("video-format", "1920x1080 30fps"), ("loudness", "-14.0 LUFS"),
+                                                            ("true-peak", "-1.4 dBTP"), ("caption-hold", "every caption held >= 2.0 s"), ("safe-zone", "captions inside the 9:16 column"))]
+    rows.append(dict(gate="footage-demo", status="WARN", msg="demo-mode footage in use: ui-tickets"))
+    if skipped:
+        rows.append(dict(gate="vo-script", status="WARN", msg="skipped: faster-whisper not installed"))
+    rp = os.path.join(tmp, f"check-{n}.json")
+    write(rp, json.dumps(dict(ok=True, failed=False, results=rows, outputs=[dict(file="x", sha256=F.load(pd)["drafts"][n - 1]["sha"])])))
+    FC.verify(pd, n, rp)
+
+
 def aged(pd, days):
     """Move every timestamp of a flow `days` back, so the picker's "last active" and its most-recent-first order read like real history."""
     fp = os.path.join(pd, "flow", "flow.json")
@@ -394,6 +423,11 @@ def _build(tmp):
     F.approve(pd, "scripts-picked", "Sam", ["A", "B"])
     F.advance(pd)
     gen_boards(pd)
+    for sid, text in (("02", "Acme Tasks: New request"), ("06", "Pull requests: 8 merged")):
+        shot = os.path.join(tmp, f"screen-{sid}.png")
+        still(shot, text, (232, 236, 244))
+        SC.add(pd, "A", sid, shot, url=f"https://app.acme.dev/{'tasks' if sid == '02' else 'pulls'}?demo=1")
+    SC.miss(pd, "A", "07", "the diff view needs a reviewer account we do not have yet")
     snap("storyboard")
     running_job(pd, 9)
     snap("generating")
@@ -458,24 +492,56 @@ def _build(tmp):
     d1 = os.path.join(pd, "out", "draft-1.mp4")
     mp4(d1, "testsrc2", 4)
     F.add_draft(pd, d1, "First cut, 60 s, VO and music at rough levels.")
+    check_report(tmp, pd, 1)
     F.advance(pd)
-    F.round_start(pd, "The close up on the board is rough and the hook is slow. Can the first five seconds get to the typed sentence faster?")
+    from pathlib import Path
+    from promo import watch as W
+    os.makedirs(os.path.join(pd, "reference", "ref-1", "cuts"), exist_ok=True)
+    for i, src in enumerate(("smptebars", "testsrc")):
+        rv = os.path.join(tmp, f"ref-{src}.mp4")
+        mp4(rv, src, 3)
+        W.grab(Path(rv), 1.5, Path(os.path.join(pd, "reference", "ref-1", "cuts", f"cut-{i + 1:03d}.jpg")), 640)
+    FC.look(pd, 1, "A")
+    FC.pin(pd, 1, 3.0, "The typed sentence takes too long to appear", "Sam")
+    F.round_start(pd, "The close up on the board is rough and the hook is slow. Can the first five seconds get to the typed sentence faster?", by="Sam")
+    FC.add(pd, "The board close-up is sharp and readable", scene="03", source="feedback", by="Sam")
+    FC.add(pd, "The typed sentence appears within the first five seconds", scene="02", source="feedback", by="Sam")
+    F.recipe_use(pd, "hook.result-first")
     d2 = os.path.join(pd, "out", "draft-2.mp4")
     mp4(d2, "smptebars", 4)
     F.add_draft(pd, d2, "Hook shortened, board close-up re-framed.")
+    check_report(tmp, pd, 2)
+    FC.look(pd, 2, "A")
+    council_marks(pd, fails=("The first 3 seconds show the product's real result on screen, readable.",))
     co, re_ = round_files(tmp, pd, 1, "PARTIAL")
     F.round_close(pd, co, re_)
-    F.round_start(pd, "Better. Music still feels too present under the voice.")
+    F.round_start(pd, "Better. Music still feels too present under the voice.", by="Sam")
+    FC.add(pd, "The voice-over sits clearly above the music", source="feedback", by="Sam")
     d3 = os.path.join(pd, "out", "draft-3.mp4")
     mp4(d3, "testsrc", 4)
     F.add_draft(pd, d3, "Music ducked 4 dB under VO.")
+    check_report(tmp, pd, 3)
+    FC.look(pd, 3, "A")
+    council_marks(pd, fails=("The first 3 seconds show the product's real result on screen, readable.",))
     co, re_ = round_files(tmp, pd, 2, "YES", 5)
     F.round_close(pd, co, re_)
+    end_a, end_b = os.path.join(tmp, "end-a.png"), os.path.join(tmp, "end-b.png")
+    still(end_a, "Acme Tasks · Wake up to merged PRs", (240, 214, 170))
+    still(end_b, "Acme Tasks", (32, 36, 70))
+    AB.add(pd, "Which end card?", end_a, end_b, "Warm dawn card", "Night card")
+    AU.assume(pd, "Kept the calm piano track from the asset plan; say so to swap it", "08")
     twg_available(pd, artifacts=True, loom=True)
     uploaded(pd, "draft", 1, "artifacts")
     uploaded(pd, "draft", 2, "artifacts", edited=True)
     uploaded(pd, "draft", 2, "loom")
     snap("review")
+    AU.start(pd, 60, "Sam")
+    AU.begin(pd)
+    snap("autopilot")
+    AU.control(pd, "stop", "Sam")
+    st_ = F.load(pd)
+    st_.pop("autopilot")
+    F.save(pd, st_)
     long = copy.deepcopy(out["review"])
     long["rounds"][0]["feedback"] += " " + "The pacing between the second and third scene still drags, and the caption sits too close to the bottom edge on a phone. " * 4
     long["rounds"][1]["research"] = ["https://example.com/a-really-long-path/that/keeps-going/and-going/and-going/for-a-while?x=1"] + long["rounds"][1]["research"] * 2
@@ -489,10 +555,14 @@ def _build(tmp):
     long["summary"]["title"] = "Make a 60 second promo for Acme Tasks: tell it what you want at night, wake up to merged PRs"[:80]
     out["long-content"] = long
     for n in (3, 4, 5):
-        F.round_start(pd, f"Round {n} feedback: tighten the end card.")
+        F.round_start(pd, f"Round {n} feedback: tighten the end card.", by="Sam")
+        FC.add(pd, f"The end card holds 3 seconds (round {n})", scene="08", source="feedback", by="Sam")
         dn = os.path.join(pd, "out", f"draft-{n + 1}.mp4")
         mp4(dn, "testsrc", 3)
         F.add_draft(pd, dn, f"Round {n} draft.")
+        check_report(tmp, pd, n + 1)
+        FC.look(pd, n + 1, "A")
+        council_marks(pd, fails=("The first 3 seconds show the product's real result on screen, readable.",))
         co, re_ = round_files(tmp, pd, n, "YES")
         F.round_close(pd, co, re_)
     snap("review-maxed")
@@ -503,7 +573,7 @@ def _build(tmp):
     F.add_final(pd, fin)
     uploaded(pd, "final", 1, "artifacts")
     snap("final")
-    order = ["discover", "scripts", "pick", "storyboard", "assets", "keyframes", "confirm", "drafts", "review", "final",
+    order = ["discover", "scripts", "pick", "storyboard", "assets", "keyframes", "confirm", "drafts", "review", "autopilot", "final",
              "generating", "generating-stopped", "building", "storyboard-partial", "plan", "dense", "assets-error", "stale-approval", "long-content", "review-maxed"]
     res = {k: out[k] for k in order}
     res["starting"] = {}

@@ -1,0 +1,7 @@
+id: hook.question-then-proof
+kind: hook
+styles: [hero, cinematic-story]
+intent: "Name the viewer's problem in the first line, then show the real product solving it within 10 seconds."
+how: "First VO line or caption states the pain in the audience's words (from the brief); the next shot is the real UI doing the job."
+check: "The opening states a problem the audience has and the product is shown solving it within the first 10 seconds."
+evidence: "council research lens findings on product launch videos; AGENTS.md rule 3 (only what the product does today)."

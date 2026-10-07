@@ -305,11 +305,14 @@ def run(spec):
     stale = [f"{x['step']}" for x in cmd_status(spec, None)["steps"] if x["status"] == "stale"]
     rep.add("stale", "WARN" if stale else "PASS", f"stale (rebuild needed): {', '.join(stale)}" if stale else "no stale steps (missing steps are reported by the other gates)")
 
+    # the files measured, by content: `promo flow draft verify` attaches this report only to a draft that is one of them
+    from .genvideo import sha256
+    outputs = [dict(file=os.path.abspath(o), sha256=sha256(o)) for o in (spec.output_path(m.get("suffix", "")) for m in spec.masters) if os.path.exists(o)]
     os.makedirs(spec.out, exist_ok=True)
     path = os.path.join(spec.out, f"{spec.name}-{spec.tag}-check.json")
     with open(path, "w") as f:
-        json.dump(dict(ok=not rep.failed, failed=rep.failed, results=rep.rows), f, indent=1)
-    return dict(ok=not rep.failed, failed=rep.failed, path=path, results=rep.rows)
+        json.dump(dict(ok=not rep.failed, failed=rep.failed, results=rep.rows, outputs=outputs), f, indent=1)
+    return dict(ok=not rep.failed, failed=rep.failed, path=path, results=rep.rows, outputs=outputs)
 
 
 def print_report(payload):

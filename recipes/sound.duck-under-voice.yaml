@@ -1,0 +1,7 @@
+id: sound.duck-under-voice
+kind: sound
+styles: [hero, cinematic-story, livestream]
+intent: "The voice is the message; the music must step back while it speaks and come back between lines."
+how: "mix.ducking on the music bus under VO (about 6-9 dB, 150 ms attack, 400 ms release); check the VO read-back still matches word for word."
+check: "Every voice-over line is clearly audible over the music, and the music swells back in the gaps."
+evidence: "promo mix ducking; council Legibility & polish lens findings on earlier drafts."

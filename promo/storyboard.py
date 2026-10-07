@@ -82,8 +82,9 @@ def problems(b):
 
 def is_slate(path):
     """A text slate: a flat-colour image with a little text on it, the stand-in an agent writes instead of a real frame. A file made by
-    `promo flow frames` has a `.gen.json` sidecar and is never one; a captured screenshot is not flat enough."""
-    if os.path.isfile(path + ".gen.json"):
+    `promo flow frames` has a `.gen.json` sidecar and a real screen from `promo flow scout` a `.real.json` one: neither is ever a slate, and a
+    captured screenshot is not flat enough."""
+    if os.path.isfile(path + ".gen.json") or os.path.isfile(path + ".real.json"):
         return False
     from collections import Counter
     from PIL import Image

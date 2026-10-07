@@ -1,7 +1,7 @@
 {
   "id": "promo-flow",
   "name": "Promo flow",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "protocol": 2,
   "description": "Plan, storyboard and review a produced video with the person in the loop.",
   "entry": "index.html",
@@ -19,7 +19,13 @@
     "resume":   {"message": "[mod:promo-flow] {by} wants the stopped run carried on ({what}). Run: {command}, then publish the new state."},
     "changes":  {"message": "[mod:promo-flow] {by} asked for changes on {stage}: {text}"},
     "feedback": {"message": "[mod:promo-flow] {by} sent draft feedback (round {round} of {max_rounds}): {text}"},
-    "settings": {"message": "[mod:promo-flow] {by} chose where new videos are saved: {output}. Run: promo config output \"{output}\" (home, repo and default are names; anything else is a folder), then publish the new state. If it fails, tell them why in one sentence."}
+    "settings": {"message": "[mod:promo-flow] {by} chose where new videos are saved: {output}. Run: promo config output \"{output}\" (home, repo and default are names; anything else is a folder), then publish the new state. If it fails, tell them why in one sentence."},
+    "pin":    {"message": "[mod:promo-flow] {by} pinned a note at {when} of draft {draft}: {text}. Run: promo flow pin add --draft {draft} --at {at} --text \"<their note>\" --by \"{by}\", then publish. It becomes a check on that scene for the next round."},
+    "restore": {"message": "[mod:promo-flow] {by} wants to go back to {what}. Run: promo flow restore --draft {draft} --scene {scene} --by \"{by}\" (leave out --scene when it is empty), rebuild the changed shots, register the new draft and publish."},
+    "ab":     {"message": "[mod:promo-flow] {by} answered the blind pick {pair} ({question}): {label}. Run: promo flow ab pick {pair} --side {side} --by \"{by}\", then publish."},
+    "autopilot": {"message": "[mod:promo-flow] {by} asked you to {op} working on your own ({what}). Run: promo flow autopilot {op} --minutes {minutes} --by \"{by}\" (--minutes only for start). While it runs, work in passes (promo flow autopilot pass begin, then pass end) until it reports done, blocked or out of time, and publish after every pass."},
+    "overturn": {"message": "[mod:promo-flow] {by} wants something else than your choice \"{choice}\" ({id}): {text}. Run: promo flow assume overturn {id} --text \"<their words>\" --by \"{by}\", then publish. It becomes a check for the next draft."},
+    "forget": {"message": "[mod:promo-flow] {by} asked you to forget a remembered note: {text}. Run: promo flow lessons --forget {id} --by \"{by}\", then publish."}
   },
   "skill": "agent/SKILL.md"
 }
