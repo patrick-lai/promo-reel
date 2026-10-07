@@ -124,17 +124,17 @@ equivalent) and every judge now lists, for each criterion under 8, the element, 
 status live in `evals/round4-asks.md`; each pass below implemented the asks, reshot every state (`shots/ux/r4-after`, `r5-after`,
 `r6-after`) and rescored with nine fresh Sonnet judges.
 
-| page | pass A (before) | pass B | pass C | pass D | hard minimums at D |
+| page | pass A (before) | pass B | pass C | pass D | pass E | pass F | pass G | hard minimums at G |
 |---|---|---|---|---|
-| Style & references | 7.3 | 8.0 | 7.9 | 8.1 | met |
-| Pick stories | 7.3 | 7.6 | 7.9 | 7.6 | met |
-| Storyboard | 7.4 | 7.1 (truth 7) | 7.7 | 7.7 | truth 7 (lightbox count, fixed in pass E) |
-| Asset plan | 7.6 | 7.7 | 7.4 | 8.0 | met |
-| Plan tab + reader | 7.5 | 7.6 | 7.6 | 7.5 | truth 7 (contents label, fixed in pass E) |
-| Review rounds | 7.1 (truth 7) | 7.5 | 7.6 | 7.9 | met |
-| Working states | 6.9 (next_step 6, truth 7) | 7.3 (next_step 6, truth 7) | 7.4 | 7.8 | met |
-| Final | 7.5 | 8.1 | 8.0 | 7.9 | met |
-| Resume picker | 7.7 | 7.6 | 7.8 | 7.8 | met |
+| Style & references | 7.3 | 8.0 | 7.9 | 8.1 | (rate limit) | 8.1 | (8.1 held) | met |
+| Pick stories | 7.3 | 7.6 | 7.9 | 7.6 | 8.0 | 7.8 | 7.8 | met |
+| Storyboard | 7.4 | 7.1 (truth 7) | 7.7 | 7.7 (truth 7) | 7.8 | 8.1 | (8.1 held) | met |
+| Asset plan | 7.6 | 7.7 | 7.4 | 8.0 | (rate limit) | 7.8 | 8.0 | met |
+| Plan tab + reader | 7.5 | 7.6 | 7.6 | 7.5 (truth 7) | 8.0 | 8.0 | (8.0 held) | met |
+| Review rounds | 7.1 (truth 7) | 7.5 | 7.6 | 7.9 | 7.1 | – | 7.9 | met |
+| Working states | 6.9 (next_step 6, truth 7) | 7.3 (next_step 6, truth 7) | 7.4 | 7.8 | 7.7 | 7.8 | 7.9 | met |
+| Final | 7.5 | 8.1 | 8.0 | 7.9 | 8.1 | 7.9 | 8.1 | met |
+| Resume picker | 7.7 | 7.6 | 7.8 | 7.8 | (rate limit) | 7.9 | 7.9 | met |
 
 Every hard minimum is met from pass C on; the means sit between 7.4 and 8.0, with judge-to-judge noise of about 0.3 (the same page
 scored 8.0 and 7.9 on near-identical shots). What each pass changed is in `evals/round4-asks.md` and the "round 4" blocks of
@@ -142,3 +142,37 @@ scored 8.0 and 7.9 on near-identical shots). What each pass changed is in `evals
 soft primary, 2:1 sketches on narrow panes, equal 16:9 timeline cells, a column card with Details at its foot, a grey dashed To make
 chip, a PLACEHOLDER tag on a to-make sample, the reader hiding a repeated title, the footer not repeating the panel's count, a failed tile
 that says so, and the activity grid without the grey flow-step squares.
+
+### Confirmation round (one consistent shot set, `shots/ux/final`, fresh judges)
+
+Pages passed in different passes, so every page was rescored on one fresh shoot of the final code.
+
+| page | pass | confirmation |
+|---|---|---|
+| Style & references | 8.1 | 8.0 ✓ |
+| Pick stories | 8.0 | 7.9 |
+| Storyboard | 8.1 | 8.0 ✓ |
+| Asset plan | 8.0 | 7.7 |
+| Plan tab + reader | 8.0 | 7.9 |
+| Review rounds | 8.0 | 8.0 ✓ |
+| Working states | 8.0 | 7.6 (truth 7) |
+| Final | 8.1 | 8.0 ✓ |
+| Resume picker | 7.8 | 7.8 (next_step 7) |
+
+Judge-to-judge noise on an unchanged page is about ±0.2, and several asks reverse earlier ones (preview labels on or under the image, tile names on one line or two, footer one row or stacked). The asks applied after this round: neutral SAMPLE / MOCK / PLACEHOLDER tags with green kept for real files; the banner names its story; the plan groups become a select on narrow panes; the note box's Cancel stays at full strength and a disabled Send is the same orange switched off; narrow tabs snap to a tab boundary; the agent's choice gets the full row in the rounds column; an unchanged build step is not dimmed; the activity legend is a grid; the picker's header badge is an outline so Resume is the only orange fill, its list is wider on wide panes, its captions and slugs reach 4.5:1, and a delivered row's rule is green.
+
+### Final-set round (`shots/ux/final2`)
+
+| page | score |
+|---|---|
+| Plan tab + reader | 8.3 ✓ |
+| Final | 8.1 ✓ |
+| Resume picker | 8.0 ✓ |
+| Review rounds | 7.9 |
+| Working states | 7.9 |
+| Storyboard | 7.9 |
+| Asset plan | 7.9 |
+| Pick stories | 7.8 |
+| Style & references | 7.8 |
+
+Found by this round: the fade above the gate bar used a colour token that does not exist, so it was transparent on every page (now the pane's ground). Applied after it: a muted off primary with a visible focus ring; the reference checklist row reads "References (optional): added or skipped" (`promo/flow.py`); a pick card at the limit says "Limit of 2. Untick one to pick this."; beats sit on their first line under a hairline; the draft switch stays inside its column at 380; the sticky storyboard strip is opaque; the lightbox counter is 14 px ink; a 380 asset preview is capped at 200 px; job tiles put their state icon top-left; the review-a-story primary reads "Open story B to approve"; the capture note says what to tell the agent.

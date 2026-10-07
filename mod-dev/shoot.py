@@ -347,7 +347,7 @@ UICHECK = r"""(async () => {
     ok('then reaches the agent', /action restore -> \[mod:promo-flow\] Sam wants to go back to Draft 1, all of it\. Run: promo flow restore --draft 1/.test(log()), log().slice(0, 300));
   }
   if (step === 'autopilot') {
-    ok('the run shows its clock and goal', /Working until every check passes · 0 of 60 min · 5 of 6 checks pass/.test(Q('.ap-card').textContent), Q('.ap-card').textContent);
+    ok('the run shows its clock and goal', /Working until every check passes · 0 of 60 min · 5 of 6 checks pass/.test(Q('#stateLine').textContent) && !!Q('.ap-card .ap-bar'), Q('#stateLine').textContent);  /* the goal is the header's line; the card keeps the clock bar */
     ok('no second start while it runs', !Q('[data-k=ap-60]'));
     await click('[data-k=ap-stop]'); await wait(400);
     ok('stop reaches the agent', /action autopilot -> \[mod:promo-flow\] Sam asked you to stop working on your own/.test(log()), log().slice(0, 300));
@@ -499,6 +499,7 @@ def scroll(px):
 EXTRAS = [
     ("picker-520", "picker", 520, 900, True, "&mod=promo-projects", None),
     ("picker-900-light", "picker", 900, 900, False, "&mod=promo-projects", None),
+    ("picker-end-520", "picker", 520, 900, True, "&mod=promo-projects", ["(() => { const find = (r) => r.querySelector('.list') || [...r.querySelectorAll('*')].map((e) => e.shadowRoot).filter(Boolean).map(find).find(Boolean); const l = find(document); if (!l) throw new Error('no .list'); l.scrollTop = 1e6; })()"]),
     ("generating-520", "generating", 520, 900, True, "", None),
     ("generating-380-light", "generating", 380, 900, False, "", None),
     ("generating-stopped-520", "generating-stopped", 520, 900, True, "", None),
@@ -550,6 +551,10 @@ EXTRAS = [
     ("reader-checklist-520", "plan", 520, 900, False, "", [click("#tab-plan"), click('[data-k="open-doc:capture-a"]')]),
     ("request-520", "plan", 520, 900, False, "", [click("#tab-plan"), click('[data-k="q-Shot list"]')]),
     ("request-380-dark", "plan", 380, 780, True, "", [click("#tab-plan"), click('[data-k="q-Everything for production"]')]),
+    ("request-empty-520", "plan", 520, 900, False, "", [click("#tab-plan"), click('[data-k="q-other"]')]),
+    ("plan-search-empty-520", "plan", 520, 900, False, "", [click("#tab-plan"), typein('[data-k="doc-q"]', "zzz")]),
+    ("style-own-520", "discover", 520, 900, True, "", [typein("#own", "slow, warm")]),
+    ("picks-two-520", "pick", 520, 900, False, "", ["document.querySelectorAll('.choice input')[0].click()", "document.querySelectorAll('.choice input')[1].click()"]),
     ("script-read-520", "pick", 520, 900, False, "", []),
     ("script-reader-520", "scripts", 520, 900, True, "", [click('[data-k="open-script:A"]')]),
     ("dense-520", "dense", 520, 1100, False, "", []),

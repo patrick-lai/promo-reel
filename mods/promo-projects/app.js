@@ -158,7 +158,8 @@ window.commissionMods["promo-projects"] = function mount(ctx) {
   function countsLine(c) {
     const parts = [c.scripts ? c.scripts + (c.scripts === 1 ? " script" : " scripts") : "", c.scenes ? c.scenes + (c.scenes === 1 ? " scene" : " scenes") : "",
       c.assets ? c.assets_ready + "/" + c.assets + " assets ready" : "", c.drafts ? c.drafts + (c.drafts === 1 ? " draft" : " drafts") : "", c.finals ? c.finals + (c.finals === 1 ? " final" : " finals") : ""].filter(Boolean);
-    return parts.length ? h("span", { class: "row-counts", text: parts.join(" · ") }) : null;
+    /* each count is one unbreakable item, so a wrap falls between counts, never inside one */
+    return parts.length ? h("span", { class: "row-counts" }, ...parts.map((t) => h("span", { class: "nb", text: t }))) : null;
   }
   function row(p, shownSel) {
     const now = Date.now();
@@ -175,7 +176,7 @@ window.commissionMods["promo-projects"] = function mount(ctx) {
         h("span", { class: "row-head" }, h("span", { class: "row-title" }, highlight(p.title || p.name)), h("span", { class: "row-tag", text: p.stage_label || "" }), p.updated ? h("span", { class: "row-when", text: PP.ago(p.updated, now) }) : null),
         frames.length ? h("span", { class: "row-frames", "data-n": String(frames.length), "aria-hidden": "true" }, frames.map((f) => still(f, "", "fr")),
           p.counts && p.counts.scenes ? h("span", { class: "row-fcap", text: frames.length + " of " + p.counts.scenes + " scenes, start frames" }) : null) : null,
-        p.error ? h("span", { class: "row-status", text: p.error }) : [h("span", { class: "row-status" }, highlight(p.question || p.status)), countsLine(p.counts || {})],
+        p.error ? h("span", { class: "row-status", text: p.error + " Check the folder, then reload the list." }) : [h("span", { class: "row-status" }, highlight(p.question || p.status)), countsLine(p.counts || {})],
         h("span", { class: "row-foot" }, tag, h("span", { class: "row-name mono" }, highlight(p.name)), stepNo),
         bar(p)),
       ic("chevron", "chev")), go);

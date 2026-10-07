@@ -860,7 +860,7 @@ def plain_checks(pd, st, stage=None):
     n = len(st["scripts"])
     if stage == "discover":
         d = st.get("discover") or {}
-        R += [(bool(d.get("style")), "Style chosen"), (bool(d.get("refs") or d.get("no_refs")), "References added, or none to add")]
+        R += [(bool(d.get("style")), "Style chosen"), (bool(d.get("refs") or d.get("no_refs")), "References (optional): added or skipped")]
     elif stage == "scripts":
         k = len(st["councils"].get("scripts", []))
         R += [(n >= MIN_SCRIPTS, f"{n} of {MIN_SCRIPTS} scripts drafted" if n < MIN_SCRIPTS else f"{NUM.get(n, n)} scripts drafted"),

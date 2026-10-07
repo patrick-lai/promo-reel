@@ -253,3 +253,49 @@ footer.go::before { top: -24px; height: 24px; }
 @container (min-width: 720px) { .list { padding-right: calc(var(--pad) + 4px); } }
 @container (min-width: 720px) { .list { padding-right: calc(var(--pad) + 16px); } .row-status { -webkit-line-clamp: 3; } }
 .rowwrap[data-bucket="error"] .bar { display: none; }
+/* the list's grid track never grows past the column: long slugs and step labels shrink inside it */
+.rows { grid-template-columns: minmax(0, 1fr); }
+.rowwrap, .row { min-width: 0; max-width: 100%; }
+.row-tag:empty { display: none; }
+.rowwrap[data-bucket="error"] .row-foot .row-name { display: none; }
+.row .bar { width: 100%; }
+/* pass G: wide list rows put the thumbnail beside the title only; tag and time share a line; counts break between items */
+.row-counts .nb { white-space: nowrap; }
+.row-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
+.row-head .row-title { flex: 1 1 100%; min-width: 0; overflow-wrap: anywhere; -webkit-line-clamp: 3; }
+.row-head .row-tag, .row-head .row-when { flex: none; white-space: nowrap; }
+.row-tag { padding: 1px 8px; }
+.row { min-height: 44px; }
+.row:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 2px; }
+@container (min-width: 720px) {
+  .list { padding-right: var(--pad); }
+  .row-main { padding-right: 0 !important; }
+  .row-main:has(.row-frames) { display: grid; grid-template-columns: minmax(0, 1fr) 132px; column-gap: 10px; align-items: start; }
+  .row-main:has(.row-frames) > .row-head { min-width: 0; }
+  .row-main > * { grid-column: 1 / -1; }
+  .row-main:has(.row-frames) > .row-head { grid-column: 1; grid-row: 1; }
+  .row-frames { position: static !important; width: 132px !important; grid-column: 2 !important; grid-row: 1; margin: 0; grid-template-columns: 132px !important; }
+  .rowwrap.sel .row-frames { display: grid; }
+}
+/* pass I: counts are items separated by space, never a dangling dot; on wide rows the status sits beside the thumbnail too */
+.row-counts { display: flex; flex-wrap: wrap; column-gap: 12px; row-gap: 0; }
+@container (min-width: 720px) {
+  .row-frames { grid-row: 1 / span 2 !important; }
+  .row-main:has(.row-frames) > .row-status { grid-column: 1; grid-row: 2; }
+}
+@container (min-width: 720px) { .row-main:has(.row-frames) > .row-status { -webkit-line-clamp: unset; display: block; } }
+/* pass J: on wide rows the thumbnail sits beside the title block only, the question runs full width under it; every row keeps the chevron gutter so frame strips end at the same x */
+@container (min-width: 720px) {
+  .row-frames { grid-row: 1 !important; }
+  .row-main:has(.row-frames) > .row-status { grid-column: 1 / -1; grid-row: auto; -webkit-line-clamp: 2; display: -webkit-box; }
+}
+@container (max-width: 719px) { .rowwrap.sel .row .chev { display: block; visibility: hidden; } }
+.row-frames { gap: 3px; }
+/* confirmation round: the header badge is a tinted outline so Resume is the only orange fill; a wider list on wide panes; readable slug and captions; a delivered row's rule is green */
+.badge[data-badge="waiting"] { background: transparent; color: var(--c-accent); box-shadow: inset 0 0 0 1px var(--c-accent); }
+@container (min-width: 720px) { .list { flex-basis: 380px; } }
+@container (min-width: 900px) { .list { flex-basis: 420px; } }
+.row-title { text-wrap: balance; }
+.row-name, .row-fcap, .frames .fcap { color: color-mix(in srgb, var(--c-ink) 72%, transparent); }
+.rowwrap[data-bucket="done"] .bar li { background: var(--c-ok); opacity: .7; }
+.peek-scroll { padding-bottom: 36px; }

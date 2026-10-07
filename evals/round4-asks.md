@@ -107,3 +107,37 @@ Status: [ ] open · [x] done · [-] not possible (reason)
 - [x] Picker: 16 px more list padding at 900; the question wraps to 3 lines; no step rule on an unreadable row
 - [-] Final 900 left column length (file row and upload row are the host's share block)
 - [-] Style: the radio ring over the sketch (judges A and B asked for it beside the title; the ring now sits above the sketch, not over it); the 900 footer width (host gate bar)
+
+## Pass E asks (scores: pick 8.0 ✓ · storyboard 7.8 · plan 8.0 ✓ · review 7.1 · working 7.7 · final 8.1 ✓; style, assets and picker judges hit the Sonnet session limit)
+- [x] Review 900: the rounds column is no longer a scroll box (it clipped the strip, the Right button, the Scene chip and the round cards); pick previews stack full width there
+- [x] Review: the file's notes are quiet 12.5 px lines; the check line is the one body-weight line; Pin and its hint share a row; the footer note is balanced
+- [-] Review: answered-pick and failed-preview states (no fixture carries them; the failed tile already shows "Couldn't load")
+- [x] Pick: one 15 px title size at every width
+- [x] Storyboard: the make banners are amber, text centred on the button; compact strip cells keep a 36 px hit area; the lightbox time never breaks and the counter drops to its own line on narrow panes
+- [-] Storyboard: story select beside the view switch at 520 (both story titles do not fit; the select starts under 480 px)
+- [x] Plan: the request box shows "Request: <what>" visibly; a new harness shot captures the empty box with Send disabled
+- [x] Final: the 380 footer stays one row with its line
+- [x] Working: build tile names and "unchanged" on their own lines, clear of the icon; the activity map gives way to the counted legend; the autopilot card shows its clock instead of repeating the header; a stopped run's state line is its first sentence; the Starting pane sits at the top
+- [-] Working: "Send changes" during a run (it queues a note for the agent, which is allowed); 20 images vs 18 frames (the fixture's job covers both stories)
+
+## Pass F asks (scores: style 8.1 ✓ · pick 7.8 · storyboard 8.1 ✓ · assets 7.8 · plan 8.0 ✓ · working 7.8 · final 7.9 · picker 7.9; review rescored in G)
+- [x] Review 900: the strip in the rounds column is one column of its own width; the Pin button never shrinks
+- [x] Pick: rows line up across wide cards (two-line title slot); 22 px card padding
+- [x] Assets: a row's cards share its height with Details and a full-width divider at each foot; Details focus ring; shorter "Open story B before you decide."
+- [x] Storyboard: the lightbox counter has its own line on windows under 600 px
+- [x] Plan: harness shot of the empty search ("zzz")
+- [x] Style: harness shot of the typed own style; the gate reads "Use your own style and write scripts" with "Your own style: …"
+- [x] Working: build tile names on one line with an ellipsis; a stopped run's banner is amber and the footer says only "Make the rest to carry on"; the Starting steps sit in a card, centred; the autopilot card's line no longer repeats the header's clock
+- [x] Final: the upload row sits beside the credits on wide panes; panes end 64 px clear of the footer fade; under 440 px the note is "Download above."
+- [x] Picker: the list's grid track never grows past its column (the cause of the clipped cards); no empty stage tag; the unreadable row shows its slug once and says "Check the folder, then reload the list."
+- [-] Assets: the sticky tab bar "bleeding" (the bar is opaque; the fade above the footer is the only overlay)
+
+## Pass G asks (scores: assets 8.0 ✓ · final 8.1 ✓ · pick 7.8 · review 7.9 · working 7.9 · picker 7.9; style 8.1, storyboard 8.1 and plan 8.0 held from F)
+- [x] Pick: title 16-17 px / 650, logline 15 px muted, beats 13 px at the card foot; the untouched second button readable
+- [-] Pick: hint and buttons on one footer row at 900 (host gate bar layout)
+- [x] Assets: every card has a quiet source line ("Real · night-run.mov", "Licence: …", "Mock: no licence yet", "Not made yet"); real files tagged REAL / GENERATED / LICENSED; column cards stretch so every divider spans the card
+- [x] Review: the reference strip is two wide pairs with a gap under its caption; Change this stays on its row; Left / Right captions under the previews; the soft Approve at 55%; a 28 px tab mask
+- [x] Working: the activity title is capitalised and counts its updates; the flow-step chip is quiet; the failed tile names its frame; one "Send changes" name; the capture ask says "Send files, then paste the file path."; a live banner counts failures
+- [-] Working: short fixed build-tile names (the fixture's labels)
+- [x] Final: the upload row has one sentence-case heading with its caption under it and no repeated Loom chip; 16 px section gaps
+- [x] Picker: wide rows put a 132 px thumbnail beside the title only; tag and time share a line; titles get three lines; counts break between items
