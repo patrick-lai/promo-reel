@@ -554,6 +554,8 @@ EXTRAS = [
     ("request-empty-520", "plan", 520, 900, False, "", [click("#tab-plan"), click('[data-k="q-other"]')]),
     ("plan-search-empty-520", "plan", 520, 900, False, "", [click("#tab-plan"), typein('[data-k="doc-q"]', "zzz")]),
     ("style-own-520", "discover", 520, 900, True, "", [typein("#own", "slow, warm")]),
+    ("style-ref-bad-520", "discover", 520, 900, False, "", [typein("#ref", "my reference"), "document.getElementById('ref').scrollIntoView({block: 'center'})"]),
+    ("style-focus-520", "discover", 520, 900, True, "", ["document.querySelector('.choice input').focus()"]),
     ("picks-two-520", "pick", 520, 900, False, "", ["document.querySelectorAll('.choice input')[0].click()", "document.querySelectorAll('.choice input')[1].click()"]),
     ("script-read-520", "pick", 520, 900, False, "", []),
     ("script-reader-520", "scripts", 520, 900, True, "", [click('[data-k="open-script:A"]')]),

@@ -754,7 +754,8 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
             renderGate();
           }, onkeydown: (e) => { if (e.key === "Enter" && !el.btn1.disabled) el.btn1.click(); } })),
         h("div", { class: "own", style: "margin-top:10px" }, h("label", { for: "ref", text: "Add a reference link (optional)" }),
-          h("input", { id: "ref", type: "url", maxlength: "300", value: S.ref, placeholder: "https://", disabled: !!S.pending, oninput: (e) => { S.ref = e.target.value; } }))));
+          h("input", { id: "ref", type: "url", maxlength: "300", value: S.ref, placeholder: "https://", disabled: !!S.pending, oninput: (e) => { S.ref = e.target.value; const w = $("refHint"); if (w) w.hidden = !S.ref.trim() || /^https:\/\/\S+\.\S+/i.test(S.ref.trim()); } }),
+          h("p", { class: "ref-hint", id: "refHint", hidden: !S.ref.trim() || /^https:\/\/\S+\.\S+/i.test(S.ref.trim()), text: "That doesn't look like a link. Check it, or leave it empty to skip." }))));
     } else if (d.style && d.style.style) {
       const refs = arr(d.style.refs);
       box.append(h("div", null, h("h2", { class: "h2", text: "Style" }), h("div", { class: "chips", style: "margin-top:8px" }, h("span", { class: "chip accent", text: d.style.style }),
@@ -1327,7 +1328,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     const tgS = h("button", { type: "button", text: "START", onclick: () => lbKind("start") }), tgE = h("button", { type: "button", text: "END", onclick: () => lbKind("end") });
     const tg = h("div", { class: "tg", role: "group", "aria-label": "Frame" }, tgS, tgE);
     const prompt = h("p");
-    el.lb.replaceChildren(h("div", { class: "lb-top" }, title, cnt, close), h("div", { class: "lb-stage" }, frame, h("div", { class: "lb-info" }, tg, prompt)));
+    el.lb.replaceChildren(h("div", { class: "lb-top" }, title, close), h("div", { class: "lb-stage" }, frame, h("div", { class: "lb-info" }, cnt, tg, prompt)));
     LB.parts = { title, cnt, prev, next, close, img, prompt, tgS, tgE, tg };
     let x0 = null;
     frame.addEventListener("pointerdown", (e) => { x0 = e.clientX; });
@@ -1621,9 +1622,9 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       /* The file is one unit: icon, name, facts, and its one action on the same row. */
       const dl = r && !r.error ? downloadButton(it.label, PF.downloadName(r, it.label), () => getMedia(r)) : null;
       const meta = h("div", { class: "file-id" }, h("span", { class: "file-ic", "aria-hidden": "true" }, ic("film")),
-        h("span", { class: "file-main" }, h("b", { text: it.label + (it.after ? " \u00b7 after " + it.after : "") }), h("span", { class: "file-meta" }, dur, it.rel ? h("span", { class: "path", text: it.rel }) : null)),
+        h("span", { class: "file-main" }, h("b", { text: it.label + (it.after ? " \u00b7 after " + it.after : "") }), h("span", { class: "file-meta" }, dur, it.rel ? h("span", { class: "path", text: it.rel }) : null), it.note ? h("span", { class: "file-note", text: it.note }) : null),
         delivered ? null : dl);
-      left.append(h("div", null, player, meta, it.note ? h("p", { class: "sub file-note", text: it.note }) : null));
+      left.append(h("div", null, player, meta));
       if (!it.final) left.append(...draftReview(it, drafts));
       if (delivered) {
         /* Delivered: one block says it is ready and carries the one action; credits are quiet label / value rows. */
@@ -1694,8 +1695,8 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     const ICON = { pass: "check", fail: "alert", unmeasured: "clock" };
     return h("section", { class: "ck-board", "aria-label": "Checks on " + it.label },
       secH("Checks on this draft", b.total, h("span", { class: "chip " + (b.broken ? "bad" : b.open ? "warn" : "ok"), text: b.fixed + " fixed · " + b.broken + " broken · " + b.open + " still open" })),
-      h("ul", { class: "ck-list" }, arr(b.rows).map((r) => h("li", { "data-status": r.status, "data-change": r.change || "", title: r.status === "unmeasured" ? "Nobody has measured this on this draft yet" : "" }, ic(ICON[r.status] || "clock"),
-        h("span", { class: "ck-what", text: r.what }), r.scene ? h("span", { class: "chip", text: "Scene " + r.scene }) : null, h("span", { class: "chip " + (CH[r.change] || ["", ""])[1], text: (CH[r.change] || [r.change])[0] })))));
+      h("ul", { class: "ck-list" }, arr(b.rows).slice().sort((x, y) => (x.change === "open" ? 0 : x.change === "broken" ? 0 : 1) - (y.change === "open" ? 0 : y.change === "broken" ? 0 : 1)).map((r) => h("li", { "data-status": r.status, "data-change": r.change || "", title: r.status === "unmeasured" ? "Nobody has measured this on this draft yet" : "" }, ic(ICON[r.status] || "clock"),
+        h("span", { class: "ck-what", text: r.what }), r.scene ? h("span", { class: "chip", text: "Scene " + r.scene }) : null, r.change === "held" ? null : h("span", { class: "chip " + (CH[r.change] || ["", ""])[1], text: (CH[r.change] || [r.change])[0] })))));
   }
   function lookBlock(it) {
     const lk = it.look;

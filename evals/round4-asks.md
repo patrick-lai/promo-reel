@@ -141,3 +141,13 @@ Status: [ ] open · [x] done · [-] not possible (reason)
 - [-] Working: short fixed build-tile names (the fixture's labels)
 - [x] Final: the upload row has one sentence-case heading with its caption under it and no repeated Loom chip; 16 px section gaps
 - [x] Picker: wide rows put a 132 px thumbnail beside the title only; tag and time share a line; titles get three lines; counts break between items
+
+## Still open after the 8+ round (each from a passing page's criterion at 7)
+- [ ] Style: amber border and "!" on the reference field when the hint shows; aria-describedby to the hint
+- [ ] Storyboard: no sliver of card text between the tab bar and the compact strip when scrolled
+- [ ] Review: quiet-border pills for "No difference", "Can't tell" and "Change this"; a softer "Feedback and iterate" while a pick is open
+- [ ] Picker: no balanced title wrapping in the 900 list; the detail pane's fade never clips half a line
+- [ ] Pick: align the beats hairline across a wide row (subgrid)
+- [ ] Assets: 380 thumbnail beside the title; focus rings on chips and Details
+- [ ] Plan: label the tab's "new" dot; a more legible disabled Send label
+- [ ] Working: a real elapsed time under "Preparing…"; short build-tile labels (fixture text)

@@ -1518,3 +1518,10 @@ button.jb-tile:hover { border-color: var(--c-accent); }
 /* working: a tile's state icon sits top-left, its name on its own lines below */
 .jb-tile { place-items: start; }
 .jb-tile > .ic, .jb-tile > .spin { position: absolute; top: 4px; left: 4px; margin: 0; width: 14px; height: 14px; }
+
+/* F3 asks */
+.ref-hint { font-size: 12.5px; color: var(--c-warn); margin-top: 4px; }
+.lb-info .cnt { font-size: 14px; opacity: .9; }
+.file-main .file-note { display: block; margin-top: 6px; font-size: 12.5px; color: var(--c-dim); }
+.pins-h .btn.ghost[data-quiet] { padding-left: 0 !important; margin-left: 0; }
+@container (max-width: 520px) { .pane > .stack { gap: 10px; } .warnline { padding: 6px 10px; min-height: 40px; } }

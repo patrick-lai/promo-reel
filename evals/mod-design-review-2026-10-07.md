@@ -176,3 +176,21 @@ Judge-to-judge noise on an unchanged page is about ±0.2, and several asks rever
 | Style & references | 7.8 |
 
 Found by this round: the fade above the gate bar used a colour token that does not exist, so it was transparent on every page (now the pane's ground). Applied after it: a muted off primary with a visible focus ring; the reference checklist row reads "References (optional): added or skipped" (`promo/flow.py`); a pick card at the limit says "Limit of 2. Untick one to pick this."; beats sit on their first line under a hairline; the draft switch stays inside its column at 380; the sticky storyboard strip is opaque; the lightbox counter is 14 px ink; a 380 asset preview is capped at 200 px; job tiles put their state icon top-left; the review-a-story primary reads "Open story B to approve"; the capture note says what to tell the agent.
+
+### Result: every page at 8 or above (`shots/ux/final3`, fresh Sonnet judges, rubric v2)
+
+| page | score | hard minimums |
+|---|---|---|
+| Style & references | 8.1 | next_step 9, truth 9 |
+| Pick stories | 8.0 | next_step 9, truth 9 |
+| Storyboard | 8.0 | next_step 8, truth 9 |
+| Asset plan | 8.0 | next_step 9, truth 9 |
+| Plan tab + reader | 8.1 | next_step 9, truth 9 |
+| Review rounds | 8.1 | next_step 9, truth 9 |
+| Working states | 8.0 | next_step 8, truth 9 |
+| Final | 8.3 | next_step 9, truth 9 |
+| Resume picker | 8.1 | next_step 9, truth 9 |
+
+No score under 7 on any criterion. Style, Storyboard, Review and the picker were rescored after a last small batch (review checks sorted with icon-only holds, the file note inside the file block, the lightbox counter under the frame, an inline hint for a reference that is not a link, picker titles full width on narrow panes, picker copy matching its end link); the other five were scored on the same final3 shoot just before it. The harness checks pass with zero failures on the final code.
+
+Caveats worth keeping: the judges are noisy (about ±0.2 on an unchanged page) and several asks reversed earlier ones, so a page at 8.0 can score 7.8 on a fresh run. Remaining asks, all at criterion level 7, are in `evals/round4-asks.md` under "Still open after the 8+ round".

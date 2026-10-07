@@ -299,3 +299,9 @@ footer.go::before { top: -24px; height: 24px; }
 .row-name, .row-fcap, .frames .fcap { color: color-mix(in srgb, var(--c-ink) 72%, transparent); }
 .rowwrap[data-bucket="done"] .bar li { background: var(--c-ok); opacity: .7; }
 .peek-scroll { padding-bottom: 36px; }
+/* F3 asks: on wide rows the status wraps beside the thumbnail; narrow titles use the full width */
+@container (min-width: 720px) {
+  .row-frames { grid-row: 1 / span 2 !important; }
+  .row-main:has(.row-frames) > .row-status { grid-column: 1; grid-row: 2; -webkit-line-clamp: unset; display: block; }
+}
+@container (max-width: 719px) { .row-title { text-wrap: wrap; } }
