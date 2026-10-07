@@ -220,7 +220,9 @@ window.commissionMods["promo-projects"] = function mount(ctx) {
   function currentSel(vis) {
     if (S.sel && projects().some((p) => p.id === S.sel)) return S.sel;
     const r = resumed();
-    return r || (vis[0] && vis[0].id) || null;
+    /* Nothing chosen yet: the first project that waits on the person, so the outlined row and the "Your turn" badge agree. */
+    const turn = vis.find((p) => PP.bucket(p) === "turn");
+    return r || (turn && turn.id) || (vis[0] && vis[0].id) || null;
   }
   function open(id) {
     S.sel = id;

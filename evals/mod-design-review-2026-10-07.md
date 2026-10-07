@@ -67,3 +67,52 @@ Recurring asks across the nine, for the next iteration: (1) a disabled primary m
 disabled; (2) one filled button per surface, the second footer button neutral; (3) the footer must agree with the badge about whose turn it
 is, and show a quiet "Waiting for the agent" while a run is on; (4) less chrome before the first content at 520 (storyboard controls, plan
 chips, progress panel); (5) nothing sliced by the sticky gate bar: pad the scroll area by the footer's height; (6) say every number once.
+
+## Round 3: after main landed the review-ratchet pane (`shots/ux/r3-before` -> `shots/ux/r3-after`, 7 Oct 2026)
+
+Main had landed `ced716f` (blind picks, the agent's choices and the autopilot card above every tab; per-draft checks, pins, look and restore
+blocks; lessons on the Plan tab), so the baseline was reshot first. This round applied the six recurring asks from round 2 to every page, then
+nine fresh Sonnet judges scored the after-shots only.
+
+What changed (mods/promo-flow/app.js, logic.js, style.css "round 3" block; mods/promo-projects/app.js, style.css):
+
+- Gate bar: a disabled primary keeps the accent (tinted, accent text) and the note says why it is off; the draft's "Feedback and iterate" is a
+  strong neutral outline (`data-tone="strong"`), so one filled button per surface; while a run is on the footer reads "Waiting for the agent:
+  8 of 20 images done, 1 failed" (only the navigation button stays live) and the badge reads With the agent; while the autopilot runs the
+  footer says so and Approve is off; the capture ask "Send files" is the one filled button of its surface and the note no longer repeats
+  the count; the draft note names the round ("round 3 of 5"); the delivered note says "Download it above, or ask for changes"; a soft fade
+  above the gate shows content continues under it.
+- Pick: "Read the full script" is a quiet underlined link, not a third button. Style: the radio ring has a white border and a dark backdrop
+  over any sample.
+- Storyboard: the cadence row shows only in Frames in time (or once a cadence is set), and the logline follows the timeline, so the first
+  frame is on the first screen at 520.
+- Assets: "Details" is a 36 px row with a chevron; cards in a wide row share the row's height.
+- Plan: the ask row is one folded line that opens to the request chips (open when the tab is empty); chips wrap instead of clipping.
+- Working: queued tiles cap at 3 (`JOB_QUEUE_TILES`); the bar is the made count with a red segment for failed items, so bar and "8 / 20"
+  agree; the make banner has no ask button while any run (or the autopilot) is on.
+- Final: the blind pick folds to its question ("Which end card? · Your pick"), so the ready block and Download come first.
+- Picker: the default selection is the first project that waits on the person (row outline and badge agree); titles get two lines; beside
+  the open detail pane the row's own Resume is hidden (one Resume, the pane's).
+
+Scores (fresh judges; before/after means come from different runs and are noisy at the 0.1 level):
+
+| page | round 2 | round 3 | hard minimums | what is still in the way |
+|---|---|---|---|---|
+| Style & references | 3.64 | 3.75 | met | describe-your-own and reference fields below the four cards; 900 px thumbnails oversized; the hint stays after a pick |
+| Pick stories | 3.75 | 3.81 | met | the read link clips at 900 px dark; logline clamps differently at 520 and 900; dead space at 900 |
+| Storyboard | 3.78 | 3.90 | met | timeline pills cover the thumbnails; lightbox at 520 is a small frame in black; four controls above the first frame |
+| Asset plan | 3.83 | 4.06 | met | Mock and To make share one amber chip, ready has none; Details hides licence/source; group header not sticky |
+| Plan tab + reader | 3.56 | 3.75 | met | reader chrome pushes text ~740 px down; native contents select; find has no match count |
+| Review rounds | 3.88 | 3.69 | next_step 3.5 | the blind pick card fills the first screen; check wording vs chip colour; five loose lines under the player |
+| Working states | 3.71 | 3.61 | next_step 3.5, truth 3.5 | state line "Also open for you…" (agent-side text); bar vs label (fixed after judging); make button during a build (fixed) |
+| Final | 4.07 | 3.50 | next_step 3 | the blind pick block outranked Download (folded after judging); player and credits off the first screen |
+| Resume picker | 3.94 | 3.72 | next_step 3.5 | two Resume buttons at 900 (fixed after judging); titles cut at 900; duplicate titles told apart only by slug |
+
+No page passes 4.2 yet. The three pages that fell (Review, Final, Picker) fell because of what landed between rounds: the blind-pick card
+above every tab and the row-level Resume beside the detail pane. The judged shots are the ones before the post-judging fixes named above; the
+final, working and picker-900 shots in `shots/ux/r3-after` were retaken after them.
+
+Asks for round 4: (1) the blind pick card is a one-line row that expands on every stage, not only the final; (2) the reader folds find and
+contents into one row and drops the repeated title in the pager; (3) timeline pills become corner badges; (4) card state chips use the counter
+colours and ready gets a quiet green dot; (5) the generating state line (agent side, `promo/flow.py` summary) drops "Also open for you"
+while a run is on; (6) the picker list at 900 clamps titles to one line and shows the full title in the pane header.

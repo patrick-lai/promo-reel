@@ -250,7 +250,9 @@ test("a running job fills tiles in order: made, being made, queued, with a time 
   const v = L.jobView(run({ done: 2, failed: 1, items: [made("1", 30), made("2", 60), made("3", 90, false)], active: [{ id: "4", label: "Scene 4" }] }), T0 + 100000);
   assert.deepEqual(v.tiles.map((t) => t.type), ["item", "item", "failed", "active", "queued", "queued"]);
   assert.equal(v.title, "Generating storyboard images");
-  assert.equal(v.pct, 0.5);
+  /* the bar is the made count; a failed item is its own red segment, so bar and "8 / 20" label agree */
+  assert.equal(v.pct, 2 / 6);
+  assert.equal(v.failPct, 1 / 6);
   assert.equal(v.eta, 100);
   assert.equal(v.quiet, 10);
   assert.equal(v.slow, false);
@@ -268,9 +270,10 @@ test("a long run keeps its newest pictures", () => {
   const items = Array.from({ length: 40 }, (_, i) => made(String(i), i));
   const v = L.jobView(run({ total: 100, done: 40, items, active: [{ id: "40", label: "Scene 40" }], updated: at(39) }), T0 + 40000);
   assert.equal(v.tiles.length, 24);
-  assert.equal(v.tiles[0].item.id, "23");
-  assert.equal(v.earlier, 23);
-  assert.equal(v.moreQueued, 59 - 6);
+  /* three queued tiles at most: the rest of the room goes to the newest pictures */
+  assert.equal(v.tiles[0].item.id, "20");
+  assert.equal(v.earlier, 20);
+  assert.equal(v.moreQueued, 59 - 3);
 });
 test("a finished run reads Made N and fades out after ten minutes; a stopped run stays", () => {
   const done = run({ state: "done", done: 6, finished: at(300), items: [made("1", 300)] });

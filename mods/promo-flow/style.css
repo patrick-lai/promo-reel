@@ -1093,3 +1093,42 @@ button.jb-tile:hover { border-color: var(--c-accent); }
 .ls-list li { display: flex; gap: 8px; align-items: center; padding: 6px 0; border-top: 1px solid var(--c-line); font-size: 13px; }
 .ls-list .ls-t { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .pins-h .btn { display: inline-flex; align-items: center; gap: 6px; }
+
+/* round 3 (design council, 7 Oct 2026): the primary stays the primary when it is off; one filled button per surface; the gate never slices content */
+.btn.primary:disabled { background: var(--c-tint); border-color: color-mix(in srgb, var(--c-accent) 55%, transparent); color: var(--c-accent); opacity: .85; cursor: not-allowed; }
+.gate[data-busy="1"] .btn.primary { background: transparent; border-color: color-mix(in srgb, var(--c-accent) 70%, transparent); color: var(--c-accent); }
+.btn.ghost[data-tone="strong"] { border-color: var(--c-ink); color: var(--c-ink); background: transparent; font-weight: 650; }
+.btn.ghost[data-tone="strong"]:hover:not(:disabled) { background: var(--c-tint); }
+.gate-actions .btn.ghost:not([data-quiet]):not([data-tone]) { border-color: var(--c-line); }
+.gate { position: relative; }
+.gate::before { content: ""; position: absolute; left: 0; right: 0; top: -22px; height: 22px; background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--c-bg) 85%, transparent)); pointer-events: none; }
+.pane { padding-bottom: 36px; }
+/* "Read the full script" is a quiet link under the logline, not a third button competing with the footer */
+.read-btn { border: 0; background: none; min-height: 32px; padding: 0; margin-top: 4px; color: var(--c-dim); font-size: 13px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--c-line); }
+.read-btn:hover:not(:disabled) { background: none; color: var(--c-ink); }
+.read-btn .ic { width: 14px; height: 14px; color: var(--c-dim); }
+/* the style card's ring reads over any sample */
+.choice.style .box { background: rgba(0,0,0,.55); border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.45); }
+.choice.style:has(input:checked) .box { background: var(--c-accent); border-color: #fff; }
+/* an asset's Details is a real target */
+.asset details.more>summary { min-height: 36px; font-size: 13px; gap: 4px; }
+.asset details.more>summary::after { content: ""; width: 7px; height: 7px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); margin: -3px 0 0 2px; }
+.asset details.more[open]>summary::after { transform: rotate(-135deg); margin-top: 3px; }
+/* in a wide gallery the cards share a row's height */
+.gallery { align-items: stretch; }
+/* plan: the ask row is one folded line until it is wanted */
+.ask-card.fold { display: block; }
+.ask-card.fold > summary { list-style: none; cursor: pointer; min-height: 36px; }
+.ask-card.fold > summary::-webkit-details-marker { display: none; }
+.ask-card.fold > summary .ic-fold { width: 14px; height: 14px; margin-left: auto; color: var(--c-dim); transition: transform .15s ease-out; }
+.ask-card.fold[open] > summary .ic-fold { transform: rotate(180deg); }
+.ask-card.fold[open] > .ask-row { margin-top: 8px; }
+.ask-row { flex-wrap: wrap; overflow: visible; margin: 0; padding: 0; }
+/* a failed item is its own red segment after the made ones, so the bar and the "8 / 20" label agree */
+.jb-bar i.fail { position: absolute; top: 0; height: 100%; width: 0; background: var(--c-bad); border-radius: 0; transform: none; transition: left .3s ease-out, width .3s ease-out; }
+/* a delivered final folds the blind pick to its question */
+.pick-card.fold > summary { list-style: none; cursor: pointer; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; }
+.pick-card.fold > summary::-webkit-details-marker { display: none; }
+.pick-card.fold:not([open]) > summary .sub { display: none; }
+.pick-card.fold > summary b { flex: 1 1 auto; }
+.pick-card.fold > summary .sub { flex-basis: 100%; }

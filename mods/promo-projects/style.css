@@ -215,3 +215,8 @@ h1 { font-size: 18px; line-height: 1.25; font-weight: 650; letter-spacing: -.01e
 .row-go { position: absolute; right: 10px; bottom: 10px; min-height: 36px; padding: 0 14px; font-size: 13px; }
 .chip.turn { background: transparent; border-color: var(--c-line); color: var(--c-ink); padding-left: 6px; }
 .chip.turn::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--c-accent); margin-right: 6px; }
+
+/* round 3: a title gets two lines before it is cut */
+.row-head .row-title { -webkit-line-clamp: 2; }
+/* round 3: beside the open detail pane the row keeps one Resume, the pane's; the row's own button shows only in the single column */
+@container (min-width: 720px) { .row-go { display: none; } .rowwrap.sel .row { padding-bottom: 14px; } }

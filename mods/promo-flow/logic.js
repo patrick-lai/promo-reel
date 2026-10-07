@@ -331,7 +331,7 @@
   /* The live panel for a preview run (snapshot `job`, promo/flowjob.py). `now` is ms since the epoch, passed in so the clock is the caller's.
      Tiles fill left to right: made (or failed) items, then the ones being made now, then a row of the queue; a long run keeps its newest pictures. */
   const JOB_NOUN = { frames: ["image", "images"], samples: ["sample", "samples"], build: ["step", "steps"] };
-  const JOB_TILES = 24, JOB_QUEUE_TILES = 6, JOB_DONE_SHOWN_MIN = 10;
+  const JOB_TILES = 24, JOB_QUEUE_TILES = 3, JOB_DONE_SHOWN_MIN = 10;
   /* A run writes a heartbeat every minute (promo/flowjob.py HEARTBEAT_S): three missed beats and it is no longer shown as alive. A rendered
      shot can take many minutes, so "slow" (a gentle note, spinner kept) waits longer for builds than for one generated picture. */
   const JOB_ALIVE_S = 180, JOB_SLOW_S = { build: 900 }, JOB_SLOW_DEFAULT_S = 240;
@@ -359,7 +359,7 @@
     const title = job.state === "running" ? job.label
       : job.state === "done" ? (job.kind === "build" ? "Finished " + n(job.done) + (skipped ? ", " + skipped + " unchanged" : "") : "Made " + n(job.done)) + (job.failed ? ", " + job.failed + " failed" : "")
       : "Stopped after " + job.done + " of " + n(job.total);
-    return { state: job.state, title, done: job.done, failed: job.failed, total: job.total, pct: Math.min(1, finished / job.total), one, many, elapsed, quiet, eta,
+    return { state: job.state, title, done: job.done, failed: job.failed, total: job.total, pct: Math.min(1, job.done / job.total), failPct: Math.min(1, job.failed / job.total), one, many, elapsed, quiet, eta,
       alive, stale: job.state === "running" && !alive, staleFor: Math.max(0, (now - t(job.updated)) / 1000), waiting: alive ? job.waiting || null : null,
       slow: alive && !job.waiting && quiet >= (JOB_SLOW_S[job.kind] || JOB_SLOW_DEFAULT_S), resume: job.resume || null, tiles, earlier: Math.max(0, items.length - shown.length) + Math.max(0, finished - items.length),
       moreQueued: job.state === "running" ? queued - queuedShown : 0, active };
