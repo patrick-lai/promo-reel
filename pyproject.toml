@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "promo-reel"
-version = "0.1.0"
+version = "0.2.0"
 description = "Declarative, agent-runnable product promo-video pipeline (video + music + SFX + VO + mix + QA)."
 requires-python = ">=3.10"
 dependencies = ["numpy", "pillow", "scipy", "soundfile", "pyloudnorm", "librosa", "pyyaml"]
