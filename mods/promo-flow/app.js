@@ -330,8 +330,6 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
         return h("i", { class: "dt k-" + (ACT_KIND[x.kind] ? x.kind : "other") + (x.done ? " done" : "") + (live ? " live" : ""), title: clock(x.at) + " · " + x.text });
       });
       for (let i = shown.length; i < Math.min(DOTS, 24); i++) dots.push(h("i", { class: "dt empty", "aria-hidden": "true" }));
-      const kinds = [...new Set(shown.map((x) => x.kind))].filter((k) => ACT_KIND[k] && k !== "milestone");
-      const count = (k) => shown.filter((x) => x.kind === k).length;
       const feed = act.filter((x) => x.kind !== "milestone").slice(-3).reverse();
       el.working.replaceChildren(...[
         h("div", { class: "wk-head" }, h("i", { class: "wk-pulse", "aria-hidden": "true" }),
@@ -340,7 +338,6 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
             h("div", { class: "wk-sub", id: "wkAgo" }))),
         act.length ? h("div", { class: "wk-map", role: "img", "aria-label": act.length + " steps so far. Hover a dot for what it was." }, dots) : null,
         act.length ? h("p", { class: "wk-count", text: act.length > shown.length ? "The latest " + shown.length + " of " + act.length + " updates" : act.length + " updates so far" }) : null,
-        kinds.length ? h("div", { class: "wk-legend" }, kinds.map((k) => h("span", null, h("i", { class: "dt k-" + k + " done" }), ACT_KIND[k] + " " + count(k)))) : null,
         feed.length ? h("ul", { class: "wk-feed" }, feed.map((x) => h("li", null, h("span", { class: "t", text: clock(x.at) }), h("i", { class: "dt k-" + (ACT_KIND[x.kind] ? x.kind : "other") + (x.done ? " done" : ""), "aria-hidden": "true" }), h("span", { text: x.text })))) : null,
         h("p", { class: "wk-note", id: "wkNote" })].filter(Boolean));       // replaceChildren turns a null into the text "null"
     }
@@ -864,7 +861,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       if (groups.length > 1) bar.append(h("select", { class: "doc-group-select", "aria-label": "Show", "data-k": "g-select", onchange: (e) => { S.docGroup = e.target.value || null; render(true); } },
         [null, ...groups].map((g) => h("option", { value: g || "", selected: S.docGroup === g }, (g || "All") + " (" + (g ? all.filter((x) => x.group === g).length : all.length) + ")"))));
       if (groups.length > 1) bar.append(h("div", { class: "seg-ctl wrap", role: "group", "aria-label": "Show" }, [null, ...groups].map((g) => h("button", { type: "button", "data-k": "g-" + (g || "all"), "aria-pressed": String(S.docGroup === g), onclick: () => { S.docGroup = g; render(true); } }, g || "All", h("span", { class: "n", text: String(g ? all.filter((x) => x.group === g).length : all.length) })))));
-      if (all.length > 6) bar.append(h("div", { class: "find-wrap" }, ic("search"), h("input", { type: "search", class: "doc-find", "aria-label": "Search the documents", placeholder: "Search titles and summaries", value: S.docQ, "data-k": "doc-q", oninput: (e) => { S.docQ = e.target.value; clearTimeout(S.dq); S.dq = setTimeout(() => render(true), 160); } })));
+      if (all.length > 6) bar.append(h("div", { class: "find-wrap" }, ic("search"), h("input", { type: "search", class: "doc-find", "aria-label": "Search the documents", placeholder: "Search the plan", value: S.docQ, "data-k": "doc-q", oninput: (e) => { S.docQ = e.target.value; clearTimeout(S.dq); S.dq = setTimeout(() => render(true), 160); } })));
       box.append(bar);
     }
     const shown = all.filter((x) => (!S.docGroup || x.group === S.docGroup) && (!q || ((x.title || "") + " " + (x.summary || "") + " " + (x.preview || "") + " " + (x.kind_label || "")).toLowerCase().includes(q)));
