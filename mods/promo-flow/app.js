@@ -339,7 +339,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
             h("div", { class: "wk-now", text: last ? cap(last.text) : "Starting to work on this step" }),
             h("div", { class: "wk-sub", id: "wkAgo" }))),
         act.length ? h("div", { class: "wk-map", role: "img", "aria-label": act.length + " steps so far. Hover a dot for what it was." }, dots) : null,
-        act.length ? h("p", { class: "wk-count", text: act.length > shown.length ? act.length + " updates so far, the latest " + shown.length + " counted below" : act.length + " updates so far" }) : null,
+        act.length ? h("p", { class: "wk-count", text: act.length > shown.length ? "The latest " + shown.length + " of " + act.length + " updates" : act.length + " updates so far" }) : null,
         kinds.length ? h("div", { class: "wk-legend" }, kinds.map((k) => h("span", null, h("i", { class: "dt k-" + k + " done" }), ACT_KIND[k] + " " + count(k)))) : null,
         feed.length ? h("ul", { class: "wk-feed" }, feed.map((x) => h("li", null, h("span", { class: "t", text: clock(x.at) }), h("i", { class: "dt k-" + (ACT_KIND[x.kind] ? x.kind : "other") + (x.done ? " done" : ""), "aria-hidden": "true" }), h("span", { text: x.text })))) : null,
         h("p", { class: "wk-note", id: "wkNote" })].filter(Boolean));       // replaceChildren turns a null into the text "null"

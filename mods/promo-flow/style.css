@@ -1562,7 +1562,7 @@ button.jb-tile:hover { border-color: var(--c-accent); }
 .glow { position: absolute; inset: 0; z-index: 30; pointer-events: none; opacity: 0; transition: opacity .6s ease; }
 .glow[data-mode="wait"] { opacity: 1; }
 .glow[data-mode="arrive"] { animation: arrive 1.5s ease-out both; }
-.glow::after { content: ""; position: absolute; inset: 0; box-shadow: inset 0 0 36px -12px color-mix(in srgb, var(--c-accent) 38%, transparent); animation: pulse 2.6s ease-in-out infinite; }
+.glow::after { content: ""; position: absolute; inset: 0; box-shadow: inset 0 0 22px -8px color-mix(in srgb, var(--c-accent) 34%, transparent); animation: pulse 2.6s ease-in-out infinite; }
 .glow i { position: absolute; inset: 0; padding: 2px; overflow: hidden; -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); }
 .glow i::before { content: ""; position: absolute; left: 50%; top: 50%; width: 2400px; height: 2400px; margin: -1200px 0 0 -1200px; background: conic-gradient(from 0deg, transparent 0 250deg, color-mix(in srgb, var(--c-accent) 55%, transparent) 320deg, var(--c-accent) 352deg, #fff 360deg); animation: spin 3.2s linear infinite; }
 .glow[data-mode="arrive"] i::before { animation-duration: 1.2s; animation-timing-function: ease-out; animation-iteration-count: 1; }
@@ -1599,3 +1599,18 @@ button.jb-tile:hover { border-color: var(--c-accent); }
   .choice.style .box { position: absolute; top: 8px; left: 8px; z-index: 2; background: rgba(0,0,0,.55); border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.45); }
   .choice.style:has(input:checked) .box { background: var(--c-accent); border-color: #fff; }
 }
+
+/* round 7, pass 2 */
+/* reader: find and contents share the first row, the find strip stays under the tabs while the page scrolls, lines stay readable */
+.rd-tools { position: sticky; top: var(--tabs-h, 0px); z-index: 3; background: var(--c-well); padding: 6px 0; }
+@container (min-width: 480px) { .rd-findrow { grid-column: 1; grid-row: 1; } .rd-tools .rd-toc { grid-column: 2; grid-row: 1; } .rd-tools .rd-found { grid-row: 2; } }
+.doc-page > :not(.md-tbl) { max-width: 74ch; }
+/* a long note is not a 1500 px line */
+.council p { max-width: 80ch; }
+/* storyboard: a wide pane shows frames at judging size and keeps the scene's text on the same screen */
+@container (min-width: 760px) { .scene .frames { max-width: 880px; } }
+/* confirm: the six tiles fill their rows */
+@container (max-width: 699px) { .cf-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@container (max-width: 439px) { .cf-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* the pager's "top" class also matches the page header's rule: keep its edges on the card's */
+.pager.top { padding: 0 0 12px; background: transparent; }
