@@ -17,6 +17,8 @@ import tempfile
 import wave
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+COUNCIL_NOTE = ("Script A is the strongest hook and the easiest to film from real footage. Script B is short enough for a social cut but leans on one chime "
+                "for its payoff. Script C shows the most of the product but needs three captures nobody has recorded yet.")
 sys.path.insert(0, ROOT)
 
 from PIL import Image, ImageDraw, ImageFont  # noqa: E402
@@ -355,7 +357,7 @@ def picker_states(tmp, finished):
     F.advance(tour)
     for sid, title, logline in SCRIPTS[:3]:
         F.add_script(tour, sid, title, logline, text=f"# {title}\n\n{logline}\n\n" + "\n".join(f"{i + 1}. {b}" for i, b in enumerate(BEATS[sid])))
-    write(os.path.join(tmp, "tour-council.md"), "x" * 300)
+    write(os.path.join(tmp, "tour-council.md"), COUNCIL_NOTE)
     F.add_council(tour, "scripts", os.path.join(tmp, "tour-council.md"))
     F.advance(tour)
     F.approve(tour, "scripts-picked", "Sam", ["A"])
@@ -416,7 +418,7 @@ def _build(tmp):
         F.add_script(pd, sid, title, logline, sf)
     snap("scripts")
     cf = os.path.join(tmp, "council.md")
-    write(cf, "x" * 300)
+    write(cf, COUNCIL_NOTE)
     F.add_council(pd, "scripts", cf)
     F.recommend(pd, "A", "It follows the app's own run from one typed ask to merged PRs, so every scene is real footage we can capture today.")
     F.advance(pd)

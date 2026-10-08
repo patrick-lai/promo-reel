@@ -26,7 +26,7 @@ import serve  # noqa: E402
 
 CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 STAGES = ["discover", "scripts", "pick", "storyboard", "assets", "keyframes", "confirm", "drafts", "review", "autopilot", "final"]
-WIDTHS = [(380, 780), (520, 900), (900, 900)]
+WIDTHS = [(380, 780), (520, 900), (900, 900), (1100, 900)]
 
 
 class WS:
@@ -352,6 +352,15 @@ UICHECK = r"""(async () => {
     await click('[data-k=ap-stop]'); await wait(400);
     ok('stop reaches the agent', /action autopilot -> \[mod:promo-flow\] Sam asked you to stop working on your own/.test(log()), log().slice(0, 300));
   }
+  if (step === 'starting') {
+    const glow = () => Q('#glow').dataset.mode;
+    ok('the pane glows while the plan is prepared', glow() === 'wait', glow());
+    window.harness.setStage('pick');
+    ok('the glow flashes once when the plan lands', await until(() => glow() === 'arrive', 2000), glow());
+    ok('then it goes quiet', await until(() => glow() === 'off', 4000), glow());
+    window.harness.setStage('review'); await wait(400);
+    ok('a later update does not replay the intro', glow() === 'off', glow());
+  }
   if (step === 'storyboard') {
     ok('app scenes with a real screen say so', QA('.scene-h .chip').some((c) => c.textContent === 'Real screen') && QA('.fr .lbl').some((l) => /real/.test(l.textContent)));
     ok('an unreachable screen says why', QA('.scene-h .chip').some((c) => c.textContent === 'Screen not reachable') && /reviewer account/.test(Q('#content').textContent));
@@ -371,7 +380,7 @@ UICHECK = r"""(async () => {
 
 def uicheck(sh):
     bad = 0
-    for st in ["plan", "dense", "pick", "review", "autopilot", "storyboard"]:
+    for st in ["starting", "plan", "dense", "pick", "review", "autopilot", "storyboard"]:
         mod = sh.open(st, 520, 1000, False)
         for r in sh.js(UICHECK, mod) or []:
             bad += not r["pass"]
@@ -497,6 +506,9 @@ def scroll(px):
 
 
 EXTRAS = [
+    ("intro-wait-520", "starting", 520, 900, True, "", ["TOP:0", "TOP:0"]),
+    ("intro-wait-1100", "starting", 1100, 800, True, "", ["TOP:0", "TOP:0"]),
+    ("intro-arrive-520", "starting", 520, 900, True, "", ["TOP:window.harness.setStage('pick')"]),
     ("picker-520", "picker", 520, 900, True, "&mod=promo-projects", None),
     ("picker-900-light", "picker", 900, 900, False, "&mod=promo-projects", None),
     ("picker-end-520", "picker", 520, 900, True, "&mod=promo-projects", ["(() => { const find = (r) => r.querySelector('.list') || [...r.querySelectorAll('*')].map((e) => e.shadowRoot).filter(Boolean).map(find).find(Boolean); const l = find(document); if (!l) throw new Error('no .list'); l.scrollTop = 1e6; })()"]),

@@ -20,7 +20,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   const KIND_LABEL = { screenshot: "Screenshot", image: "Image", recording: "Recording", video: "Video", music: "Music", voice: "Voice", sfx: "Sound effect" };
   const KIND_MEDIA = { screenshot: "image", image: "image", recording: "video", video: "video", music: "audio", voice: "audio", sfx: "audio" };
   const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || "");
-  const MAX_NOTE = 1500, STALL_MS = 45000, BOOT_MS = 8000;
+  const MAX_NOTE = 1500, STALL_MS = 45000, BOOT_MS = 8000, INTRO_MS = 1600;
   const BIG_VIDEO = 24 * 1024 * 1024, BIG_AUDIO = 8 * 1024 * 1024, BIG_DRAFT = 60 * 1024 * 1024;
 
   const $ = (id) => ctx.root.getElementById(id);
@@ -28,7 +28,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   const el = { sc: $("scroller"), app: $("app"), stepNo: $("stepNo"), badge: $("badge"), badgeText: $("badgeText"), stageName: $("stageName"), stepsBtn: $("stepsBtn"), settingsBtn: $("settingsBtn"), stateLine: $("stateLine"),
     stepper: $("stepper"), curLab: $("curLab"), stepsList: $("stepsList"), banners: $("banners"), job: $("job"), working: $("working"), tabs: $("tabs"), content: $("content"), gate: $("gate"), gateNote: $("gateNote"),
     compose: $("compose"), note: $("note"), noteLabel: $("noteLabel"), noteHint: $("noteHint"), gateErr: $("gateErr"), btn2: $("btnSecondary"), btn1: $("btnPrimary"),
-    lb: $("lightbox"), toast: $("toast"), live: $("live") };
+    lb: $("lightbox"), toast: $("toast"), live: $("live"), glow: $("glow") };
 
   const S = {
     booted: false, version: null, summary: {}, doc: {}, pending: null, offline: false, readonly: false,
@@ -330,7 +330,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
         return h("i", { class: "dt k-" + (ACT_KIND[x.kind] ? x.kind : "other") + (x.done ? " done" : "") + (live ? " live" : ""), title: clock(x.at) + " · " + x.text });
       });
       for (let i = shown.length; i < Math.min(DOTS, 24); i++) dots.push(h("i", { class: "dt empty", "aria-hidden": "true" }));
-      const kinds = [...new Set(shown.map((x) => x.kind))].filter((k) => ACT_KIND[k]);
+      const kinds = [...new Set(shown.map((x) => x.kind))].filter((k) => ACT_KIND[k] && k !== "milestone");
       const count = (k) => shown.filter((x) => x.kind === k).length;
       const feed = act.filter((x) => x.kind !== "milestone").slice(-3).reverse();
       el.working.replaceChildren(...[
@@ -339,7 +339,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
             h("div", { class: "wk-now", text: last ? cap(last.text) : "Starting to work on this step" }),
             h("div", { class: "wk-sub", id: "wkAgo" }))),
         act.length ? h("div", { class: "wk-map", role: "img", "aria-label": act.length + " steps so far. Hover a dot for what it was." }, dots) : null,
-        kinds.length ? h("p", { class: "wk-count", text: act.length > shown.length ? act.length + " updates so far, the latest " + shown.length + " counted below" : act.length + " updates so far" }) : null,
+        act.length ? h("p", { class: "wk-count", text: act.length > shown.length ? act.length + " updates so far, the latest " + shown.length + " counted below" : act.length + " updates so far" }) : null,
         kinds.length ? h("div", { class: "wk-legend" }, kinds.map((k) => h("span", null, h("i", { class: "dt k-" + k + " done" }), ACT_KIND[k] + " " + count(k)))) : null,
         feed.length ? h("ul", { class: "wk-feed" }, feed.map((x) => h("li", null, h("span", { class: "t", text: clock(x.at) }), h("i", { class: "dt k-" + (ACT_KIND[x.kind] ? x.kind : "other") + (x.done ? " done" : ""), "aria-hidden": "true" }), h("span", { text: x.text })))) : null,
         h("p", { class: "wk-note", id: "wkNote" })].filter(Boolean));       // replaceChildren turns a null into the text "null"
@@ -352,7 +352,8 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       const since = S.doc.stage_since ? ago(S.doc.stage_since) : "";
       sub.textContent = (last ? "Updated " + ago(last.at) : "No update yet") + (since ? " · step started " + since : "");
       const quiet = last ? (Date.now() - Date.parse(last.at)) / 60000 : 0;
-      note.textContent = quiet >= STALE_MIN ? "No update for " + Math.round(quiet) + " min. It may be on one long job. Ask the agent if you want to know." : "A fresh update appears every few minutes.";
+      note.textContent = quiet >= STALE_MIN ? "No update for " + Math.round(quiet) + " min. It may be on one long job. Ask the agent if you want to know." : "";
+      note.hidden = quiet < STALE_MIN;
       note.classList.toggle("warn", quiet >= STALE_MIN);
     };
     tick();
@@ -658,7 +659,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     return h("div", { class: "pane empty fill prep", role: "status" }, h("div", { class: "ring" }, ic("spark")),
       h("h2", null, "Preparing", h("span", { class: "dots", "aria-hidden": "true" }, h("i", { text: "." }), h("i", { text: "." }), h("i", { text: "." }))),
       h("p", { text: "The plan appears here as soon as it is ready." }),
-      h("ol", { class: "prep-steps", "aria-label": "The ten steps" }, Object.values(STAGE_LABEL).map((l, i) => h("li", { class: i === 0 ? "current" : "", text: l }))));
+      h("ol", { class: "prep-steps", "aria-label": "The ten steps" }, Object.values(STAGE_LABEL).map((l, i) => h("li", { class: i === 0 ? "current" : "", style: "--i:" + i, text: l }))));
   }
 
   /* ---------------- settings: where videos are saved ---------------- */
@@ -1909,6 +1910,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       if (S.compose) { el.btn1.textContent = busy ? "Sending" : m.sendLabel; el.btn1.disabled = busy || !el.note.value.trim() || offlineBlocked() || !!(S.stale && S.stale.changedGate); }
       else { el.btn1.textContent = busy ? "Sending" : m.primary; el.btn1.disabled = busy || !!m.primaryDisabled || offlineBlocked(); }
     }
+    if (S.offline && (m.mode === "gate" || m.mode === "work") && !S.compose) note("Offline: sending is paused. Reconnect to continue.");
     /* The footer's Stop is the one Stop while the autopilot runs (the harness and the agent know it as ap-stop). */
     if (m.apStop && !S.compose) el.btn1.dataset.k = "ap-stop"; else delete el.btn1.dataset.k;
     el.btn1.classList.toggle("soft", !!m.pendPick && !S.compose);
@@ -2026,9 +2028,21 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   }
 
   /* ---------------- render + state ---------------- */
+  /* The pane's border glows while the first plan is being prepared and flashes once when it lands, so a started promo is visibly alive. */
+  function setIntro(mode) {
+    if (S.introMode === mode) return;
+    S.introMode = mode;
+    clearTimeout(S.introTimer);
+    el.glow.dataset.mode = mode;
+    el.app.dataset.intro = mode;
+    if (mode === "arrive") S.introTimer = setTimeout(() => setIntro("off"), INTRO_MS);
+  }
+
   function render(force) {
     if (!S.booted) return;
     el.app.dataset.boot = "ready";
+    if (isStarting() && !S.noState) setIntro("wait");
+    else if (S.introMode === "wait") setIntro("arrive");
     const list = tabList();
     const cur = gTab();
     if (S.stage !== S.doc.stage) { S.stage = S.doc.stage; S.userTab = false; S.sentPicks = null; S.draftSel = null; S.earlier = false; S.filter = null; S.boardIdx = 0; S.seen = new Set(); S.sbView = "scenes"; }
@@ -2106,7 +2120,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     }
   }
   function unmount() {
-    clearTimeout(S.bootTimer); clearTimeout(S.stallTimer); clearInterval(S.agoTimer); clearInterval(S.jobTimer);
+    clearTimeout(S.bootTimer); clearTimeout(S.stallTimer); clearTimeout(S.introTimer); clearInterval(S.agoTimer); clearInterval(S.jobTimer);
     if (S.sending) clearTimeout(S.sending.timer);
     for (const id of [...M.cache.keys()]) revoke(id);
   }
