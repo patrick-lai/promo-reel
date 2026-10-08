@@ -1614,3 +1614,14 @@ button.jb-tile:hover { border-color: var(--c-accent); }
 @container (max-width: 439px) { .cf-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 /* the pager's "top" class also matches the page header's rule: keep its edges on the card's */
 .pager.top { padding: 0 0 12px; background: transparent; }
+
+/* round 7: the script reader is a dialog over the pane */
+.modal { position: absolute; inset: 0; z-index: 40; display: grid; place-items: center; padding: 20px; background: color-mix(in srgb, #0b0a08 62%, transparent); animation: fade .16s ease-out; }
+.modal-card { width: min(820px, 100%); max-height: 100%; display: flex; flex-direction: column; background: var(--c-well); border: 1px solid var(--c-line); border-radius: calc(var(--c-radius) + 2px); box-shadow: 0 28px 70px -12px rgba(0,0,0,.55); overflow: hidden; animation: rise .24s cubic-bezier(.2, .7, .2, 1) both; }
+.modal-scroll { overflow: auto; overscroll-behavior: contain; padding: 18px 20px 20px; outline: none; }
+.modal .pane { padding: 0; }
+.modal .rd-head { position: relative; padding-right: 44px; }
+.rd-close { position: absolute; top: -6px; right: -10px; margin: 0; }
+.modal .rd-tools { top: 0; }
+.modal .doc-page { font-size: 15.5px; line-height: 1.7; }
+@container (max-width: 479px) { .modal { padding: 0; } .modal-card { height: 100%; border: 0; border-radius: 0; } .modal-scroll { padding: 14px 14px 18px; } }

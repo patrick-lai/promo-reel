@@ -194,3 +194,36 @@ Found by this round: the fade above the gate bar used a colour token that does n
 No score under 7 on any criterion. Style, Storyboard, Review and the picker were rescored after a last small batch (review checks sorted with icon-only holds, the file note inside the file block, the lightbox counter under the frame, an inline hint for a reference that is not a link, picker titles full width on narrow panes, picker copy matching its end link); the other five were scored on the same final3 shoot just before it. The harness checks pass with zero failures on the final code.
 
 Caveats worth keeping: the judges are noisy (about ±0.2 on an unchanged page) and several asks reversed earlier ones, so a page at 8.0 can score 7.8 on a fresh run. Remaining asks, all at criterion level 7, are in `evals/round4-asks.md` under "Still open after the 8+ round".
+
+## Round 7 (9 Oct 2026): wide panes, intro, script modal (rubric v2, frozen; fresh Sonnet judges, one per page, single sample)
+
+The person reported the Scripts page ugly at about 1100 px: the 4-up script cards let their text run out of the card on the left. Cause: a
+`margin-left: -34px` hack for the pick checkbox (`@container (min-width: 760px)`) also hit static cards, which have no checkbox. The harness
+now shoots 1100 px as well (`WIDTHS` in `mod-dev/shoot.py`). Hill climb: target 8, budget 3 attempts, `min_gain` 0.25.
+
+| page | baseline | attempt 1 | attempt 2 (kept) | attempt 3 (reverted) |
+|---|---|---|---|---|
+| Style & references | 7.5 | 7.6 | 7.1 | 7.8 |
+| Scripts and Pick | 6.1 | 7.0 | 7.0 | 7.0 |
+| Storyboard | 6.8 | 7.1 | 7.6 | 6.9 |
+| Assets, Keyframes, Confirm | 6.8 | 7.2 | 7.3 | 6.7 |
+| Drafts, Review, Autopilot | 6.1 | 6.6 | 6.6 | 7.0 |
+| Final | 7.0 | 7.4 | 7.9 | 7.4 |
+| Plan and reader | 7.0 | 6.8 | 7.0 | 7.5 |
+| Working and error states | 7.0 | 6.6 | 7.0 | 7.3 |
+| Resume picker | 7.7 | 7.7 | 7.6 | 7.8 |
+| **mean** | **6.91** | 7.11 | **7.23** | 7.27 |
+
+Attempt 1 gained 0.2 (under `min_gain`) and was judged together with attempt 2, which brought the cumulative gain to +0.32: kept. Attempt 3
+(drop the activity legend, cap the review previews, beats under the link, shorter search placeholder) gained 0.04 and was reverted. Per-page
+noise between runs on an unchanged page was up to 0.6, so single-page moves under about 0.5 mean nothing. Target 8 was not reached; nothing is
+under 6.5 on any page. Judges still disagree with each other and with earlier rounds on: beats pinned to the card foot vs under the link; the
+choice ring on the sample vs beside the title; stacked vs side-by-side blind-pick previews; a disabled primary that keeps the accent vs one that
+goes neutral. Open asks that were not done: reader chrome (about 330 px above the text at 520), a real empty Plan state, the Review pick card
+above the draft video, "Approve storyboard again" as the stale-approval primary, a retry in the offline banner.
+
+What changed: script cards (one block, `round 7` in `style.css`); the pane's border glow while the first plan is prepared (`#glow`, `setIntro`);
+footer hint and buttons on one row from 760 px; storyboard strip cells stay 16:9; build tiles keep icon and name apart; the working card drops
+the grey "Flow step" legend entry and the "fresh update every few minutes" promise; the council note and fixtures use real text; the reader's
+find row and contents share a row, its pager no longer picks up the page header's padding (the `top` class clash), text keeps a 74-character
+measure; "Read full script" opens the script in a dialog over the pane (`openScriptModal`) instead of replacing the tab.

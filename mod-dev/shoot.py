@@ -367,6 +367,16 @@ UICHECK = r"""(async () => {
   }
   if (step === 'pick') {
     const badge = () => Q('#badgeText').textContent;
+    const read = Q('[data-k="open-script:A"]');
+    read.focus(); read.click(); await wait(400);
+    ok('Read full script opens a dialog over the pane', !Q('#modal').hidden && !!Q('#modal .doc-page') && /Wake up/.test(Q('#modal .rd-title').textContent), Q('#modal').hidden);
+    ok('the cards and the footer stay where they were', QA('.choice').length === 3 && Q('#btnPrimary').textContent.length > 0);
+    ok('focus moves into the dialog', Q('#modal').contains(root.activeElement), (root.activeElement || {}).tagName);
+    root.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, composed: true })); await wait(300);
+    ok('Escape closes it and returns focus to the link', Q('#modal').hidden && root.activeElement === read, (root.activeElement || {}).tagName);
+    read.click(); await wait(300);
+    Q('[data-k=rd-close]').click(); await wait(300);
+    ok('Close closes it', Q('#modal').hidden);
     ok('before sending, the pick gate is the person\'s turn', badge() === 'Your turn', badge());
     Q('.choice input').click(); await wait(200);
     await click('#btnPrimary');
@@ -576,6 +586,8 @@ EXTRAS = [
     ("picks-two-520", "pick", 520, 900, False, "", ["document.querySelectorAll('.choice input')[0].click()", "document.querySelectorAll('.choice input')[1].click()"]),
     ("script-read-520", "pick", 520, 900, False, "", []),
     ("script-reader-520", "scripts", 520, 900, True, "", [click('[data-k="open-script:A"]')]),
+    ("script-modal-1100", "pick", 1100, 900, True, "", [click('[data-k="open-script:A"]')]),
+    ("script-modal-380", "pick", 380, 780, True, "", [click('[data-k="open-script:A"]')]),
     ("dense-520", "dense", 520, 1100, False, "", []),
     ("dense-time-520", "dense", 520, 1100, False, "", [click('[data-k="sbv-time"]')]),
     ("dense-time-900", "dense", 900, 1000, True, "", [click('[data-k="sbv-time"]')]),

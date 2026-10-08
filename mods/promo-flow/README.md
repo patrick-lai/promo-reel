@@ -132,3 +132,5 @@ The harness plays the host: mounts the mod into its page in a shadow root like C
 offline, readonly, reduce motion, hold state (loading), media failures, a new version arriving mid-edit (with or without the step changing), and the bridge log with the rendered action messages.
 Stages: the ten flow stages plus `autopilot` (a run in progress), `starting`, `storyboard-partial`, `plan` (17 documents, one of 12 000 words), `dense` (frames every 5 s), `assets-error`, `stale-approval`, `long-content`, `review-maxed`.
     .venv/bin/python mod-dev/shoot.py --check    # interaction checks in headless Chrome: reader paging, find, contents, requests, cadence, escaping
+
+**Read full script** (Scripts and Pick) opens the script in a dialog over the pane: the cards and the footer decision stay behind it (inert), Esc or the close button returns focus to the link; the Plan tab's documents still open in the tab.

@@ -28,7 +28,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   const el = { sc: $("scroller"), app: $("app"), stepNo: $("stepNo"), badge: $("badge"), badgeText: $("badgeText"), stageName: $("stageName"), stepsBtn: $("stepsBtn"), settingsBtn: $("settingsBtn"), stateLine: $("stateLine"),
     stepper: $("stepper"), curLab: $("curLab"), stepsList: $("stepsList"), banners: $("banners"), job: $("job"), working: $("working"), tabs: $("tabs"), content: $("content"), gate: $("gate"), gateNote: $("gateNote"),
     compose: $("compose"), note: $("note"), noteLabel: $("noteLabel"), noteHint: $("noteHint"), gateErr: $("gateErr"), btn2: $("btnSecondary"), btn1: $("btnPrimary"),
-    lb: $("lightbox"), toast: $("toast"), live: $("live"), glow: $("glow") };
+    lb: $("lightbox"), toast: $("toast"), live: $("live"), glow: $("glow"), modal: $("modal"), modalSc: $("modalScroll") };
 
   const S = {
     booted: false, version: null, summary: {}, doc: {}, pending: null, offline: false, readonly: false,
@@ -570,7 +570,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     else if (isStarting()) view = viewStarting();
     else if (S.settingsOpen) view = viewSettings();
     else if (!list.length) view = viewOverview();
-    else if (S.reader) view = viewReader();
+    else if (S.reader) view = viewReader(S.reader, false);
     else view = ({ scripts: viewScripts, storyboard: viewStoryboard, assets: viewAssets, draft: viewDraft, plan: viewPlan }[S.tab] || viewOverview)();
     const fy = !S.settingsOpen && !S.reader && hasDoc() && readable() ? forYou() : null;
     if (fy) { const rc = S.tab === "draft" && S.doc.stage !== "final" && el.sc.clientWidth >= 760 ? view.querySelector(".rounds-col") : null; if (rc) rc.prepend(fy); else if (S.doc.stage === "final") view.append(fy); else view.prepend(fy); }
@@ -783,7 +783,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       const picked = s.picked || (!pickMode && S.sentPicks && S.sentPicks.has(s.id));
       const title = h("div", { class: "t" }, h("span", { class: "id", text: s.id }), h("b", { text: s.title }),
         picked && !pickMode ? h("span", { class: "chip ok" }, ic("check"), "Picked") : null, s.verdict ? h("span", { class: "chip", text: s.verdict }) : null);
-      const read = PF.bodyOf(s).text ? h("button", { type: "button", class: "btn ghost sm read-btn", "data-k": "open-script:" + s.id, onclick: (e) => { e.preventDefault(); e.stopPropagation(); openReader("script:" + s.id); } }, ic("doc"), h("span", { class: "rb-t", text: "Read full script" }), s.words ? h("span", { class: "rb-n", text: wordsLabel(s.words) }) : null) : null;
+      const read = PF.bodyOf(s).text ? h("button", { type: "button", class: "btn ghost sm read-btn", "data-k": "open-script:" + s.id, onclick: (e) => { e.preventDefault(); e.stopPropagation(); openScriptModal("script:" + s.id); } }, ic("doc"), h("span", { class: "rb-t", text: "Read full script" }), s.words ? h("span", { class: "rb-n", text: wordsLabel(s.words) }) : null) : null;
       const rec = s.recommended ? h("span", { class: "rec" },
         h("button", { type: "button", class: "chip rec-pill", "aria-describedby": "rec-why-" + s.id, onclick: (e) => { e.preventDefault(); e.stopPropagation(); } }, ic("spark"), "Recommended"),
         h("span", { class: "rec-why", role: "tooltip", id: "rec-why-" + s.id, text: s.recommended })) : null;
@@ -836,6 +836,44 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     const back = key && el.content.querySelector('[data-k="open-' + key + '"]');
     if (back) back.focus({ preventScroll: false });
   }
+  /* "Read full script" opens the script in a dialog over the pane, so the cards and the footer decision stay where they were. */
+  function openScriptModal(key) {
+    S.docOpened.add(key);
+    S.modal = { key, page: 0, q: "", mi: null, opener: ctx.root.activeElement, fresh: true, built: false, sig: "" };
+    inertTargets().forEach((n) => n.setAttribute("inert", ""));
+    el.modal.hidden = false;
+    renderModal();
+    el.modalSc.scrollTop = 0;
+  }
+  function closeScriptModal() {
+    if (!S.modal) return;
+    const opener = S.modal.opener;
+    S.modal = null;
+    el.modal.hidden = true; el.modalSc.replaceChildren();
+    inertTargets().forEach((n) => n.removeAttribute("inert"));
+    if (opener && opener.isConnected) opener.focus({ preventScroll: true });
+  }
+  function renderModal() {
+    if (!S.modal) return;
+    const it = findReadable(S.modal.key);
+    if (!it) return closeScriptModal();
+    const sig = JSON.stringify([it.title, it.words, it.body, it.updated]);
+    if (S.modal.sig === sig) return;
+    S.modal.sig = sig;
+    el.modalSc.replaceChildren(viewReader(S.modal, true));
+  }
+  el.modal.addEventListener("click", (e) => { if (e.target === el.modal) closeScriptModal(); });
+  ctx.root.addEventListener("keydown", (e) => {
+    if (!S.modal || LB.open) return;
+    if (e.key === "Escape") { e.preventDefault(); closeScriptModal(); }
+    else if (e.key === "Tab") {
+      const f = [...el.modal.querySelectorAll("button, input, select, [tabindex='0']")].filter((n) => !n.disabled && n.offsetParent !== null);
+      if (!f.length) return;
+      const i = f.indexOf(ctx.root.activeElement);
+      e.preventDefault();
+      f[(i + (e.shiftKey ? -1 : 1) + f.length) % f.length].focus();
+    }
+  });
   const minutes = (w) => "~" + PF.readMinutes(w) + " min read";
   const wordsLabel = (w) => w.toLocaleString("en-US") + " words";
 
@@ -942,17 +980,20 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     return null;
   }
 
-  function viewReader() {
-    const R = S.reader, it = findReadable(R.key);
+  /* The reader fills the tab, or (inModal) a dialog over the pane that has its own scroll. */
+  function viewReader(R, inModal) {
+    const it = findReadable(R.key);
     const b = PF.bodyOf(it);
+    const sc = inModal ? el.modalSc : el.sc, host = inModal ? el.modal : el.content;
     /* A refresh (the agent added pages, the step moved on) rebuilds this view: keep the reader's place and the focus in the find box. */
-    const keepY = R.built ? el.sc.scrollTop : null;
+    const keepY = R.built ? sc.scrollTop : null;
     const ae = ctx.root.activeElement;
-    const keepFocus = R.built && ae && el.content.contains(ae) ? ae.dataset.k || null : null;
+    const keepFocus = R.built && ae && host.contains(ae) ? ae.dataset.k || null : null;
     R.built = true;
-    const back = h("button", { type: "button", class: "rd-back", "data-k": "rd-back", onclick: closeReader }, ic("left"), h("span", { text: ({ plan: "Plan", scripts: "Scripts", storyboard: "Storyboard" })[R.from] || "Back" }));
+    const back = inModal ? h("button", { type: "button", class: "icon-btn rd-close", "data-k": "rd-close", "aria-label": "Close", onclick: closeScriptModal }, ic("close"))
+      : h("button", { type: "button", class: "rd-back", "data-k": "rd-back", onclick: closeReader }, ic("left"), h("span", { text: ({ plan: "Plan", scripts: "Scripts", storyboard: "Storyboard" })[R.from] || "Back" }));
     const meta = [it.kind_label, it.words ? wordsLabel(it.words) : null, it.words ? minutes(it.words) : null].filter(Boolean);
-    const head = h("header", { class: "rd-head" }, back, h("h2", { class: "rd-title", text: it.title }),
+    const head = h("header", { class: "rd-head" }, back, h("h2", { class: "rd-title", id: inModal ? "modalTitle" : null, text: it.title }),
       h("div", { class: "rd-meta" }, meta.map((m) => h("span", { class: "chip", text: m })),
         b.text ? downloadButton(it.title, PF.textFileName(it.title), () => Promise.resolve(URL.createObjectURL(new Blob([b.text], { type: "text/markdown" })))) : null));
     const body = h("div", { class: "rd-body" });
@@ -999,7 +1040,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
         R.page = i;
         if (toc) toc.value = String([...toc.options].map((o) => +o.value).filter((p) => p <= i).pop() ?? i);
         draw();
-        el.sc.scrollTop = Math.max(0, wrap.getBoundingClientRect().top - el.sc.getBoundingClientRect().top + el.sc.scrollTop - (el.tabs.hidden ? 0 : el.tabs.offsetHeight) - 4);
+        sc.scrollTop = Math.max(0, wrap.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop - (inModal || el.tabs.hidden ? 0 : el.tabs.offsetHeight) - 4);
         page.focus({ preventScroll: true });
         say("Page " + (i + 1) + " of " + pages.length);
       }
@@ -1023,7 +1064,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       find.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); hit(e.shiftKey ? -1 : 1); } else if (e.key === "Escape" && find.value) { find.value = ""; R.q = ""; R.mi = null; draw(); e.stopPropagation(); } });
       body.replaceChildren(...[tools, top, page, bot, pages.length > 1 ? pgBar : null].filter(Boolean));
       draw();
-      if (keepY != null) el.sc.scrollTop = keepY;
+      if (keepY != null) sc.scrollTop = keepY;
       if (keepFocus) { const n = body.querySelector('[data-k="' + keepFocus + '"]'); if (n) n.focus({ preventScroll: true }); }
     }
     load();
@@ -2056,6 +2097,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     renderTabs(list);
     renderContent(list, force);
     renderGate();
+    renderModal();
   }
 
   function onState(m) {
