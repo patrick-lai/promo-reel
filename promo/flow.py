@@ -15,6 +15,7 @@ page (stepper, scripts, storyboards, assets, drafts, rounds) to show.
     promo flow status [--json]                    where we are, what blocks, what to ask the person next
     promo flow discover --style TEXT [--ref URL ...] | --no-refs
     promo flow script add ID --title T --logline L (--file F | --file - | --text T) ;  promo flow script append ID --file F      a script of any length, in parts
+    promo flow recommend ID --why TEXT            mark the one script you would pick; the Stage shows a "Recommended" pill on it with the reason in a tooltip
     promo flow doc add ID --kind K --title T (--file F | --text T) ;  doc append|new KIND|list|rm|templates      planning documents shown in the Plan tab (shot list, edit plan, ...)
     promo flow plan pack [--story A]              the whole production pack built from the storyboard: treatment, direction, shot list, edit, audio, capture, claims, deliverables, schedule
     promo flow story ID --title T --logline L ;  promo flow scene add|set|rm|list STORY ...      build and change a storyboard without writing JSON
@@ -90,6 +91,7 @@ LABEL = dict(discover="Style & references", scripts="Scripts", pick="Pick storie
 GATE_OF = dict(pick="scripts-picked", storyboard="storyboard-approved", assets="assets-approved", confirm="final-confirmation", review="draft-approved")
 MAX_ROUNDS = 5
 MIN_SCRIPTS = 3
+MAX_WHY = 240
 URL_RE = re.compile(r"https?://[^\s)>\]\"']+")
 STYLES = [("Calm product hero", "A steady voice-over walks through the real app. Simple captions, cuts that land on the beat."), ("Dialogue film", "People talking, with the app on their screens. Real speech carries the story."),
           ("Horizon film", "Fast cuts of the real app building to one proof moment, ending on a calm dawn card."), ("Kinetic anime opening", "Bold title cards and quick, punchy cuts timed to the music.")]
@@ -411,6 +413,19 @@ def add_script(pd, sid, title, logline, file=None, text=None, append=False):
     return PD.words(body)
 
 
+def recommend(pd, sid, why):
+    """The agent's own pick among the scripts, shown on its card as a pill with `why` as the tooltip. One script at a time: recommending another moves it."""
+    st = load(pd)
+    if not any(x["id"] == sid for x in st["scripts"]):
+        raise FlowError(f"no script {sid}: recommend one of {', '.join(x['id'] for x in st['scripts']) or 'none yet'}")
+    why = " ".join((why or "").split())
+    if not 20 <= len(why) <= MAX_WHY:
+        raise FlowError(f"--why is one or two sentences the person can read in a tooltip (20-{MAX_WHY} characters, got {len(why)}): say what it does better than the others")
+    st["recommended"] = dict(id=sid, why=why)
+    log(st, f"recommend {sid}")
+    save(pd, st)
+
+
 def doc_put(pd, did, title=None, kind=None, file=None, text=None, story=None, summary=None, append=False, force=False, source=None):
     """Add or replace a planning document (`append` adds to the end). Any length: the Stage reads it page by page."""
     st = load(pd)
@@ -726,6 +741,11 @@ def needs(pd, st=None):
     return out
 
 
+def _script_options(st):
+    rec = (st.get("recommended") or {}).get("id")
+    return [dict(label=f"{s['id']}: {s['title']}" + (" (Recommended)" if s["id"] == rec else ""), description=s["logline"]) for s in st["scripts"][:4]]
+
+
 def ask(pd, st):
     """The question the session should put to the person next (question + options for the host's widget), or None when the agent has work to do first."""
     stage = st["stage"]
@@ -737,7 +757,7 @@ def ask(pd, st):
         return dict(header="Style", multiSelect=False, question=q, options=[dict(label=a, description=b) for a, b in STYLES[:4]])
     if stage == "scripts" and ok:
         return dict(header="Scripts", multiSelect=True, question="Which script(s) should go to storyboards?",
-                    options=[dict(label=f"{s['id']}: {s['title']}", description=s["logline"]) for s in st["scripts"][:4]])
+                    options=_script_options(st))
     if stage == "storyboard" and ok is False and all(o for o, t in checks(pd, st) if "approved" not in t):
         return dict(header="Storyboard", multiSelect=False, question="Happy with the storyboard (each scene's start and end frame), or want changes?",
                     options=[dict(label="Approve storyboard", description="go on to the asset plan"), dict(label="Changes", description="say what to change per scene")])
@@ -812,7 +832,7 @@ def _gate(pd, st):
         return dict(gate=x["gate"], kind="approve", question=f"{x['label']} changed after you approved it. Approve it again?", approve_label="Approve again",
                     changes_label="Send changes", options=[], stale=True, stage=x["id"])
     if stage == "pick" and a is None and st["scripts"] and not gate_ok(pd, st, "scripts-picked"):
-        a = dict(question="Which script(s) should go to storyboards?", options=[dict(label=f"{s['id']}: {s['title']}", description=s["logline"]) for s in st["scripts"][:4]])
+        a = dict(question="Which script(s) should go to storyboards?", options=_script_options(st))
     if stage in ("scripts", "pick") and a is not None:
         return dict(gate="scripts-picked", kind="pick", question=a["question"], approve_label="Continue", changes_label="Send changes", options=a["options"],
                     picks_min=1, picks_max=MAX_PICKS, stage=stage)
@@ -1099,11 +1119,12 @@ def snapshot(pd):
     st = load(pd)
     f = fdir(pd)
     picks = set(st["picks"])
+    rec = st.get("recommended") or {}
     scripts = []
     for s in st["scripts"]:
         sp = os.path.join(f, s["file"])
         text = _read(sp)
-        scripts.append(dict(id=s["id"], title=s["title"], logline=s["logline"], picked=s["id"] in picks, verdict=None, beats=_beats(sp), words=PD.words(text),
+        scripts.append(dict(id=s["id"], title=s["title"], logline=s["logline"], picked=s["id"] in picks, verdict=None, recommended=rec["why"] if rec.get("id") == s["id"] else None, beats=_beats(sp), words=PD.words(text),
                             headings=PD.headings(text, 40), **_text_body(sp)))
     bl = []
     bds = boards(pd, st)
@@ -1197,7 +1218,7 @@ def _draft_extras(pd, st, i):
                 judged=AB.result(jp)["line"] if jp else None, restorable=os.path.isdir(os.path.join(fdir(pd), "versions", f"d{i + 1}")))
 
 
-PUBLISH_AFTER = {"init", "advance", "discover", "script", "doc", "plan", "story", "scene", "density", "council", "approve", "asset", "frames", "make",
+PUBLISH_AFTER = {"init", "advance", "discover", "script", "recommend", "doc", "plan", "story", "scene", "density", "council", "approve", "asset", "frames", "make",
                  "draft", "round", "final", "revise", "note", "resume", "share", "check", "pin", "look", "restore", "ab", "autopilot", "assume", "lessons",
                  "recipe", "second-opinion", "scout", "notes"}
 PUBLISH_TIMEOUT_S = 300          # the host copies every frame and clip on publish
@@ -1682,6 +1703,7 @@ def main(argv=None):
     P("needs").add_argument("--json", action="store_true")
     p = P("discover"); p.add_argument("--style", default=""); p.add_argument("--ref", action="append"); p.add_argument("--no-refs", action="store_true")
     p = P("script"); p.add_argument("action", choices=["add", "append"]); p.add_argument("id"); p.add_argument("--title"); p.add_argument("--logline"); p.add_argument("--file"); p.add_argument("--text")
+    p = P("recommend"); p.add_argument("id"); p.add_argument("--why", required=True)
     p = P("doc"); p.add_argument("action", choices=["add", "append", "new", "list", "rm", "templates"]); p.add_argument("id", nargs="?"); p.add_argument("--title"); p.add_argument("--kind")
     p.add_argument("--file"); p.add_argument("--text"); p.add_argument("--story"); p.add_argument("--summary"); p.add_argument("--force", action="store_true")
     p = P("plan"); p.add_argument("action", choices=["pack"]); p.add_argument("--story"); p.add_argument("--force", action="store_true")
@@ -1763,6 +1785,9 @@ def main(argv=None):
         elif a.cmd == "script":
             n = add_script(pd, a.id, a.title, a.logline, a.file, a.text, a.action == "append")
             print(f"script {a.id}: {n} words")
+        elif a.cmd == "recommend":
+            recommend(pd, a.id, a.why)
+            print(f"script {a.id} is recommended")
         elif a.cmd == "doc":
             _doc_cli(pd, a)
         elif a.cmd == "plan":

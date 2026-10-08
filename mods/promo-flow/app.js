@@ -783,6 +783,9 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       const title = h("div", { class: "t" }, h("span", { class: "id", text: s.id }), h("b", { text: s.title }),
         picked && !pickMode ? h("span", { class: "chip ok" }, ic("check"), "Picked") : null, s.verdict ? h("span", { class: "chip", text: s.verdict }) : null);
       const read = PF.bodyOf(s).text ? h("button", { type: "button", class: "btn ghost sm read-btn", "data-k": "open-script:" + s.id, onclick: (e) => { e.preventDefault(); e.stopPropagation(); openReader("script:" + s.id); } }, ic("doc"), h("span", { class: "rb-t", text: "Read full script" }), s.words ? h("span", { class: "rb-n", text: wordsLabel(s.words) }) : null) : null;
+      const rec = s.recommended ? h("span", { class: "rec" },
+        h("button", { type: "button", class: "chip rec-pill", "aria-describedby": "rec-why-" + s.id, onclick: (e) => { e.preventDefault(); e.stopPropagation(); } }, ic("spark"), "Recommended"),
+        h("span", { class: "rec-why", role: "tooltip", id: "rec-why-" + s.id, text: s.recommended })) : null;
       const body = h("div", { class: "body" }, strip, title, h("div", { class: "logline" }, showMore(s.logline || "", 200, "c3")),
         read, beats.length ? h("ol", { class: "beats", "aria-label": all.length > 2 ? "Opening and closing beats" : "Beats" }, beats.map((b, i) => h("li", { class: all.length >= 2 ? (i === 0 ? "opens" : "ends") : "", text: b })), all.length > 2 ? h("li", { class: "more-beats", text: all.length + " beats in total" }) : null) : null);
       if (pickMode) {
@@ -792,8 +795,8 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
           renderGate();
         }, disabled: !S.picks.has(s.id) && S.picks.size >= max });
         if (max < 99) body.append(h("p", { class: "limit-note", text: "Limit of " + max + ". Untick one to pick this." }));
-        list.append(h("label", { class: "card choice" }, inp, h("div", { class: "row" }, h("span", { class: "box" }, ic("check")), body)));
-      } else list.append(h("div", { class: "card choice static" + (picked ? " picked" : arr(d.scripts).some((o) => o.picked) ? " passed" : "") }, h("div", { class: "row" }, body)));
+        list.append(h("label", { class: "card choice" }, inp, rec, h("div", { class: "row" }, h("span", { class: "box" }, ic("check")), body)));
+      } else list.append(h("div", { class: "card choice static" + (picked ? " picked" : arr(d.scripts).some((o) => o.picked) ? " passed" : "") }, rec, h("div", { class: "row" }, body)));
     }
     /* The council's note is context, not the decision: one folded row, so three script cards fit the first screen. */
     if (d.councils && d.councils.scripts) box.append(h("details", { class: "card council fold", open: el.sc.clientWidth >= 760 ? "" : null }, h("summary", { text: "What the council said about the scripts" }), h("p", { text: d.councils.scripts })));

@@ -28,7 +28,7 @@ Every path below that says `file` is `{"$file": "<absolute path>"}` (the host tu
     steps      [{id, label, state: done|current|todo|stale, stale}]  (10, one per stage; `stale` = its approval no longer matches what was approved; never `done` then)
     stale_steps [{id, gate, label}]                            approvals that went stale; the mod shows "Approved earlier, but <step> changed since."
     style      {style, refs[], no_refs} | null
-    scripts    [{id, title, logline, picked, verdict, beats[<=2], words, headings[{level,title}<=40], body: text|null, body_note}]   beats = first two list items of the script file; body = the whole script (markdown)
+    scripts    [{id, title, logline, picked, verdict, recommended: why|null, beats[<=2], words, headings[{level,title}<=40], body: text|null, body_note}]   recommended = the agent's one pick (`promo flow recommend ID --why TEXT`): a "Recommended" pill on the card, the reason in its tooltip (hover or keyboard focus); beats = first two list items of the script file; body = the whole script (markdown)
     docs       [{id, title, kind, kind_label, group, story|null, summary, updated, source: agent|template, words, headings[<=40], preview, body: text|null, body_note}]   the Plan tab: planning documents the agent added with `promo flow doc ...`
                  kinds: script treatment shotlist direction edit audio capture schedule deliverables risks research review notes; groups: Script Direction Edit Audio Capture Delivery Notes
     councils   {scripts?: text}                                    the latest council note per kind (<= 900 chars): shown as "What the council said" above the scripts

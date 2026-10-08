@@ -510,6 +510,7 @@ EXTRAS = [
     ("compose-draft-520", "review", 520, 900, False, "", [click("#btnSecondary")]),
     ("compose-storyboard-380", "storyboard", 380, 780, True, "", [click("#btnSecondary"), "(() => { const t = document.getElementById('note'); t.value = 'Scene 04 needs a slower fade, and make the end frame of 06 brighter.'; t.dispatchEvent(new Event('input')); })()"]),
     ("picks-520", "pick", 520, 900, False, "", ["document.querySelector('.choice input').click()"]),
+    ("recommended-tip-520", "pick", 520, 900, False, "", ["document.querySelector('.rec-pill').focus()"]),
     ("style-pick-520", "discover", 520, 900, True, "", ["document.querySelector('.choice input').click()"]),
     ("storyboard-scrolled-520", "storyboard", 520, 900, False, "", [scroll(900)]),
     ("storyboard-scrolled-900", "storyboard", 900, 900, True, "", [scroll(700)]),

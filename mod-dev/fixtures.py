@@ -418,6 +418,7 @@ def _build(tmp):
     cf = os.path.join(tmp, "council.md")
     write(cf, "x" * 300)
     F.add_council(pd, "scripts", cf)
+    F.recommend(pd, "A", "It follows the app's own run from one typed ask to merged PRs, so every scene is real footage we can capture today.")
     F.advance(pd)
     snap("pick")
     F.approve(pd, "scripts-picked", "Sam", ["A", "B"])

@@ -779,6 +779,21 @@ def test_a_script_of_any_length_is_added_in_parts_and_snapshotted_as_a_file(pd, 
         F.add_script(pd, "B", None, None, text="x")
 
 
+def test_the_recommended_script_is_flagged_with_its_reason_and_marked_in_the_question(pd):
+    for i in "ABC":
+        F.add_script(pd, i, "T" + i, "L", text="x")
+    assert all(s["recommended"] is None for s in F.snapshot(pd)["scripts"])
+    F.recommend(pd, "B", "It is the only one we can capture today.")
+    F.recommend(pd, "C", "  Shortest to make,\n and every claim is on screen.  ")
+    recs = {s["id"]: s["recommended"] for s in F.snapshot(pd)["scripts"]}
+    assert recs == {"A": None, "B": None, "C": "Shortest to make, and every claim is on screen."}
+    assert [o["label"] for o in F.ask(pd, dict(F.load(pd), stage="scripts", councils={"scripts": [1]}))["options"]][2].endswith("(Recommended)")
+    with pytest.raises(F.FlowError, match="no script Z"):
+        F.recommend(pd, "Z", "A reason that is long enough.")
+    with pytest.raises(F.FlowError, match="--why"):
+        F.recommend(pd, "A", "too short")
+
+
 def test_planning_documents_are_added_replaced_appended_and_removed(pd):
     assert F.doc_put(pd, "full-script", kind="script", text="# The full script\n\nOne.\n") == 4
     with pytest.raises(F.FlowError, match="exists"):

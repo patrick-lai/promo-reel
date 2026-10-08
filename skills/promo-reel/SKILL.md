@@ -21,7 +21,7 @@ Start with THE FLOW (below). Everything lives in `<save location>/<name>/` (see 
 |---|---|---|---|
 | 1 | **discover** | ask style + references (`promo flow discover`, `promo refs add`) | style, refs |
 | 2 | **scripts** | write 3+ different scripts; council spars 1-2 rounds (`evals/council-flow.md`); `promo flow script add`, `council scripts` | |
-| 3 | **pick** | present the ranked scripts | which 1-2 go on (`approve scripts-picked`) |
+| 3 | **pick** | present the ranked scripts and recommend ONE with `promo flow recommend ID --why "..."` (a pill on its card, your reason in the tooltip; say what it does better than the others, never a claim the footage cannot back) | which 1-2 go on (`approve scripts-picked`) |
 | 4 | **storyboard** | per story `flow/boards/<id>/board.json`: every scene with beat, time, action, caption/VO/sound/camera/proof and a **START and END frame**; **MAKE the frames as real images** with `promo flow frames` (a text slate is not a frame and counts as missing); `promo flow board`, SHOW the page | iterate until `approve storyboard-approved` |
 | 5 | **assets** | list ALL assets the cut will use (screenshots, pictures, recordings, music, voice, sfx) with `promo flow asset add`, then **MAKE a real sample of each** with `promo flow asset make`: a concept still, a ~7 s clip, a 20 s music excerpt, a voice read-through, the sfx hits. The person must be able to look at / hear every asset before deciding; a placeholder is not a preview, and `approve assets-approved` is refused until every asset has one | `approve assets-approved` |
 | 6 | **keyframes** | generate the remaining keyframes, replace every mock (`promo flow needs`) | |
