@@ -1204,8 +1204,56 @@ def _docs(pd, st):
 
 
 def _widgets(pd, st):
-    """The dynamic widgets for the Stage, in grid order (place, then `order`)."""
-    return sorted((WG.view(fdir(pd), w, _media) for w in st.get("widgets") or []), key=WG.sort_key)
+    """The dynamic widgets for the Stage, in grid order (place, then `order`). Workbench widgets the host shows natively are left out of the mod."""
+    native = _native_work(pd, st) and in_thread() and native_widgets()
+    return sorted((WG.view(fdir(pd), w, _media) for w in st.get("widgets") or [] if not (native and w["place"] == "workbench")), key=WG.sort_key)
+
+
+def _native_work(pd, st):
+    """Workbench widgets to show, or ones shown earlier that may need removing: only then is the host asked about native widgets."""
+    return any(w["place"] == "workbench" for w in st.get("widgets") or []) or os.path.isfile(os.path.join(fdir(pd), "widgets", "native.json"))
+
+
+_NATIVE = {}
+
+
+def native_widgets():
+    """Whether this host's `commissionctl` has native widgets (CommissionAI's Workbench tab and chat panels)."""
+    exe = shutil.which("commissionctl")
+    if exe not in _NATIVE:
+        _NATIVE[exe] = bool(exe) and subprocess.run([exe, "widget", "--help"], capture_output=True, stdin=subprocess.DEVNULL, timeout=30).returncode == 0
+    return _NATIVE[exe]
+
+
+def sync_native_widgets(pd, st):
+    """Publish the workbench widgets to the host's own Workbench and remove the ones that are gone; only what changed since the last sync is sent."""
+    exe = shutil.which("commissionctl")
+    fd = fdir(pd)
+    ledger_path = os.path.join(fd, "widgets", "native.json")
+    ledger = json.load(open(ledger_path)) if os.path.isfile(ledger_path) else {}
+    wanted = {w["id"]: w for w in st.get("widgets") or [] if w["place"] == "workbench"}
+    problems = []
+    for wid in [x for x in ledger if x not in wanted]:
+        r = subprocess.run([exe, "widget", "rm", wid], capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=PUBLISH_TIMEOUT_S)
+        if r.returncode == 0 or "widgets.not_found" in r.stdout + r.stderr:
+            ledger.pop(wid)
+        else:
+            problems.append(f"{wid}: {(r.stdout + r.stderr).strip()[-300:]}")
+    for wid, rec in wanted.items():
+        args, paths = WG.native_command(fd, rec)
+        stamp = _sha(*paths) + json.dumps(args)
+        if ledger.get(wid) == stamp:
+            continue
+        r = subprocess.run([exe] + args, capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=PUBLISH_TIMEOUT_S)
+        if r.returncode == 0:
+            ledger[wid] = stamp
+        else:
+            problems.append(f"{wid}: {(r.stdout + r.stderr).strip()[-300:]}")
+    os.makedirs(os.path.dirname(ledger_path), exist_ok=True)
+    with open(ledger_path, "w") as f:
+        json.dump(ledger, f)
+    if problems:
+        raise FlowError("the Stage was updated, but some panels did not reach the Workbench:\n" + "\n".join(problems))
 
 
 def _steps(st, stale):
@@ -1361,6 +1409,9 @@ def publish(pd, explicit=False):
         raise FlowError("the Stage was not updated: `commissionctl mod publish` failed\n" + said[-600:])
     if said:
         print(said, file=sys.stderr)            # the host names any file it could not copy: that is for the agent to fix, not to miss
+    st = load(pd)
+    if _native_work(pd, st) and native_widgets():
+        sync_native_widgets(pd, st)
     return out
 
 

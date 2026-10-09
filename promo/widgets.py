@@ -285,6 +285,34 @@ def view(fd, rec, media):
     return out
 
 
+# CommissionAI hosts widgets natively (`commissionctl widget`): its frame runtime is `window.widget` with `--w-*` colours, so a widget written for
+# the promo runtime keeps working there through these aliases.
+NATIVE_ALIAS = ("<script>window.promo=window.widget</script><style>:root{--pf-ink:var(--w-ink);--pf-dim:var(--w-dim);--pf-well:var(--w-well);"
+                "--pf-raised:var(--w-raised);--pf-line:var(--w-line);--pf-accent:var(--w-accent)}</style>")
+
+
+def native_command(fd, rec):
+    """The `commissionctl widget publish` arguments for one workbench widget, and every file it reads (content first)."""
+    d = widget_dir(fd, rec["id"])
+    if rec["kind"] == "html":
+        content = os.path.join(d, "native.html")
+        with open(os.path.join(d, "index.html")) as f:
+            html = f.read()
+        with open(content, "w") as f:
+            f.write(NATIVE_ALIAS + html)
+    else:
+        content = os.path.join(d, "content.json")
+    args = ["widget", "publish", rec["id"], "--title", rec["title"], "--summary", rec.get("summary") or "", "--kind", rec["kind"], "--file", content,
+            "--place", "board", "--span", str(rec["span"]), "--height", rec["height"], "--order", str(rec["order"])]
+    paths = [content]
+    for name, rel in sorted((rec.get("files") or {}).items()):
+        path = os.path.join(fd, rel)
+        if os.path.isfile(path):
+            args += ["--data" if media_type(name) == "data" else "--attach", f"{name}={path}"]
+            paths.append(path)
+    return args, paths
+
+
 def sort_key(w):
     return (w["place"], w["order"], w["updated"] or "")
 

@@ -110,3 +110,36 @@ def test_the_state_stays_inside_the_mod_limit_when_widgets_are_huge(pd):
     snap = F.snapshot(pd)
     assert len(json.dumps(snap).encode()) <= F.state_budget()
     assert any(w["html"] is None and "Too big" in w["note"] for w in snap["widgets"])
+
+
+@pytest.fixture
+def host(tmp_path, monkeypatch):
+    """A stand-in `commissionctl` that has native widgets and records every call, inside a CommissionAI thread."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    log = tmp_path / "calls.log"
+    ctl = bin_dir / "commissionctl"
+    ctl.write_text(f"#!/bin/sh\nprintf '%s\\n' \"$*\" >> {log}\nexit 0\n")
+    ctl.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("COMMISSION_THREAD_TOKEN", "test")
+    monkeypatch.setenv("PROMO_FLOW_PUBLISH", "1")
+    return lambda: [line for line in log.read_text().splitlines() if line.startswith("widget ")] if log.exists() else []
+
+
+def test_inside_a_host_with_native_widgets_the_workbench_goes_to_the_host_and_stays_out_of_the_mod(pd, png, host):
+    F.widget_put(pd, "viewer", "Viewer", text="<canvas></canvas><script>promo.ready(() => {})</script>", attach=[png], span=8, height="l")
+    F.widget_put(pd, "grade", "Grade", text=json.dumps([{"type": "text", "text": "A is warmer"}]), place="assets")
+    F.publish(pd)
+    calls = host()
+    publish = [c for c in calls if c.startswith("widget publish viewer ")]
+    assert publish and "--place board --span 8 --height l" in publish[-1] and "--attach turntable.png=" in publish[-1]
+    assert not any(c.startswith("widget publish grade") for c in calls), "a widget pinned to a mod tab stays in the mod"
+    native_html = open(os.path.join(pd, "flow", "widgets", "viewer", "native.html")).read()
+    assert native_html.startswith(WG.NATIVE_ALIAS) and native_html.endswith("promo.ready(() => {})</script>\n")
+    assert [w["id"] for w in F.snapshot(pd)["widgets"]] == ["grade"]
+    F.publish(pd)
+    assert len([c for c in host() if c.startswith("widget publish viewer ")]) == len(publish), "an unchanged widget is not sent again"
+    F.widget_rm(pd, "viewer")
+    F.publish(pd)
+    assert host()[-1] == "widget rm viewer"
