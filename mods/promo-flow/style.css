@@ -1637,3 +1637,4 @@ button.jb-tile:hover { border-color: var(--c-accent); }
 .pk-acts .btn { overflow: visible; text-overflow: clip; white-space: normal; }
 @container (min-width: 760px) { .foryou { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; } .foryou > .as-card, .foryou > .ap-card { grid-column: 1 / -1; } }
 @container (min-width: 440px) { .as-list li .btn { grid-column: 3; justify-self: end; } .rounds-col .as-list li .btn { grid-column: 2; } }
+.pk-why { margin: 0; font-size: 13px; }

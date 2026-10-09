@@ -605,6 +605,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       return h("figure", { class: "pk-side" }, h("div", { class: "pk-box" }, slot), h("figcaption", { class: "pk-lab", text: k === "left" ? "Left" : "Right" }));
     };
     const ans = [["left", "Left"], ["right", "Right"], ["same", "No difference"], ["unsure", "Can't tell"]];
+    const why = pickWhy(p);
     /* On a delivered final the pick folds to its question, so the ready block and Download come first. */
     const folded = S.doc.stage === "final";
     return h(folded ? "details" : "section", { class: "card pick-card" + (folded ? " fold" : "") + (later ? " later" : ""), "aria-label": "Your pick: " + p.question },
@@ -615,7 +616,16 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
         return h("button", { type: "button", class: "btn " + (i < 2 ? "ghost pk-main" : "ghost") + (busy ? " busy" : ""), "data-quiet": i < 2 ? null : "1", "aria-busy": busy ? "true" : null,
           "data-k": "pk-" + p.id + "-" + k, disabled: blocked, onclick: (e) => pressPick(e.currentTarget, () => send("ab", { pair: p.id, side: k, label: l, question: p.question })) },
           busy ? h("i", { class: "spin", "aria-hidden": "true" }) : null, h("span", { text: l }));
-      })));
+      })),
+      blocked && why ? h("p", { class: "pk-why sub", role: "status", text: why }) : null);
+  }
+  /* Why the four answers are greyed out, so a disabled pick never looks broken. */
+  function pickWhy(p) {
+    if (S.readonly) return "This project is archived, so picks are read only.";
+    if (S.offline) return "The host can't be reached. You can answer again when it is back.";
+    if (S.pending || S.justSent || S.sending) return pickBusy(p) ? "" : "Your last answer is still waiting for the agent to pick it up. You can answer again when it has.";
+    if (!p.ready) return "One of the two options could not be loaded, so this pick can't be answered yet.";
+    return "";
   }
   /* The side the person just chose, until the answer lands and the pair leaves the list. */
   function pickBusy(p) {

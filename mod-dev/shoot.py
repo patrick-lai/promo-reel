@@ -556,6 +556,7 @@ EXTRAS = [
     ("foryou-many-1100", "foryou-many", 1100, 1700, True, "", [click("#tab-assets")]),
     ("foryou-many-760", "foryou-many", 760, 1000, True, "", [click("#tab-assets")]),
     ("foryou-many-520", "foryou-many", 520, 1000, True, "", [click("#tab-assets")]),
+    ("foryou-many-readonly-760", "foryou-many", 760, 1000, True, "&readonly=1", [click("#tab-assets")]),
     ("foryou-many-380", "foryou-many", 380, 900, True, "", [click("#tab-assets")]),
     ("long-assets-380", "long-content", 380, 780, True, "", [click("#tab-assets")]),
     ("long-scripts-520", "long-content", 520, 900, True, "", [click("#tab-scripts")]),
