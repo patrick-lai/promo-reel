@@ -31,7 +31,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     lb: $("lightbox"), toast: $("toast"), live: $("live"), glow: $("glow"), modal: $("modal"), modalSc: $("modalScroll") };
 
   const S = {
-    booted: false, version: null, summary: {}, doc: {}, pending: null, offline: false, readonly: false,
+    booted: false, held: false, heldTimer: 0, builtAt: 0, previewUntil: 0, version: null, summary: {}, doc: {}, pending: null, offline: false, readonly: false,
     tab: null, userTab: false, stage: null, picks: new Set(), style: null, ownStyle: "", boardIdx: 0, draftSel: null, earlier: false, filter: null, checksOpen: false,
     seen: new Set(), ref: "", settingsOpen: false, setSel: null, setText: "", compose: false, composeKind: null, reader: null, sbView: "scenes", cmtPending: 0, cmtTotal: 0, cmtShown: 0, cmtChip: null, docGroup: null, docQ: "", docBase: null, docOpened: new Set(), reqHint: "", sending: null, justSent: null, stall: false, err: "", stale: null, stash: null, updated: false, stepsOpen: false, lastAction: null, title: "", lastBadge: "", noState: false,
   };
@@ -143,7 +143,10 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     M.cache.delete(id);
     e.p.then((u) => { if (u) URL.revokeObjectURL(u); }, () => {});
   }
-  function releaseHeavy() { for (const [id, e] of [...M.cache]) if (e.kind === "video" || e.kind === "audio") revoke(id); }
+  function releaseHeavy() {
+    const inUse = new Set([...el.lb.querySelectorAll("video,audio")].map((v) => v.src));
+    for (const [id, e] of [...M.cache]) if ((e.kind === "video" || e.kind === "audio") && !(e.url && inUse.has(e.url))) revoke(id);
+  }
   function releaseUnused() {
     const live = new Set();
     (function walk(x) {
@@ -465,6 +468,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     }
     if (S.stash) out.push({ id: "stash", icon: "send", text: "Unsent note from " + S.stash.label + ":", snip: clip(S.stash.text, 80), acts: [["Restore", "restore"], ["Discard", "discard"]] });
     if (S.stale) out.push({ id: "edit", icon: "refresh", bold: "This updated while you were editing. ", text: S.stale.changedGate ? "The step changed, so please look again before you send." : "Your note is kept.", acts: [[S.stale.changedGate ? "Review" : "Dismiss", "stale"]] });
+    if (S.held && previewing()) out.push({ id: "held", icon: "clock", text: "The agent has more for you. It shows once you stop watching, so your video keeps playing.", acts: [["Show now", "showNow"]] });
     if (S.updated) out.push({ id: "upd", icon: "refresh", text: "This changed since you last looked. Review before approving.", acts: [["Got it", "updated"]] });
     if (!readable()) out.push({ id: "bad", warn: true, icon: "alert", text: "This update has an unexpected shape, so it can't be shown. Ask the agent to publish it again." });
     return out;
@@ -476,6 +480,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     if (a === "discard") S.stash = null;
     else if (a === "stale") S.stale = null;
     else if (a === "updated") S.updated = false;
+    else if (a === "showNow") { S.previewUntil = 0; render(true); return; }
     render();
   }
   function renderBanners() {
@@ -547,6 +552,21 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     if (tab === "plan") return [d.docs, d.scripts, d.boards && d.boards.map((b) => b.id), d.lessons, common];
     return [d.intent, d.style, common];
   }
+  /* A clip the person is watching (playing, or just paused or scrubbed) is never rebuilt under them by an agent update. */
+  const PREVIEW_GRACE_MS = 20000;
+  function previewing() {
+    if (Date.now() < S.previewUntil) return true;
+    for (const v of ctx.root.querySelectorAll("video,audio")) if (!v.paused && !v.ended) return true;
+    return false;
+  }
+  function watchMedia(node) {
+    for (const t of ["play", "pause", "seeked", "ended"]) node.addEventListener(t, (e) => {
+      if (!e.target.isConnected) return;                 // the browser also fires pause when we replace the element: that is not the person
+      S.previewUntil = t === "play" ? 0 : Date.now() + PREVIEW_GRACE_MS;
+      if (S.held) { clearTimeout(S.heldTimer); S.heldTimer = setTimeout(() => render(), t === "play" ? PF.PREVIEW_POLL_MS : PREVIEW_GRACE_MS + 50); }
+    }, true);
+  }
+  watchMedia(el.content); watchMedia(el.lb);
   function renderContent(list, force) {
     let sig;
     if (S.reader && !findReadable(S.reader.key)) S.reader = null;
@@ -556,8 +576,25 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     else if (S.settingsOpen) sig = "settings|" + JSON.stringify([S.doc.settings, S.readonly, S.offline, !!S.pending, !!S.justSent, !!S.sending, S.err]);
     else if (!list.length) sig = "overview|" + JSON.stringify([sliceFor(null, true), gate(), S.style, S.readonly, !!S.pending]);
     else if (S.reader) sig = "reader|" + S.reader.key + "|" + JSON.stringify(sliceFor(S.tab, false)) + S.readonly;
-    else sig = S.tab + "|" + JSON.stringify(sliceFor(S.tab, true)) + "|" + JSON.stringify([S.doc.pairs, S.doc.assumptions, S.doc.autopilot]) + "|" + [...S.picks].join() + "|" + S.style + S.boardIdx + S.draftSel + S.earlier + S.filter + S.readonly + !!S.pending + !!S.justSent + !!S.sending + S.sbView + S.docGroup + S.docQ + (S.compose ? S.composeKind : "") + jobRunning();
+    else sig = S.tab + "|" + [...S.picks].join() + "|" + S.style + S.boardIdx + S.draftSel + S.earlier + S.filter + S.readonly + !!S.pending + !!S.justSent + !!S.sending + S.sbView + S.docGroup + S.docQ + (S.compose ? S.composeKind : "") + jobRunning()
+      + "\u0001" + JSON.stringify(sliceFor(S.tab, true)) + "|" + JSON.stringify([S.doc.pairs, S.doc.assumptions, S.doc.autopilot]);
     if (!force && sig === lastSig) return;
+    /* Only the part before \u0001 is the person's own doing; what follows is what the agent published. */
+    if (!force && lastSig) {
+      const wait = PF.settleWait({ userChanged: sig.split("\u0001")[0] !== lastSig.split("\u0001")[0], previewing: previewing(),
+        working: jobRunning() || apLive() || !!S.pending || (S.summary && S.summary.badge === "working"), sinceBuild: Date.now() - S.builtAt });
+      if (wait > 0) {
+        const was = S.held;
+        S.held = true;
+        clearTimeout(S.heldTimer);
+        S.heldTimer = setTimeout(() => render(), wait + 50);
+        if (!was && previewing()) renderBanners();
+        return;
+      }
+    }
+    S.builtAt = Date.now();
+    clearTimeout(S.heldTimer);
+    if (S.held) { S.held = false; renderBanners(); }
     const keepScroll = sig.split("|")[0] === lastSig.split("|")[0] ? el.sc.scrollTop : 0;
     lastSig = sig;
     const ae = ctx.root.activeElement;
@@ -2169,7 +2206,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     if (!wasEditing && !gateChanged) S.stale = null;
     if (!S.docBase && hasDoc()) S.docBase = new Set(readables().map((x) => x.key));
     S.booted = true;
-    render();
+    render(gateChanged);
     if (!first && !wasEditing && !gateChanged && changedVersion && g && !S.pending && !S.justSent && before !== JSON.stringify(sliceFor(S.tab, false))) { S.updated = true; renderBanners(); }
     if (!g) S.updated = false;
     releaseUnused();

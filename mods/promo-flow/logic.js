@@ -392,7 +392,17 @@
     return { open: notes.filter((n) => !n.answer).length, total: notes.length };
   }
 
-  const api = { commentCount, forYou, canAutopilot, jobView, clockS, aboutS, arr, mref, fileBad, missingFile, missingAll, hasPreview, noFrame, sceneStatus, model, finalState, seenRule, seenKey, missingRule, previewRule, bodyOf, downloadName, textFileName, wordsOf, parseBlocks, inline, plain, paginate, outline, findPages, markSplit, readMinutes, frameTimeline, DENSITY_CHOICES, clockT, shareRows, outputProblem, previewOutput, outputDirty };
+  /* How long a repaint of the open tab waits, in ms (0 = now). The person's own clicks always repaint at once; an update from the agent never
+     rebuilds a clip being watched, and while the agent works it repaints at most once per `gap` so the page does not jump around. */
+  const SETTLE_GAP_MS = 12000, PREVIEW_POLL_MS = 1500;
+  function settleWait(o) {
+    if (o.userChanged) return 0;
+    if (o.previewing) return PREVIEW_POLL_MS;
+    if (o.working) return Math.max(0, SETTLE_GAP_MS - Math.max(0, o.sinceBuild || 0));
+    return 0;
+  }
+
+  const api = { settleWait, SETTLE_GAP_MS, PREVIEW_POLL_MS, commentCount, forYou, canAutopilot, jobView, clockS, aboutS, arr, mref, fileBad, missingFile, missingAll, hasPreview, noFrame, sceneStatus, model, finalState, seenRule, seenKey, missingRule, previewRule, bodyOf, downloadName, textFileName, wordsOf, parseBlocks, inline, plain, paginate, outline, findPages, markSplit, readMinutes, frameTimeline, DENSITY_CHOICES, clockT, shareRows, outputProblem, previewOutput, outputDirty };
   root.PF = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof window !== "undefined" ? window : globalThis);

@@ -16,6 +16,8 @@ the CSS styles `:host`, and every width rule is a container query on the host (a
 
 **Downloads:** the Drafts tab has a Download button on every draft and final whose file loads. It saves the same bridge blob the player uses through a temporary `<a download>` click (name: the file's own name, else the label as a slug plus `.mp4`); there is no new bridge message and nothing is published.
 
+**Calm while it works:** the open tab is repainted only when something on screen changed, and an agent update never rebuilds a clip the person is watching (playing, or paused or scrubbed in the last 20 s): a banner says more is waiting and `Show now` applies it. While the agent works (job, autopilot, a sent request) the tab repaints at most once per 12 s (`PF.settleWait`); the person's own clicks and a step change repaint at once. Checked by `mod-dev/shoot.py --check` (stage `foryou-many`).
+
 **Voice input** is the host's, not ours: the note box is marked `data-dictate` and the compose row has `<slot name="dictate">`. CommissionAI renders its own voice button into that slot (Mac app only) and dictates
 straight into the box, which fires `input` like typing. Nothing to do in the mod beyond the marker and the slot.
 Media arrive as Blobs on request, by upload id, only for tiles near the viewport; the app makes and revokes its own object URLs. Only `opacity` and `transform` animate; `reduceMotion` is honoured.

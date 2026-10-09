@@ -315,3 +315,11 @@ test("the comment count separates the scene comments still open from the answere
   assert.deepEqual(L.commentCount(doc), { open: 2, total: 3 });
   assert.deepEqual(L.commentCount({}), { open: 0, total: 0 });
 });
+
+test("an update from the agent never repaints under a clip being watched, and while it works repaints at most once per gap; the person's own clicks are instant", () => {
+  assert.equal(L.settleWait({ userChanged: true, previewing: true, working: true, sinceBuild: 0 }), 0);
+  assert.equal(L.settleWait({ userChanged: false, previewing: true, working: false, sinceBuild: 99999 }), L.PREVIEW_POLL_MS);
+  assert.equal(L.settleWait({ userChanged: false, previewing: false, working: true, sinceBuild: 2000 }), L.SETTLE_GAP_MS - 2000);
+  assert.equal(L.settleWait({ userChanged: false, previewing: false, working: true, sinceBuild: L.SETTLE_GAP_MS + 1 }), 0);
+  assert.equal(L.settleWait({ userChanged: false, previewing: false, working: false, sinceBuild: 0 }), 0);
+});

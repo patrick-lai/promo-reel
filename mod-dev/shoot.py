@@ -349,6 +349,28 @@ UICHECK = r"""(async () => {
     await click('[data-k=rs-all]'); await wait(400);
     ok('then reaches the agent', /action restore -> \[mod:promo-flow\] Sam wants to go back to Draft 1, all of it\. Run: promo flow restore --draft 1/.test(log()), log().slice(0, 300));
   }
+  if (step === 'foryou-many') {
+    await click('#tab-assets');
+    const H = window.harness.H, doc = () => H.docs[H.stage], push = async () => { H.version++; await window.harness.sendState(); await wait(300); };
+    const firstLabel = () => (Q('#content').textContent.match(/ui-ticket-list[^ ]*|\bTICKET_MARK\d*/) || [''])[0];
+    ok('the blind pick clips load', await until(() => QA('.pick-card video').length >= 2, 8000), QA('.pick-card video').length);
+    const v = Q('.pick-card video'); v.loop = true; await v.play();
+    ok('the clip is playing', !v.paused);
+    const before = Q('#content').firstElementChild;
+    doc().state.assets[0].label = 'TICKET_MARK1'; await push(); await wait(800);
+    ok('an update from the agent leaves a playing clip alone', v.isConnected && !v.paused && Q('#content').firstElementChild === before, v.isConnected + ' ' + v.paused);
+    ok('and says an update is waiting', /more for you/.test(Q('#banners').textContent), Q('#banners').textContent);
+    doc().state.assets[0].label = 'TICKET_MARK2'; await push();
+    ok('further updates keep waiting', v.isConnected && !v.paused);
+    Q('[data-k="b-held-showNow"]').click(); await wait(500);
+    ok('Show now repaints with the newest update', !v.isConnected && /TICKET_MARK2/.test(Q('#content').textContent) && !/more for you/.test(Q('#banners').textContent), v.isConnected);
+    await wait(300);
+    const b2 = Q('#content').firstElementChild;
+    doc().summary.badge = 'working'; doc().state.assets[0].label = 'TICKET_MARK3'; await push(); await wait(500);
+    ok('while the agent works the page is not rebuilt on every update', Q('#content').firstElementChild === b2 && !/TICKET_MARK3/.test(Q('#content').textContent));
+    await click('#tab-storyboard'); await click('#tab-assets');
+    ok('the person\'s own click still repaints at once', /TICKET_MARK3/.test(Q('#content').textContent));
+  }
   if (step === 'autopilot') {
     ok('the run shows its clock and goal', /Working until every check passes · 0 of 60 min · 5 of 6 checks pass/.test(Q('#stateLine').textContent) && !!Q('.ap-card .ap-bar'), Q('#stateLine').textContent);  /* the goal is the header's line; the card keeps the clock bar */
     ok('no second start while it runs', !Q('[data-k=ap-60]'));
@@ -393,7 +415,7 @@ UICHECK = r"""(async () => {
 
 def uicheck(sh):
     bad = 0
-    for st in ["starting", "plan", "dense", "pick", "review", "autopilot", "storyboard"]:
+    for st in ["starting", "plan", "dense", "pick", "review", "autopilot", "storyboard", "foryou-many"]:
         mod = sh.open(st, 520, 1000, False)
         for r in sh.js(UICHECK, mod) or []:
             bad += not r["pass"]
