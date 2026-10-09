@@ -1698,3 +1698,15 @@ button.jb-tile:hover { border-color: var(--c-accent); }
 .as-card.fold > summary .ic-fold { width: 14px; height: 14px; margin-left: auto; color: var(--c-dim); transition: transform .15s ease-out; }
 .as-card.fold[open] > summary .ic-fold { transform: rotate(180deg); }
 .as-card.fold[open] > .as-list { margin-top: 4px; }
+
+/* ---------- calm repaints ---------- */
+.pane.calm { animation: none; }
+@keyframes pf-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.pf-in { animation: pf-rise .28s ease-out both; }
+.pf-out { overflow: hidden; pointer-events: none; transition: height .26s ease, opacity .2s ease, padding .26s ease, margin .26s ease, border-width .26s ease; }
+.pf-out.go { height: 0 !important; opacity: 0; padding-top: 0; padding-bottom: 0; margin-top: 0; margin-bottom: 0; border-width: 0; }
+/* While the agent's news waits for a calm moment, a thin bar says the page is about to update; it takes no room. */
+.content::before { content: ""; display: block; position: sticky; top: var(--tabs-h, 0px); z-index: 4; height: 2px; margin: 0 calc(-1 * var(--pad)) -2px; opacity: 0; transition: opacity .25s ease; pointer-events: none;
+  background: linear-gradient(90deg, transparent, var(--c-accent), transparent) 0 0 / 40% 100% no-repeat; }
+.app[data-held="1"] .content::before { opacity: 1; animation: pf-bar 1.4s ease-in-out infinite; }
+@keyframes pf-bar { from { background-position: -40% 0; } to { background-position: 140% 0; } }

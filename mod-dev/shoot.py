@@ -428,6 +428,19 @@ UICHECK = r"""(async () => {
   if (step === 'storyboard') {
     ok('app scenes with a real screen say so', QA('.scene-h .chip').some((c) => c.textContent === 'Real screen') && QA('.fr .lbl').some((l) => /real/.test(l.textContent)));
     ok('an unreachable screen says why', QA('.scene-h .chip').some((c) => c.textContent === 'Screen not reachable') && /reviewer account/.test(Q('#content').textContent));
+    /* an update that lands while the agent is idle repaints softly: pictures stay, new cards ease in, removed ones ease out */
+    const H = window.harness.H, doc = () => H.docs[H.stage], push = async () => { H.version++; await window.harness.sendState(); await wait(60); };
+    const scenes = doc().state.boards[0].scenes, img = Q('#content [data-ms="img"] img'), sid = (x) => '[id="scene-' + doc().state.boards[0].id + '-' + x + '"]';
+    ok('there is a loaded picture to keep', !!img);
+    const extra = JSON.parse(JSON.stringify(scenes[1])); extra.id = 'ZZ'; scenes.push(extra); await push();
+    const added = Q(sid('ZZ')), top = Q('#content').firstElementChild;
+    ok('a soft repaint keeps the picture and the page does not fade', !!img && img.isConnected && top.classList.contains('calm') && getComputedStyle(top).animationName === 'none', [img && img.isConnected, top.className, getComputedStyle(top).animationName, Q('#app').dataset.held].join(' '));
+    ok('a new scene card eases in', !!added && added.classList.contains('pf-in'), added && added.className);
+    ok('no picture goes back to a skeleton', QA('#content .sk').length === 0, QA('#content .sk').length);
+    scenes.pop(); await push();
+    ok('a removed scene card eases out instead of vanishing', !Q(sid('ZZ')) && !!Q('#content .pf-out'));
+    await wait(450);
+    ok('and is gone afterwards', !Q('#content .pf-out'));
   }
   if (step === 'pick') {
     const badge = () => Q('#badgeText').textContent;

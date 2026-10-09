@@ -147,8 +147,9 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     M.cache.delete(id);
     e.p.then((u) => { if (u) URL.revokeObjectURL(u); }, () => {});
   }
+  /* A clip or sound nobody is showing any more gives its memory back; one still on the page or in the lightbox keeps its file, so a repaint never reloads it. */
   function releaseHeavy() {
-    const inUse = new Set([...el.lb.querySelectorAll("video,audio")].map((v) => v.src));
+    const inUse = new Set([...el.lb.querySelectorAll("video,audio"), ...el.content.querySelectorAll("video,audio")].map((v) => v.src.split("#")[0]));
     for (const [id, e] of [...M.cache]) if ((e.kind === "video" || e.kind === "audio") && !(e.url && inUse.has(e.url))) revoke(id);
   }
   function releaseUnused() {
@@ -168,18 +169,46 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   }, { rootMargin: "300px 0px" }) : null;
   function whenVisible(node, fn) { if (!io) return fn(); ioMap.set(node, fn); io.observe(node); }
 
-  /* Fill `slot` with build(url) once the media is loaded (lazily, when scrolled near); skeleton, then a retryable error. */
+  /* Fill `slot` with build(url) once the media is loaded (lazily, when scrolled near); skeleton, then a retryable error.
+     A file already fetched fills the slot at once, with no skeleton, so a repaint never flashes a picture back to grey. A loaded picture is
+     tagged (data-ms="img") so the next repaint can hand the same <img> to the new slot instead of decoding it again (see adoptImages). */
   function lazyInto(slot, r, build, opts = {}) {
+    slot.dataset.mref = r.upload_id;
+    slot.dataset.mk = (opts.manual ? "m" : "a") + (opts.compact ? "c" : "");
+    const fill = (u) => {
+      const c = build(u);
+      slot.replaceChildren(c);
+      if (c && c.tagName === "IMG") slot.dataset.ms = "img";
+      if (opts.done) opts.done();
+    };
     const run = () => {
+      const hit = M.cache.get(r.upload_id);
+      if (hit && hit.url) return fill(hit.url);
       slot.replaceChildren(h("div", { class: "sk", style: "position:absolute;inset:0", "aria-hidden": "true" }));
-      getMedia(r).then((u) => { slot.replaceChildren(build(u)); if (opts.done) opts.done(); }, () => {
+      getMedia(r).then(fill, () => {
         if (opts.compact) slot.replaceChildren(h("button", { class: "retry", type: "button", "aria-label": "Couldn't load. Try again", onclick: run }, ic("refresh"), h("span", { text: "Couldn't load" })));
         else slot.replaceChildren(h("div", { class: "mid bad", role: "alert" }, ic("alert"), h("span", { text: opts.errText || "Couldn't load this file." }),
           h("button", { class: "load", type: "button", text: "Try again", onclick: run })));
       });
     };
-    if (opts.manual) slot.replaceChildren(h("div", { class: "mid" }, h("button", { class: "load", type: "button", text: opts.manualText || "Load (" + fmtSize(r.size) + ")", onclick: run })));
+    const cached = M.cache.get(r.upload_id);
+    if (opts.manual && !(cached && cached.url)) slot.replaceChildren(h("div", { class: "mid" }, h("button", { class: "load", type: "button", text: opts.manualText || "Load (" + fmtSize(r.size) + ")", onclick: run })));
+    else if (cached && cached.url) run();
     else whenVisible(slot, run);
+  }
+  /* The repaint's new picture slots take over the <img> an old slot already shows. */
+  function adoptImages(from, to) {
+    const have = new Map();
+    for (const s of from.querySelectorAll('[data-ms="img"]')) { const k = s.dataset.mref + "|" + s.dataset.mk; (have.get(k) || have.set(k, []).get(k)).push(s); }
+    if (!have.size) return;
+    for (const s of to.querySelectorAll("[data-mref]")) {
+      const q = have.get(s.dataset.mref + "|" + s.dataset.mk);
+      const old = q && q.shift();
+      if (!old) continue;
+      if (io) io.unobserve(s);
+      s.replaceChildren(...old.childNodes);
+      s.dataset.ms = "img";
+    }
   }
 
   /* ---------------- theme ---------------- */
@@ -575,6 +604,45 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     }, true);
   }
   watchMedia(el.content); watchMedia(el.lb);
+  /* ---- soft repaint: cards that come or go ease in and out, pictures and the page itself do not blink ---- */
+  const CARD_SEL = ".card[id], .card[data-aid], .card[data-w], .card[aria-label]";
+  const cardKey = (n) => n.id || n.dataset.aid || n.dataset.w || n.getAttribute("aria-label");
+  function cardMap(root) {
+    const m = new Map();
+    for (const n of root.querySelectorAll(CARD_SEL)) {
+      const k = cardKey(n);
+      if (k && !m.has(k) && !(n.parentElement && n.parentElement.closest(CARD_SEL) && root.contains(n.parentElement.closest(CARD_SEL)))) m.set(k, n);
+    }
+    return m;
+  }
+  const OUT_MS = 260;
+  function swapCalm(view, oldCards) {
+    adoptImages(el.content, view);
+    const now = cardMap(view);
+    const ghosts = [];
+    if (!reduced()) for (const [k, o] of oldCards) {
+      if (now.has(k) || !o.parentElement) continue;
+      const near = (dir) => { for (let n = o[dir]; n; n = n[dir]) { const nk = n.matches && n.matches(CARD_SEL) ? cardKey(n) : null; if (nk && now.has(nk)) return now.get(nk); } return null; };
+      const next = near("nextElementSibling"), prev = next ? null : near("previousElementSibling");
+      if (!next && !prev) continue;
+      const box = o.getBoundingClientRect();
+      const g = o.cloneNode(true);
+      g.removeAttribute("id");
+      for (const x of g.querySelectorAll("[id]")) x.removeAttribute("id");
+      g.classList.add("pf-out");
+      g.setAttribute("aria-hidden", "true");
+      g.inert = true;
+      g.style.height = box.height + "px";
+      ghosts.push({ g, next, prev });
+    }
+    for (const [k, n] of now) if (!oldCards.has(k) && !reduced()) n.classList.add("pf-in");
+    el.content.replaceChildren(view);
+    for (const { g, next, prev } of ghosts) {
+      if (next) next.before(g); else prev.after(g);
+      requestAnimationFrame(() => requestAnimationFrame(() => g.classList.add("go")));
+      setTimeout(() => g.remove(), OUT_MS + 80);
+    }
+  }
   function renderContent(list, force) {
     let sig;
     if (S.reader && !findReadable(S.reader.key)) S.reader = null;
@@ -595,6 +663,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       if (wait > 0) {
         const was = S.held;
         S.held = true;
+        el.app.dataset.held = "1";
         clearTimeout(S.heldTimer);
         S.heldTimer = setTimeout(() => render(), wait + 50);
         if (!was && previewing()) renderBanners();
@@ -603,12 +672,15 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     }
     S.builtAt = Date.now();
     clearTimeout(S.heldTimer);
-    if (S.held) { S.held = false; renderBanners(); }
-    const keepScroll = sig.split("|")[0] === lastSig.split("|")[0] ? el.sc.scrollTop : 0;
+    if (S.held) { S.held = false; el.app.dataset.held = ""; renderBanners(); }
+    const family = sig.split("|")[0] === lastSig.split("|")[0];
+    const keepScroll = family ? el.sc.scrollTop : 0;
+    /* Only the agent's own news repaints softly: the page holds still and just the cards that come or go ease in and out. */
+    const calm = !force && !!lastSig && family && sig.split("\u0001")[0] === lastSig.split("\u0001")[0];
+    const oldCards = calm ? cardMap(el.content) : null;
     lastSig = sig;
     const ae = ctx.root.activeElement;
     const fk = ae && el.content.contains(ae) ? ae.dataset.k : null;
-    releaseHeavy();
     S.scrollHook = null;
     let view;
     if (S.noState && !hasDoc()) view = viewNoConn();
@@ -618,11 +690,14 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     else if (!list.length) view = viewOverview();
     else if (S.reader) view = viewReader(S.reader, false);
     else view = ({ scripts: viewScripts, storyboard: viewStoryboard, assets: viewAssets, draft: viewDraft, plan: viewPlan, [PF.WIDGET_TAB]: viewWorkbench }[S.tab] || viewOverview)();
+    if (calm) view.classList.add("calm");
     const pinned = S.tab && S.tab !== PF.WIDGET_TAB && !S.settingsOpen && !S.reader && hasDoc() && readable() ? PF.widgetsFor(S.doc, S.tab) : [];
     if (pinned.length) (view.querySelector(":scope > .stack") || view).prepend(widgetGrid(pinned));
     const fy = !S.settingsOpen && !S.reader && hasDoc() && readable() ? forYou() : null;
     if (fy) { const rc = S.tab === "draft" && S.doc.stage !== "final" && el.sc.clientWidth >= 760 ? view.querySelector(".rounds-col") : null; if (rc) rc.prepend(fy); else if (S.doc.stage === "final") view.append(fy); else view.prepend(fy); }
-    el.content.replaceChildren(view);
+    if (calm) swapCalm(view, oldCards);
+    else el.content.replaceChildren(view);
+    releaseHeavy();
     el.sc.scrollTop = keepScroll;
     el.content.setAttribute("aria-labelledby", S.tab ? "tab-" + S.tab : "");
     el.content.setAttribute("role", S.tab ? "tabpanel" : "region");
