@@ -1541,3 +1541,14 @@ button.jb-tile:hover { border-color: var(--c-accent); }
 .s-note-list .ans { grid-column: 2; color: var(--c-dim); font-size: 12.5px; overflow-wrap: anywhere; }
 .s-notes .btn { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px; border: 1px solid var(--c-line); }
 .s-notes .btn .ic { width: 14px; height: 14px; color: var(--c-accent); }
+
+/* Footer comment count: the number rolls in from the side it moved from, the chip pops once. */
+.cmt-chip { margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px 0 8px; border-radius: 12px; font-size: 12px; font-weight: 600; background: var(--c-tint); color: var(--c-accent); white-space: nowrap; }
+.cmt-chip .ic { width: 14px; height: 14px; }
+.cmt-chip .n { display: inline-block; min-width: 1ch; text-align: center; font-variant-numeric: tabular-nums; }
+.cmt-chip.bump { animation: cmt-pop .42s cubic-bezier(.3, 1.6, .5, 1); }
+.cmt-chip .n.up { animation: cmt-up .3s ease-out; }
+.cmt-chip .n.down { animation: cmt-down .3s ease-out; }
+@keyframes cmt-pop { 0% { transform: scale(.85); } 55% { transform: scale(1.14); } 100% { transform: scale(1); } }
+@keyframes cmt-up { from { transform: translateY(70%); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes cmt-down { from { transform: translateY(-70%); opacity: 0; } to { transform: none; opacity: 1; } }

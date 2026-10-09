@@ -309,3 +309,9 @@ test("the agent may be left to work alone only on the latest draft, when it has 
   const bare = { id: "d2", board: { total: 0 } };
   assert.equal(L.canAutopilot({ ...doc, drafts: [d1, bare] }, bare), false);
 });
+
+test("the comment count separates the scene comments still open from the answered ones", () => {
+  const doc = { boards: [{ scenes: [{ notes: [{ answer: null }, { answer: "done" }] }, {}] }, { scenes: [{ notes: [{ answer: null }] }] }] };
+  assert.deepEqual(L.commentCount(doc), { open: 2, total: 3 });
+  assert.deepEqual(L.commentCount({}), { open: 0, total: 0 });
+});

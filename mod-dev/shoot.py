@@ -512,6 +512,8 @@ EXTRAS = [
     ("picks-520", "pick", 520, 900, False, "", ["document.querySelector('.choice input').click()"]),
     ("scene-comments-900", "storyboard-notes", 900, 1100, False, "", ["document.getElementById('scene-A-02').scrollIntoView()", click("[data-k='note-A-03']"),
      typein("#note", "Slow the push-in a little.")]),
+    ("scene-count-520", "storyboard-notes", 520, 900, False, "", []),
+    ("scene-count-sent-520", "storyboard-notes", 520, 900, False, "", [click("[data-k='note-A-03']"), typein("#note", "Slow the push-in a little."), click("#btnPrimary")]),
     ("recommended-tip-520", "pick", 520, 900, False, "", ["document.querySelector('.rec-pill').focus()"]),
     ("style-pick-520", "discover", 520, 900, True, "", ["document.querySelector('.choice input').click()"]),
     ("storyboard-scrolled-520", "storyboard", 520, 900, False, "", [scroll(900)]),

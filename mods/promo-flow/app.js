@@ -8,7 +8,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   const SHORT = { discover: "Style", scripts: "Scripts", pick: "Pick", storyboard: "Storyboard", assets: "Assets", keyframes: "Keyframes", confirm: "Confirm", drafts: "Drafts", review: "Review", final: "Final" };
   const STAGE_TAB = { scripts: "scripts", pick: "scripts", storyboard: "storyboard", assets: "assets", keyframes: "storyboard", confirm: "storyboard", drafts: "draft", review: "draft", final: "draft" };
   const BADGE_TEXT = { working: "With the agent", waiting: "Your turn", done: "Done", attention: "Needs attention" };
-  const ACTION_WORD = { approve: "your approval", pick: "your picks", changes: "your changes", feedback: "your feedback", generate: "your request", request: "your request", density: "your request", share: "your upload request", settings: "your folder choice",
+  const ACTION_WORD = { approve: "your approval", pick: "your picks", changes: "your changes", feedback: "your feedback", generate: "your request", request: "your request", scene_note: "your comment", density: "your request", share: "your upload request", settings: "your folder choice",
     pin: "your note", restore: "your restore request", ab: "your pick", autopilot: "your go", overturn: "your change", forget: "your request" };
   /* Composer kinds beyond plain changes/feedback: the button says what sending does. */
   const COMPOSE_SEND = { request: "Send request", overturn: "Send change", pin: "Pin note", scene: "Send comment" };
@@ -33,7 +33,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   const S = {
     booted: false, version: null, summary: {}, doc: {}, pending: null, offline: false, readonly: false,
     tab: null, userTab: false, stage: null, picks: new Set(), style: null, ownStyle: "", boardIdx: 0, draftSel: null, earlier: false, filter: null, checksOpen: false,
-    seen: new Set(), ref: "", settingsOpen: false, setSel: null, setText: "", compose: false, composeKind: null, reader: null, sbView: "scenes", docGroup: null, docQ: "", docBase: null, docOpened: new Set(), reqHint: "", sending: null, justSent: null, stall: false, err: "", stale: null, stash: null, updated: false, stepsOpen: false, lastAction: null, title: "", lastBadge: "", noState: false,
+    seen: new Set(), ref: "", settingsOpen: false, setSel: null, setText: "", compose: false, composeKind: null, reader: null, sbView: "scenes", cmtPending: 0, cmtTotal: 0, cmtShown: 0, cmtChip: null, docGroup: null, docQ: "", docBase: null, docOpened: new Set(), reqHint: "", sending: null, justSent: null, stall: false, err: "", stale: null, stash: null, updated: false, stepsOpen: false, lastAction: null, title: "", lastBadge: "", noState: false,
   };
 
   /* ---------------- tiny DOM helper ---------------- */
@@ -1927,6 +1927,24 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     }
     el.gateErr.hidden = !S.err;
     el.gateErr.textContent = S.err;
+    commentChip();
+  }
+
+  /* The footer's running count of scene comments the agent has not answered yet, including ones just sent that its next state has not recorded. The chip is one
+     node kept across renders so a change can animate: the number rolls and the chip pops. */
+  function commentChip() {
+    const n = PF.commentCount(S.doc).open + S.cmtPending;
+    const chip = S.cmtChip || (S.cmtChip = h("span", { class: "cmt-chip" }, ic("comment"), h("span", { class: "n" }), h("span", { class: "w" })));
+    if (!n) { chip.remove(); S.cmtShown = 0; return; }
+    const was = S.cmtShown;
+    if (n !== was) {
+      chip.querySelector(".n").replaceWith(h("span", { class: "n " + (n > was ? "up" : "down"), text: String(n) }));
+      chip.querySelector(".w").textContent = n === 1 ? "comment with the agent" : "comments with the agent";
+      chip.setAttribute("aria-label", n + (n === 1 ? " comment is" : " comments are") + " waiting for the agent");
+      chip.classList.remove("bump"); void chip.offsetWidth; chip.classList.add("bump");
+      S.cmtShown = n;
+    }
+    el.gateNote.append(chip);
   }
 
   function openCompose() { S.compose = true; S.composeKind = null; S.reqTitle = ""; renderGate(); el.note.focus(); }
@@ -1995,6 +2013,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     const sent = S.sending;
     S.sending = null;
     if (m.ok) {
+      if (sent.name === "scene_note") S.cmtPending++;
       S.err = "";
       S.justSent = { key: gateKey(), name: sent.name, saw: false };
       if (S.compose) { el.note.value = ""; S.compose = false; S.composeKind = null; }
@@ -2036,6 +2055,8 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     S.version = m.version;
     S.summary = m.summary || {};
     S.doc = m.state && typeof m.state === "object" && !Array.isArray(m.state) ? m.state : {};
+    const cc = PF.commentCount(S.doc);
+    S.cmtPending = Math.max(0, S.cmtPending - Math.max(0, cc.total - S.cmtTotal)); S.cmtTotal = cc.total;
     S.pending = m.pending || null;
     S.offline = !!m.offline;
     S.readonly = !!m.readonly;
