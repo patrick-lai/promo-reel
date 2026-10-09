@@ -1,11 +1,11 @@
 """`promo needs`: the handoff. promo-reel says what it still needs; the calling agent fulfils it with whatever it is harnessed with
-(its own tools, grok, codex/GPT, a human with a screen recorder) and hands the file back. promo-reel never decides HOW.
+(its own tools, a headless-browser capture script, grok, codex/GPT) and hands the file back. promo-reel never decides HOW.
 
     promo -p projects/<n>/promo.yaml needs [--json]
 
 Request kinds (each has `then`: the exact command that ingests the answer):
   capture    a clip the spec references that is missing/stale in the footage manifest, or a `placeholder:` slate. REAL app footage only:
-             follow capture/README.md (or ask the app owner); register with `promo footage add`.
+             the agent records it (capture/README.md); ask the app owner only for access it lacks; register with `promo footage add`.
   generate   a `broll:` entry whose file does not exist: a text-free, UI-free plate (background, transition, texture). Make it with any
              image/video tool, then `promo gen register`. Never for app UI.
   review     (HUMAN) generated plates in use; nothing to produce, someone must look.

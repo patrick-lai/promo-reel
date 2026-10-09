@@ -70,6 +70,11 @@
     if (m.type === "ready") { H.ready = true; log("ready"); sendInit(); sendState(); }
     else if (m.type === "media") onMedia(m);
     else if (m.type === "action") { log("action request " + m.name + " " + JSON.stringify(m.payload).slice(0, 160)); onAction(m); }
+    else if (m.type === "files") {
+      const bad = (m.files || []).find((f) => !f.size || f.size > (/^video\//.test(f.type) ? 100 : 20) * 1048576);
+      log("files " + (m.files || []).map((f) => f.name + " " + (f.size >> 10) + " KB").join(", ") + " | " + String(m.text).slice(0, 300));
+      setTimeout(() => post({ type: "result", id: m.id, ok: !bad, ...(bad ? { error: bad.name + ": rejected by the host's limits" } : {}) }), 300);
+    }
     else if (m.type === "title") log("title: " + m.text + (m.text.length > 40 ? "  (TOO LONG)" : ""));
     else if (m.type === "open-url") log("open-url " + m.url + (/^https:\/\//i.test(m.url) ? "" : "  (REFUSED: not https)"));
     else log("? " + JSON.stringify(m).slice(0, 120));

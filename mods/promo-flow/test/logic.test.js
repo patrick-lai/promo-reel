@@ -362,3 +362,26 @@ test("only the messages the frame runtime sends are accepted from a frame", () =
   assert.equal(L.widgetMessage({ pf: "open-url", url: "https://x" }), null);
   assert.equal(L.widgetMessage("tell"), null);
 });
+
+test("added files keep the host's limits: 10 at a time, no duplicates, 100 MB a video and 20 MB the rest, never empty", () => {
+  const f = (name, size, type) => ({ name, size, type: type || "", lastModified: 1 });
+  assert.equal(L.fileProblem(f("a.mov", 0)), "The file is empty");
+  assert.equal(L.fileProblem(f("a.mov", 99 * 1048576, "video/quicktime")), null);
+  assert.equal(L.fileProblem(f("a.mov", 101 * 1048576)), "Over the 100 MB limit");        // a .mov is a video even when the browser gives no type
+  assert.equal(L.fileProblem(f("a.png", 21 * 1048576, "image/png")), "Over the 20 MB limit");
+  const first = L.addFiles([], [f("a.png", 5), f("a.png", 5), f("b.png", 5)]);
+  assert.deepEqual(first.files.map((x) => x.name), ["a.png", "b.png"]);
+  const many = L.addFiles(first.files, Array.from({ length: 12 }, (_, i) => f("c" + i + ".png", 1)));
+  assert.equal(many.files.length, L.FILES_MAX);
+  assert.equal(many.skipped, 4);
+});
+
+test("the message for the agent names the files, the note and the rows still waiting, and never approves", () => {
+  const m = L.filesMessage([{ name: "board.mov" }, { name: "login.png" }], "  the real run\nfrom today ", [{ id: "rec-a", kind: "recording" }, { id: "" }, null]);
+  assert.match(m, /^\[mod:promo-flow\] The person added 2 files/);
+  assert.match(m, /board\.mov, login\.png\./);
+  assert.match(m, /Their note: the real run from today\./);
+  assert.match(m, /still waiting for footage: rec-a \(recording\)\./);
+  assert.match(m, /Do not approve anything\.$/);
+  assert.doesNotMatch(L.filesMessage([{ name: "a.mov" }], "", []), /note|waiting/);
+});

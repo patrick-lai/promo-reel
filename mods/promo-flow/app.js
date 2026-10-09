@@ -31,6 +31,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     lb: $("lightbox"), toast: $("toast"), live: $("live"), glow: $("glow"), modal: $("modal"), modalSc: $("modalScroll") };
 
   const S = {
+    files: [], fileSent: [], fileSend: null, fileErr: "", fileNote: "", fileDrag: false, fv: 0,
     booted: false, held: false, heldTimer: 0, builtAt: 0, previewUntil: 0, version: null, summary: {}, doc: {}, pending: null, offline: false, readonly: false,
     tab: null, userTab: false, stage: null, picks: new Set(), style: null, ownStyle: "", boardIdx: 0, draftSel: null, earlier: false, filter: null, checksOpen: false, assumeOpen: false,
     seen: new Set(), ref: "", settingsOpen: false, setSel: null, setText: "", compose: false, composeKind: null, reader: null, sbView: "scenes", cmtPending: 0, cmtTotal: 0, cmtShown: 0, cmtChip: null, docGroup: null, docQ: "", docBase: null, docOpened: new Set(), reqHint: "", sending: null, justSent: null, stall: false, err: "", stale: null, stash: null, updated: false, stepsOpen: false, lastAction: null, title: "", lastBadge: "", noState: false,
@@ -253,8 +254,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   const gate = () => (S.doc && S.doc.gate) || null;
   const stageIdx = () => STAGE_IDS.indexOf(S.doc.stage);
   const sceneIds = () => new Set(arr(S.doc.boards).flatMap((b) => arr(b.scenes).map((s) => String(s.id))));
-  const captureNeeded = () => { const d = S.doc; return d.stage === "keyframes" && !gate() && d.summary && d.summary.badge === "waiting" ? arr(d.assets).filter((x) => (x.kind === "recording" || x.kind === "screenshot") && (x.state === "mock" || x.state === "todo")).length : 0; };
-  const gTab = () => (captureNeeded() ? "assets" : STAGE_TAB[(gate() && gate().stage) || S.doc.stage]);
+  const gTab = () => STAGE_TAB[(gate() && gate().stage) || S.doc.stage];
   const gateKey = () => (S.doc.stage || "") + "|" + (gate() ? gate().gate + "|" + gate().kind : "-");
 
   const curBoard = () => { const bs = arr(S.doc.boards); if (S.boardIdx >= bs.length) S.boardIdx = 0; return bs[S.boardIdx] || null; };
@@ -272,6 +272,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     if (b) t.push({ id: "storyboard", label: "Storyboard", n: arr(b.scenes).length });
     if (arr(d.assets).length) { const m = model(); t.push({ id: "assets", label: "Assets", n: m.total, title: "Assets: " + m.total + " rows for this story (" + m.n.ready + " ready, " + m.n.mock + " mock, " + m.n.todo + " to make" + (m.n.missing ? ", " + m.n.missing + " missing" : "") + ")" }); }
     if (arr(d.docs).length || (arr(d.scripts).length && stageIdx() >= STAGE_IDS.indexOf("scripts"))) t.push({ id: "plan", label: "Plan", n: readables().length || null, title: "Plan: full scripts and production documents. Ask the agent to add more." });
+    if (t.length) t.push({ id: PF.FILES_TAB, label: "Add files", n: S.files.length || null, title: "Add files: drop your own footage or pictures here for the agent" });
     const wn = PF.widgetsFor(d, "workbench").length;
     if (wn) t.push({ id: PF.WIDGET_TAB, label: "Workbench", n: wn, title: "Workbench: panels the agent built for this job" });
     if (arr(d.drafts).length || arr(d.finals).length || arr(d.rounds).length || stageIdx() >= STAGE_IDS.indexOf("drafts")) t.push({ id: "draft", label: "Drafts", n: arr(d.drafts).length + arr(d.finals).length || null });
@@ -653,7 +654,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     else if (!list.length) sig = "overview|" + JSON.stringify([sliceFor(null, true), gate(), S.style, S.readonly, !!S.pending]);
     else if (S.tab === PF.WIDGET_TAB && !S.reader) sig = "widgets|" + JSON.stringify(sliceFor(S.tab, false)) + S.readonly;
     else if (S.reader) sig = "reader|" + S.reader.key + "|" + JSON.stringify(sliceFor(S.tab, false)) + S.readonly;
-    else sig = S.tab + "|" + [...S.picks].join() + "|" + S.style + S.boardIdx + S.draftSel + S.earlier + S.filter + S.readonly + !!S.pending + !!S.justSent + !!S.sending + S.sbView + S.docGroup + S.docQ + (S.compose ? S.composeKind : "") + jobRunning()
+    else sig = S.tab + "|" + (S.tab === PF.FILES_TAB ? S.fv + "|" + !!S.fileSend + S.fileErr + "|" : "") + [...S.picks].join() + "|" + S.style + S.boardIdx + S.draftSel + S.earlier + S.filter + S.readonly + !!S.pending + !!S.justSent + !!S.sending + S.sbView + S.docGroup + S.docQ + (S.compose ? S.composeKind : "") + jobRunning()
       + "\u0001" + JSON.stringify(sliceFor(S.tab, true)) + "|" + JSON.stringify([S.doc.pairs, S.doc.assumptions, S.doc.autopilot]);
     if (!force && sig === lastSig) return;
     /* Only the part before \u0001 is the person's own doing; what follows is what the agent published. */
@@ -689,7 +690,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     else if (S.settingsOpen) view = viewSettings();
     else if (!list.length) view = viewOverview();
     else if (S.reader) view = viewReader(S.reader, false);
-    else view = ({ scripts: viewScripts, storyboard: viewStoryboard, assets: viewAssets, draft: viewDraft, plan: viewPlan, [PF.WIDGET_TAB]: viewWorkbench }[S.tab] || viewOverview)();
+    else view = ({ scripts: viewScripts, storyboard: viewStoryboard, assets: viewAssets, draft: viewDraft, plan: viewPlan, [PF.FILES_TAB]: viewFiles, [PF.WIDGET_TAB]: viewWorkbench }[S.tab] || viewOverview)();
     if (calm) view.classList.add("calm");
     const pinned = S.tab && S.tab !== PF.WIDGET_TAB && !S.settingsOpen && !S.reader && hasDoc() && readable() ? PF.widgetsFor(S.doc, S.tab) : [];
     if (pinned.length) (view.querySelector(":scope > .stack") || view).prepend(widgetGrid(pinned));
@@ -1158,6 +1159,77 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   });
   const minutes = (w) => "~" + PF.readMinutes(w) + " min read";
   const wordsLabel = (w) => w.toLocaleString("en-US") + " words";
+
+  /* ---------------- Add files: the person's own footage and pictures ---------------- */
+  const canFiles = () => !(S.readonly || S.offline || S.fileSend);
+  function stageFiles(list) {
+    const r = PF.addFiles(S.files, Array.from(list || []).filter((f) => f && typeof f.size === "number" && f.type !== undefined));
+    S.files = r.files; S.fileErr = r.skipped ? "Up to " + PF.FILES_MAX + " files at a time. " + r.skipped + " not added." : ""; S.fv++;
+    render(true);
+  }
+  function sendFiles() {
+    if (!S.files.length || !canFiles()) return;
+    const bad = S.files.map((f) => [f, PF.fileProblem(f)]).find((x) => x[1]);
+    if (bad) { S.fileErr = bad[0].name + ": " + bad[1]; S.fv++; render(true); return; }
+    const id = "f" + ++M.seq, files = S.files.slice();
+    const open = arr(S.doc.assets).filter((a) => (a.kind === "recording" || a.kind === "screenshot") && (a.state === "mock" || a.state === "todo"));
+    S.fileSend = { id, files, note: S.fileNote, timer: setTimeout(() => { if (S.fileSend && S.fileSend.id === id) { S.fileSend = null; S.fileErr = "No answer from the host. Check the chat before sending again."; S.fv++; render(true); } }, 120000) };
+    S.fileErr = ""; S.fv++;
+    post({ type: "files", id, files, text: PF.filesMessage(files, S.fileNote, open) });
+    render(true);
+  }
+  function onFilesResult(m) {
+    clearTimeout(S.fileSend.timer);
+    const sent = S.fileSend;
+    S.fileSend = null;
+    if (m.ok) {
+      S.fileSent.unshift({ names: sent.files.map((f) => f.name), size: sent.files.reduce((a, f) => a + f.size, 0), at: Date.now() });
+      S.files = []; S.fileNote = ""; S.fileErr = "";
+      say("Sent. The agent has your files.");
+    } else S.fileErr = m.error || "That didn't go through. Try again.";
+    S.fv++;
+    render(true);
+  }
+  function viewFiles() {
+    const box = h("div", { class: "stack files" });
+    const ok = canFiles();
+    const input = h("input", { type: "file", multiple: "", hidden: "", "aria-hidden": "true", tabindex: "-1", onchange: () => { stageFiles(input.files); input.value = ""; } });
+    const pick = () => { if (ok) input.click(); };
+    const zone = h("div", { class: "drop", role: "button", tabindex: ok ? "0" : "-1", "aria-disabled": ok ? null : "true", "data-k": "files-drop", "aria-label": "Add files: drop them here or press Enter to choose from Finder",
+      onclick: pick, onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); } } },
+      ic("film"), h("b", { text: "Drop footage or pictures here" }), h("span", { class: "sub", text: "or choose from Finder. Up to " + PF.FILES_MAX + " files at a time, 100 MB a video, 20 MB the rest. For anything bigger, tell the agent where it is." }),
+      h("button", { type: "button", class: "btn ghost sm", "data-k": "files-pick", disabled: !ok, text: "Choose files", onclick: (e) => { e.stopPropagation(); pick(); } }));
+    const over = (e) => { if (!ok || !e.dataTransfer || !Array.from(e.dataTransfer.types || []).includes("Files")) return; e.preventDefault(); zone.classList.add("over"); };
+    box.addEventListener("dragenter", over); box.addEventListener("dragover", over);
+    box.addEventListener("dragleave", (e) => { if (!box.contains(e.relatedTarget)) zone.classList.remove("over"); });
+    box.addEventListener("drop", (e) => { if (!e.dataTransfer || !e.dataTransfer.files || !e.dataTransfer.files.length) return; e.preventDefault(); zone.classList.remove("over"); if (ok) stageFiles(e.dataTransfer.files); });
+    box.append(zone, input);
+    if (S.readonly) box.append(h("p", { class: "files-note", text: "This job is archived, so nothing can be added." }));
+    else if (S.offline) box.append(h("p", { class: "files-note", text: "Can't reach the host. Add files when it is back." }));
+    const staged = S.fileSend ? S.fileSend.files : S.files;
+    if (staged.length) {
+      box.append(h("section", { class: "asset-group", "aria-label": "Files to send" },
+        secH("Ready to send", staged.length),
+        h("ul", { class: "file-list" }, staged.map((f) => {
+          const problem = PF.fileProblem(f);
+          return h("li", { class: "file-row", "data-bad": problem ? "1" : null },
+            ic(PF.isVideoFile(f) ? "film" : "image"), h("span", { class: "nm", title: f.name, text: f.name }), h("span", { class: "sz", text: problem || fmtSize(f.size) }),
+            S.fileSend ? null : h("button", { type: "button", class: "icon-btn", "aria-label": "Remove " + f.name, "data-k": "file-rm", onclick: () => { S.files = S.files.filter((x) => x !== f); S.fv++; render(true); } }, ic("close")));
+        })),
+        h("label", { class: "files-lbl", for: "fnote", text: "What are they? (optional)" }),
+        h("textarea", { id: "fnote", class: "files-note-in", rows: "2", maxlength: "600", disabled: !ok, placeholder: "For example: the board scene, real run from this morning", "data-dictate": "", value: S.fileNote, oninput: (e) => { S.fileNote = e.target.value; } }),
+        h("div", { class: "files-act" },
+          h("button", { type: "button", class: "btn primary", "data-k": "files-send", disabled: !ok || !S.files.length, "aria-busy": S.fileSend ? "true" : null, text: S.fileSend ? "Sending…" : "Send to the agent", onclick: sendFiles }),
+          S.fileSend ? null : h("button", { type: "button", class: "btn ghost", "data-k": "files-clear", text: "Clear", onclick: () => { S.files = []; S.fileErr = ""; S.fv++; render(true); } }))));
+    }
+    if (S.fileErr) box.append(h("p", { class: "files-err", role: "alert", text: S.fileErr }));
+    if (S.fileSent.length) {
+      box.append(h("section", { class: "asset-group", "aria-label": "Sent to the agent" },
+        secH("Sent to the agent", S.fileSent.reduce((a, x) => a + x.names.length, 0)),
+        h("ul", { class: "file-list sent" }, S.fileSent.map((x) => h("li", { class: "file-row" }, ic("check"), h("span", { class: "nm", title: x.names.join(", "), text: x.names.join(", ") }), h("span", { class: "sz", text: fmtSize(x.size) }))))));
+    } else if (!staged.length) box.append(h("p", { class: "files-note", text: "Nothing added yet. The agent records the app itself; use this for your own footage, pictures, or references it should look at." }));
+    return box;
+  }
 
   function viewPlan() {
     const d = S.doc, all = readables();
@@ -1765,7 +1837,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       const open = inG.filter((x) => x.eff !== "ready").length;
       const isCapture = (x) => x.type !== "keyframe" && (x.a.kind === "recording" || x.a.kind === "screenshot") && (x.eff === "mock" || x.eff === "todo");
       const nRec = inG.filter(isCapture).length, nMiss = inG.filter((x) => x.eff === "missing").length, nMake = open - nRec - nMiss;
-      const openLine = [nRec ? nRec + " to record" : "", nMake ? nMake + " to make" : "", nMiss ? nMiss + " missing" : ""].filter(Boolean).join(" \u00b7 ");
+      const openLine = [nRec ? nRec + " for the agent to record" : "", nMake ? nMake + " to make" : "", nMiss ? nMiss + " missing" : ""].filter(Boolean).join(" \u00b7 ");
       box.append(h("section", { class: "asset-group", "aria-label": label },
         secH(label, inG.length, open ? h("span", { class: "sec-open", text: openLine }) : null),
         h("div", { class: "gallery", "data-count": String(inG.length) }, inG.map((x) => (x.type === "keyframe" ? keyframeRow(x.t) : !PF.hasPreview(x.a) && (x.eff === "todo" || x.eff === "missing") ? assetRow(x) : assetTile(x))))));
@@ -1881,7 +1953,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
         a.source === "licensed" && !a.licence ? h("span", { class: "chip warn", text: "No licence on file" }) : null),
       sc.length ? h("div", { class: "sc", text: (sc.length === 1 ? "Scene " : "Scenes ") + sceneRange(sc) }) : null,
       h("div", { class: "src-line", text: a.licence ? "Licence: " + a.licence : eff === "ready" ? cap(a.source || "real") + (real && real.name ? " \u00b7 " + real.name : "") : eff === "mock" ? "Mock: no licence yet" : eff === "missing" ? "File missing" : "Not made yet" }),
-      how && (eff === "mock" || eff === "todo") && (a.kind === "recording" || a.kind === "screenshot") ? h("div", { class: "torec" }, h("b", { text: "To record: " }), how) : null,
+      how && (eff === "mock" || eff === "todo") && (a.kind === "recording" || a.kind === "screenshot") ? h("div", { class: "torec" }, h("b", { text: "The agent records: " }), how) : null,
       more.length ? h("details", { class: "more" }, h("summary", { text: "Details" }), ...more) : null), prow);
   }
 
@@ -2122,11 +2194,9 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       const fin = PF.finalState(d);
       const done = d.stage === "final" && fin.ok;
       m.mode = "work"; m.done = done;
-      const yours = !done && d.summary && d.summary.badge === "waiting";
-      m.note = done ? (el.sc.clientWidth < 440 ? "Download above." : "Download above, or ask for changes.") : yours ? "Recorded it? Press Send files, then tell the agent where " + (captureNeeded() === 1 ? "the file is" : "each file is") + "." : fin.registered ? "A final is registered, but its file is missing." : "Waiting on the agent. Nothing for you to do yet.";
-      m.secondary = done ? "Ask for changes" : yours ? "" : "Add a note";
-      if (yours) m.primary = "Send files";
-      m.changes = "changes"; m.placeholder = done ? "What should change in the final?" : yours ? "Where are the recordings? Paste the file paths, or say they are attached in the chat." : "Add a note for the agent."; m.sendLabel = yours ? "Send" : "Send note";
+      m.note = done ? (el.sc.clientWidth < 440 ? "Download above." : "Download above, or ask for changes.") : fin.registered ? "A final is registered, but its file is missing." : "Waiting on the agent. Nothing for you to do yet.";
+      m.secondary = done ? "Ask for changes" : "Add a note";
+      m.changes = "changes"; m.placeholder = done ? "What should change in the final?" : "Add a note for the agent."; m.sendLabel = "Send note";
       return m;
     }
     m.changes = g.kind === "draft" && used < max ? "feedback" : "changes";
@@ -2333,6 +2403,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     render();
   }
   function onResult(m) {
+    if (S.fileSend && S.fileSend.id === m.id) return onFilesResult(m);
     if (!S.sending || S.sending.id !== m.id) return;
     clearTimeout(S.sending.timer);
     const sent = S.sending;

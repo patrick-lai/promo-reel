@@ -454,7 +454,38 @@
     return 0;
   }
 
-  const api = { WIDGET_TAB, WIDGET_PX, widgetsFor, widgetHeight, widgetDoc, themeCss, widgetMessage, settleWait, SETTLE_GAP_MS, PREVIEW_POLL_MS, commentCount, forYou, canAutopilot, jobView, clockS, aboutS, arr, mref, fileBad, missingFile, missingAll, hasPreview, noFrame, sceneStatus, model, finalState, seenRule, seenKey, missingRule, previewRule, bodyOf, downloadName, textFileName, wordsOf, parseBlocks, inline, plain, paginate, outline, findPages, markSplit, readMinutes, frameTimeline, DENSITY_CHOICES, clockT, shareRows, outputProblem, previewOutput, outputDirty };
+  /* Files the person adds in the Stage. Same limits as a chat attachment (the host refuses anything else): 10 files, 100 MB a video, 20 MB the rest. */
+  const FILES_MAX = 10, FILE_MB = 20, VIDEO_MB = 100, FILES_TAB = "files";
+  const isVideoFile = (f) => /^video\//.test(f.type || "") || /\.(mov|mp4|m4v|webm)$/i.test(f.name || "");
+  function fileProblem(f) {
+    if (!f || !f.size) return "The file is empty";
+    const mb = isVideoFile(f) ? VIDEO_MB : FILE_MB;
+    return f.size > mb * 1048576 ? "Over the " + mb + " MB limit" : null;
+  }
+  /* Add dropped / picked files to the staged ones: no duplicates (same name, size and date), at most FILES_MAX. Returns {files, skipped}. */
+  function addFiles(have, more) {
+    const key = (f) => f.name + "|" + f.size + "|" + (f.lastModified || 0);
+    const out = have.slice(), seen = new Set(out.map(key));
+    let skipped = 0;
+    for (const f of more) {
+      if (seen.has(key(f))) continue;
+      if (out.length >= FILES_MAX) { skipped++; continue; }
+      seen.add(key(f)); out.push(f);
+    }
+    return { files: out, skipped };
+  }
+  /* The message the agent gets with the files. The host attaches them, so the agent finds each under .commission/attachments/<name>. */
+  function filesMessage(files, note, open) {
+    const names = files.map((f) => f.name).join(", ");
+    const rows = arr(open).filter((a) => a && a.id).map((a) => a.id + (a.kind ? " (" + a.kind + ")" : ""));
+    const t = (note || "").trim().replace(/\s+/g, " ");
+    return "[mod:promo-flow] The person added " + files.length + (files.length === 1 ? " file" : " files") + " from the Stage (attached, they are real footage or references they made): " + names + "."
+      + (t ? " Their note: " + t + "." : "")
+      + (rows.length ? " Asset rows still waiting for footage: " + rows.join(", ") + "." : "")
+      + " Copy each into the project's footage folder, register real footage with promo footage add (and promo flow asset add --force --source real --path FILE --how \"...\" for the matching row), look at it, then publish the new state. Do not approve anything.";
+  }
+
+  const api = { FILES_TAB, FILES_MAX, fileProblem, addFiles, filesMessage, isVideoFile, WIDGET_TAB, WIDGET_PX, widgetsFor, widgetHeight, widgetDoc, themeCss, widgetMessage, settleWait, SETTLE_GAP_MS, PREVIEW_POLL_MS, commentCount, forYou, canAutopilot, jobView, clockS, aboutS, arr, mref, fileBad, missingFile, missingAll, hasPreview, noFrame, sceneStatus, model, finalState, seenRule, seenKey, missingRule, previewRule, bodyOf, downloadName, textFileName, wordsOf, parseBlocks, inline, plain, paginate, outline, findPages, markSplit, readMinutes, frameTimeline, DENSITY_CHOICES, clockT, shareRows, outputProblem, previewOutput, outputDirty };
   root.PF = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof window !== "undefined" ? window : globalThis);

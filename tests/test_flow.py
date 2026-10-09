@@ -691,14 +691,14 @@ def test_make_frames_replaces_slates_and_reports_failures(pd, monkeypatch):
     assert [(m["scene"], m["which"]) for m in SB.missing(SB.load(d), d)] == [("02", "start"), ("02", "end")]
 
 
-def test_keyframes_asks_the_person_for_missing_recordings(pd):
+def test_keyframes_agent_records_missing_recordings_not_the_person(pd):
     at_storyboard(pd)
     st = F.load(pd)
     st["stage"] = "keyframes"
     F.save(pd, st)
     AP.save(os.path.join(pd, "flow"), [dict(id="r", kind="recording", source="mock", scenes=["01"], how="h"), dict(id="m", kind="music", source="mock", scenes=["01"], how="h")])
     s = F.snapshot(pd)["summary"]
-    assert s["badge"] == "waiting" and s["status"].startswith("Your turn: 1 recording to capture")
+    assert s["badge"] == "working" and s["status"].startswith("Recording 1 clip from the real app") and "Your turn" not in s["status"]
     AP.save(os.path.join(pd, "flow"), [dict(id="m", kind="music", source="mock", scenes=["01"], how="h")])
     assert F.snapshot(pd)["summary"]["badge"] == "working"
 

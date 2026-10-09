@@ -34,8 +34,8 @@ Write `shot-list.md`: one row per shot with time, beats, the real screen to capt
 - Captions: short (<= ~35 characters so they fit the 9:16-safe 608 px column at 32 px), each held >= 2 s, one fixed lower-middle zone; dark see-through pill on UI shots, white pill over scenic/illustrative shots.
 - Mark every caption/VO line with what proves it.
 
-## 3. Capture (ask the app owner; **HUMAN** usually records)
-What to ask for, per shot:
+## 3. Capture (the agent records; ask the app owner only for access)
+The agent records every take itself (headless browser against the real app or its demo mode, per `capture/README.md`); it never hands recording to the person. Ask the app owner only for what you cannot get yourself (a login, a build, a decision on demo vs real data). Requirements per shot:
 - **Resolution:** record at **2x device-pixel density** (Retina / DPR 2) with the window sized so the capture is **3840x2160** (or larger). Push-ins of 2-3x on 1080p sources are upscales and look soft; DPR2 sources keep text sharp at 1080 and allow a native **4K** master (`--scale 2`).
 - **Frame rate:** 60 fps screen capture (30 fps output; the renderer picks frames / blends for speed-ups).
 - **State:** a real run or the documented demo mode with true numbers; clean data (right project name, no test junk, no personal data, no API keys/emails); notifications off; cursor hidden unless the shot is about a click; system clock/theme consistent across takes.

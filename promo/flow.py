@@ -1084,7 +1084,7 @@ def _summary(pd, st, gate, pc, rounds_used, job=None):
             status = _clip(("Done: " if last.get("done") else "Now: ") + last["text"], 140)
         cap = [x for x in AP.load(os.path.join(pd, "flow")) if x.get("kind") in ("recording", "screenshot") and AP.state(x, pd) in ("mock", "todo")] if stage == "keyframes" else []
         if cap:
-            status, badge = f"Your turn: {len(cap)} {'recording' if len(cap) == 1 else 'recordings'} to capture from the real app. See the Assets tab, then send them to the agent.", "waiting"
+            status = f"Recording {len(cap)} {'clip' if len(cap) == 1 else 'clips'} from the real app (the agent captures them)."
     ap = AU.view(st)
     if ap and ap["state"] == "running" and not finished:
         status, badge = _clip(ap["line"], 140), "working"

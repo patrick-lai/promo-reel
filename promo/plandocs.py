@@ -208,7 +208,7 @@ def _direction(ctx):
 
 def _schedule(ctx):
     return ("# Schedule\n\n| Step | Who | By | Status |\n|---|---|---|---|\n| Approve the script | the person | - | open |\n| Approve the storyboard | the person | - | open |\n"
-            "| Record the real footage | the person | - | open |\n| Build the first draft | the agent | - | open |\n| Review rounds (up to 5) | both | - | open |\n| Final and delivery | the agent | - | open |\n")
+            "| Record the real footage | the agent | - | open |\n| Build the first draft | the agent | - | open |\n| Review rounds (up to 5) | both | - | open |\n| Final and delivery | the agent | - | open |\n")
 
 
 def _research(ctx):

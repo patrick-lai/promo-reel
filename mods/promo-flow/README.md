@@ -14,6 +14,8 @@ No build step, no network, no storage. Classic scripts, loaded once into the hos
 The app talks only through the bridge: `receive` takes `init state media result theme`, `post` sends `ready media action title open-url`. All DOM access goes through the shadow root (`root.getElementById`, `root.activeElement`),
 the CSS styles `:host`, and every width rule is a container query on the host (an `inline-size` container), because media queries would measure the host's whole window, not the pane.
 
+**Add files:** the last tab (`PF.FILES_TAB`) takes the person's own footage and pictures by drag and drop or the file picker (up to 10 files, 100 MB a video, 20 MB the rest, the composer's limits). "Send to the agent" posts the bridge message `{type:"files", id, files, text}` (host-side, `docs/mods.md`): the host uploads the files like chat attachments and sends `text` (`PF.filesMessage`: names, their note, the asset rows still waiting) as the person's message; the agent finds the files under `.commission/attachments/`. The tab's state is the mod's own (nothing in the published state); `mod-dev/harness.js` answers `files` and `shoot.py --files x-files-*` shoots it.
+
 **Downloads:** the Drafts tab has a Download button on every draft and final whose file loads. It saves the same bridge blob the player uses through a temporary `<a download>` click (name: the file's own name, else the label as a slug plus `.mp4`); there is no new bridge message and nothing is published.
 
 **Calm while it works:** the open tab is repainted only when something on screen changed, and an agent update never rebuilds a clip the person is watching (playing, or paused or scrubbed in the last 20 s): a banner says more is waiting and `Show now` applies it. While the agent works (job, autopilot, a sent request) the tab repaints at most once per 12 s (`PF.settleWait`); the person's own clicks and a step change repaint at once. Checked by `mod-dev/shoot.py --check` (stage `foryou-many`).
@@ -123,14 +125,14 @@ headings share one style (`.sec-h`, count beside it); the footer's primary is ou
 segment fills with a run's real progress (`--p`). The round-3 block adds the gate rules the judges kept asking for: a disabled primary keeps
 the accent (tinted, with the note saying why it is off), one filled button per surface (the draft's "Feedback and iterate" is a strong neutral
 outline, `data-tone="strong"`), the footer waits with the agent while a run is on ("Waiting for the agent: 8 of 20 images done", only the
-navigation button stays live, and the badge reads With the agent), the capture ask "Send files" is the one filled button of its surface, and a
+navigation button stays live, and the badge reads With the agent), and a
 soft fade above the gate shows that content continues under it. The round-4 passes (rubric v2, 10 points, pass at 8; asks and status in
 `evals/round4-asks.md`) add: while a blind pick waits, the badge reads "Your turn · 1 pick", the note says "Pick an end card, then ...", and
 Approve is soft (outlined, `aria-disabled`; clicking it scrolls to the pick); a stopped run with a resume command makes "Ask the agent to
 carry on" the primary, and without one "Make the rest"; while the autopilot runs the footer is the one Stop (`data-k="ap-stop"`) and a
 waiting pick says so; queued job items are a count, never blank tiles (`JOB_QUEUE_TILES = 0`); the state line drops its "Also open for you"
 tail while the agent holds the turn; the storyboard's timeline marks any scene with a frame not made (`k-unmade`) and the frames count
-carries "N not made"; the asset group's open line says "1 to record · 1 to make"; the Plan tab's empty search offers "Clear search".
+carries "N not made"; the asset group's open line says "1 for the agent to record · 1 to make"; the Plan tab's empty search offers "Clear search".
 
 ## Develop
     .venv/bin/python mod-dev/serve.py            # builds a fixture project, serves http://127.0.0.1:8765/dev/harness.html

@@ -143,7 +143,7 @@ reference. Structurally prevent that:
 ## Workflow
 1. **Brief** (after STEP 0): audience, length, claims, tone. Only claims the footage shows. Write it in `projects/<name>/docs/`.
 2. **Shot list**: one line per shot with beats (BPM grid), what the UI shows, caption (short: fits the 608 px 9:16-safe column at 32 px, ~35 chars), SFX/VO. Cuts on beats.
-3. **Capture handoff**: give the capturing agent the shot ids + app commit; they follow `capture/README.md` and register each take with
+3. **Capture**: the agent records (never the person): shot ids + app commit go to the capturing agent (you, or a sub-agent); it follows `capture/README.md` and register each take with
    `promo footage add` (sha256, commit, URL params, dpr). Reference clips by id; never by path.
 4. **Spec**: `promo new <name>` scaffolds `projects/<name>/`. Fill `promo.yaml` (timeline, shots, overlays, sfx, vo, mix, qa) and
    `assets.yaml` (music/vo/sfx/font with licence + source_url). Custom shot types go in the project `shots.py` via `@shot_type`.
