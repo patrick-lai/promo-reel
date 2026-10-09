@@ -430,6 +430,11 @@ def _build(tmp):
         SC.add(pd, "A", sid, shot, url=f"https://app.acme.dev/{'tasks' if sid == '02' else 'pulls'}?demo=1")
     SC.miss(pd, "A", "07", "the diff view needs a reviewer account we do not have yet")
     snap("storyboard")
+    n1 = F.scene_note(pd, "A", "03", "Hold the plan on screen a beat longer before the push-in.", "Sam")
+    F.scene_note(pd, "A", "02", "Show the request being typed, not already sent.", "Sam")
+    F.scene_resolve(pd, n1, "Held the plan for 1.5 s more and moved the push-in later.")
+    snap("storyboard-notes")
+    F.scene_resolve(pd, 2, "Redrew the start frame with the cursor in the box.")
     running_job(pd, 9)
     snap("generating")
     running_job(pd, 5, stopped=True)
@@ -574,7 +579,7 @@ def _build(tmp):
     F.add_final(pd, fin)
     uploaded(pd, "final", 1, "artifacts")
     snap("final")
-    order = ["discover", "scripts", "pick", "storyboard", "assets", "keyframes", "confirm", "drafts", "review", "autopilot", "final",
+    order = ["discover", "scripts", "pick", "storyboard", "storyboard-notes", "assets", "keyframes", "confirm", "drafts", "review", "autopilot", "final",
              "generating", "generating-stopped", "building", "storyboard-partial", "plan", "dense", "assets-error", "stale-approval", "long-content", "review-maxed"]
     res = {k: out[k] for k in order}
     res["starting"] = {}

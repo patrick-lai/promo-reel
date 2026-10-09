@@ -779,6 +779,25 @@ def test_a_script_of_any_length_is_added_in_parts_and_snapshotted_as_a_file(pd, 
         F.add_script(pd, "B", None, None, text="x")
 
 
+def test_a_scene_comment_blocks_storyboard_approval_until_answered_and_never_stales_it(pd):
+    st = F.load(pd)
+    st.update(picks=["A"], stage="storyboard", scripts=[dict(id="A", title="TA", logline="L", file="x")])
+    F.save(pd, st)
+    board(pd, "A")
+    F.approve(pd, "storyboard-approved", "Sam")
+    nid = F.scene_note(pd, "A", "02", "  Show it\n typed, not sent. ", "Sam")
+    assert F.gate_ok(pd, F.load(pd), "storyboard-approved")
+    notes = next(s for b in F.snapshot(pd)["boards"] for s in b["scenes"] if s["id"] == "02")["notes"]
+    assert notes == [dict(id=nid, text="Show it typed, not sent.", by="Sam", answer=None)]
+    assert any(not ok and "1 scene comment still open" in t for ok, t in F.checks(pd, F.load(pd)))
+    with pytest.raises(F.FlowError, match="no scene 99"):
+        F.scene_note(pd, "A", "99", "x", "Sam")
+    with pytest.raises(F.FlowError, match="--by"):
+        F.scene_note(pd, "A", "02", "x", "claude")
+    F.scene_resolve(pd, nid, "Redrew the start frame.")
+    assert not any(not ok and "scene comment" in t for ok, t in F.checks(pd, F.load(pd)))
+
+
 def test_the_recommended_script_is_flagged_with_its_reason_and_marked_in_the_question(pd):
     for i in "ABC":
         F.add_script(pd, i, "T" + i, "L", text="x")

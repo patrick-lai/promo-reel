@@ -11,7 +11,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   const ACTION_WORD = { approve: "your approval", pick: "your picks", changes: "your changes", feedback: "your feedback", generate: "your request", request: "your request", density: "your request", share: "your upload request", settings: "your folder choice",
     pin: "your note", restore: "your restore request", ab: "your pick", autopilot: "your go", overturn: "your change", forget: "your request" };
   /* Composer kinds beyond plain changes/feedback: the button says what sending does. */
-  const COMPOSE_SEND = { request: "Send request", overturn: "Send change", pin: "Pin note" };
+  const COMPOSE_SEND = { request: "Send request", overturn: "Send change", pin: "Pin note", scene: "Send comment" };
   const KIND_ICON = { script: "doc", treatment: "spark", shotlist: "table", direction: "film", edit: "cut", audio: "music", capture: "camera", schedule: "clock", deliverables: "download", risks: "shield", research: "link", review: "refresh", notes: "doc" };
   const QUICK = [["Full script", "Write the full script as a document I can read: voice-over, on-screen text and action for every scene."], ["Shot list", "Add a shot list: one row per shot with time, picture, camera, caption, voice and proof."],
     ["Edit plan", "Add an edit plan: the cut list on the timeline with transitions, rhythm and what holds still."], ["Audio plan", "Add an audio plan: voice lines, music cues, sound effects and mix targets."],
@@ -1241,7 +1241,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       fadeX(film);
       rows.push(film);
     } else for (let i = 0; i < mids.length; i += 2) rows.push(h("div", { class: "frames mids" }, mk(mids[i], "Mid \u00b7 " + (mids[i].label || ""), "Mid"), h("span"), mids[i + 1] ? mk(mids[i + 1], "Mid \u00b7 " + (mids[i + 1].label || ""), "Mid") : h("span")));
-    const body = [rows, facts.length ? h("dl", { class: "facts" }, facts.map((r) => h("div", { class: "fact " + r[2] }, h("dt", { class: "k", text: r[0] }), h("dd", { class: "v", text: r[1] })))) : null];
+    const body = [rows, facts.length ? h("dl", { class: "facts" }, facts.map((r) => h("div", { class: "fact " + r[2] }, h("dt", { class: "k", text: r[0] }), h("dd", { class: "v", text: r[1] })))) : null, sceneNotes(b, s)];
     const id = "scene-" + b.id + "-" + s.id;
     if (collapsed) {
       return h("details", { class: "card scene-d", id, "data-sid": s.id }, h("summary", null, h("span", { class: "num" }, s.id),
@@ -1249,6 +1249,15 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     }
     return h("article", { class: "card scene", id, "data-sid": s.id, "aria-label": "Scene " + s.id + ": " + s.beat },
       h("div", { class: "scene-h" }, h("span", { class: "num", text: s.id }), h("h3", { text: s.beat }), sourceChip(s), scoutChip(s), h("span", { class: "time", text: time })), body);
+  }
+  /* The person's comments on one scene, each Open until the agent answers it, and the way to add one. The comment text goes through the same note box as every other message. */
+  function sceneNotes(b, s) {
+    const list = arr(s.notes);
+    const add = h("button", { type: "button", class: "btn ghost sm", "data-k": "note-" + b.id + "-" + s.id, disabled: !canAsk(),
+      onclick: () => openKind("scene", { story: b.id, scene: s.id, beat: s.beat }, "Your comment on scene " + s.id + ": " + clip(s.beat, 60)) }, ic("plus"), list.length ? "Add another comment" : "Comment on this scene");
+    return h("div", { class: "s-notes" }, list.length ? h("ul", { class: "s-note-list", "aria-label": "Comments on scene " + s.id },
+      list.map((n) => h("li", null, h("span", { class: "chip " + (n.answer ? "ok" : "warn") }, n.answer ? ic("check") : null, n.answer ? "Answered" : "Open"),
+        h("span", { class: "nt", text: n.text }), n.answer ? h("span", { class: "ans", text: "Agent: " + n.answer }) : null))) : null, add);
   }
   /* Whether an app scene's frames are the real product: a real screenshot, a screen the agent could not reach (with why), or still drawn. */
   function scoutChip(s) {
@@ -1911,8 +1920,9 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     el.gate.dataset.compose = composing ? "1" : "";
     if (composing) {
       el.noteLabel.textContent = S.composeKind === "request" && S.reqTitle ? "Request: " + S.reqTitle : m.placeholder; el.note.placeholder = m.placeholder;
-      el.noteLabel.classList.toggle("sr", !(S.composeKind === "request" && S.reqTitle));
-      el.noteLabel.classList.toggle("note-lab", !!(S.composeKind === "request" && S.reqTitle));
+      const titled = (S.composeKind === "request" && S.reqTitle) || S.composeKind === "scene";
+      el.noteLabel.classList.toggle("sr", !titled);
+      el.noteLabel.classList.toggle("note-lab", !!titled);
       el.noteHint.textContent = (IS_MAC ? "Cmd" : "Ctrl") + "+Enter to send. Esc to cancel.";
     }
     el.gateErr.hidden = !S.err;
@@ -1948,6 +1958,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       const text = el.note.value.trim().slice(0, MAX_NOTE);
       if (!text) return;
       if (S.composeKind === "overturn") return send("overturn", { id: S.composeData.id, choice: S.composeData.choice, text });
+      if (S.composeKind === "scene") return send("scene_note", { story: S.composeData.story, scene: S.composeData.scene, beat: S.composeData.beat, text });
       if (S.composeKind === "pin") return send("pin", { draft: S.composeData.draft, at: S.composeData.at, when: S.composeData.when, text });
       if (S.composeKind === "request") return send("request", { text, where: ({ plan: "Plan", scripts: "Scripts", storyboard: "Storyboard", assets: "Assets", draft: "Drafts" })[S.tab] || "Stage" });
       if (m.g && m.g.kind === "style") return send("changes", { stage: "discover", text: "Style: " + text + refTail() });

@@ -1532,3 +1532,12 @@ button.jb-tile:hover { border-color: var(--c-accent); }
 .rec-pill { height: 22px; cursor: help; background: var(--c-raised); color: var(--c-accent); border-color: var(--c-accent); font-family: inherit; }
 .rec-why { display: none; position: absolute; top: 28px; right: 0; width: max-content; max-width: min(260px, 70vw); padding: 8px 10px; border-radius: var(--r-sm); background: var(--c-ink); color: var(--c-raised); font-size: 12.5px; line-height: 1.4; box-shadow: 0 6px 18px rgb(0 0 0 / .35); pointer-events: none; }
 .rec:hover .rec-why, .rec:focus-within .rec-why { display: block; }
+
+/* Comments on a storyboard scene: a quiet row under the facts, the add button is the only thing that shows when there are none. */
+.s-notes { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--c-line); display: grid; gap: 8px; justify-items: start; }
+.s-note-list { list-style: none; display: grid; gap: 8px; width: 100%; font-size: 13.5px; }
+.s-note-list li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 8px; align-items: start; }
+.s-note-list .nt { overflow-wrap: anywhere; }
+.s-note-list .ans { grid-column: 2; color: var(--c-dim); font-size: 12.5px; overflow-wrap: anywhere; }
+.s-notes .btn { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px; border: 1px solid var(--c-line); }
+.s-notes .btn .ic { width: 14px; height: 14px; color: var(--c-accent); }

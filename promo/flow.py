@@ -18,6 +18,7 @@ page (stepper, scripts, storyboards, assets, drafts, rounds) to show.
     promo flow recommend ID --why TEXT            mark the one script you would pick; the Stage shows a "Recommended" pill on it with the reason in a tooltip
     promo flow doc add ID --kind K --title T (--file F | --text T) ;  doc append|new KIND|list|rm|templates      planning documents shown in the Plan tab (shot list, edit plan, ...)
     promo flow plan pack [--story A]              the whole production pack built from the storyboard: treatment, direction, shot list, edit, audio, capture, claims, deliverables, schedule
+    promo flow scene note STORY SCENE --text T --by NAME ;  scene resolve STORY SCENE --note N --text WHAT      a comment the person left on a scene, and your answer to it
     promo flow story ID --title T --logline L ;  promo flow scene add|set|rm|list STORY ...      build and change a storyboard without writing JSON
     promo flow density --every 5 [--story A] [--scene 03] | --clear      keyframes on a time grid ("show me frames every 5 seconds"), then `promo flow frames` makes them
     promo flow council scripts|storyboard|assets --file F
@@ -302,6 +303,8 @@ def checks(pd, st, stage=None):
             R.append((not pr, f"board {sid} is well-formed" + (f": {pr[0]}" + (f" (+{len(pr) - 1} more)" if len(pr) > 1 else "") if pr else "")))
             mi = SB.missing(b, d, ("start", "end"))
             R.append((not mi, f"board {sid}: every scene has its START and END frame image" + (f" ({len(mi)} missing)" if mi else "")))
+        n_open = len(open_scene_notes(st))
+        R.append((not n_open, f"{n_open} scene {'comment' if n_open == 1 else 'comments'} still open: answer in the scene, then `promo flow scene resolve STORY SCENE --note N --text \"what changed\"`" if n_open else "every scene comment is answered"))
         R.append((gate_ok(pd, st, "storyboard-approved"), "the person approved the storyboard (`approve storyboard-approved --by NAME`)"))
     elif stage == "assets":
         plan = AP.load(f)
@@ -411,6 +414,40 @@ def add_script(pd, sid, title, logline, file=None, text=None, append=False):
     log(st, f"script {sid}" + (" (more added)" if append else ""))
     save(pd, st)
     return PD.words(body)
+
+
+def open_scene_notes(st):
+    return [n for n in st.get("scene_notes") or [] if not n.get("answer")]
+
+
+def scene_note(pd, story, sid, text, by):
+    """A comment the person left on one scene of a storyboard. It lives in the flow state, not in board.json, so commenting does not make the storyboard approval stale."""
+    st = load(pd)
+    human(by)
+    text = " ".join((text or "").split())
+    if not text:
+        raise FlowError("scene note needs --text: the person's words, verbatim")
+    if not any(s["id"] == sid for b_id, b, _ in boards(pd, st) if b_id == story for s in b.get("scenes", [])):
+        raise FlowError(f"no scene {sid} in story {story}: `promo flow scene list {story}`")
+    notes = st.setdefault("scene_notes", [])
+    n = dict(id=max((x["id"] for x in notes), default=0) + 1, story=story, scene=sid, text=text, by=by, at=now(), answer=None)
+    notes.append(n)
+    log(st, f"scene {story}/{sid} comment #{n['id']}")
+    save(pd, st)
+    return n["id"]
+
+
+def scene_resolve(pd, nid, answer):
+    st = load(pd)
+    n = next((x for x in st.get("scene_notes") or [] if x["id"] == nid), None)
+    if not n:
+        raise FlowError(f"no scene comment {nid}: open ones are {', '.join(str(x['id']) for x in open_scene_notes(st)) or 'none'}")
+    answer = " ".join((answer or "").split())
+    if not answer:
+        raise FlowError("--text is what you changed in answer to the comment, in one line")
+    n["answer"] = answer
+    log(st, f"scene {n['story']}/{n['scene']} comment #{nid} answered")
+    save(pd, st)
 
 
 def recommend(pd, sid, why):
@@ -1140,6 +1177,7 @@ def snapshot(pd):
             sc.append(dict(id=s["id"], beat=s.get("beat", ""), start_s=float(s["t"][0]), end_s=float(s["t"][1]), action=s.get("action", ""), caption=s.get("caption") or None,
                            voice=s.get("vo") or None, sound=s.get("sound") or None, camera=s.get("camera") or None, proof=s.get("proof") or None,
                            source=src if src in ("real", "generated", "mock") else "other", generated=src == "generated", start=fr("start", s.get("start")), end=fr("end", s.get("end")),
+                           notes=[dict(id=n["id"], text=n["text"], by=n["by"], answer=n.get("answer")) for n in st.get("scene_notes") or [] if n["story"] == sid and n["scene"] == s["id"]],
                            frames=[dict(fr(f"t={x.get('t', '?')}s", x), t=x.get("t") if isinstance(x.get("t"), (int, float)) else None, auto=bool(x.get("auto")))
                                    for x in s.get("frames") or []], scout=SC.state(d, s), scout_why=(s.get("scout_miss") or {}).get("why")))
         bl.append(dict(id=sid, title=b.get("title", sid), logline=b.get("logline", ""), aspect=b.get("aspect", "16:9"), density=b.get("density", {}).get("every_s"),
@@ -1496,6 +1534,13 @@ def _doc_cli(pd, a):
 
 def _scene_cli(pd, a):
     fd = fdir(pd)
+    if a.op == "note":
+        print(f"comment {scene_note(pd, a.story, a.id, a.text, a.by)} added to scene {a.id}")
+        return
+    if a.op == "resolve":
+        scene_resolve(pd, _int(a.note, "--note"), a.text)
+        print(f"comment {a.note} answered")
+        return
     if a.op == "list":
         print("\n".join(BE.scene_lines(fd, a.story)) or "no scenes")
         return
@@ -1708,8 +1753,9 @@ def main(argv=None):
     p.add_argument("--file"); p.add_argument("--text"); p.add_argument("--story"); p.add_argument("--summary"); p.add_argument("--force", action="store_true")
     p = P("plan"); p.add_argument("action", choices=["pack"]); p.add_argument("--story"); p.add_argument("--force", action="store_true")
     p = P("story"); p.add_argument("id"); p.add_argument("--title"); p.add_argument("--logline"); p.add_argument("--aspect"); p.add_argument("--duration", type=float)
-    p = P("scene"); p.add_argument("op", choices=["add", "set", "rm", "list"]); p.add_argument("story"); p.add_argument("id", nargs="?"); p.add_argument("--t", type=float, nargs=2, metavar=("START", "END"))
+    p = P("scene"); p.add_argument("op", choices=["add", "set", "rm", "list", "note", "resolve"]); p.add_argument("story"); p.add_argument("id", nargs="?"); p.add_argument("--t", type=float, nargs=2, metavar=("START", "END"))
     p.add_argument("--after"); p.add_argument("--redraw", choices=["start", "end", "mid", "all"]); p.add_argument("--start-prompt"); p.add_argument("--end-prompt")
+    p.add_argument("--text"); p.add_argument("--by"); p.add_argument("--note")
     for k in BE.SCENE_FIELDS:
         p.add_argument(f"--{k}")
     p = P("density"); p.add_argument("--every", type=float); p.add_argument("--story"); p.add_argument("--scene"); p.add_argument("--clear", action="store_true")

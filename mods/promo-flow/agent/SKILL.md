@@ -33,6 +33,8 @@ Never edit the state JSON by hand (`promo flow snapshot --out F` prints it for a
   - changes to the storyboard itself: `promo flow story`, `scene add|set|rm|list` (no hand-edited JSON; `--redraw start|end|mid|all` re-makes a frame), then `promo flow frames` for new pictures. The storyboard approval goes stale on purpose: say so.
   - "more detail" / "frames every 5 seconds": `promo flow density --every 5 [--story A] [--scene 03]` (or `--clear`), then `promo flow frames` to draw them.
   Everything you write must be true to the footage (rule 3); put evidence in `proof` or the claims document. Add a `promo flow note` while a long document is being written.
+- `commented on scene S of story X (...)`: `promo flow scene note X S --text "<their words>" --by NAME`, then change the scene to answer it (`scene set`, `--redraw`, `frames`),
+  `promo flow scene resolve X S --note N --text "what you changed"` and publish. The storyboard cannot be approved while a comment is open. Never resolve a comment without changing or answering it.
 - `pinned a note at <time> of draft N: <text>`: run the `promo flow pin add` the message names, with their note verbatim; it becomes a check on that scene for
   the next round. `answered the blind pick ...`: `promo flow ab pick`. `wants something else than your choice ...`: `promo flow assume overturn ID --text "<their words>"`.
   `asked you to forget a remembered note`: `promo flow lessons --forget ID`. `wants to go back to ...`: `promo flow restore --draft N [--scene ID] --by NAME`, rebuild
