@@ -1691,3 +1691,10 @@ button.jb-tile:hover { border-color: var(--c-accent); }
 .wb-media .mid { display: grid; justify-items: center; gap: 4px; padding: 14px; color: var(--c-dim); font-size: 13px; text-align: center; }
 .wb-media .mid.bad { color: var(--c-bad); }
 .wb-gal { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+
+.as-card.fold > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; min-height: 36px; }
+.as-card.fold > summary::-webkit-details-marker { display: none; }
+.as-card.fold > summary .sec-h { margin: 0; flex: 1 1 auto; }
+.as-card.fold > summary .ic-fold { width: 14px; height: 14px; margin-left: auto; color: var(--c-dim); transition: transform .15s ease-out; }
+.as-card.fold[open] > summary .ic-fold { transform: rotate(180deg); }
+.as-card.fold[open] > .as-list { margin-top: 4px; }

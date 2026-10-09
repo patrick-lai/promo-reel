@@ -32,7 +32,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
 
   const S = {
     booted: false, held: false, heldTimer: 0, builtAt: 0, previewUntil: 0, version: null, summary: {}, doc: {}, pending: null, offline: false, readonly: false,
-    tab: null, userTab: false, stage: null, picks: new Set(), style: null, ownStyle: "", boardIdx: 0, draftSel: null, earlier: false, filter: null, checksOpen: false,
+    tab: null, userTab: false, stage: null, picks: new Set(), style: null, ownStyle: "", boardIdx: 0, draftSel: null, earlier: false, filter: null, checksOpen: false, assumeOpen: false,
     seen: new Set(), ref: "", settingsOpen: false, setSel: null, setText: "", compose: false, composeKind: null, reader: null, sbView: "scenes", cmtPending: 0, cmtTotal: 0, cmtShown: 0, cmtChip: null, docGroup: null, docQ: "", docBase: null, docOpened: new Set(), reqHint: "", sending: null, justSent: null, stall: false, err: "", stale: null, stash: null, updated: false, stepsOpen: false, lastAction: null, title: "", lastBadge: "", noState: false,
   };
 
@@ -824,11 +824,14 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       h("div", { class: "ap-bar", role: "progressbar", "aria-label": "Time used", "aria-valuemin": "0", "aria-valuemax": String(a.minutes), "aria-valuenow": String(Math.round(a.used_min || 0)) }, h("i", { style: "width:" + Math.round(a.pct * 100) + "%" })),
       a.live ? h("p", { class: "sub", text: "Stop it from the footer to decide now." }) : null);
   }
+  /* Folded by default: thirteen long rows would push everything else off the screen. */
   function assumeCard(list) {
-    return h("section", { class: "card as-card", "aria-label": "Choices the agent made" }, secH("Choices the agent made for you", list.length),
+    const dt = h("details", { class: "card as-card fold", open: S.assumeOpen, "aria-label": "Choices the agent made", ontoggle: () => { S.assumeOpen = dt.open; } },
+      h("summary", null, secH("Choices the agent made for you", list.length), ic("chevron", "ic-fold")),
       h("ul", { class: "as-list" }, list.map((a) => h("li", null, h("span", { class: "as-t", text: a.text }), a.scene ? h("span", { class: "chip", text: "Scene " + a.scene }) : null,
         h("button", { type: "button", class: "btn ghost", "data-quiet": "1", "data-k": "as-" + a.id, disabled: !canAsk(), text: "Change this",
           onclick: () => openKind("overturn", { id: a.id, choice: a.text }, "What do you want instead of: " + clip(a.text, 80) + "?") })))));
+    return dt;
   }
   /* The composer for a note that belongs to something: overturning one of the agent's choices, or a note pinned to a moment of a draft. */
   function openKind(kind, data, hint) {
