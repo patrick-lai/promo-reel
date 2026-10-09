@@ -562,6 +562,15 @@ def _build(tmp):
     long["assets"][0]["how"] = "Full-resolution capture of the ticket list, " * 8
     long["summary"]["title"] = "Make a 60 second promo for Acme Tasks: tell it what you want at night, wake up to merged PRs"[:80]
     out["long-content"] = long
+    many = copy.deepcopy(out["review"])
+    clip1, clip2 = os.path.join(pd, "out", "draft-1.mp4"), os.path.join(pd, "out", "draft-2.mp4")
+    many["pairs"] += [dict(id=f"p{n}", question=q, scene=None, media="video", left={"$file": clip1}, right={"$file": clip2}, answered=None) for n, q in
+                      ((2, "Music test 1: which track under the same film feels better? (same voice, same cuts)"), (3, "Music test 2: which track under the same film feels better?"), (4, "Music test 3: which track under the same film feels better?"))]
+    many["assumptions"] += [dict(id=f"a{n}", text=t, scene=None, overturned=None) for n, t in enumerate((
+        "Shadows, rim light and glow are drawn around the app card (backdrop, halo, outline, reflection) and never over the app's own pixels, so the UI stays untouched (team rule 2); say so to swap it for something else",
+        "A voice-over is added. For this sample it is a macOS system voice; the real voice is chosen at the assets step (licensed model). Lines only say what the footage shows; say so to cut the voice-over",
+        "The build accelerates on purpose: shots go 5 s, 3 s, 2.5 s, 2 s, 1.5 s, 1 s, so the film speeds up toward the end card"), 2)]
+    out["foryou-many"] = many
     for n in (3, 4, 5):
         F.round_start(pd, f"Round {n} feedback: tighten the end card.", by="Sam")
         FC.add(pd, f"The end card holds 3 seconds (round {n})", scene="08", source="feedback", by="Sam")
@@ -582,7 +591,7 @@ def _build(tmp):
     uploaded(pd, "final", 1, "artifacts")
     snap("final")
     order = ["discover", "scripts", "pick", "storyboard", "storyboard-notes", "assets", "keyframes", "confirm", "drafts", "review", "autopilot", "final",
-             "generating", "generating-stopped", "building", "storyboard-partial", "plan", "dense", "assets-error", "stale-approval", "long-content", "review-maxed"]
+             "generating", "generating-stopped", "building", "storyboard-partial", "plan", "dense", "assets-error", "stale-approval", "long-content", "foryou-many", "review-maxed"]
     res = {k: out[k] for k in order}
     res["starting"] = {}
     res.update(picker_states(tmp, pd))

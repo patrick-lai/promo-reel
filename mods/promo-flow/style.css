@@ -1631,3 +1631,9 @@ button.jb-tile:hover { border-color: var(--c-accent); }
 .btn.busy .spin { width: 14px; height: 14px; }
 .btn.ghost.busy:disabled, .pk-acts .pk-main.busy:disabled { opacity: 1; cursor: progress; border-color: var(--c-accent); }
 .btn.busy > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* for-you at wide widths: two cards across at most, the agent's choices and the autopilot run the full row, answers never squeeze to "L..." */
+.pk-acts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.pk-acts .btn { overflow: visible; text-overflow: clip; white-space: normal; }
+@container (min-width: 760px) { .foryou { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; } .foryou > .as-card, .foryou > .ap-card { grid-column: 1 / -1; } }
+@container (min-width: 440px) { .as-list li .btn { grid-column: 3; justify-self: end; } .rounds-col .as-list li .btn { grid-column: 2; } }

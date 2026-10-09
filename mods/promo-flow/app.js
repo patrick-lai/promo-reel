@@ -599,7 +599,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       const slot = h("div", { class: "pk-media", style: "position:relative" });
       if (!r || r.error) slot.append(h("div", { class: "mid", role: "alert" }, ic("alert"), h("span", { text: r && r.error ? r.error : "This option is not available." })));
       else lazyInto(slot, r, (u) => (p.media === "image" ? h("img", { src: u, alt: (k === "left" ? "Left" : "Right") + " option" })
-        : p.media === "video" ? h("video", { src: u, controls: "", preload: "metadata", playsinline: "", "aria-label": (k === "left" ? "Left" : "Right") + " option" })
+        : p.media === "video" ? h("video", { src: u + "#t=0.1", controls: "", preload: "metadata", playsinline: "", "aria-label": (k === "left" ? "Left" : "Right") + " option" })
           : h("audio", { src: u, controls: "", preload: "metadata", "aria-label": (k === "left" ? "Left" : "Right") + " option" })), { compact: true });
       /* The label sits beside the slot, not in it: the loader replaces the slot's children. */
       return h("figure", { class: "pk-side" }, h("div", { class: "pk-box" }, slot), h("figcaption", { class: "pk-lab", text: k === "left" ? "Left" : "Right" }));
