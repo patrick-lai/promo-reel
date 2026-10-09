@@ -72,17 +72,6 @@ test("a final is done only when every final file resolves and nothing is stale",
   assert.equal(L.finalState({ finals: [{ path: ok("f") }], stale_steps: [{ id: "storyboard" }] }).ok, false);
 });
 
-test("seen-story rule: every story must be opened in the tab the gate decides on", () => {
-  const doc = { boards: [{ id: "A" }, { id: "B" }] };
-  assert.deepEqual(L.seenRule(doc, "storyboard-approved", new Set()), { board: "A", tab: "storyboard" });
-  assert.deepEqual(L.seenRule(doc, "storyboard-approved", new Set(["storyboard:A"])), { board: "B", tab: "storyboard" });
-  assert.equal(L.seenRule(doc, "storyboard-approved", new Set(["storyboard:A", "storyboard:B"])), null);
-  assert.deepEqual(L.seenRule(doc, "assets-approved", new Set(["storyboard:A", "storyboard:B", "assets:A"])), { board: "B", tab: "assets" });
-  assert.deepEqual(L.seenRule(doc, "final-confirmation", new Set(["assets:A", "assets:B", "storyboard:A"])), { board: "B", tab: "storyboard" });
-  assert.equal(L.seenRule({ boards: [{ id: "A" }] }, "storyboard-approved", new Set()), null);
-  assert.equal(L.seenRule(doc, "draft-approved", new Set()), null);
-});
-
 test("missing-file rule: Approve is blocked at the assets gate, plural-correct", () => {
   const one = { assets: [asset("a", "image", "real", "ready", ["01"], bad)] };
   const two = { assets: [asset("a", "image", "real", "ready", ["01"], bad), asset("b", "music", "licensed", "ready", ["01"], null)] };

@@ -430,6 +430,7 @@ UICHECK = r"""(async () => {
     ok('an unreachable screen says why', QA('.scene-h .chip').some((c) => c.textContent === 'Screen not reachable') && /reviewer account/.test(Q('#content').textContent));
     /* an update that lands while the agent is idle repaints softly: pictures stay, new cards ease in, removed ones ease out */
     const H = window.harness.H, doc = () => H.docs[H.stage], push = async () => { H.version++; await window.harness.sendState(); await wait(60); };
+    doc().summary = Object.assign({}, doc().summary, { badge: 'waiting' }); await push();       /* the storyboard asks for nothing and the fixture shows the agent busy: make it idle for this check */
     const scenes = doc().state.boards[0].scenes, img = Q('#content [data-ms="img"] img'), sid = (x) => '[id="scene-' + doc().state.boards[0].id + '-' + x + '"]';
     ok('there is a loaded picture to keep', !!img);
     const extra = JSON.parse(JSON.stringify(scenes[1])); extra.id = 'ZZ'; scenes.push(extra); await push();

@@ -34,7 +34,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     files: [], fileSent: [], fileSend: null, fileErr: "", fileNote: "", fileDrag: false, fv: 0,
     booted: false, held: false, heldTimer: 0, builtAt: 0, previewUntil: 0, version: null, summary: {}, doc: {}, pending: null, offline: false, readonly: false,
     tab: null, userTab: false, stage: null, picks: new Set(), style: null, ownStyle: "", boardIdx: 0, draftSel: null, earlier: false, filter: null, checksOpen: false, assumeOpen: false,
-    seen: new Set(), ref: "", settingsOpen: false, setSel: null, setText: "", compose: false, composeKind: null, reader: null, sbView: "scenes", cmtPending: 0, cmtTotal: 0, cmtShown: 0, cmtChip: null, docGroup: null, docQ: "", docBase: null, docOpened: new Set(), reqHint: "", sending: null, justSent: null, stall: false, err: "", stale: null, stash: null, updated: false, stepsOpen: false, lastAction: null, title: "", lastBadge: "", noState: false,
+    ref: "", settingsOpen: false, setSel: null, setText: "", compose: false, composeKind: null, reader: null, sbView: "scenes", cmtPending: 0, cmtTotal: 0, cmtShown: 0, cmtChip: null, docGroup: null, docQ: "", docBase: null, docOpened: new Set(), reqHint: "", sending: null, justSent: null, stall: false, err: "", stale: null, stash: null, updated: false, stepsOpen: false, lastAction: null, title: "", lastBadge: "", noState: false,
   };
 
   /* ---------------- tiny DOM helper ---------------- */
@@ -1461,7 +1461,6 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   function viewStoryboard() {
     const d = S.doc, boards = arr(d.boards), b = curBoard();
     const confirm = d.stage === "confirm";
-    S.seen.add(PF.seenKey("storyboard", b.id));
     const box = h("div", { class: "stack" });
     const scenes = arr(b.scenes);
     const total = Math.max(b.duration_s || 0, ...scenes.map((x) => x.end_s || 0), 1);
@@ -1809,7 +1808,6 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   function viewAssets() {
     const d = S.doc, boards = arr(d.boards);
     const m = model();
-    if (curBoard()) S.seen.add(PF.seenKey("assets", curBoard().id));
     const box = h("div", { class: "stack" });
     if (boards.length > 1) box.append(storySwitch(boards));
     /* The counts are the filters: chips with the state's colour, pressed = showing only that state. */
@@ -2236,21 +2234,18 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       }
     }
     const tabs = tabList(), gt = gTab();
-    if ((g.kind === "approve" || g.kind === "confirm" || g.kind === "draft") && gt && (gt !== S.tab || S.reader) && tabs.some((t) => t.id === gt)) {
+    /* Only the draft makes the person go and watch it first. The plan is approved from wherever they are: no "Open story B before you decide" detour. */
+    if (g.kind === "draft" && gt && (gt !== S.tab || S.reader) && tabs.some((t) => t.id === gt)) {
       m.reviewTab = gt;
       m.primary = "Review " + tabs.find((t) => t.id === gt).label;
       m.primaryDisabled = false;
       m.note = S.tab === "plan" ? "Plan is for reference. Review the " + tabs.find((t) => t.id === gt).label.toLowerCase() + " when ready." : "Open " + tabs.find((t) => t.id === gt).label + " before you decide.";
     }
-    if (!m.reviewTab && (g.kind === "approve" || g.kind === "confirm")) {
-      const un = PF.seenRule(d, g.gate, S.seen);
-      if (un) { m.reviewStory = un; m.primary = "Open story " + un.board + " to approve"; m.primaryDisabled = false; m.note = "Open story " + un.board + " before you decide."; }
-    }
     if (S.stale && S.stale.changedGate) { m.primaryDisabled = true; m.note = "This step changed. Review the update first."; }
     if (jobRunning() && m.mode === "gate") {
       const jv = PF.jobView(d.job, Date.now());
       const wait = "Waiting for the agent.";
-      const nav = !!(m.reviewTab || m.reviewStory);
+      const nav = !!m.reviewTab;
       if (!nav) m.primaryDisabled = true;
       m.note = nav ? wait + " Meanwhile, " + m.note.charAt(0).toLowerCase() + m.note.slice(1) : wait + " Decide when it finishes.";
     } else if (apLive() && m.mode === "gate") { m.apStop = true; m.primary = "Stop and show me the draft"; m.primaryDisabled = false; m.secondary = ""; m.note = "The agent is working on its own."; }
@@ -2385,7 +2380,6 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     if (m.pendPick) { const pc = el.content.querySelector(".pick-card"); if (pc) { pc.scrollIntoView({ block: "start", behavior: "smooth" }); const b = pc.querySelector('[data-k$="-left"]'); if (b) b.focus({ preventScroll: true }); } return; }
     const g = m.g;
     if (m.reviewTab) { pickTab(m.reviewTab); return; }
-    if (m.reviewStory) { const bi = arr(S.doc.boards).findIndex((x) => x.id === m.reviewStory.board); if (bi >= 0) { S.boardIdx = bi; S.tab = m.reviewStory.tab; S.userTab = true; render(true); el.sc.scrollTop = 0; } return; }
     if (g.kind === "pick") { S.sentPicks = new Set(S.picks); send("pick", { gate: g.gate, picks: [...S.picks].join(" ") }); }
     else if (g.kind === "style") send("changes", { stage: "discover", text: "Style: " + (S.ownStyle.trim() || S.style) + refTail() });
     else send("approve", m.draftId ? { gate: g.gate, draft: m.draftId } : { gate: g.gate });
@@ -2439,7 +2433,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     else if (S.introMode === "wait") setIntro("arrive");
     const list = tabList();
     const cur = gTab();
-    if (S.stage !== S.doc.stage) { S.stage = S.doc.stage; S.userTab = false; S.sentPicks = null; S.draftSel = null; S.earlier = false; S.filter = null; S.boardIdx = 0; S.seen = new Set(); S.sbView = "scenes"; }
+    if (S.stage !== S.doc.stage) { S.stage = S.doc.stage; S.userTab = false; S.sentPicks = null; S.draftSel = null; S.earlier = false; S.filter = null; S.boardIdx = 0; S.sbView = "scenes"; }
     if (!S.userTab || !list.some((t) => t.id === S.tab)) S.tab = list.some((t) => t.id === cur) ? cur : list.length ? list[list.length - 1].id : null;
     if (!list.length) S.tab = null;
     if (S.settingsOpen && !hasSettings()) S.settingsOpen = false;

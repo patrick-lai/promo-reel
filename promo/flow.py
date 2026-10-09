@@ -24,7 +24,7 @@ page (stepper, scripts, storyboards, assets, drafts, rounds) to show.
     promo flow story ID --title T --logline L ;  promo flow scene add|set|rm|list STORY ...      build and change a storyboard without writing JSON
     promo flow density --every 5 [--story A] [--scene 03] | --clear      keyframes on a time grid ("show me frames every 5 seconds"), then `promo flow frames` makes them
     promo flow council scripts|storyboard|assets --file F
-    promo flow approve scripts-picked --picks A [B] --by NAME ; promo flow approve storyboard-approved|assets-approved|final-confirmation|draft-approved --by NAME
+    promo flow approve scripts-picked --picks A [B] --by NAME ; promo flow approve assets-approved|draft-approved --by NAME   (assets-approved is the ONE plan approval: storyboard + assets + go for drafts)
     promo flow asset add|list ;  promo flow needs          what to generate / capture next (missing frames and assets, with prompts)
     promo flow frames [--story B] [--scene ID]    MAKE the missing storyboard frames as real images (grok / codex CLI); a text slate is not a frame
     promo flow asset make [--id X ...]            MAKE a real sample of each planned asset (concept still, short clip, audio excerpt) to look at / listen to
@@ -92,7 +92,10 @@ from .home import resolve as _resolve
 STAGES = ["discover", "scripts", "pick", "storyboard", "assets", "keyframes", "confirm", "drafts", "review", "final"]
 LABEL = dict(discover="Style & references", scripts="Scripts", pick="Pick stories", storyboard="Storyboard", assets="Asset plan",
              keyframes="Keyframes", confirm="Final confirmation", drafts="First drafts", review="Review rounds", final="Final")
-GATE_OF = dict(pick="scripts-picked", storyboard="storyboard-approved", assets="assets-approved", confirm="final-confirmation", review="draft-approved")
+# The person decides four things: the style, which scripts go on, the plan (storyboard + assets + the go for drafts, ONE approval at `assets`), the draft.
+# The storyboard and confirm stages have no gate of their own: the person comments on scenes whenever they like and an open comment blocks the plan.
+GATE_OF = dict(pick="scripts-picked", assets="assets-approved", review="draft-approved")
+GATE_ALIAS = dict({"storyboard-approved": "assets-approved", "final-confirmation": "assets-approved"})      # older names for the same single plan approval
 MAX_ROUNDS = 5
 MIN_SCRIPTS = 3
 MAX_WHY = 240
@@ -224,12 +227,10 @@ def gate_hash(pd, st, gate):
     if gate == "scripts-picked":
         return hashlib.sha256(json.dumps(st["picks"]).encode()).hexdigest()[:12]
     bj = [SB.board_path(d) for _, _, d in boards(pd, st)]
-    if gate == "storyboard-approved":
-        return _sha(*bj)
     if gate == "assets-approved":
-        return _sha(AP.plan_path(f))
-    if gate == "final-confirmation":
-        return _sha(*bj, AP.plan_path(f))
+        # What was planned (which assets, for which scenes, how), not how far making them has got: swapping a mock for the real file must not ask the person again.
+        planned = sorted((a["id"], a.get("kind"), tuple(a.get("scenes") or []), a.get("how")) for a in AP.load(f))
+        return hashlib.sha256(("".join(_sha(p) for p in bj) + json.dumps(planned)).encode()).hexdigest()[:12]
     if gate == "draft-approved":
         return hashlib.sha256(json.dumps(st["drafts"][-1:]).encode()).hexdigest()[:12]
     return ""
@@ -308,21 +309,22 @@ def checks(pd, st, stage=None):
             R.append((not mi, f"board {sid}: every scene has its START and END frame image" + (f" ({len(mi)} missing)" if mi else "")))
         n_open = len(open_scene_notes(st))
         R.append((not n_open, f"{n_open} scene {'comment' if n_open == 1 else 'comments'} still open: answer in the scene, then `promo flow scene resolve STORY SCENE --note N --text \"what changed\"`" if n_open else "every scene comment is answered"))
-        R.append((gate_ok(pd, st, "storyboard-approved"), "the person approved the storyboard (`approve storyboard-approved --by NAME`)"))
     elif stage == "assets":
         plan = AP.load(f)
         pr = AP.problems(plan, scene_ids(pd, st), pd)
         R.append((not pr, "asset plan covers every scene" + (f": {pr[0]}" + (f" (+{len(pr) - 1} more)" if len(pr) > 1 else "") if pr else "")))
         nop = unpreviewed(pd)
         R.append((not nop, "every asset has a real preview to look at or play" + (f" ({len(nop)} without: `promo flow asset make`)" if nop else "")))
-        R.append((gate_ok(pd, st, "assets-approved"), "the person reviewed every asset and approved the plan (`approve assets-approved --by NAME`)"))
+        n_open = len(open_scene_notes(st))
+        R.append((not n_open, f"{n_open} scene {'comment' if n_open == 1 else 'comments'} still open: answer in the scene, then `promo flow scene resolve STORY SCENE --note N --text \"what changed\"`" if n_open else "every scene comment is answered"))
+        R.append((gate_ok(pd, st, "assets-approved"), "the person approved the plan: storyboard, assets and the go for drafts (`approve assets-approved --by NAME`)"))
     elif stage == "keyframes":
         mi = [m for sid, b, d in boards(pd, st) for m in SB.missing(b, d, ("start", "end", "frames"))]
         R.append((not mi, f"all keyframes generated ({len(mi)} missing)"))
         pr = AP.problems(AP.load(f), scene_ids(pd, st), pd, final=True)
         R.append((not pr, "every planned asset is real (no mocks / todos left)" + (f": {pr[0]}" if pr else "")))
     elif stage == "confirm":
-        R.append((gate_ok(pd, st, "final-confirmation"), "final confirmation from the person (`approve final-confirmation --by NAME`)"))
+        R.append((gate_ok(pd, st, "assets-approved"), "the plan the person approved is still the plan (it changed since: ask them to approve it again)"))
     elif stage == "drafts":
         ds = st["drafts"]
         R.append((bool(ds) and all(os.path.isfile(d["file"]) for d in ds), "a first draft is registered and exists (`promo flow draft add FILE`)"))
@@ -351,6 +353,7 @@ def advance(pd):
 def approve(pd, gate, by, picks=None, note=""):
     st = load(pd)
     by = human(by)
+    gate = GATE_ALIAS.get(gate, gate)
     if gate not in GATE_OF.values():
         raise FlowError(f"gate must be one of {', '.join(GATE_OF.values())}")
     stage = [s for s, g in GATE_OF.items() if g == gate][0]
@@ -855,15 +858,9 @@ def ask(pd, st):
     if stage == "scripts" and ok:
         return dict(header="Scripts", multiSelect=True, question="Which script(s) should go to storyboards?",
                     options=_script_options(st))
-    if stage == "storyboard" and ok is False and all(o for o, t in checks(pd, st) if "approved" not in t):
-        return dict(header="Storyboard", multiSelect=False, question="Happy with the storyboard (each scene's start and end frame), or want changes?",
-                    options=[dict(label="Approve storyboard", description="go on to the asset plan"), dict(label="Changes", description="say what to change per scene")])
-    if stage == "assets" and all(o for o, t in checks(pd, st) if "approved" not in t):
-        return dict(header="Assets", multiSelect=False, question="Looked at and listened to every asset sample (pictures, clips, music, voice, sounds)? Approve the plan?",
-                    options=[dict(label="Approve asset plan", description="generate the remaining keyframes"), dict(label="Changes", description="swap, add or drop assets")])
-    if stage == "confirm":
-        return dict(header="Go?", multiSelect=False, question="Generate the first drafts now?",
-                    options=[dict(label="Yes, generate drafts", description="all keyframes and assets are real"), dict(label="Not yet", description="more changes first")])
+    if stage == "assets" and not gate_ok(pd, st, "assets-approved") and all(o for o, t in checks(pd, st) if "approved" not in t):
+        return dict(header="Plan", multiSelect=False, question="Storyboard and assets look right? Approve the plan and the agent builds the first draft. Comment on anything you want changed first.",
+                    options=[dict(label="Approve the plan", description="storyboard, assets and the go for drafts, in one"), dict(label="Changes", description="comment on a scene or an asset")])
     # A registered draft is the decision, whether the flow has formally entered `review` yet or not: the buttons come with the video.
     if (stage == "drafts" and ok) or (stage == "review" and open_round(st) is None):
         n = len(cycle_rounds(st))
@@ -886,10 +883,10 @@ def hints(pd, st):
         discover="Ask the person what style they want and for any reference videos/material (the published Stage state carries the question); record both with `promo flow discover --style ... --ref URL | --no-refs`. Study references with `promo refs add`.",
         scripts=f"Read what this person said in earlier videos (`promo flow lessons`), then write {MIN_SCRIPTS}+ scripts with different angles (any length: `script add --file -` then `script append` for the next parts; the Stage reads them page by page); run the council (evals/council-flow.md, scripts lens set) 1-2 rounds and record with `promo flow council scripts`; `promo flow script add`. Then ask which to progress.",
         pick="Ask which script(s) to progress (multi-select); record the answer with `approve scripts-picked --picks ... --by NAME`.",
-        storyboard="Per picked story build the board with `promo flow story` + `scene add` (or write flow/boards/<id>/board.json); a denser board on request (`promo flow density --every 5`); then `promo flow frames` MAKES every scene's START and END frame as a real image (a text slate does not count); for every app scene put in the REAL screen (`promo flow scout add`, or `scout miss --why`); `promo flow board`, SHOW the page, iterate until they approve.",
-        assets="List every asset (screenshots, pictures, recordings, music, voice, sfx) with `promo flow asset add`, then `promo flow asset make` so each has a real sample to look at or hear (a placeholder is not a preview), publish, plan it out with the person.",
+        storyboard="Per picked story build the board with `promo flow story` + `scene add` (or write flow/boards/<id>/board.json); a denser board on request (`promo flow density --every 5`); then `promo flow frames` MAKES every scene's START and END frame as a real image (a text slate does not count); for every app scene put in the REAL screen (`promo flow scout add`, or `scout miss --why`); `promo flow board`, SHOW the page. There is NO approval here: when the frames are real and no scene comment is open, `advance` at once and go on to the assets (the person can comment on any scene any time; answer each, then carry on).",
+        assets="List every asset (screenshots, pictures, recordings, music, voice, sfx) with `promo flow asset add`, then `promo flow asset make` so each has a real sample to look at or hear (a placeholder is not a preview), publish. This is the person's ONE plan review (storyboard + assets + the go for drafts): they approve once or comment; after `approve assets-approved` run keyframes, confirm and drafts without asking again.",
         keyframes="Make the remaining keyframes (`promo flow make`) and replace every mock and sample with the real file (`promo flow needs`), then advance.",
-        confirm="Show the final summary (board + assets) and get the explicit go for drafts.",
+        confirm="No question here: the plan approval already was the go. `advance` and build the drafts.",
         drafts="Build the first drafts (promo build, draft encode), register with `promo flow draft add`, advance, SHOW them.",
         review="Take the person's feedback verbatim: `round start`; turn each note into a check (`promo flow check add --source feedback`); every sub-agent reads the round's BRIEF.md first; run the council (lens 0 intent + web research of the topic and examples of good videos); apply one batch; build one draft (`draft add --report`); mark every check on it, compare it blind with the reviewed draft (`ab drafts`, one judge per order); `round close`. Max %d rounds; at the cap their restated direction is `promo flow revise --feedback` (a new cycle)." % MAX_ROUNDS,
         final="Deliver; keep iterating on feedback with `promo flow revise` (council again).")[s]
@@ -906,8 +903,8 @@ def status(pd):
                 autopilot=AU.view(st), round_brief=RB.brief_path(pd, open_round(st)) if open_round(st) else None, notes=RB.notes_path(pd))
 
 
-GATE_PRIMARY = dict(style="Choose style", pick="Pick scripts", approve="Review", confirm="Confirm go", draft="Watch draft")
-GATE_CARD = {"storyboard-approved": "Review storyboard", "assets-approved": "Review assets"}
+GATE_PRIMARY = dict(style="Choose style", pick="Pick scripts", approve="Review", draft="Watch draft")
+GATE_CARD = {"assets-approved": "Review the plan"}
 MAX_PICKS = 2
 NUM = {1: "One", 2: "Two", 3: "Three", 4: "Four", 5: "Five", 6: "Six", 7: "Seven", 8: "Eight", 9: "Nine"}
 BEAT_RE = re.compile(r"^\s*(?:[-*]|\d+[.)])\s+(.*\S)")
@@ -933,11 +930,10 @@ def _gate(pd, st):
     if stage in ("scripts", "pick") and a is not None:
         return dict(gate="scripts-picked", kind="pick", question=a["question"], approve_label="Continue", changes_label="Add changes", options=a["options"],
                     picks_min=1, picks_max=MAX_PICKS, stage=stage)
-    kinds = dict(discover=("style", "style"), storyboard=("storyboard-approved", "approve"), assets=("assets-approved", "approve"),
-                 confirm=("final-confirmation", "confirm"), drafts=("draft-approved", "draft"), review=("draft-approved", "draft"))
+    kinds = dict(discover=("style", "style"), assets=("assets-approved", "approve"), drafts=("draft-approved", "draft"), review=("draft-approved", "draft"))
     if a is None or stage not in kinds:
         return None
-    labels = dict(style=("Use this style", "Describe another"), approve=("Approve", "Add changes"), confirm=("Generate drafts", "Not yet"), draft=("Approve", "Feedback and iterate"))
+    labels = dict(style=("Use this style", "Describe another"), approve=("Approve the plan", "Add changes"), draft=("Approve", "Feedback and iterate"))
     g, k = kinds[stage]
     out = dict(gate=g, kind=k, question=a["question"], approve_label=labels[k][0], changes_label=labels[k][1], options=a["options"] if k == "style" else [], stage=stage)
     if any(x["id"] == stage for x in stale):
@@ -992,13 +988,12 @@ def plain_checks(pd, st, stage=None):
             R.append((not pr, f"Story {sid} is complete" if not pr else f"Story {sid}: {pr[0]}"))
         _, miss = _all_frames(pd, st, ("start", "end"))
         R.append((not miss, "Every scene has its start and end frame" if not miss else f"{miss} {'frame' if miss == 1 else 'frames'} not made yet"))
-        R.append((gate_ok(pd, st, "storyboard-approved"), "You approved the storyboard" if gate_ok(pd, st, "storyboard-approved") else "You approve the storyboard"))
     elif stage == "assets":
         pr = AP.problems(AP.load(f), scene_ids(pd, st), pd)
         R.append((not pr, "Every scene has its assets planned" if not pr else pr[0][0].upper() + pr[0][1:]))
         nop = unpreviewed(pd)
         R.append((not nop, "Every asset has a preview you can open or play" if not nop else f"{len(nop)} {'asset has' if len(nop) == 1 else 'assets have'} no preview yet"))
-        R.append((gate_ok(pd, st, "assets-approved"), "You approved the asset plan" if gate_ok(pd, st, "assets-approved") else "You review every asset and approve the plan"))
+        R.append((gate_ok(pd, st, "assets-approved"), "You approved the plan" if gate_ok(pd, st, "assets-approved") else "You review the storyboard and assets and approve the plan"))
     elif stage == "keyframes":
         tot, miss = _all_frames(pd, st, ("start", "end", "frames"))
         R.append((not miss, f"All stories: all {tot} keyframes made" if not miss else f"All stories: {tot - miss} of {tot} keyframes made, {miss} left"))
@@ -1007,7 +1002,7 @@ def plain_checks(pd, st, stage=None):
         left = [x for x in (f"{m} {'stand-in' if m == 1 else 'stand-ins'} to swap for the real thing" if m else "", f"{t} still to make" if t else "") if x]
         R.append((not (m or t), "Every planned asset has its file." if not (m or t) else "Before the real run: " + ", ".join(left)))
     elif stage == "confirm":
-        R.append((gate_ok(pd, st, "final-confirmation"), "You confirmed generation" if gate_ok(pd, st, "final-confirmation") else "You confirm generation"))
+        R.append((gate_ok(pd, st, "assets-approved"), "Your plan approval still stands" if gate_ok(pd, st, "assets-approved") else "The plan changed since you approved it"))
     elif stage == "drafts":
         ok = bool(st["drafts"]) and all(os.path.isfile(x["file"]) for x in st["drafts"])
         R.append((ok, "First draft is ready" if ok else "Waiting for the first draft"))

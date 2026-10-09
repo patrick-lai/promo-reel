@@ -45,7 +45,7 @@ Every path below that says `file` is `{"$file": "<absolute path>"}` (the host tu
                  "Generated plate" for generated; no chip for `other` (a scene with no `source` is `other`, never real). Legend: "All real assets ready"
     assets     [{id, label, kind, source, state: ready|mock|todo, scenes[] (only ids that exist in a board), how, licence, note, path: file|null, sample: file|null, sample_note}]
                  `sample` is what `promo flow asset make` made so the person can look at / hear the asset before it exists (image, ~7 s mp4, mp3): the tile plays it labelled SAMPLE and the
-                 state stays mock / to make. The Approve button at the storyboard gate stays disabled while any frame is not an image (`start|end.slate` = a text slate, path null) and at the assets gate
+                 state stays mock / to make. The storyboard has no gate (the person comments on scenes any time; an open comment blocks the plan). The plan approval at the assets gate stays disabled while any asset has nothing to look at, and
                  while any asset has neither `path` nor `sample`; the banner's "Ask the agent to make them" sends the `generate` action (`promo flow make`)
                  the mod shows a `ready` asset whose file is missing or failed as "File missing", never as ready, and disables Approve at the assets gate while any file is missing.
                  `label` is the human title (explicit `label`, else the first clause of `how`, else the id made readable); the raw `id` is only a tooltip
@@ -86,7 +86,7 @@ Every path below that says `file` is `{"$file": "<absolute path>"}` (the host tu
     settings   {output: {template, source: env|config|default, mode: home|repo|default|custom, locked, available, project, repo, home, example, presets{home|repo|default: {template, example}}}, saved_in}
                  the folder button in the header opens "Where files are saved": `mode` is the selected card, `presets[x].example` the path each card would use for the next video, `locked` (PROMO_PROJECTS is set)
                  disables it, `available: false` warns that the saved folder can't be reached (unplugged drive), `saved_in` is this video's own folder. Hidden when `settings` is absent
-    gate       null | {gate, kind: style|pick|approve|confirm|draft, stage, question, approve_label, changes_label, options[], picks_min?, picks_max?, stale?}
+    gate       null | {gate, kind: style|pick|approve|draft, stage, question, approve_label, changes_label, options[], picks_min?, picks_max?, stale?}
                  a stale earlier approval takes over the gate ("Approve again", kind approve, stage = that step)
 
 **Counts have one source.** For the selected story the mod derives one list (asset rows used in that story's scenes + that story's keyframes still to make) with exclusive buckets ready / mock / to make / missing; the Assets tab badge, the counter row, the filters and the cards all read it, and the Storyboard badge is the number of scenes in that story (`mod-dev/shoot.py` asserts badge = sum of buckets = cards for every stage and story). Scene refs on assets are validated against the selected story's scene ids.

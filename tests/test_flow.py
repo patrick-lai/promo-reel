@@ -95,16 +95,9 @@ def test_happy_path_and_gates(pd, tmp_path, sheets):
     assert F.advance(pd) == "storyboard"
     board(pd, "A", make_imgs=False)
     with pytest.raises(F.FlowError, match="START and END"):
-        F.approve(pd, "storyboard-approved", "Pat")
+        F.advance(pd)
     d = board(pd, "A")
-    F.approve(pd, "storyboard-approved", "Pat")
-    # editing the board after approval makes the approval stale
-    b = json.load(open(SB.board_path(d)))
-    b["title"] = "changed"
-    json.dump(b, open(SB.board_path(d), "w"))
-    assert not F.gate_ok(pd, F.load(pd), "storyboard-approved")
-    F.approve(pd, "storyboard-approved", "Pat")
-    assert F.advance(pd) == "assets"
+    assert F.advance(pd) == "assets"                                 # no approval at the storyboard: the person comments any time, the plan review is one stop later
     # assets: every scene needs one; UI must be real/mock; mocks block drafts, not planning
     rec = lambda **k: AP.save(os.path.join(pd, "flow"), AP.upsert(AP.load(os.path.join(pd, "flow")), k))  # noqa: E731
     rec(id="ui1", kind="recording", source="generated", scenes=["01"], how="x")
@@ -114,17 +107,23 @@ def test_happy_path_and_gates(pd, tmp_path, sheets):
         F.approve(pd, "assets-approved", "Pat")                      # a plan nobody can look at is not approvable
     assert F.make_assets(pd, None, False, "auto") == 0
     F.approve(pd, "assets-approved", "Pat")
+    # editing the board after the plan approval makes it stale: ONE approval covers storyboard + assets
+    b = json.load(open(SB.board_path(d)))
+    b["title"] = "changed"
+    json.dump(b, open(SB.board_path(d), "w"))
+    assert not F.gate_ok(pd, F.load(pd), "assets-approved")
+    with pytest.raises(F.FlowError):
+        F.advance(pd)
+    F.approve(pd, "storyboard-approved", "Pat")                       # the older name is the same single approval
+    assert F.gate_ok(pd, F.load(pd), "assets-approved")
     assert F.advance(pd) == "keyframes"
     with pytest.raises(F.FlowError, match="real"):
         F.advance(pd)                                                # mock still blocks
     real = os.path.join(pd, "footage", "ui1.png")
     img(real)
-    rec(id="ui1", kind="recording", source="real", scenes=["01", "02"], how="x", path="footage/ui1.png")
+    rec(id="ui1", kind="recording", source="real", scenes=["01", "02"], how="screen recording of the ticket list", path="footage/ui1.png")
     assert F.advance(pd) == "confirm"
-    with pytest.raises(F.FlowError):
-        F.advance(pd)
-    F.approve(pd, "final-confirmation", "Pat")
-    assert F.advance(pd) == "drafts"
+    assert F.advance(pd) == "drafts"                                  # the plan approval already was the go: no third stop
     dr = str(tmp_path / "d.mp4")
     write(dr, "v")
     F.add_draft(pd, dr)
@@ -349,8 +348,8 @@ def test_snapshot_is_the_mod_state(pd):
     s = F.snapshot(pd)
     json.dumps(s)
     check_summary(s)
-    assert s["summary"]["badge"] == "waiting" and s["summary"]["primary"] == "Review storyboard"
-    assert s["stage"] == "storyboard" and s["scripts"][0]["picked"] and s["gate"]["gate"] == "storyboard-approved"
+    assert s["summary"]["badge"] == "working" and "primary" not in s["summary"]       # the storyboard asks for nothing: the person's one plan review comes with the assets
+    assert s["stage"] == "storyboard" and s["scripts"][0]["picked"] and s["gate"] is None
     assert [x["id"] for x in s["steps"]] == F.STAGES
     assert [x["state"] for x in s["steps"]][:5] == ["done", "done", "done", "current", "todo"]
     sc = s["boards"][0]["scenes"][0]
@@ -366,12 +365,16 @@ def test_snapshot_media_are_file_objects_and_approvals(pd, tmp_path):
     st = F.load(pd)
     st.update(picks=["A"], stage="storyboard", scripts=[dict(id="A", title="TA", logline="L", file="x")])
     F.save(pd, st)
-    F.approve(pd, "storyboard-approved", "Pat")
+    real_plan(pd)
+    st = F.load(pd)
+    st["stage"] = "assets"
+    F.save(pd, st)
+    F.approve(pd, "assets-approved", "Pat")
     s = F.snapshot(pd)
-    assert s["approvals"]["storyboard-approved"]["fresh"] is True and s["approvals"]["storyboard-approved"]["by"] == "Pat"
+    assert s["approvals"]["assets-approved"]["fresh"] is True and s["approvals"]["assets-approved"]["by"] == "Pat"
     assert s["gate"] is None and s["summary"]["badge"] == "working"
     files = [d["$file"] for d in walk(s) if "$file" in d]
-    assert len(files) == 4 and all(os.path.isabs(f) and os.path.isfile(f) for f in files)
+    assert len(files) == 5 and all(os.path.isabs(f) and os.path.isfile(f) for f in files)
     for k in ("path",):
         assert not any(isinstance(d.get(k), str) for d in walk(s))
 
@@ -414,6 +417,12 @@ def real_file(pd):
     return p
 
 
+def real_plan(pd):
+    """A one-asset plan whose asset is a real file, so the person has something to look at and the plan is approvable."""
+    img(os.path.join(pd, "footage", "m.png"))
+    AP.save(os.path.join(pd, "flow"), [dict(id="m", kind="image", source="real", scenes=["01", "02"], how="h", path="footage/m.png")])
+
+
 def at_storyboard(pd):
     d = board(pd, "A")
     st = F.load(pd)
@@ -424,28 +433,43 @@ def at_storyboard(pd):
 
 def test_stale_approval_is_not_done(pd):
     d = at_storyboard(pd)
-    F.approve(pd, "storyboard-approved", "Pat")
+    real_plan(pd)
     st = F.load(pd)
     st["stage"] = "assets"
     F.save(pd, st)
-    AP.save(os.path.join(pd, "flow"), [dict(id="m", kind="music", source="real", scenes=["01", "02"], how="h")])
-    assert F.snapshot(pd)["steps"][3]["state"] == "done"
+    F.approve(pd, "assets-approved", "Pat")
+    st = F.load(pd)
+    st["stage"] = "keyframes"
+    F.save(pd, st)
+    assert F.snapshot(pd)["steps"][4]["state"] == "done"
     b = json.load(open(SB.board_path(d)))
     b["title"] = "edited after approval"
     json.dump(b, open(SB.board_path(d), "w"))
     s = F.snapshot(pd)
-    assert s["steps"][3]["state"] == "stale" and s["steps"][3]["stale"] and [x["id"] for x in s["stale_steps"]] == ["storyboard"]
-    assert s["gate"]["gate"] == "storyboard-approved" and s["gate"]["stale"] and s["gate"]["approve_label"] == "Approve again" and s["gate"]["stage"] == "storyboard"
-    assert s["gate"]["question"] == "Storyboard changed after you approved it. Approve it again?"
+    assert s["steps"][4]["state"] == "stale" and s["steps"][4]["stale"] and [x["id"] for x in s["stale_steps"]] == ["assets"]
+    assert s["gate"]["gate"] == "assets-approved" and s["gate"]["stale"] and s["gate"]["approve_label"] == "Approve again" and s["gate"]["stage"] == "assets"
+    assert s["gate"]["question"] == "Asset plan changed after you approved it. Approve it again?"
     assert s["summary"]["badge"] == "waiting" and s["summary"]["primary"] == "Approve again"
-    assert s["approvals"]["storyboard-approved"]["fresh"] is False
+    assert s["approvals"]["assets-approved"]["fresh"] is False
     st = F.load(pd)
     st.update(stage="final", finals=[dict(file=real_file(pd), at="")])
     F.save(pd, st)
     s = F.snapshot(pd)
     assert s["summary"]["badge"] != "done" and not all(x["state"] == "done" for x in s["steps"])
-    F.approve(pd, "storyboard-approved", "Pat")
+    F.approve(pd, "assets-approved", "Pat")
     assert F.snapshot(pd)["summary"]["badge"] == "done"
+
+
+def test_making_a_planned_asset_real_does_not_ask_for_the_plan_again(pd):
+    at_storyboard(pd)
+    AP.save(os.path.join(pd, "flow"), [dict(id="m", kind="image", source="mock", scenes=["01", "02"], how="h")])
+    F.make_assets(pd, None, False, "auto")
+    st = F.load(pd)
+    st["stage"] = "assets"
+    F.save(pd, st)
+    F.approve(pd, "assets-approved", "Pat")
+    real_plan(pd)                                                   # the mock became the real file: same plan
+    assert F.gate_ok(pd, F.load(pd), "assets-approved")
 
 
 def test_scene_source_never_defaults_to_real(pd):
@@ -779,23 +803,34 @@ def test_a_script_of_any_length_is_added_in_parts_and_snapshotted_as_a_file(pd, 
         F.add_script(pd, "B", None, None, text="x")
 
 
-def test_a_scene_comment_blocks_storyboard_approval_until_answered_and_never_stales_it(pd):
+def test_a_scene_comment_blocks_leaving_the_storyboard_and_the_plan_until_answered_and_never_stales_it(pd):
     st = F.load(pd)
     st.update(picks=["A"], stage="storyboard", scripts=[dict(id="A", title="TA", logline="L", file="x")])
     F.save(pd, st)
     board(pd, "A")
-    F.approve(pd, "storyboard-approved", "Sam")
+    real_plan(pd)
     nid = F.scene_note(pd, "A", "02", "  Show it\n typed, not sent. ", "Sam")
-    assert F.gate_ok(pd, F.load(pd), "storyboard-approved")
     notes = next(s for b in F.snapshot(pd)["boards"] for s in b["scenes"] if s["id"] == "02")["notes"]
     assert notes == [dict(id=nid, text="Show it typed, not sent.", by="Sam", answer=None)]
     assert any(not ok and "1 scene comment still open" in t for ok, t in F.checks(pd, F.load(pd)))
+    with pytest.raises(F.FlowError, match="1 scene comment still open"):
+        F.advance(pd)
+    st = F.load(pd)
+    st["stage"] = "assets"
+    F.save(pd, st)
+    assert F.snapshot(pd)["gate"] is None                            # nothing to approve while a comment waits for its answer
+    with pytest.raises(F.FlowError, match="1 scene comment still open"):
+        F.approve(pd, "assets-approved", "Sam")
     with pytest.raises(F.FlowError, match="no scene 99"):
         F.scene_note(pd, "A", "99", "x", "Sam")
     with pytest.raises(F.FlowError, match="--by"):
         F.scene_note(pd, "A", "02", "x", "claude")
     F.scene_resolve(pd, nid, "Redrew the start frame.")
     assert not any(not ok and "scene comment" in t for ok, t in F.checks(pd, F.load(pd)))
+    assert F.snapshot(pd)["gate"]["gate"] == "assets-approved"
+    F.approve(pd, "assets-approved", "Sam")
+    F.scene_note(pd, "A", "01", "Later thought", "Sam")                # commenting after the approval does not stale it
+    assert F.gate_ok(pd, F.load(pd), "assets-approved")
 
 
 def test_the_recommended_script_is_flagged_with_its_reason_and_marked_in_the_question(pd):

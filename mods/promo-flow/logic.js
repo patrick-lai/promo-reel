@@ -74,17 +74,6 @@
     return { registered: true, ok };
   }
 
-  /* With more than one story the person must have opened every story in the tab the gate decides on before the primary says Approve. */
-  const SEEN_TAB = { "storyboard-approved": "storyboard", "assets-approved": "assets", "final-confirmation": "storyboard" };
-  const seenKey = (tab, id) => tab + ":" + id;
-  function seenRule(doc, gateName, seen) {
-    const tab = SEEN_TAB[gateName];
-    const boards = arr(doc.boards);
-    if (!tab || boards.length < 2) return null;
-    const un = boards.find((b) => !seen.has(seenKey(tab, b.id)));
-    return un ? { board: un.id, tab } : null;
-  }
-
   /* Approve at the assets gate is not backed while a ready asset has no file. */
   function missingRule(doc, gateName) {
     if (gateName !== "assets-approved") return null;
@@ -485,7 +474,7 @@
       + " Copy each into the project's footage folder, register real footage with promo footage add (and promo flow asset add --force --source real --path FILE --how \"...\" for the matching row), look at it, then publish the new state. Do not approve anything.";
   }
 
-  const api = { FILES_TAB, FILES_MAX, fileProblem, addFiles, filesMessage, isVideoFile, WIDGET_TAB, WIDGET_PX, widgetsFor, widgetHeight, widgetDoc, themeCss, widgetMessage, settleWait, SETTLE_GAP_MS, PREVIEW_POLL_MS, commentCount, forYou, canAutopilot, jobView, clockS, aboutS, arr, mref, fileBad, missingFile, missingAll, hasPreview, noFrame, sceneStatus, model, finalState, seenRule, seenKey, missingRule, previewRule, bodyOf, downloadName, textFileName, wordsOf, parseBlocks, inline, plain, paginate, outline, findPages, markSplit, readMinutes, frameTimeline, DENSITY_CHOICES, clockT, shareRows, outputProblem, previewOutput, outputDirty };
+  const api = { FILES_TAB, FILES_MAX, fileProblem, addFiles, filesMessage, isVideoFile, WIDGET_TAB, WIDGET_PX, widgetsFor, widgetHeight, widgetDoc, themeCss, widgetMessage, settleWait, SETTLE_GAP_MS, PREVIEW_POLL_MS, commentCount, forYou, canAutopilot, jobView, clockS, aboutS, arr, mref, fileBad, missingFile, missingAll, hasPreview, noFrame, sceneStatus, model, finalState, missingRule, previewRule, bodyOf, downloadName, textFileName, wordsOf, parseBlocks, inline, plain, paginate, outline, findPages, markSplit, readMinutes, frameTimeline, DENSITY_CHOICES, clockT, shareRows, outputProblem, previewOutput, outputDirty };
   root.PF = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof window !== "undefined" ? window : globalThis);

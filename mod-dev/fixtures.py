@@ -557,10 +557,10 @@ def _build(tmp):
     snap("storyboard-partial")
     for fp in frames:
         os.rename(fp + ".bak", fp)
-    F.approve(pd, "storyboard-approved", "Sam")
     F.advance(pd)
     gen_assets(pd, "plan")
     snap("assets")
+    F.approve(pd, "assets-approved", "Sam")
     bp = os.path.join(pd, "flow", "boards", "A", "board.json")
     original = open(bp).read()
     edited = json.loads(original)
@@ -571,7 +571,6 @@ def _build(tmp):
     broken = copy.deepcopy(out["assets"])
     broken["assets"][0]["path"] = {"$file": os.path.join(pd, "footage", "missing-capture.png")}
     out["assets-error"] = broken
-    F.approve(pd, "assets-approved", "Sam")
     F.advance(pd)
     snap("keyframes")
     building_job(pd)
@@ -579,10 +578,10 @@ def _build(tmp):
     os.remove(os.path.join(pd, "flow", FJ.FILE))
     gen_mids(pd)
     gen_assets(pd, "ready")
-    F.approve(pd, "assets-approved", "Sam")
+    if not F.gate_ok(pd, F.load(pd), "assets-approved"):
+        F.approve(pd, "assets-approved", "Sam")
     F.advance(pd)
     snap("confirm")
-    F.approve(pd, "final-confirmation", "Sam")
     F.advance(pd)
     for text, kind, done in [("Taking snapshots of the real app", "capture", True), ("Rendering screenshots for scene 2", "render", True), ("Rendering screenshots for scene 3", "render", True),
                              ("Designing the voice for the opening line", "voice", True), ("Cutting the music to 60 s on bar lines", "music", True),
