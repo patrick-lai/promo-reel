@@ -1196,3 +1196,10 @@ def test_a_build_reports_each_step_and_the_one_that_failed(pd, tmp_path, monkeyp
         ("Checking licences and footage", True, False), ("Sound effects", True, True), ("Voice-over", True, False), ("Shot 01", True, False), ("Mixing and mastering", False, False)]
     assert job["resume"] == f"promo -p {spec.path} build"
     assert F.snapshot(pd)["summary"]["status"].startswith("Stopped after 4 of 6 steps")
+
+
+def test_mod_skills_fit_the_host_limit():
+    """CommissionAI refuses to load a mod whose skill file is over 16 KB (mods.invalid_manifest)."""
+    import pathlib
+    for skill in pathlib.Path(__file__).resolve().parents[1].glob("mods/*/agent/SKILL.md"):
+        assert skill.stat().st_size <= 16000, f"{skill} is {skill.stat().st_size} bytes; the host limit is 16384"
