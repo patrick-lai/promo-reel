@@ -610,8 +610,25 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     return h(folded ? "details" : "section", { class: "card pick-card" + (folded ? " fold" : "") + (later ? " later" : ""), "aria-label": "Your pick: " + p.question },
       h(folded ? "summary" : "div", { class: "pk-h" }, h("b", { text: p.question }), folded ? h("span", { class: "chip accent pk-tag", text: "Your pick" }) : null, h("span", { class: "sub", text: later ? "Waiting for your pick after the stop." : "You don't see which option is which, so only what you see and hear decides." })),
       h("div", { class: "pk-row" }, side("left"), side("right")),
-      h("div", { class: "pk-acts", role: "group", "aria-label": "Your pick" }, ans.map(([k, l], i) => h("button", { type: "button", class: "btn " + (i < 2 ? "ghost pk-main" : "ghost"), "data-quiet": i < 2 ? null : "1",
-        "data-k": "pk-" + p.id + "-" + k, disabled: blocked, onclick: () => send("ab", { pair: p.id, side: k, label: l, question: p.question }) }, l))));
+      h("div", { class: "pk-acts", role: "group", "aria-label": "Your pick" }, ans.map(([k, l], i) => {
+        const busy = pickBusy(p) === k;
+        return h("button", { type: "button", class: "btn " + (i < 2 ? "ghost pk-main" : "ghost") + (busy ? " busy" : ""), "data-quiet": i < 2 ? null : "1", "aria-busy": busy ? "true" : null,
+          "data-k": "pk-" + p.id + "-" + k, disabled: blocked, onclick: (e) => pressPick(e.currentTarget, () => send("ab", { pair: p.id, side: k, label: l, question: p.question })) },
+          busy ? h("i", { class: "spin", "aria-hidden": "true" }) : null, h("span", { text: l }));
+      })));
+  }
+  /* The side the person just chose, until the answer lands and the pair leaves the list. */
+  function pickBusy(p) {
+    const a = S.lastAction;
+    return a && a.name === "ab" && a.payload.pair === p.id && (S.sending || S.justSent || S.pending) ? a.payload.side : null;
+  }
+  /* The button spins on the click itself, painted before the send and the re-render, so a slow host never looks like a dead button. */
+  function pressPick(btn, go) {
+    btn.classList.add("busy");
+    btn.setAttribute("aria-busy", "true");
+    btn.prepend(h("i", { class: "spin", "aria-hidden": "true" }));
+    btn.parentNode.querySelectorAll("button").forEach((b) => { b.disabled = true; });
+    requestAnimationFrame(() => setTimeout(go, 0));
   }
   function autopilotCard(a) {
     const busy = a.state === "running";

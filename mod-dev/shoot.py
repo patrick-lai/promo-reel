@@ -325,6 +325,9 @@ UICHECK = r"""(async () => {
     ok('the look pairs are shown', QA('.lk-pair').length >= 1);
     ok('the latest draft offers to keep working alone', !!Q('[data-k=ap-60]'));
     await click('[data-k=pk-p1-left]');
+    ok('the clicked side spins at once and the other answers are held', Q('[data-k=pk-p1-left]').classList.contains('busy') && !!Q('[data-k=pk-p1-left] .spin') && Q('[data-k=pk-p1-right]').disabled && !Q('[data-k=pk-p1-right] .spin'), Q('[data-k=pk-p1-left]').outerHTML.slice(0, 160));
+    await wait(700);
+    ok('the spinner stays on the chosen side while the agent picks it up', !!Q('[data-k=pk-p1-left] .spin') && Q('[data-k=pk-p1-left]').getAttribute('aria-busy') === 'true', Q('[data-k=pk-p1-left]').outerHTML.slice(0, 160));
     ok('a blind pick reaches the agent as left or right', /action ab -> \[mod:promo-flow\] Sam answered the blind pick p1 \(Which end card\?\): Left\. Run: promo flow ab pick p1 --side left/.test(log()), log().slice(0, 300));
     window.harness.setStage('autopilot'); await wait(400); window.harness.setStage('review'); await wait(900);
     await click('[data-k=as-a1]');
@@ -532,6 +535,7 @@ EXTRAS = [
     ("compose-draft-520", "review", 520, 900, False, "", [click("#btnSecondary")]),
     ("compose-storyboard-380", "storyboard", 380, 780, True, "", [click("#btnSecondary"), "(() => { const t = document.getElementById('note'); t.value = 'Scene 04 needs a slower fade, and make the end frame of 06 brighter.'; t.dispatchEvent(new Event('input')); })()"]),
     ("picks-520", "pick", 520, 900, False, "", ["document.querySelector('.choice input').click()"]),
+    ("blind-pick-sent-520", "review", 520, 900, False, "", [click("[data-k=pk-p1-left]"), "document.querySelector('.pick-card').scrollIntoView()"]),
     ("scene-comments-900", "storyboard-notes", 900, 1100, False, "", ["document.getElementById('scene-A-02').scrollIntoView()", click("[data-k='note-A-03']"),
      typein("#note", "Slow the push-in a little.")]),
     ("scene-count-520", "storyboard-notes", 520, 900, False, "", []),
