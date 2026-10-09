@@ -89,7 +89,7 @@
   function missingRule(doc, gateName) {
     if (gateName !== "assets-approved") return null;
     const n = missingAll(doc);
-    return n ? { disabled: true, count: n, note: n + " " + (n === 1 ? "file is" : "files are") + " missing. Send changes so the agent attaches " + (n === 1 ? "it" : "them") + "." } : null;
+    return n ? { disabled: true, count: n, note: n + " " + (n === 1 ? "file is" : "files are") + " missing. Add changes so the agent attaches " + (n === 1 ? "it" : "them") + "." } : null;
   }
 
   /* Nobody approves what they cannot see: a placeholder is not a preview. The storyboard gate needs every START/END/mid frame as an image,

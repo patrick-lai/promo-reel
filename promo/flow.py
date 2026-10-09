@@ -867,17 +867,17 @@ def _gate(pd, st):
     if past:
         x = past[0]
         return dict(gate=x["gate"], kind="approve", question=f"{x['label']} changed after you approved it. Approve it again?", approve_label="Approve again",
-                    changes_label="Send changes", options=[], stale=True, stage=x["id"])
+                    changes_label="Add changes", options=[], stale=True, stage=x["id"])
     if stage == "pick" and a is None and st["scripts"] and not gate_ok(pd, st, "scripts-picked"):
         a = dict(question="Which script(s) should go to storyboards?", options=_script_options(st))
     if stage in ("scripts", "pick") and a is not None:
-        return dict(gate="scripts-picked", kind="pick", question=a["question"], approve_label="Continue", changes_label="Send changes", options=a["options"],
+        return dict(gate="scripts-picked", kind="pick", question=a["question"], approve_label="Continue", changes_label="Add changes", options=a["options"],
                     picks_min=1, picks_max=MAX_PICKS, stage=stage)
     kinds = dict(discover=("style", "style"), storyboard=("storyboard-approved", "approve"), assets=("assets-approved", "approve"),
                  confirm=("final-confirmation", "confirm"), drafts=("draft-approved", "draft"), review=("draft-approved", "draft"))
     if a is None or stage not in kinds:
         return None
-    labels = dict(style=("Use this style", "Describe another"), approve=("Approve", "Send changes"), confirm=("Generate drafts", "Not yet"), draft=("Approve", "Feedback and iterate"))
+    labels = dict(style=("Use this style", "Describe another"), approve=("Approve", "Add changes"), confirm=("Generate drafts", "Not yet"), draft=("Approve", "Feedback and iterate"))
     g, k = kinds[stage]
     out = dict(gate=g, kind=k, question=a["question"], approve_label=labels[k][0], changes_label=labels[k][1], options=a["options"] if k == "style" else [], stage=stage)
     if any(x["id"] == stage for x in stale):

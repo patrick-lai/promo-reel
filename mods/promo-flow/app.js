@@ -1842,18 +1842,18 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       m.mode = "work"; m.done = done;
       const yours = !done && d.summary && d.summary.badge === "waiting";
       m.note = done ? (el.sc.clientWidth < 440 ? "Download above." : "Download above, or ask for changes.") : yours ? "Recorded it? Press Send files, then tell the agent where " + (captureNeeded() === 1 ? "the file is" : "each file is") + "." : fin.registered ? "A final is registered, but its file is missing." : "Waiting on the agent. Nothing for you to do yet.";
-      m.secondary = done ? "Ask for changes" : yours ? "" : "Send changes";
+      m.secondary = done ? "Ask for changes" : yours ? "" : "Add a note";
       if (yours) m.primary = "Send files";
       m.changes = "changes"; m.placeholder = done ? "What should change in the final?" : yours ? "Where are the recordings? Paste the file paths, or say they are attached in the chat." : "Add a note for the agent."; m.sendLabel = yours ? "Send" : "Send note";
       return m;
     }
     m.changes = g.kind === "draft" && used < max ? "feedback" : "changes";
-    m.secondary = g.kind === "draft" && used >= max ? "Restate direction" : g.kind === "style" ? "" : g.kind === "pick" ? "Ask for other stories" : g.changes_label || "Send changes";
+    m.secondary = g.kind === "draft" && used >= max ? "Restate direction" : g.kind === "style" ? "" : g.kind === "pick" ? "Ask for other stories" : g.changes_label || "Add changes";
     m.sendLabel = g.kind === "draft" ? (used >= max ? "Send direction" : "Send feedback") : g.kind === "style" ? "Send style" : "Send changes";
     m.placeholder = { style: "Describe the style you want, or paste a reference link.", approve: "What should change? Name the scene or asset if you can.", confirm: "What needs to happen before drafts?",
       draft: used >= max ? "All " + max + " rounds are used. Say what direction you want instead." : "What should change in the draft?" }[g.kind] || "What should change?";
     m.round = used + 1; m.max = max;
-    m.note = { style: "Choose a style, or describe your own.", approve: g.stale ? "Look it over, then approve again or send changes." : "Approve to move on, or send changes.", confirm: "",
+    m.note = { style: "Choose a style, or describe your own.", approve: g.stale ? "Look it over, then approve again or add changes." : "Approve to move on, or add changes.", confirm: "",
       draft: used >= max ? "All " + max + " rounds are used." : "Approve it, or send feedback for round " + (used + 1) + " of " + max + ".", pick: "" }[g.kind] || "";
     if (g.kind === "pick") {
       const n = S.picks.size;
@@ -1903,7 +1903,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       m.note = nav ? wait + " Meanwhile, " + m.note.charAt(0).toLowerCase() + m.note.slice(1) : wait + " Decide when it finishes.";
     } else if (apLive() && m.mode === "gate") { m.apStop = true; m.primary = "Stop and show me the draft"; m.primaryDisabled = false; m.secondary = ""; m.note = "The agent is working on its own."; }
     const jv0 = hasDoc() && d.job && d.job.state === "stopped" ? PF.jobView(d.job, Date.now()) : null;
-    if (jv0 && jv0.resume && m.mode === "gate" && !S.compose) { m.carryOn = jv0; m.primary = "Ask the agent to carry on"; m.primaryDisabled = false; m.note = jv0.title + ". Carry on, or review and send changes."; }
+    if (jv0 && jv0.resume && m.mode === "gate" && !S.compose) { m.carryOn = jv0; m.primary = "Ask the agent to carry on"; m.primaryDisabled = false; m.note = jv0.title + ". Carry on, or review and add changes."; }
     else if (jv0 && m.mode === "gate" && !S.compose && (PF.previewRule(d, g && g.gate) || PF.missingRule(d, g && g.gate))) { m.makeRest = true; m.primary = "Make the remaining " + Math.max(0, jv0.total - jv0.done) + " " + (jv0.total - jv0.done === 1 ? jv0.one : jv0.many); m.primaryDisabled = false; m.note = "Make the rest to carry on" + (m.reviewStory ? ", then open story " + m.reviewStory.board + "." : "."); m.reviewStory = null; m.reviewTab = null; }
     const pend = hasDoc() && m.mode === "gate" && m.g && m.g.kind === "draft" ? PF.forYou(d).pairs.length : 0;
     if (pend && !m.carryOn && !m.apStop && !m.makeRest) { m.pendPick = true; m.note = "Pick an end card to approve, or send feedback" + (m.round && m.max ? " (round " + m.round + " of " + m.max + ")" : "") + "."; }

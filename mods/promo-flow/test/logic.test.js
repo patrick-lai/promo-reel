@@ -86,8 +86,8 @@ test("seen-story rule: every story must be opened in the tab the gate decides on
 test("missing-file rule: Approve is blocked at the assets gate, plural-correct", () => {
   const one = { assets: [asset("a", "image", "real", "ready", ["01"], bad)] };
   const two = { assets: [asset("a", "image", "real", "ready", ["01"], bad), asset("b", "music", "licensed", "ready", ["01"], null)] };
-  assert.equal(L.missingRule(one, "assets-approved").note, "1 file is missing. Send changes so the agent attaches it.");
-  assert.equal(L.missingRule(two, "assets-approved").note, "2 files are missing. Send changes so the agent attaches them.");
+  assert.equal(L.missingRule(one, "assets-approved").note, "1 file is missing. Add changes so the agent attaches it.");
+  assert.equal(L.missingRule(two, "assets-approved").note, "2 files are missing. Add changes so the agent attaches them.");
   assert.equal(L.missingRule(one, "storyboard-approved"), null);
   assert.equal(L.missingRule({ assets: [asset("a", "image", "real", "ready", ["01"])] }, "assets-approved"), null);
 });
