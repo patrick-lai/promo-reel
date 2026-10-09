@@ -374,3 +374,19 @@ test("the message for the agent names the files, the note and the rows still wai
   assert.match(m, /Do not approve anything\.$/);
   assert.doesNotMatch(L.filesMessage([{ name: "a.mov" }], "", []), /note|waiting/);
 });
+
+test("space plays or pauses the video being watched, and leaves typing, buttons and the page alone", () => {
+  const v = (paused, extra) => ({ paused, ended: false, isConnected: true, ...extra });
+  const open = v(true), playing = v(false), idle = v(true), gone = v(true, { isConnected: false });
+  assert.equal(L.spaceVideo([idle, playing], open, idle), open);          // the open clip wins
+  assert.equal(L.spaceVideo([idle, playing], null, idle), playing);       // else the one that is playing
+  assert.equal(L.spaceVideo([idle], null, idle), idle);                   // else the last one played, so space can resume it
+  assert.equal(L.spaceVideo([idle], null, null), null);                   // nothing played yet: space keeps scrolling
+  assert.equal(L.spaceVideo([idle], null, gone), null);
+  assert.equal(L.spaceFree("DIV", false, false), true);
+  assert.equal(L.spaceFree("TEXTAREA", false, false), false);
+  assert.equal(L.spaceFree("DIV", true, false), false);                   // contenteditable
+  assert.equal(L.spaceFree("VIDEO", false, false), false);                // its own controls handle it
+  assert.equal(L.spaceFree("BUTTON", false, false), false);
+  assert.equal(L.spaceFree("BUTTON", false, true), true);                 // Close button of the open clip
+});

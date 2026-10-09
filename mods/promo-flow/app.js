@@ -1800,6 +1800,23 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     }
   });
 
+  /* Space plays / pauses the video being watched, wherever the focus is (the clip's own controls already do it when it has focus). */
+  ctx.root.addEventListener("play", (e) => { if (e.target && e.target.tagName === "VIDEO") S.lastVid = e.target; }, true);
+  let spaceHeld = false;
+  ctx.root.addEventListener("keydown", (e) => {
+    if (e.key !== " " || e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || S.modal) return;
+    const t = (e.composedPath && e.composedPath()[0]) || e.target;
+    if (!PF.spaceFree(t && t.tagName, t && t.isContentEditable, LB.open)) return;
+    const v = PF.spaceVideo([...el.lb.querySelectorAll("video"), ...el.content.querySelectorAll("video")], LB.open ? el.lb.querySelector("video") : null, S.lastVid);
+    if (!v) return;
+    e.preventDefault();
+    spaceHeld = true;
+    if (e.repeat) return;
+    if (v.paused) v.play().catch(() => {}); else v.pause();
+  });
+  /* A focused button would also click on the key coming up; the clip took the key, so swallow that. */
+  ctx.root.addEventListener("keyup", (e) => { if (e.key === " " && spaceHeld) { spaceHeld = false; e.preventDefault(); } });
+
   /* ----- assets ----- */
   const RANK = { missing: 0, mock: 1, ready: 2, todo: 3 };
   const KIND_GROUP = { recording: "footage", video: "footage", screenshot: "stills", image: "stills", music: "music", voice: "voice", sfx: "sfx" };

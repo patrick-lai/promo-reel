@@ -474,7 +474,21 @@
       + " Copy each into the project's footage folder, register real footage with promo footage add (and promo flow asset add --force --source real --path FILE --how \"...\" for the matching row), look at it, then publish the new state. Do not approve anything.";
   }
 
-  const api = { FILES_TAB, FILES_MAX, fileProblem, addFiles, filesMessage, isVideoFile, WIDGET_TAB, WIDGET_PX, widgetsFor, widgetHeight, widgetDoc, themeCss, widgetMessage, settleWait, SETTLE_GAP_MS, PREVIEW_POLL_MS, commentCount, forYou, canAutopilot, jobView, clockS, aboutS, arr, mref, fileBad, missingFile, missingAll, hasPreview, noFrame, sceneStatus, model, finalState, missingRule, previewRule, bodyOf, downloadName, textFileName, wordsOf, parseBlocks, inline, plain, paginate, outline, findPages, markSplit, readMinutes, frameTimeline, DENSITY_CHOICES, clockT, shareRows, outputProblem, previewOutput, outputDirty };
+  /* Space plays or pauses the video the person is watching: the lightbox clip, else one that is playing, else the last one they played. Before anything has played, space keeps scrolling the page. */
+  function spaceVideo(vids, lightbox, last) {
+    const live = arr(vids).filter((v) => v && v.isConnected !== false);
+    if (lightbox) return lightbox;
+    return live.find((v) => !v.paused && !v.ended) || (last && last.isConnected !== false ? last : null);
+  }
+  /* Space belongs to the thing that has focus when it types or presses (and to a video's own controls); a bare page or the open clip's Close button hands it to the video. */
+  function spaceFree(tag, editable, lightboxOpen) {
+    const t = String(tag || "").toUpperCase();
+    if (editable || t === "INPUT" || t === "TEXTAREA" || t === "SELECT" || t === "VIDEO" || t === "AUDIO" || t === "A" || t === "SUMMARY") return false;
+    if (t === "BUTTON") return !!lightboxOpen;
+    return true;
+  }
+
+  const api = { spaceVideo, spaceFree, FILES_TAB, FILES_MAX, fileProblem, addFiles, filesMessage, isVideoFile, WIDGET_TAB, WIDGET_PX, widgetsFor, widgetHeight, widgetDoc, themeCss, widgetMessage, settleWait, SETTLE_GAP_MS, PREVIEW_POLL_MS, commentCount, forYou, canAutopilot, jobView, clockS, aboutS, arr, mref, fileBad, missingFile, missingAll, hasPreview, noFrame, sceneStatus, model, finalState, missingRule, previewRule, bodyOf, downloadName, textFileName, wordsOf, parseBlocks, inline, plain, paginate, outline, findPages, markSplit, readMinutes, frameTimeline, DENSITY_CHOICES, clockT, shareRows, outputProblem, previewOutput, outputDirty };
   root.PF = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof window !== "undefined" ? window : globalThis);
