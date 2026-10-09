@@ -247,7 +247,7 @@ class Spec:
         return sum(s.n for s in self.shots)
 
     def validate(self):
-        """Structural checks that do not need media: contiguity, beat range, known shot types."""
+        """Structural checks that do not need media: contiguity, beat range, known shot types, audio `fx` values."""
         errs = []
         shots = self.shots
         if not shots:
@@ -260,6 +260,12 @@ class Spec:
                     errs.append(f"shots {a.id} and {b.id} are not contiguous ({a.b1} != {b.b0})")
             if shots[-1].b1 != self.timeline.beats:
                 errs.append(f"last shot ends at beat {shots[-1].b1}, timeline has {self.timeline.beats}")
+        from . import audiofx
+        for where, fx in audiofx.spec_fx(self.raw):
+            try:
+                audiofx.resolve(fx, where)
+            except SpecError as e:
+                errs.append(str(e))
         return errs
 
     # -- subtree hashing (for stamps)

@@ -50,6 +50,7 @@ Pick the **style preset** first (`promo styles`): `hero` (calm VO-led hero), `an
 - `output` (name, resolution 1080|2160, fps, duration), `timeline` (bpm, beats), `style` (font, caption zone).
 - `shots`: id, `beats: [start, end]`, `type` (`clip`, `card`, or a project plugin type from `shots.py`), `source: <clip id from footage/manifest.yaml>` + `t_in`/`speed` or `segs`, camera keys `cam: [[t, cx, cy, w], ...]` (normalised: centre x/y and box width as a fraction of the source width; smaller w = tighter), overlays (`caption`, `text`, `pill`, `scrim`), `sfx` events, `contact_at`.
 - `music` (asset, bpm, track grid, edit segments on bar lines), `vo` (engine, voice, lines with shot + `at`), `sfx` library, `mix` (bus levels, ducking, masters), `qa` thresholds.
+- Sound character (old radio, tape, telephone, vinyl): an `fx:` key on `vo`, a VO line, `music` or `mix` (`promo fx list`, `promo fx audition <wav>`; `promo/audiofx.py`). Do not build it from a noise bed.
 Talk-show layouts with Live2D hosts use the `livestream` shot type plus a show-level `livestream:` block. See
 `projects/live2d-demo/promo.yaml`, `live2d/README.md` and **`docs/live2d-licences.md`**. Only Live2D Original
 Characters are allowed; the copyright notice goes on the `live2d_credits` end card (gated) and in the description.

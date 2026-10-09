@@ -6,6 +6,8 @@ SFX library entries may carry `duck_music: {db, dur}` (music dips under that SFX
 {variants, gain_jitter [lo, hi], pan_jitter, seed} with ONE seeded rng consumed in event order (same as legacy).
 Clip audio (events.json `clips`, promo/shot_audio.py): bus vo is placed in the vo stem and ducks music (+ sfx by duck.clip_sfx_db);
 bus amb is gain only (bus_db.amb, own stem). mix-report.json `clips` lists each line's measured lufs / peak after its db.
+Character effects (promo/audiofx.py): vo.fx / vo.lines[].fx on each VO line before its levelling (amount keyframes in film seconds),
+music.fx on the music bed, mix.fx on the summed mix before mastering (the stems stay without it).
 Outputs: build/audio/mix-<master>.wav, build/audio/stems/{music,sfx,vo[,amb]}.wav, build/audio/mix-report.json
 """
 from __future__ import annotations
@@ -19,6 +21,7 @@ import soundfile as sf
 from scipy.ndimage import minimum_filter1d
 from scipy.signal import resample_poly
 
+from . import audiofx
 from .assets import asset_path, load_manifest
 from .events import events_path
 from .music import music_path
@@ -116,6 +119,7 @@ def run(spec, force=False):
     music = load(music_path(spec), SR) if spec.raw.get("music") else np.zeros((N, 2))   # music bed is optional
     if len(music) != N:                      # equal for a well-formed spec; pad/trim so a rounded duration still mixes
         music = np.vstack([music, np.zeros((max(0, N - len(music)), 2))])[:N]
+    music = audiofx.apply(music, SR, (spec.raw.get("music") or {}).get("fx"), where="music.fx")
     sfx = np.zeros((N, 2))
     vo = np.zeros((N, 2))
     lib = spec.raw.get("sfx", {}).get("library", {})
@@ -147,6 +151,8 @@ def run(spec, force=False):
         # for full-scale Kokoro output) -> the master's true-peak limiter (4x oversampled) at the master ceiling
         x, sr0 = sf.read(os.path.join(spec.vo_dir, line["file"]), always_2d=True)
         x = x.astype(np.float64)
+        lid = str(line.get("id", line["shot"]))
+        x = audiofx.apply(x, sr0, audiofx.line_fx(spec.raw, lid), t0=t, where=f"vo line {lid} fx")
         meter = pyln.Meter(sr0)
         L = meter.integrated_loudness(x) if len(x) > sr0 * 0.5 else -20
         x = x * db(cfg.get("vo_line_lufs", -16.0) - L)
@@ -191,6 +197,7 @@ def run(spec, force=False):
     BUS = {"music": -5.0, "sfx": -8.0, "vo": 1.5, "amb": 0.0}
     BUS.update(cfg.get("bus_db", {}))
     mix = music_d * db(BUS["music"]) + sfx * db(BUS["sfx"]) + vo * db(BUS["vo"]) + amb * db(BUS["amb"])
+    mix = audiofx.apply(mix, SR, cfg.get("fx"), where="mix.fx")
     sd = os.path.join(spec.audio_dir, "stems")
     os.makedirs(sd, exist_ok=True)
     stems = [("music", music_d), ("sfx", sfx * db(BUS["sfx"])), ("vo", vo * db(BUS["vo"]))]

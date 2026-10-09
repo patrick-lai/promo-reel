@@ -147,6 +147,10 @@ reference. Structurally prevent that:
    `promo footage add` (sha256, commit, URL params, dpr). Reference clips by id; never by path.
 4. **Spec**: `promo new <name>` scaffolds `projects/<name>/`. Fill `promo.yaml` (timeline, shots, overlays, sfx, vo, mix, qa) and
    `assets.yaml` (music/vo/sfx/font with licence + source_url). Custom shot types go in the project `shots.py` via `@shot_type`.
+   **Sound character** (old radio, tape, telephone, vinyl): never hand-roll it in a project script or fake it with a noise bed. Set `fx:` on
+   `vo` (or one line), `music` or `mix` (the whole mix): `fx: vintage`, or `{preset: radio, amount: [[0, 1], [35, 0]], hiss: {db: -48}}`
+   (amount keyframes in film seconds; `promo fx list` shows each preset's stages). A steady light crackle under everything = `mix: {fx: crackle}`. The character is in the sound itself, the noise stays
+   50-60 dB under it. Before you commit to one, `promo fx audition <voice.wav>` renders every preset to compare by ear.
 5. **Build**: `promo build` (idempotent; only changed shots re-render). Iterate on one shot with `promo shot 05`, look with `promo segpeek 05`.
    Heavy steps (build/shot/sfx/music/mix/assemble/contact/check) take a box-wide lock other heavy jobs on the machine can share (set `PROMO_HEAVY_LOCK` to the same path as e.g. your test gates, or `promo config heavy-lock PATH`; default `/tmp/promo-reel-heavy.lock`)
    themselves (`promo/lock.py`) and wait while another job holds it. Run them niced (`nice -n 10 python -m promo ...`);
@@ -164,6 +168,7 @@ reference. Structurally prevent that:
 - `promo styles`; `promo new <name> --style hero|anime-opening|livestream`; `promo grid` (bars, beats, markers of `timeline.grid`)
 - `promo status [--json]` what is up-to-date / stale / missing; `promo timeline`, `promo assets`, `promo footage list|verify|add`
 - `promo build [--shots 05 06] [--force] [--scale 2]`; `promo shot <id...>`; `promo sfx|vo|music|events|mix|assemble|contact`
+- `promo fx list | apply IN OUT --preset P [--amount A] [--set stage.param=V] | audition IN [--out DIR]` (radio / tape / vintage / telephone / vinyl / crackle on any file)
 - `promo brief init|show|check|confirm|conflict --project projects/<name>`; `promo refs add|check|show`; `promo compare-ref <draft.mp4> --project projects/<name>` (STEP 0)
 - `promo critique-pack [projects/<name>] [--out DIR] [--no-check] [--video]` (review folder for a reviewer model; holds the lock)
 - `promo flow share detect|draft|final [N] --to artifacts|loom --by NAME [--access private|open|shared]` (the person's upload; see THE FLOW)

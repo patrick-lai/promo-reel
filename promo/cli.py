@@ -58,7 +58,7 @@ def _sfx_outputs(spec):
 
 def plan(spec):
     """Ordered build steps: dicts(name, key, dig() -> str, outputs, run(args), deps). `dig` is lazy (may hash big files)."""
-    from . import assemble, contact, events, mix, music, vo
+    from . import assemble, audiofx, contact, events, mix, music, vo
     from .events import events_path
     from .music import music_path
     from .render import RenderContext
@@ -114,7 +114,7 @@ def plan(spec):
         clip_sigs = {l["id"]: file_sig(l["file"]) for l in shot_audio.lines(spec)}
         return digest(spec.raw.get("mix"), spec.raw.get("sfx"), spec.duration, file_sig(events_path(spec)), clip_sigs,
                       file_sig(music_path(spec)) if spec.raw.get("music") else None,
-                      file_sig(vj), vo_sigs, sfx_sigs, code_hash("mix"))
+                      file_sig(vj), vo_sigs, sfx_sigs, audiofx.spec_fx(spec.raw), code_hash("mix", "audiofx"))
     add("mix", "mix", mix_dig, [mix.master_path(spec, m["name"]) for m in spec.masters], lambda a: mix.run(spec),
         deps=["sfx", "vo", "events"] + (["clip-audio"] if shot_audio.has_lines(spec) else []) + (["music"] if spec.raw.get("music") else []))
     outs = [spec.output_path(m.get("suffix", "")) for m in spec.masters]
@@ -466,6 +466,7 @@ def build_parser():
     mp.add_argument("out")
     mp.add_argument("specs", nargs="+")
     sub.add_parser("watch", help="watch a video (file/URL): contact sheets, cut stills, transcript, audio + pacing metrics (see `promo watch -h`)")
+    sub.add_parser("fx", help="audio character effects (radio, tape, vintage, telephone, vinyl, crackle): list | apply | audition (see `promo fx -h`)")
     sub.add_parser("gen", help="generated images/video for non-UI plates (backgrounds, transitions): detect | image | video | plan (see `promo gen -h`)")
     sub.add_parser("brief", help="the locked brief (the user's exact words + references): init | show | check | confirm | conflict (see `promo brief -h`)")
     sub.add_parser("screen-quad", help="track the monitor quad of a generated plate (clip id or file): per-second quads + debug PNG (see `promo screen-quad -h`)")
@@ -604,6 +605,9 @@ def main(argv=None):
     if argv[:1] == ["screen-quad"]:     # `promo screen-quad <plate-clip-id|file> [-p promo.yaml]`: track a plate's monitor quad, print it, draw a debug PNG
         from . import screentrack
         return screentrack.main(argv[1:])
+    if argv[:1] == ["fx"]:              # `promo fx list|apply|audition`: radio / tape / ... on any audio file (no promo.yaml needed)
+        from . import audiofx
+        return audiofx.main(argv[1:])
     if argv[:1] == ["gen"]:             # `promo gen detect|image|video|plan`: generated NON-UI plates via the logged-in grok / codex CLIs
         from . import genvideo as G
         return G.main(argv[1:])
