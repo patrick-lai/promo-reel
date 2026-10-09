@@ -303,6 +303,45 @@ UICHECK = r"""(async () => {
     await wait(500);
     ok('the request reaches the agent', /action request -> \[mod:promo-flow\] Sam asked you to add to the plan \(looking at the Plan tab\): Add a shot list for story B/.test(log()), log().slice(0, 400));
   }
+  if (step === 'widgets') {
+    await click('#tab-widgets');
+    ok('the workbench lists the widgets placed there', QA('.wg').length === 4 && +Q('.tab[data-tab=widgets] .n').textContent === 4, QA('.wg').length + ' cards, badge ' + Q('.tab[data-tab=widgets] .n').textContent);
+    ok('blocks are drawn by the Stage', QA('.wg[data-kind=blocks] .wb-stats dd').length === 3 && QA('.wg .md-tbl tbody tr').length === 4 && !!Q('.wb-bars') && !!Q('.wb-callout.tone-warn') && QA('.wb-check li.done').length === 2);
+    ok('an attached image loads into its block', await until(() => { const i = Q('.wb-image img'); return i && i.naturalWidth > 0; }));
+    const frames = QA('.wg-frame');
+    ok('html widgets run in frames with no same-origin access', frames.length === 2 && frames.every((f) => f.getAttribute('sandbox') === 'allow-scripts'), frames.map((f) => f.getAttribute('sandbox')).join('|'));
+    ok('a narrow pane stacks every widget', (() => { const a = Q('.wg[data-w=model]').getBoundingClientRect(), b = Q('.wg[data-w=settings]').getBoundingClientRect(); return b.top > a.top && Math.abs(b.left - a.left) < 4; })());
+    await click('#tab-plan');
+    await click('[data-k="q-Custom panel"]');
+    ok('asking for a custom panel opens the request box', !Q('#compose').hidden && /custom panel/i.test(Q('#note').value));
+    Q('#note').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await click('#tab-widgets');
+    const probe = Q('.wg[data-w=probe]');
+    ok('a frame sends its message to the person first', await until(() => probe.querySelector('.wg-tell')), 'no tell bar');
+    ok('the bar quotes the message and nothing has been sent', /Use this still as the title card background/.test(probe.querySelector('.wg-tell-t').textContent) && !/action widget/.test(log()));
+    ok('auto height follows the widget content', probe.querySelector('iframe').getBoundingClientRect().height >= 100 && probe.querySelector('iframe').getBoundingClientRect().height < 400, probe.querySelector('iframe').style.height);
+    await click('[data-k=wt-send-probe]');
+    await wait(500);
+    ok('Send hands the message to the agent', /action widget -> \[mod:promo-flow\] Sam sent you a message from the panel "Attached still" \(probe\): Use this still as the title card background/.test(log()), log().slice(0, 300));
+    ok('and the bar is gone', !probe.querySelector('.wg-tell'));
+    await click('[data-k=wg-big-model]');
+    ok('Larger takes the full row and a taller frame', Q('.wg[data-w=model]').dataset.big === '1' && Q('.wg[data-w=model] iframe').getBoundingClientRect().height > 560, Q('.wg[data-w=model] iframe').style.height);
+    const seen = [];
+    const on = (e) => seen.push(e.data);
+    window.addEventListener('message', on);
+    const evil = window.document.createElement('iframe');
+    evil.setAttribute('sandbox', 'allow-scripts');
+    evil.srcdoc = PF.widgetDoc('<script>const r = []; const t = (f) => { try { f(); r.push("reached"); } catch (e) { r.push("blocked"); } };' +
+      't(() => parent.document.title); t(() => localStorage.length); t(() => document.cookie.length);' +
+      'fetch("https://example.com/").then(() => r.push("reached"), () => r.push("blocked")).then(() => { const i = new Image(); i.onload = () => r.push("reached"); i.onerror = () => { r.push("blocked"); parent.postMessage({ pf: "tell", text: r.join(" ") }, "*"); }; i.src = "https://example.com/x.png"; });<\/script>', {});
+    window.document.body.append(evil);
+    await until(() => seen.some((d) => d && d.pf === 'tell'));
+    window.removeEventListener('message', on); evil.remove();
+    ok('a widget cannot reach the Stage, storage, cookies or the network', (seen.find((d) => d && d.pf === 'tell') || {}).text === 'blocked blocked blocked blocked blocked', JSON.stringify(seen.find((d) => d && d.pf === 'tell')));
+    await click('#tab-storyboard');
+    ok('a widget placed on a tab sits at the top of it', !!Q('.wg[data-w=grade]') && QA('.wg[data-w=grade] .wb-gal img').length >= 0 && !!Q('.wg[data-w=grade] .md-p'), '');
+    ok('and its gallery loads both stills', await until(() => QA('.wg[data-w=grade] .wb-gal img').length === 2 && QA('.wg[data-w=grade] .wb-gal img').every((i) => i.naturalWidth > 0)));
+  }
   if (step === 'dense') {
     await click('[data-k=sbv-time]');
     const figs = QA('.tl-fig').length, badge = +Q('[data-k=sbv-time] .n').textContent;
@@ -413,9 +452,21 @@ UICHECK = r"""(async () => {
 })()"""
 
 
+WIDE = r"""(async () => {
+  const root = window.harness.root, wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  root.querySelector('#tab-widgets').click(); await wait(500);
+  const a = root.querySelector('.wg[data-w=model]').getBoundingClientRect(), b = root.querySelector('.wg[data-w=settings]').getBoundingClientRect(), full = root.querySelector('.wg[data-w=render-queue]').getBoundingClientRect();
+  return [{ name: 'span puts widgets side by side on a wide pane, 8 and 4 of 12 columns', pass: Math.abs(a.top - b.top) < 4 && b.left > a.left && a.width > 1.8 * b.width && a.width < 2.2 * b.width, info: [a.left, a.width, b.left, b.width].join(' ') },
+    { name: 'a 12 column widget takes the whole row', pass: full.width > a.width + b.width, info: full.width }];
+})()"""
+
+
 def uicheck(sh):
     bad = 0
-    for st in ["starting", "plan", "dense", "pick", "review", "autopilot", "storyboard", "foryou-many"]:
+    for r in sh.js(WIDE, sh.open("widgets", 900, 1000, False)) or []:
+        bad += not r["pass"]
+        print(("ok   " if r["pass"] else "FAIL ") + f"widgets-wide: {r['name']}" + (f"  [{r['info']}]" if r["info"] and not r["pass"] else ""))
+    for st in ["starting", "plan", "widgets", "dense", "pick", "review", "autopilot", "storyboard", "foryou-many"]:
         mod = sh.open(st, 520, 1000, False)
         for r in sh.js(UICHECK, mod) or []:
             bad += not r["pass"]
@@ -600,6 +651,11 @@ EXTRAS = [
     ("plan-520", "plan", 520, 900, False, "", [click("#tab-plan")]),
     ("plan-380-dark", "plan", 380, 780, True, "", [click("#tab-plan")]),
     ("plan-900", "plan", 900, 900, False, "", [click("#tab-plan")]),
+    ("widgets-520", "widgets", 520, 1100, False, "", [click("#tab-widgets")]),
+    ("widgets-scrolled-520", "widgets", 520, 1100, False, "", [click("#tab-widgets"), scroll(1400)]),
+    ("widgets-380-dark", "widgets", 380, 900, True, "", [click("#tab-widgets")]),
+    ("widgets-900", "widgets", 900, 1000, False, "", [click("#tab-widgets")]),
+    ("widgets-pinned-520", "widgets", 520, 900, True, "", [click("#tab-storyboard")]),
     ("plan-empty-520", "scripts", 520, 900, True, "", [click("#tab-plan")]),
     ("plan-scrolled-520", "plan", 520, 900, True, "", [click("#tab-plan"), scroll(900)]),
     ("reader-520", "plan", 520, 900, False, "", [click("#tab-plan"), click('[data-k="open-doc:full-script-a"]')]),

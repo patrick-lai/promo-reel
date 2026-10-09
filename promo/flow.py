@@ -17,6 +17,8 @@ page (stepper, scripts, storyboards, assets, drafts, rounds) to show.
     promo flow script add ID --title T --logline L (--file F | --file - | --text T) ;  promo flow script append ID --file F      a script of any length, in parts
     promo flow recommend ID --why TEXT            mark the one script you would pick; the Stage shows a "Recommended" pill on it with the reason in a tooltip
     promo flow doc add ID --kind K --title T (--file F | --text T) ;  doc append|new KIND|list|rm|templates      planning documents shown in the Plan tab (shot list, edit plan, ...)
+    promo flow widget add ID --title T [--kind blocks|html] (--file F|-) [--attach NAME=PATH] [--place P --span 1-12 --height s|m|l|xl|auto --order N] ;  widget layout|list|rm|example
+                                                  a dynamic panel in the Stage for what the fixed tabs do not show (render queue, model viewer): blocks the Stage draws, or sandboxed html
     promo flow plan pack [--story A]              the whole production pack built from the storyboard: treatment, direction, shot list, edit, audio, capture, claims, deliverables, schedule
     promo flow scene note STORY SCENE --text T --by NAME ;  scene resolve STORY SCENE --note N --text WHAT      a comment the person left on a scene, and your answer to it
     promo flow story ID --title T --logline L ;  promo flow scene add|set|rm|list STORY ...      build and change a storyboard without writing JSON
@@ -83,6 +85,7 @@ from . import scout as SC
 from . import share as SH
 from . import storyboard as SB
 from . import versions as VR
+from . import widgets as WG
 from .compare_ref import CompareError
 from .home import resolve as _resolve
 
@@ -505,6 +508,63 @@ def doc_rm(pd, did):
     save(pd, st)
 
 
+def widget_put(pd, wid, title=None, kind=None, file=None, text=None, attach=None, summary=None, force=False, **layout):
+    """Add or replace a dynamic widget: a panel the agent builds when the fixed tabs cannot show what the job needs. `layout` is place, span, height, order."""
+    st = load(pd)
+    if not PD.valid_id(wid):
+        raise FlowError("a widget id is lower-case letters, digits, - and _ (e.g. `render-queue`, `turntable`)")
+    widgets = st.setdefault("widgets", [])
+    cur = next((x for x in widgets if x["id"] == wid), None)
+    if cur and not force:
+        raise FlowError(f"widget {wid} exists: `--force` replaces its content, `promo flow widget layout {wid} ...` only moves it")
+    body = _body(file, text)
+    kind = kind or (cur or {}).get("kind") or ("html" if body.lstrip().startswith("<") else "blocks")
+    if kind not in WG.KINDS:
+        raise FlowError(f"kind is one of {', '.join(WG.KINDS)}")
+    title = title or (cur or {}).get("title")
+    if not title:
+        raise FlowError("a new widget needs --title (what the person sees above it)")
+    layout = {k: v for k, v in layout.items() if v is not None}
+    WG.check_layout(**layout)
+    fd = fdir(pd)
+    files = dict((cur or {}).get("files") or {})
+    files.update(WG.attach(fd, wid, attach))
+    if len(files) > WG.MAX_FILES:
+        raise FlowError(f"at most {WG.MAX_FILES} attached files in one widget")
+    WG.write_content(fd, wid, kind, body, files)
+    base = cur or dict(place="workbench", span=12, height="m", order=len(widgets) + 1, created=now())
+    rec = dict(base, id=wid, title=title, kind=kind, files=files, summary=summary if summary is not None else base.get("summary") or "", updated=now(), **layout)
+    st["widgets"] = [rec if x["id"] == wid else x for x in widgets] if cur else widgets + [rec]
+    log(st, f"Added a widget: {title}" if not cur else f"Updated a widget: {title}")
+    save(pd, st)
+    return rec
+
+
+def widget_layout(pd, wid, **layout):
+    st = load(pd)
+    cur = next((x for x in st.get("widgets") or [] if x["id"] == wid), None)
+    if not cur:
+        raise FlowError(f"no widget {wid}: `promo flow widget list`")
+    layout = {k: v for k, v in layout.items() if v is not None}
+    if not layout:
+        raise FlowError("widget layout needs at least one of --place, --span, --height, --order")
+    WG.check_layout(**layout)
+    cur.update(layout, updated=now())
+    log(st, f"Moved a widget: {cur['title']}")
+    save(pd, st)
+
+
+def widget_rm(pd, wid):
+    st = load(pd)
+    cur = next((x for x in st.get("widgets") or [] if x["id"] == wid), None)
+    if not cur:
+        raise FlowError(f"no widget {wid}: `promo flow widget list`")
+    st["widgets"] = [x for x in st["widgets"] if x["id"] != wid]
+    WG.remove(fdir(pd), wid)
+    log(st, f"Removed a widget: {cur['title']}")
+    save(pd, st)
+
+
 def _tctx(pd, st, story):
     bds = boards(pd, st)
     if story and story not in [b[0] for b in bds]:
@@ -841,7 +901,7 @@ def status(pd):
     return dict(stage=st["stage"], label=LABEL[st["stage"]], cycle=st["cycle"], rounds_used=len(cycle_rounds(st)), rounds_max=MAX_ROUNDS,
                 checks=[dict(ok=o, text=t) for o, t in ch], ready=all(o for o, _ in ch), next=hints(pd, st), ask=ask(pd, st), ask_in_stage=ask_in_stage(pd, st),
                 needs=needs(pd, st), picks=st["picks"], gates={k: dict(by=v["by"], at=v["at"], fresh=gate_ok(pd, st, k)) for k, v in st["gates"].items()},
-                docs=[dict(id=d["id"], title=d["title"], kind=d["kind"]) for d in st.get("docs") or []], dashboard=os.path.join(fdir(pd), "dashboard.html"),
+                docs=[dict(id=d["id"], title=d["title"], kind=d["kind"]) for d in st.get("docs") or []], widgets=[dict(id=w["id"], title=w["title"], place=w["place"]) for w in st.get("widgets") or []], dashboard=os.path.join(fdir(pd), "dashboard.html"),
                 scoreboard=FC.scoreboard(st)["line"] if st["drafts"] else None, lessons=[x["line"] for x in LS.top(st.get("person"))],
                 autopilot=AU.view(st), round_brief=RB.brief_path(pd, open_round(st)) if open_round(st) else None, notes=RB.notes_path(pd))
 
@@ -1121,6 +1181,12 @@ def _fit_bodies(snap):
             break
         x["body"] = None
         x["body_note"] = f"Too long to show here ({x['words']:,} words). Ask the agent to split it into parts."
+    heavy = sorted((w for w in snap.get("widgets") or [] if w["html"] or w["data"]), key=lambda w: len(w["html"] or "") + sum(map(len, w["data"].values())), reverse=True)
+    for w in heavy:
+        if len(json.dumps(snap).encode()) <= budget:
+            break
+        w["html"], w["data"], w["blocks"] = None, {}, None
+        w["note"] = "Too big to show here. Ask the agent to slim this widget down."
     return snap
 
 
@@ -1135,6 +1201,11 @@ def _docs(pd, st):
                         source=d.get("source") or "agent", words=PD.words(text), headings=PD.headings(text, 40), preview=PD.preview(text), **_text_body(p)))
     out.sort(key=lambda x: (PD.GROUPS.index(x["group"]), x["updated"] or ""))
     return out
+
+
+def _widgets(pd, st):
+    """The dynamic widgets for the Stage, in grid order (place, then `order`)."""
+    return sorted((WG.view(fdir(pd), w, _media) for w in st.get("widgets") or []), key=WG.sort_key)
 
 
 def _steps(st, stale):
@@ -1231,7 +1302,7 @@ def snapshot(pd):
                 stage=st["stage"], stage_label=LABEL[st["stage"]], stage_since=since, cycle=st["cycle"], rounds_used=used, rounds_max=MAX_ROUNDS, steps=steps,
                 stale_steps=stale,
                 style=(st.get("discover") or {}) and dict(style=st["discover"].get("style"), refs=st["discover"].get("refs", []), no_refs=st["discover"].get("no_refs", False)) or None,
-                scripts=scripts, docs=docs, councils=councils, boards=bl, assets=assets, to_make=to_make, drafts=drafts, finals=finals, rounds=rounds,
+                scripts=scripts, docs=docs, widgets=_widgets(pd, st), councils=councils, boards=bl, assets=assets, to_make=to_make, drafts=drafts, finals=finals, rounds=rounds,
                 share=dict(destinations=[dict(id=d, label=SH.LABEL[d], note=SH.NOTE[d], in_place=d == "artifacts") for d in SH.available(st)]),
                 checks=[dict(ok=o, text=t) for o, t in pc], gate=gate, activity=_activity(st), job=job,
                 settings=dict(output=home.output_info(place["project"], place["repo"]), saved_in=os.path.abspath(pd)),
@@ -1256,7 +1327,7 @@ def _draft_extras(pd, st, i):
                 judged=AB.result(jp)["line"] if jp else None, restorable=os.path.isdir(os.path.join(fdir(pd), "versions", f"d{i + 1}")))
 
 
-PUBLISH_AFTER = {"init", "advance", "discover", "script", "recommend", "doc", "plan", "story", "scene", "density", "council", "approve", "asset", "frames", "make",
+PUBLISH_AFTER = {"init", "advance", "discover", "script", "recommend", "doc", "widget", "plan", "story", "scene", "density", "council", "approve", "asset", "frames", "make",
                  "draft", "round", "final", "revise", "note", "resume", "share", "check", "pin", "look", "restore", "ab", "autopilot", "assume", "lessons",
                  "recipe", "second-opinion", "scout", "notes"}
 PUBLISH_TIMEOUT_S = 300          # the host copies every frame and clip on publish
@@ -1299,6 +1370,8 @@ def status_text(s):
     L.append(f"next: {s['next']}")
     if s.get("docs"):
         L.append(f"plan documents: {', '.join(d['id'] for d in s['docs'])}")
+    if s.get("widgets"):
+        L.append(f"widgets: {', '.join(w['id'] for w in s['widgets'])}")
     if s["needs"]:
         L.append(f"to make: {len(s['needs'])} (promo flow needs)")
     if s.get("scoreboard"):
@@ -1532,6 +1605,24 @@ def _doc_cli(pd, a):
         print(f"document {a.id}: {n} words")
 
 
+def _widget_cli(pd, a):
+    layout = dict(place=a.place, span=a.span, height=a.height, order=a.order)
+    if a.action == "example":
+        print(WG.starter(a.id or "blocks"))
+    elif a.action == "list":
+        for w in _widgets(pd, load(pd)):
+            print(f"{w['id']:<20} {w['kind']:<7} {w['place']:<10} span {w['span']:<2} height {w['height']:<5} {w['title']}")
+    elif a.action == "rm":
+        widget_rm(pd, a.id)
+    elif a.action == "layout":
+        widget_layout(pd, a.id, **layout)
+    else:
+        if not a.id:
+            raise FlowError("widget add needs an id (e.g. `promo flow widget add turntable --title \"Turntable\" --span 6 --height l --file -`); `widget example blocks|html` prints a starter")
+        rec = widget_put(pd, a.id, a.title, a.kind, a.file, a.text, a.attach, a.summary, a.force, **layout)
+        print(f"widget {a.id} ({rec['kind']}): " + ("Workbench tab" if rec["place"] == "workbench" else f"top of the {rec['place']} tab") + f", span {rec['span']}, height {rec['height']}")
+
+
 def _scene_cli(pd, a):
     fd = fdir(pd)
     if a.op == "note":
@@ -1751,6 +1842,9 @@ def main(argv=None):
     p = P("recommend"); p.add_argument("id"); p.add_argument("--why", required=True)
     p = P("doc"); p.add_argument("action", choices=["add", "append", "new", "list", "rm", "templates"]); p.add_argument("id", nargs="?"); p.add_argument("--title"); p.add_argument("--kind")
     p.add_argument("--file"); p.add_argument("--text"); p.add_argument("--story"); p.add_argument("--summary"); p.add_argument("--force", action="store_true")
+    p = P("widget"); p.add_argument("action", choices=["add", "layout", "list", "rm", "example"]); p.add_argument("id", nargs="?"); p.add_argument("--title"); p.add_argument("--kind", choices=WG.KINDS)
+    p.add_argument("--file"); p.add_argument("--text"); p.add_argument("--attach", action="append"); p.add_argument("--summary"); p.add_argument("--force", action="store_true")
+    p.add_argument("--place"); p.add_argument("--span", type=int); p.add_argument("--height"); p.add_argument("--order", type=int)
     p = P("plan"); p.add_argument("action", choices=["pack"]); p.add_argument("--story"); p.add_argument("--force", action="store_true")
     p = P("story"); p.add_argument("id"); p.add_argument("--title"); p.add_argument("--logline"); p.add_argument("--aspect"); p.add_argument("--duration", type=float)
     p = P("scene"); p.add_argument("op", choices=["add", "set", "rm", "list", "note", "resolve"]); p.add_argument("story"); p.add_argument("id", nargs="?"); p.add_argument("--t", type=float, nargs=2, metavar=("START", "END"))
@@ -1836,6 +1930,8 @@ def main(argv=None):
             print(f"script {a.id} is recommended")
         elif a.cmd == "doc":
             _doc_cli(pd, a)
+        elif a.cmd == "widget":
+            _widget_cli(pd, a)
         elif a.cmd == "plan":
             made, kept = plan_pack(pd, a.story, a.force)
             print(f"plan pack: made {', '.join(made) or 'nothing'}" + (f"; kept {', '.join(kept)} (use --force to rebuild)" if kept else ""))

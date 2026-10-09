@@ -323,3 +323,42 @@ test("an update from the agent never repaints under a clip being watched, and wh
   assert.equal(L.settleWait({ userChanged: false, previewing: false, working: true, sinceBuild: L.SETTLE_GAP_MS + 1 }), 0);
   assert.equal(L.settleWait({ userChanged: false, previewing: false, working: false, sinceBuild: 0 }), 0);
 });
+
+const widget = (id, place, extra) => ({ id, place, title: id, kind: "blocks", span: 12, height: "m", ...extra });
+
+test("a tab shows the widgets placed on it, and nothing else", () => {
+  const doc = { widgets: [widget("a", "workbench"), widget("b", "assets"), widget("c", "workbench")] };
+  assert.deepEqual(L.widgetsFor(doc, "workbench").map((w) => w.id), ["a", "c"]);
+  assert.deepEqual(L.widgetsFor(doc, "assets").map((w) => w.id), ["b"]);
+  assert.deepEqual(L.widgetsFor({}, "workbench"), []);
+});
+
+test("a widget's height is its preset, taller when enlarged, and follows the content only when auto (within limits)", () => {
+  assert.equal(L.widgetHeight(widget("a", "workbench", { height: "l" }), 0, false), L.WIDGET_PX.l);
+  assert.equal(L.widgetHeight(widget("a", "workbench", { height: "l" }), 0, true), L.WIDGET_PX.xl);
+  const auto = widget("a", "workbench", { height: "auto" });
+  assert.equal(L.widgetHeight(auto, 0, false), L.WIDGET_PX.s);
+  assert.equal(L.widgetHeight(auto, 41, false), 120);
+  assert.equal(L.widgetHeight(auto, 333.2, false), 334);
+  assert.equal(L.widgetHeight(auto, 5000, false), 700);
+});
+
+test("the frame document carries the policy before anything the agent wrote, and the theme cannot break out of its style block", () => {
+  const doc = L.widgetDoc("<p id=x>hi</p>", { dark: true, ink: "#eee", accent: "red;}</style><script>alert(1)</script>" });
+  assert.ok(doc.indexOf("Content-Security-Policy") < doc.indexOf("<p id=x>"));
+  assert.match(doc, /default-src 'none'/);
+  assert.match(doc, /connect-src blob: data:/);
+  assert.ok(!doc.includes("<script>alert(1)"), "a theme value is plain CSS text");
+  assert.match(doc, /--pf-ink:#eee/);
+});
+
+test("only the messages the frame runtime sends are accepted from a frame", () => {
+  assert.deepEqual(L.widgetMessage({ pf: "size", h: 120 }), { kind: "size", h: 120 });
+  assert.deepEqual(L.widgetMessage({ pf: "tell", text: "  Render it  " }), { kind: "tell", text: "Render it" });
+  assert.equal(L.widgetMessage({ pf: "tell", text: "x".repeat(5000) }).text.length, 1500);
+  assert.deepEqual(L.widgetMessage({ pf: "error", text: "x is not defined" }), { kind: "error", text: "x is not defined" });
+  assert.equal(L.widgetMessage({ pf: "tell", text: "   " }), null);
+  assert.equal(L.widgetMessage({ pf: "size", h: "tall" }), null);
+  assert.equal(L.widgetMessage({ pf: "open-url", url: "https://x" }), null);
+  assert.equal(L.widgetMessage("tell"), null);
+});

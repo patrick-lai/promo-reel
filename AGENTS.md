@@ -7,7 +7,7 @@ Read it top to bottom before touching footage. The pipeline is mechanical; taste
 Where a step needs a human, it says **HUMAN**.
 
 > **New videos run through `promo flow`** (gated: discover, scripts, pick, storyboard, asset plan, keyframes, confirm, drafts, <= 5 council rounds, final; the person
-> approves every gate). See `skills/promo-reel/SKILL.md` THE FLOW and `evals/council-flow.md`. Sections 1-8 below are the details behind its stages. The person can ask the Stage for more at any time: a full script of any length, a shot list / edit plan / audio plan / capture checklist, the whole production pack (`promo flow plan pack`), more storyboard detail (`promo flow density --every 5`); see `skills/promo-reel/SKILL.md`.
+> approves every gate). See `skills/promo-reel/SKILL.md` THE FLOW and `evals/council-flow.md`. Sections 1-8 below are the details behind its stages. When a job needs something the fixed tabs do not show (3D / Blender work, a table of takes, a grade comparison), build a dynamic widget with `promo flow widget` (`skills/promo-reel/SKILL.md`). The person can ask the Stage for more at any time: a full script of any length, a shot list / edit plan / audio plan / capture checklist, the whole production pack (`promo flow plan pack`), more storyboard detail (`promo flow density --every 5`); see `skills/promo-reel/SKILL.md`.
 
 ## 0. Team rules (non-negotiable)
 1. **Real footage only.** Every UI frame comes from a real screen recording of the product (a real run, or the product's built-in demo mode, labelled internally as demo). No mock-ups, no AI-generated UI, no generative video of the product.

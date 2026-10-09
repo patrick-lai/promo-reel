@@ -9,13 +9,13 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   const STAGE_TAB = { scripts: "scripts", pick: "scripts", storyboard: "storyboard", assets: "assets", keyframes: "storyboard", confirm: "storyboard", drafts: "draft", review: "draft", final: "draft" };
   const BADGE_TEXT = { working: "With the agent", waiting: "Your turn", done: "Done", attention: "Needs attention" };
   const ACTION_WORD = { approve: "your approval", pick: "your picks", changes: "your changes", feedback: "your feedback", generate: "your request", request: "your request", scene_note: "your comment", density: "your request", share: "your upload request", settings: "your folder choice",
-    pin: "your note", restore: "your restore request", ab: "your pick", autopilot: "your go", overturn: "your change", forget: "your request" };
+    widget: "your message from the panel", pin: "your note", restore: "your restore request", ab: "your pick", autopilot: "your go", overturn: "your change", forget: "your request" };
   /* Composer kinds beyond plain changes/feedback: the button says what sending does. */
   const COMPOSE_SEND = { request: "Send request", overturn: "Send change", pin: "Pin note", scene: "Send comment" };
   const KIND_ICON = { script: "doc", treatment: "spark", shotlist: "table", direction: "film", edit: "cut", audio: "music", capture: "camera", schedule: "clock", deliverables: "download", risks: "shield", research: "link", review: "refresh", notes: "doc" };
   const QUICK = [["Full script", "Write the full script as a document I can read: voice-over, on-screen text and action for every scene."], ["Shot list", "Add a shot list: one row per shot with time, picture, camera, caption, voice and proof."],
     ["Edit plan", "Add an edit plan: the cut list on the timeline with transitions, rhythm and what holds still."], ["Audio plan", "Add an audio plan: voice lines, music cues, sound effects and mix targets."],
-    ["Capture checklist", "Add a capture checklist: every recording and screenshot to make, how, and in what state."], ["Everything for production", "Build the whole production pack: treatment, director's notes, shot list, edit plan, audio plan, capture checklist, claims and risks, deliverables and schedule."]];
+    ["Capture checklist", "Add a capture checklist: every recording and screenshot to make, how, and in what state."], ["Custom panel", "Build a custom panel (a widget) in the Stage for what the fixed tabs don't show, e.g. a render queue, a 3D turntable or a table of takes. It should show: "], ["Everything for production", "Build the whole production pack: treatment, director's notes, shot list, edit plan, audio plan, capture checklist, claims and risks, deliverables and schedule."]];
   const VERDICT = { yes: ["Intent matched", "ok"], partial: ["Partly matched", "warn"], no: ["Missed the intent", "bad"] };
   const KIND_LABEL = { screenshot: "Screenshot", image: "Image", recording: "Recording", video: "Video", music: "Music", voice: "Voice", sfx: "Sound effect" };
   const KIND_MEDIA = { screenshot: "image", image: "image", recording: "video", video: "video", music: "audio", voice: "audio", sfx: "audio" };
@@ -100,19 +100,23 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   /* A story has 30+ frames: asking the host for all of them at once made some time out on a cold load, so only a few requests are in flight. */
   const MAX_INFLIGHT = 6;
   const pumpMedia = () => { while (M.waiting.size < MAX_INFLIGHT && M.queue.length) M.queue.shift()(); };
+  /* Ask the host for one file; `asBlob` hands the Blob itself back (for a widget frame, which makes its own object URL) instead of a URL of ours. */
+  function requestMedia(r, asBlob) {
+    return new Promise((resolve, reject) => {
+      const id = "m" + ++M.seq;
+      M.queue.push(() => {
+        const timer = setTimeout(() => { M.waiting.delete(id); reject(new Error("The host did not answer in time.")); pumpMedia(); }, 30000);
+        M.waiting.set(id, { resolve, reject, timer, r, asBlob });
+        post({ type: "media", id, upload_id: r.upload_id });
+      });
+      pumpMedia();
+    });
+  }
   function getMedia(r) {
     const hit = M.cache.get(r.upload_id);
     if (hit) return hit.p;
     const entry = { kind: mkind(r), url: null };
-    entry.p = new Promise((resolve, reject) => {
-      const id = "m" + ++M.seq;
-      M.queue.push(() => {
-        const timer = setTimeout(() => { M.waiting.delete(id); reject(new Error("The host did not answer in time.")); pumpMedia(); }, 30000);
-        M.waiting.set(id, { resolve, reject, timer, r });
-        post({ type: "media", id, upload_id: r.upload_id });
-      });
-      pumpMedia();
-    }).then((url) => { entry.url = url; return url; }, (e) => { M.cache.delete(r.upload_id); throw e; });
+    entry.p = requestMedia(r, false).then((url) => { entry.url = url; return url; }, (e) => { M.cache.delete(r.upload_id); throw e; });
     M.cache.set(r.upload_id, entry);
     return entry.p;
   }
@@ -134,7 +138,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     if (m.blob) {
       let b = m.blob;
       if (!b.type && w.r.mime) b = new Blob([b], { type: w.r.mime });
-      w.resolve(URL.createObjectURL(b));
+      w.resolve(w.asBlob ? b : URL.createObjectURL(b));
     } else w.reject(new Error(m.error || "The file is not available."));
   }
   function revoke(id) {
@@ -208,6 +212,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     root.dataset.theme = dark ? "dark" : "light";
     if (reduce != null) el.app.dataset.motion = reduce ? "reduce" : "";
     applyTokens(tokens);
+    pushTheme();
   }
 
   /* ---------------- derived view data ---------------- */
@@ -238,6 +243,8 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     if (b) t.push({ id: "storyboard", label: "Storyboard", n: arr(b.scenes).length });
     if (arr(d.assets).length) { const m = model(); t.push({ id: "assets", label: "Assets", n: m.total, title: "Assets: " + m.total + " rows for this story (" + m.n.ready + " ready, " + m.n.mock + " mock, " + m.n.todo + " to make" + (m.n.missing ? ", " + m.n.missing + " missing" : "") + ")" }); }
     if (arr(d.docs).length || (arr(d.scripts).length && stageIdx() >= STAGE_IDS.indexOf("scripts"))) t.push({ id: "plan", label: "Plan", n: readables().length || null, title: "Plan: full scripts and production documents. Ask the agent to add more." });
+    const wn = PF.widgetsFor(d, "workbench").length;
+    if (wn) t.push({ id: PF.WIDGET_TAB, label: "Workbench", n: wn, title: "Workbench: panels the agent built for this job" });
     if (arr(d.drafts).length || arr(d.finals).length || arr(d.rounds).length || stageIdx() >= STAGE_IDS.indexOf("drafts")) t.push({ id: "draft", label: "Drafts", n: arr(d.drafts).length + arr(d.finals).length || null });
     return t;
   }
@@ -545,11 +552,12 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     const d = S.doc;
     const common = withChecks ? [d.stage, d.checks, d.gate && d.gate.kind, d.gate && d.gate.picks_max, d.stale_steps, d.stage_since] : [d.stage];
     if (S.reader) { const it = findReadable(S.reader.key); return [it && [it.title, it.words, it.body, it.updated]]; }
-    if (tab === "scripts") return [d.scripts, d.intent, common];
-    if (tab === "storyboard") return [d.boards, d.stage === "confirm" ? d.assets.map((a) => [a.kind, a.source, a.scenes]) : 0, d.stage === "keyframes" ? d.to_make : 0, common];
-    if (tab === "assets") return [d.assets, d.to_make, d.boards, common];
-    if (tab === "draft") return [d.drafts, d.finals, d.rounds, d.rounds_used, d.rounds_max, d.share, common];
-    if (tab === "plan") return [d.docs, d.scripts, d.boards && d.boards.map((b) => b.id), d.lessons, common];
+    if (tab === PF.WIDGET_TAB) return [PF.widgetsFor(d, "workbench")];
+    if (tab === "scripts") return [d.scripts, d.intent, common, PF.widgetsFor(d, tab)];
+    if (tab === "storyboard") return [d.boards, d.stage === "confirm" ? d.assets.map((a) => [a.kind, a.source, a.scenes]) : 0, d.stage === "keyframes" ? d.to_make : 0, common, PF.widgetsFor(d, tab)];
+    if (tab === "assets") return [d.assets, d.to_make, d.boards, common, PF.widgetsFor(d, tab)];
+    if (tab === "draft") return [d.drafts, d.finals, d.rounds, d.rounds_used, d.rounds_max, d.share, common, PF.widgetsFor(d, tab)];
+    if (tab === "plan") return [d.docs, d.scripts, d.boards && d.boards.map((b) => b.id), d.lessons, common, PF.widgetsFor(d, tab)];
     return [d.intent, d.style, common];
   }
   /* A clip the person is watching (playing, or just paused or scrubbed) is never rebuilt under them by an agent update. */
@@ -575,6 +583,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     else if (isStarting()) sig = "start";
     else if (S.settingsOpen) sig = "settings|" + JSON.stringify([S.doc.settings, S.readonly, S.offline, !!S.pending, !!S.justSent, !!S.sending, S.err]);
     else if (!list.length) sig = "overview|" + JSON.stringify([sliceFor(null, true), gate(), S.style, S.readonly, !!S.pending]);
+    else if (S.tab === PF.WIDGET_TAB && !S.reader) sig = "widgets|" + JSON.stringify(sliceFor(S.tab, false)) + S.readonly;
     else if (S.reader) sig = "reader|" + S.reader.key + "|" + JSON.stringify(sliceFor(S.tab, false)) + S.readonly;
     else sig = S.tab + "|" + [...S.picks].join() + "|" + S.style + S.boardIdx + S.draftSel + S.earlier + S.filter + S.readonly + !!S.pending + !!S.justSent + !!S.sending + S.sbView + S.docGroup + S.docQ + (S.compose ? S.composeKind : "") + jobRunning()
       + "\u0001" + JSON.stringify(sliceFor(S.tab, true)) + "|" + JSON.stringify([S.doc.pairs, S.doc.assumptions, S.doc.autopilot]);
@@ -608,7 +617,9 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     else if (S.settingsOpen) view = viewSettings();
     else if (!list.length) view = viewOverview();
     else if (S.reader) view = viewReader(S.reader, false);
-    else view = ({ scripts: viewScripts, storyboard: viewStoryboard, assets: viewAssets, draft: viewDraft, plan: viewPlan }[S.tab] || viewOverview)();
+    else view = ({ scripts: viewScripts, storyboard: viewStoryboard, assets: viewAssets, draft: viewDraft, plan: viewPlan, [PF.WIDGET_TAB]: viewWorkbench }[S.tab] || viewOverview)();
+    const pinned = S.tab && S.tab !== PF.WIDGET_TAB && !S.settingsOpen && !S.reader && hasDoc() && readable() ? PF.widgetsFor(S.doc, S.tab) : [];
+    if (pinned.length) (view.querySelector(":scope > .stack") || view).prepend(widgetGrid(pinned));
     const fy = !S.settingsOpen && !S.reader && hasDoc() && readable() ? forYou() : null;
     if (fy) { const rc = S.tab === "draft" && S.doc.stage !== "final" && el.sc.clientWidth >= 760 ? view.querySelector(".rounds-col") : null; if (rc) rc.prepend(fy); else if (S.doc.stage === "final") view.append(fy); else view.prepend(fy); }
     el.content.replaceChildren(view);
@@ -620,6 +631,135 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     if (S.scrollHook) S.scrollHook();
   }
   el.sc.addEventListener("scroll", () => { if (S.scrollHook) { cancelAnimationFrame(S.raf); S.raf = requestAnimationFrame(S.scrollHook); } }, { passive: true });
+
+  /* ---------------- dynamic widgets ----------------
+     Panels the agent builds when the fixed tabs cannot show what a job needs. `blocks` widgets are drawn here from a fixed set of block types; `html` widgets run in
+     a sandboxed frame (no network, opaque origin) that talks to this code only through postMessage (size, tell). The grid and each widget's span / height are the agent's layout. */
+  const W = { frames: new Set(), big: new Set(), tells: new Map() };
+  const themeNow = () => {
+    const cs = getComputedStyle(root), g = (n) => cs.getPropertyValue(n).trim();
+    return { dark: root.dataset.theme === "dark" || (root.dataset.theme !== "light" && !!window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches), ink: g("--c-ink"), dim: g("--c-dim"), well: g("--c-well"), raised: g("--c-raised"), line: g("--c-line"), accent: g("--c-accent") };
+  };
+  const liveFrames = () => { for (const f of [...W.frames]) if (!f.iframe.isConnected) W.frames.delete(f); return [...W.frames]; };
+  function pushTheme() { const t = themeNow(); for (const f of liveFrames()) if (f.up && f.iframe.contentWindow) f.iframe.contentWindow.postMessage({ pf: "theme", theme: t }, "*"); }
+
+  function widgetFrame(w, card) {
+    const frame = { w, iframe: h("iframe", { class: "wg-frame", title: w.title, sandbox: "allow-scripts", referrerpolicy: "no-referrer", loading: "lazy" }), up: false, reported: 0, card };
+    const size = () => { frame.iframe.style.height = PF.widgetHeight(w, frame.reported, W.big.has(w.id)) + "px"; };
+    frame.size = size;
+    size();
+    frame.iframe.addEventListener("load", () => {
+      const win = frame.iframe.contentWindow;
+      if (!win) return;
+      frame.up = true;
+      win.postMessage({ pf: "init", data: w.data || {}, names: Object.keys(w.files || {}), theme: themeNow() }, "*");
+      for (const [name, f] of Object.entries(w.files || {})) {
+        const r = mref(f);
+        if (!r || r.error) { win.postMessage({ pf: "file", name, error: (r && r.error) || "This file could not be attached." }, "*"); continue; }
+        getBlob(r).then((blob) => frame.iframe.contentWindow && frame.iframe.contentWindow.postMessage({ pf: "file", name, blob }, "*"),
+          (e) => frame.iframe.contentWindow && frame.iframe.contentWindow.postMessage({ pf: "file", name, error: e.message }, "*"));
+      }
+    });
+    frame.iframe.srcdoc = PF.widgetDoc(w.html, themeNow());
+    W.frames.add(frame);
+    return frame.iframe;
+  }
+  const getBlob = (r) => requestMedia(r, true);
+
+  /* The frame's only way to speak: its size, and a message for the agent that goes out only when the person presses Send. */
+  function onFrameMessage(e) {
+    const f = liveFrames().find((x) => x.iframe.contentWindow === e.source);
+    const m = f && PF.widgetMessage(e.data);
+    if (!m) return;
+    if (m.kind === "size") { f.reported = m.h; if (f.w.height === "auto") f.size(); return; }
+    W.tells.set(f.w.id, m.kind === "error" ? "The panel \u201c" + f.w.title + "\u201d hit an error: " + m.text + " Please fix it." : m.text);
+    tellBar(f.card, f.w);
+  }
+  window.addEventListener("message", onFrameMessage);
+
+  function tellBar(card, w) {
+    const text = W.tells.get(w.id);
+    let bar = card.querySelector(".wg-tell");
+    if (!text) { if (bar) bar.remove(); return; }
+    const row = h("div", { class: "wg-tell", role: "group", "aria-label": "Message from " + w.title },
+      h("span", { class: "wg-tell-t", text: "“" + clip(text, 160) + "”" }),
+      h("button", { type: "button", class: "btn primary sm", "data-k": "wt-send-" + w.id, text: "Send to the agent", onclick: () => {
+        if (!canAsk()) { toast("The agent is busy with your last message. Try again in a moment."); return; }
+        W.tells.delete(w.id); tellBar(card, w);
+        send("widget", { widget: w.id, title: w.title, text });
+      } }),
+      h("button", { type: "button", class: "btn ghost sm", "data-k": "wt-no-" + w.id, text: "Dismiss", onclick: () => { W.tells.delete(w.id); tellBar(card, w); } }));
+    if (bar) bar.replaceWith(row); else card.append(row);
+  }
+
+  function blockView(b) {
+    const title = b.title ? h("div", { class: "wb-t", text: b.title }) : null;
+    const wrap = (cls, ...kids) => h("div", { class: "wb wb-" + b.type + (cls ? " " + cls : "") }, title, ...kids);
+    const media = (name, build, caption) => {
+      const r = mref(name), slot = h("div", { class: "wb-media", style: "position:relative" });
+      if (!r || r.error) slot.append(h("div", { class: "mid bad", role: "alert" }, ic("alert"), h("span", { text: (r && r.error) || "This file is not available." })));
+      else lazyInto(slot, r, build, { compact: true });
+      return h("figure", { class: "wb-fig" }, slot, caption ? h("figcaption", { class: "sub", text: caption }) : null);
+    };
+    switch (b.type) {
+      case "text": return wrap("md", PF.parseBlocks(b.text).map((x) => blockNode(x)).filter(Boolean));
+      case "callout": return wrap("tone-" + b.tone, h("p", { text: b.text }));
+      case "stats": return wrap("", h("dl", { class: "wb-stats" }, b.items.map((it) => h("div", null, h("dt", { text: it.label }), h("dd", { text: it.value }), it.hint ? h("span", { class: "sub", text: it.hint }) : null))));
+      case "kv": return wrap("", h("dl", { class: "wb-kv" }, b.items.map((it) => h("div", null, h("dt", { text: it.key }), h("dd", { text: it.value })))));
+      case "list": return wrap("", h(b.ordered ? "ol" : "ul", { class: "wb-list" + (b.ordered ? " ord" : "") }, b.items.map((t) => h("li", { text: t }))));
+      case "checklist": return wrap("", h("ul", { class: "wb-check" }, b.items.map((it) => h("li", { class: it.done ? "done" : "" }, h("span", { class: "md-box" + (it.done ? " on" : ""), role: "img", "aria-label": it.done ? "Done" : "Not done" }, it.done ? ic("check") : null), h("span", { text: it.text })))));
+      case "table": return wrap("", h("div", { class: "md-tbl", tabindex: "0", role: "region", "aria-label": b.title || "Table" }, h("table", null,
+        h("thead", null, h("tr", null, b.columns.map((c) => h("th", { scope: "col", text: c })))),
+        h("tbody", null, b.rows.map((r) => h("tr", null, b.columns.map((_, i) => h("td", { text: r[i] == null ? "" : r[i] }))))))));
+      case "bars": {
+        const top = Math.max(...b.items.map((x) => x.value), 0) || 1;
+        return wrap("", h("ul", { class: "wb-bars" }, b.items.map((it) => h("li", null, h("span", { class: "wb-bl", text: it.label }),
+          h("span", { class: "wb-bt", "aria-hidden": "true" }, h("i", { style: "width:" + Math.round(Math.max(0, it.value) / top * 100) + "%" })), h("span", { class: "wb-bv", text: num(it.value) + (b.unit ? " " + b.unit : "") })))));
+      }
+      case "progress": return wrap("", h("div", { class: "wb-pl" }, h("span", { text: b.label }), h("b", { text: Math.round(b.value * 100) + "%" })),
+        h("div", { class: "ap-bar", role: "progressbar", "aria-label": b.label, "aria-valuemin": "0", "aria-valuemax": "100", "aria-valuenow": String(Math.round(b.value * 100)) }, h("i", { style: "width:" + Math.round(b.value * 100) + "%" })));
+      case "code": return wrap("", h("pre", { class: "md-code", tabindex: "0" }, h("code", { text: b.text })));
+      case "image": return wrap("", media(b.file, (u) => h("img", { src: u, alt: b.caption || b.title || "" }), b.caption));
+      case "video": return wrap("", media(b.file, (u) => h("video", { src: u, controls: "", preload: "metadata", playsinline: "", "aria-label": b.caption || b.title || "Video" }), b.caption));
+      case "audio": return wrap("", media(b.file, (u) => h("audio", { src: u, controls: "", preload: "metadata", "aria-label": b.caption || b.title || "Audio" }), b.caption));
+      case "gallery": return wrap("", h("div", { class: "wb-gal" }, b.files.map((f) => media(f, (u) => {
+        const r = mref(f);
+        return r && mkind(r) === "video" ? h("video", { src: u, controls: "", preload: "metadata", playsinline: "" }) : h("img", { src: u, alt: "" });
+      }))));
+      default: return null;
+    }
+  }
+
+  function widgetCard(w) {
+    const card = h("section", { class: "card wg", "data-w": w.id, "data-kind": w.kind, "data-big": W.big.has(w.id) ? "1" : null, style: "--span:" + Math.min(12, Math.max(1, w.span || 12)), "aria-label": w.title });
+    const body = h("div", { class: "wg-body" });
+    const head = h("header", { class: "wg-h" }, h("b", { class: "wg-t", text: w.title }), w.summary ? h("span", { class: "sub wg-s", text: w.summary }) : null);
+    if (w.kind === "html" && w.html != null) {
+      head.append(h("button", { type: "button", class: "icon-btn wg-big", "data-k": "wg-big-" + w.id, "aria-pressed": W.big.has(w.id) ? "true" : "false", "aria-label": "Make " + w.title + " larger", title: "Larger / smaller", onclick: (e) => {
+        const on = !W.big.has(w.id);
+        on ? W.big.add(w.id) : W.big.delete(w.id);
+        card.dataset.big = on ? "1" : "";
+        e.currentTarget.setAttribute("aria-pressed", String(on));
+        const f = liveFrames().find((x) => x.card === card);
+        if (f) f.size();
+      } }, ic("expand")));
+    }
+    card.append(head, body);
+    if (w.note) body.append(h("div", { class: "mid bad wg-note", role: "alert" }, ic("alert"), h("span", { text: w.note })));
+    else if (w.kind === "html") body.append(widgetFrame(w, card));
+    else body.append(...arr(w.blocks).map(blockView).filter(Boolean));
+    tellBar(card, w);
+    return card;
+  }
+  /* A 12 column grid; a narrow pane stacks everything (the container query in the CSS), a wide one honours each widget's span. */
+  const widgetGrid = (list) => h("div", { class: "wg-grid", role: "group", "aria-label": "Panels" }, list.map(widgetCard));
+
+  function viewWorkbench() {
+    const list = PF.widgetsFor(S.doc, "workbench");
+    const box = h("div", { class: "stack" }, widgetGrid(list),
+      h("div", { class: "ask-row" }, h("button", { type: "button", class: "qchip", "data-k": "wg-ask", onclick: () => openRequest("Build a custom panel (a widget) in the Stage that shows: ", "What should the panel show? Edit the request if you like.", "a custom panel") }, ic("plus"), "Ask for another panel")));
+    return h("div", { class: "pane" }, box);
+  }
 
   /* ---------------- for you: blind picks, the agent's own choices, the autopilot run ---------------- */
   function forYou() {
@@ -2085,7 +2225,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       if (S.composeKind === "overturn") return send("overturn", { id: S.composeData.id, choice: S.composeData.choice, text });
       if (S.composeKind === "scene") return send("scene_note", { story: S.composeData.story, scene: S.composeData.scene, beat: S.composeData.beat, text });
       if (S.composeKind === "pin") return send("pin", { draft: S.composeData.draft, at: S.composeData.at, when: S.composeData.when, text });
-      if (S.composeKind === "request") return send("request", { text, where: ({ plan: "Plan", scripts: "Scripts", storyboard: "Storyboard", assets: "Assets", draft: "Drafts" })[S.tab] || "Stage" });
+      if (S.composeKind === "request") return send("request", { text, where: ({ plan: "Plan", scripts: "Scripts", storyboard: "Storyboard", assets: "Assets", draft: "Drafts", widgets: "Workbench" })[S.tab] || "Stage" });
       if (m.g && m.g.kind === "style") return send("changes", { stage: "discover", text: "Style: " + text + refTail() });
       if (m.changes === "feedback") return send("feedback", { round: m.round, max_rounds: m.max, text });
       return send("changes", { stage: m.stage, text });
@@ -2229,6 +2369,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     clearTimeout(S.bootTimer); clearTimeout(S.stallTimer); clearTimeout(S.introTimer); clearInterval(S.agoTimer); clearInterval(S.jobTimer);
     if (S.sending) clearTimeout(S.sending.timer);
     for (const id of [...M.cache.keys()]) revoke(id);
+    window.removeEventListener("message", onFrameMessage);
   }
   el.stepsBtn.addEventListener("click", () => { S.stepsOpen = !S.stepsOpen; renderHeader(); });
 

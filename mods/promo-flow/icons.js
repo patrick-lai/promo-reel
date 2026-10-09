@@ -32,6 +32,7 @@
     cut: '<circle cx="5.5" cy="14" r="2"/><circle cx="5.5" cy="6" r="2"/><path d="M7.2 7.2L17 14.5M7.2 12.8L17 5.5"/>',
     camera: '<rect x="3" y="6" width="14" height="10" rx="2"/><path d="M7 6l1.2-2h3.6L13 6"/><circle cx="10" cy="11" r="2.5"/>',
     shield: '<path d="M10 3l6 2.2v4.6c0 3.3-2.4 5.9-6 7.2-3.6-1.3-6-3.9-6-7.2V5.2z"/><path d="M7.5 10l2 2 3.5-4"/>',
+    expand: '<path d="M11.5 3.5h5v5M8.5 16.5h-5v-5M16.5 3.5L11 9M3.5 16.5L9 11"/>',
     folder: '<path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h3L9 7h6.5A1.5 1.5 0 0 1 17 8.5v6a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 14.5z"/>'
   };
   window.icon = function (name, cls) {

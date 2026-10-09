@@ -1,7 +1,7 @@
 {
   "id": "promo-flow",
   "name": "Promo flow",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "protocol": 2,
   "description": "Plan, storyboard and review a produced video with the person in the loop.",
   "entry": "index.html",
@@ -14,6 +14,7 @@
     "pick":     {"guard": {"state": "/gate/gate", "payload": "gate"}, "message": "[mod:promo-flow] {by} picked scripts {picks}. Run: promo flow approve scripts-picked --picks {picks} --by \"{by}\"."},
     "share":    {"message": "[mod:promo-flow] {by} wants {item} uploaded to {dest_label}. Run: promo flow share {kind} {n} --to {dest} --by \"{by}\", then publish the new state."},
     "generate": {"message": "[mod:promo-flow] {by} wants the real thing made, not placeholders: {what}. Run: promo flow make (frames, then asset samples), then publish the new state."},
+    "widget":   {"message": "[mod:promo-flow] {by} sent you a message from the panel \"{title}\" ({widget}): {text}. It is a request to change that panel or the video; do it (promo flow widget add --force | layout, or the usual flow commands), then publish the new state. Do not approve anything."},
     "request":  {"message": "[mod:promo-flow] {by} asked you to add to the plan (looking at the {where} tab): {text}. Do it with promo flow doc | plan pack | script | story | scene | density (see your skill, any length is fine), then publish the new state. Do not approve anything."},
     "density":  {"message": "[mod:promo-flow] {by} wants storyboard frames {what} for story {story}. Run: promo flow density --story {story} --every {every} (every 0 means --clear), then promo flow frames to draw them, then publish."},
     "resume":   {"message": "[mod:promo-flow] {by} wants the stopped run carried on ({what}). Run: {command}, then publish the new state."},

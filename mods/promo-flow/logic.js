@@ -392,6 +392,58 @@
     return { open: notes.filter((n) => !n.answer).length, total: notes.length };
   }
 
+  /* ---- dynamic widgets: panels the agent builds (blocks the Stage draws itself, or HTML run in a sandboxed frame) ---- */
+  const WIDGET_TAB = "widgets";
+  const WIDGET_PX = { s: 180, m: 300, l: 440, xl: 620 };
+  const WIDGET_AUTO = { min: 120, max: 700 };
+  /* The widgets that belong to a tab: the workbench tab shows the ones placed there, every other tab the ones pinned to its top. Order is the agent's. */
+  function widgetsFor(doc, place) {
+    return arr(doc && doc.widgets).filter((w) => w.place === place);
+  }
+  const widgetHeight = (w, reported, big) => {
+    if (big) return WIDGET_PX.xl;
+    if (w.height !== "auto") return WIDGET_PX[w.height] || WIDGET_PX.m;
+    return Math.min(WIDGET_AUTO.max, Math.max(WIDGET_AUTO.min, Math.ceil(reported || WIDGET_PX.s)));
+  };
+  /* A widget cannot reach the network or the Stage: the frame has an opaque origin and this policy only allows what it ships with and what it is handed. */
+  const WIDGET_CSP = "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' blob:; style-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; font-src data:; worker-src blob:; connect-src blob: data:";
+  const THEME_VARS = { ink: "--pf-ink", dim: "--pf-dim", well: "--pf-well", raised: "--pf-raised", line: "--pf-line", accent: "--pf-accent" };
+  const cssValue = (v) => String(v == null ? "" : v).replace(/[^\w #%.,()/-]/g, "");
+  function themeCss(theme) {
+    const t = theme || {};
+    return ":root{color-scheme:" + (t.dark ? "dark" : "light") + ";" + Object.keys(THEME_VARS).map((k) => THEME_VARS[k] + ":" + cssValue(t[k])).join(";") + "}";
+  }
+  /* What the frame's script offers the widget (promo.ready, promo.data, promo.file, promo.url, promo.theme, promo.onTheme, promo.tell) and how it answers the Stage. */
+  const WIDGET_RUNTIME = "(function(){var q={},fns=[],up=false;var P=window.promo={data:{},names:[],files:{},theme:{},onTheme:null," +
+    "ready:function(f){up?f(P):fns.push(f)}," +
+    "file:function(n){return new Promise(function(ok,no){if(P.files[n])return ok(P.files[n]);(q[n]=q[n]||[]).push([ok,no])})}," +
+    "url:function(n){return P.file(n).then(function(b){return URL.createObjectURL(b)})}," +
+    "tell:function(t){parent.postMessage({pf:'tell',text:String(t).slice(0,1500)},'*')}};" +
+    "function css(t){var r=document.documentElement.style;P.theme=t||{};r.colorScheme=P.theme.dark?'dark':'light';" +
+    "[['ink','--pf-ink'],['dim','--pf-dim'],['well','--pf-well'],['raised','--pf-raised'],['line','--pf-line'],['accent','--pf-accent']].forEach(function(p){if(P.theme[p[0]])r.setProperty(p[1],P.theme[p[0]])})}" +
+    "addEventListener('message',function(e){var m=e.data;if(e.source!==parent||!m||typeof m!=='object')return;" +
+    "if(m.pf==='init'){P.data=m.data||{};P.names=m.names||[];css(m.theme);up=true;fns.splice(0).forEach(function(f){f(P)})}" +
+    "else if(m.pf==='file'){var w=q[m.name]||[];delete q[m.name];if(m.blob){P.files[m.name]=m.blob;w.forEach(function(x){x[0](m.blob)})}else w.forEach(function(x){x[1](new Error(m.error||'file not available'))})}" +
+    "else if(m.pf==='theme'){css(m.theme);if(P.onTheme)P.onTheme(P.theme)}});" +
+    "function bad(t){parent.postMessage({pf:'error',text:String(t).slice(0,300)},'*')}" +
+    "addEventListener('error',function(e){bad(e.message||'script error')});addEventListener('unhandledrejection',function(e){bad(e.reason&&e.reason.message||e.reason)});" +
+    "function size(){parent.postMessage({pf:'size',h:Math.ceil(document.body.getBoundingClientRect().height)},'*')}" +
+    "addEventListener('load',function(){size();if(window.ResizeObserver)new ResizeObserver(size).observe(document.documentElement)});})();";
+  /* The whole document for the sandboxed frame: policy first (a policy in the widget's own HTML can only tighten it), then theme, then runtime, then the agent's HTML. */
+  function widgetDoc(html, theme) {
+    return '<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="' + WIDGET_CSP + '"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+      "<style>" + themeCss(theme) + "html,body{margin:0;background:transparent;color:var(--pf-ink);font:14px/1.45 ui-sans-serif,-apple-system,system-ui,sans-serif}*{box-sizing:border-box}</style>" +
+      "<script>" + WIDGET_RUNTIME + "</script></head><body>" + String(html || "") + "</body></html>";
+  }
+  /* A frame message is the widget's only way to speak: accept the shapes the runtime sends and nothing else. */
+  function widgetMessage(d) {
+    if (!d || typeof d !== "object") return null;
+    if (d.pf === "size" && Number.isFinite(d.h)) return { kind: "size", h: d.h };
+    if (d.pf === "error" && typeof d.text === "string") return { kind: "error", text: d.text.slice(0, 300) };
+    if (d.pf === "tell" && typeof d.text === "string" && d.text.trim()) return { kind: "tell", text: d.text.trim().slice(0, 1500) };
+    return null;
+  }
+
   /* How long a repaint of the open tab waits, in ms (0 = now). The person's own clicks always repaint at once; an update from the agent never
      rebuilds a clip being watched, and while the agent works it repaints at most once per `gap` so the page does not jump around. */
   const SETTLE_GAP_MS = 12000, PREVIEW_POLL_MS = 1500;
@@ -402,7 +454,7 @@
     return 0;
   }
 
-  const api = { settleWait, SETTLE_GAP_MS, PREVIEW_POLL_MS, commentCount, forYou, canAutopilot, jobView, clockS, aboutS, arr, mref, fileBad, missingFile, missingAll, hasPreview, noFrame, sceneStatus, model, finalState, seenRule, seenKey, missingRule, previewRule, bodyOf, downloadName, textFileName, wordsOf, parseBlocks, inline, plain, paginate, outline, findPages, markSplit, readMinutes, frameTimeline, DENSITY_CHOICES, clockT, shareRows, outputProblem, previewOutput, outputDirty };
+  const api = { WIDGET_TAB, WIDGET_PX, widgetsFor, widgetHeight, widgetDoc, themeCss, widgetMessage, settleWait, SETTLE_GAP_MS, PREVIEW_POLL_MS, commentCount, forYou, canAutopilot, jobView, clockS, aboutS, arr, mref, fileBad, missingFile, missingAll, hasPreview, noFrame, sceneStatus, model, finalState, seenRule, seenKey, missingRule, previewRule, bodyOf, downloadName, textFileName, wordsOf, parseBlocks, inline, plain, paginate, outline, findPages, markSplit, readMinutes, frameTimeline, DENSITY_CHOICES, clockT, shareRows, outputProblem, previewOutput, outputDirty };
   root.PF = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof window !== "undefined" ? window : globalThis);

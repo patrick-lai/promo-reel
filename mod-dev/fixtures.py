@@ -297,6 +297,93 @@ def gen_assets(pd, stage):
     write(p("flow", "samples.json"), json.dumps(samples))
 
 
+VIEWER_HTML = r"""<canvas id="c" aria-label="3D model, drag to turn"></canvas>
+<div class="bar"><label>Spin <input id="spin" type="range" min="0" max="3" step="0.1" value="0.6"></label><span id="info"></span><button id="ask">Render this angle</button></div>
+<style>#c{display:block;width:100%;height:calc(100% - 44px);cursor:grab;touch-action:none}.bar{display:flex;gap:12px;align-items:center;padding:8px 14px;border-top:1px solid var(--pf-line)}
+#info{flex:1;color:var(--pf-dim);font-size:12px}button{font:inherit;padding:5px 12px;border-radius:8px;border:1px solid var(--pf-line);background:var(--pf-raised);color:var(--pf-ink)}html,body{height:100%}input{accent-color:var(--pf-accent)}</style>
+<script>
+promo.ready(() => {
+  const V = [], E = new Set();
+  for (const l of promo.data["model.obj"].split("\n")) {
+    const p = l.trim().split(/\s+/);
+    if (p[0] === "v") V.push(p.slice(1).map(Number));
+    if (p[0] === "f") { const f = p.slice(1).map((x) => +x.split("/")[0] - 1); f.forEach((a, i) => { const b = f[(i + 1) % f.length]; E.add(a < b ? a + "," + b : b + "," + a); }); }
+  }
+  const edges = [...E].map((k) => k.split(",").map(Number));
+  const cv = document.getElementById("c"), cx = cv.getContext("2d"), spin = document.getElementById("spin");
+  let ay = 0.4, ax = 0.5, drag = null;
+  document.getElementById("info").textContent = V.length + " vertices, " + edges.length + " edges";
+  cv.addEventListener("pointerdown", (e) => { drag = [e.clientX, e.clientY]; cv.setPointerCapture(e.pointerId); });
+  cv.addEventListener("pointermove", (e) => { if (!drag) return; ay += (e.clientX - drag[0]) * 0.01; ax += (e.clientY - drag[1]) * 0.01; drag = [e.clientX, e.clientY]; });
+  cv.addEventListener("pointerup", () => { drag = null; });
+  document.getElementById("ask").onclick = () => promo.tell("Render the torus from this angle: yaw " + (ay % 6.283).toFixed(2) + ", pitch " + ax.toFixed(2));
+  (function frame() {
+    const w = cv.width = cv.clientWidth * 2, h = cv.height = cv.clientHeight * 2;
+    ay += +spin.value * 0.01;
+    const sy = Math.sin(ay), cy = Math.cos(ay), sx = Math.sin(ax), cxx = Math.cos(ax), k = Math.min(w, h) * 0.3;
+    const P = V.map(([x, y, z]) => { const x1 = x * cy + z * sy, z1 = -x * sy + z * cy, y1 = y * cxx - z1 * sx, z2 = y * sx + z1 * cxx; return [w / 2 + x1 * k, h / 2 + y1 * k, z2]; });
+    cx.clearRect(0, 0, w, h);
+    cx.strokeStyle = promo.theme.accent; cx.lineWidth = 1.5;
+    cx.beginPath();
+    for (const [a, b] of edges) { cx.moveTo(P[a][0], P[a][1]); cx.lineTo(P[b][0], P[b][1]); }
+    cx.stroke();
+    requestAnimationFrame(frame);
+  })();
+});
+</script>"""
+
+
+PROBE_HTML = r"""<p id="p" style="margin:0;padding:6px 14px 14px">Loading the still...</p>
+<script>
+promo.ready(() => promo.file("probe.png").then((b) => {
+  document.getElementById("p").textContent = "The widget read its attached still: " + b.type + ", " + b.size + " bytes. Theme is " + (promo.theme.dark ? "dark" : "light") + ".";
+  promo.tell("Use this still as the title card background");
+}));
+</script>"""
+
+
+def torus_obj(major=12, minor=8):
+    L = []
+    for i in range(major):
+        for j in range(minor):
+            u, v = 2 * math.pi * i / major, 2 * math.pi * j / minor
+            L.append(f"v {(1.1 + 0.45 * math.cos(v)) * math.cos(u):.4f} {0.45 * math.sin(v):.4f} {(1.1 + 0.45 * math.cos(v)) * math.sin(u):.4f}")
+    for i in range(major):
+        for j in range(minor):
+            a, b = i * minor + j + 1, ((i + 1) % major) * minor + j + 1
+            c, d = ((i + 1) % major) * minor + (j + 1) % minor + 1, i * minor + (j + 1) % minor + 1
+            L.append(f"f {a} {b} {c} {d}")
+    return "\n".join(L) + "\n"
+
+
+def add_widgets(tmp, pd):
+    """What an agent builds for a job the fixed tabs do not cover: a Blender render queue, a model viewer and a grade comparison."""
+    obj = os.path.join(tmp, "model.obj")
+    write(obj, torus_obj())
+    shots = []
+    for name, tint in (("turntable-120.png", (226, 214, 238)), ("grade-a.png", (238, 226, 206)), ("grade-b.png", (206, 222, 238))):
+        p = os.path.join(tmp, name)
+        still(p, name.split(".")[0], tint, (640, 360))
+        shots.append(p)
+    blocks = [
+        {"type": "stats", "items": [{"label": "Frames", "value": "240", "hint": "24 fps, 10 s"}, {"label": "Samples", "value": "128"}, {"label": "Per frame", "value": "1.5 min"}]},
+        {"type": "progress", "label": "Render queue: 3 of 5 shots", "value": 0.6},
+        {"type": "table", "title": "Shots", "columns": ["Shot", "Engine", "Frames", "Status"],
+         "rows": [["01 Orbit", "Cycles", "96", "done"], ["02 Dolly", "Cycles", "72", "done"], ["03 Macro", "Cycles", "48", "rendering"], ["04 Reveal", "Eevee", "24", "queued"]]},
+        {"type": "bars", "title": "Minutes per shot", "unit": "min", "items": [{"label": "01 Orbit", "value": 144}, {"label": "02 Dolly", "value": 108}, {"label": "03 Macro", "value": 31}]},
+        {"type": "callout", "tone": "warn", "text": "Shot 04 still needs the final HDRI before it can render."},
+        {"type": "checklist", "items": [{"text": "Bake the cloth sim", "done": True}, {"text": "Denoise pass", "done": True}, {"text": "Colour-managed export", "done": False}]},
+        {"type": "image", "file": "turntable-120.png", "caption": "Frame 120 of the turntable"}]
+    F.widget_put(pd, "render-queue", "Blender render queue", text=json.dumps(blocks), attach=[shots[0]], summary="Live from the scene file", span=12, order=1)
+    F.widget_put(pd, "model", "Model viewer", text=VIEWER_HTML, attach=[f"model.obj={obj}"], summary="Drag to turn it", span=8, height="l", order=2)
+    F.widget_put(pd, "settings", "Scene settings", text=json.dumps([
+        {"type": "kv", "items": [{"key": "Engine", "value": "Cycles"}, {"key": "Resolution", "value": "3840 x 2160"}, {"key": "Denoiser", "value": "OpenImageDenoise"}, {"key": "Colour", "value": "AgX"}]},
+        {"type": "list", "title": "Add-ons", "items": ["Hard Ops", "Node Wrangler", "Animation Nodes"]}]), span=4, height="l", order=3)
+    F.widget_put(pd, "probe", "Attached still", text=PROBE_HTML, attach=[f"probe.png={shots[0]}"], summary="A widget reading its own file", span=12, height="auto", order=4)
+    F.widget_put(pd, "grade", "Grade comparison", text=json.dumps([{"type": "gallery", "files": ["grade-a.png", "grade-b.png"]}, {"type": "text", "text": "**A** is warmer, **B** keeps the product blue. See the [notes](https://example.com/grade)."}]),
+                 attach=[f"grade-a.png={shots[1]}", f"grade-b.png={shots[2]}"], place="storyboard", span=12)
+
+
 def round_files(tmp, pd, n, verdict, feedback_urls=3):
     sha = BR.intent_sha(BR.load(pd))
     co = os.path.join(tmp, f"co{n}.md")
@@ -448,6 +535,11 @@ def _build(tmp):
               summary="Every scene with picture, voice and sound. 8 acts.")
     F.doc_put(pd, "research-notes", kind="research", text="# Research\n\n## What the references do well\n\n- Slow push-ins on real UI, never a mock-up\n- One idea per cut\n\nSee https://www.apple.com/newsroom/ and [Linear's changelog](https://www.linear.app/changelog).\n\nSafe by construction: <img src=x onerror=alert(1)> and [bad](javascript:alert(1)) stay plain text.\n")
     snap("plan")
+    add_widgets(tmp, pd)
+    snap("widgets")
+    st = F.load(pd)                                   # later states are without widgets; the files stay, the Stage serves them from disk
+    st["widgets"] = []
+    F.save(pd, st)
     fd = os.path.join(pd, "flow")
     bpa = os.path.join(fd, "boards", "A", "board.json")
     before = open(bpa).read()
@@ -591,7 +683,7 @@ def _build(tmp):
     uploaded(pd, "final", 1, "artifacts")
     snap("final")
     order = ["discover", "scripts", "pick", "storyboard", "storyboard-notes", "assets", "keyframes", "confirm", "drafts", "review", "autopilot", "final",
-             "generating", "generating-stopped", "building", "storyboard-partial", "plan", "dense", "assets-error", "stale-approval", "long-content", "foryou-many", "review-maxed"]
+             "generating", "generating-stopped", "building", "storyboard-partial", "plan", "widgets", "dense", "assets-error", "stale-approval", "long-content", "foryou-many", "review-maxed"]
     res = {k: out[k] for k in order}
     res["starting"] = {}
     res.update(picker_states(tmp, pd))
