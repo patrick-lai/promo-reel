@@ -35,7 +35,7 @@ page (stepper, scripts, storyboards, assets, drafts, rounds) to show.
                                                   a round writes flow/rounds/<c>-<n>/BRIEF.md (every sub-agent reads it first) and can close only when the person's
                                                   notes are checks, every check is measured on the new draft, nothing the reviewed draft got right broke, the hidden
                                                   control was caught, and a blind comparison did not prefer the reviewed draft (promo/flowcheck.py, promo/abtest.py)
-    promo flow check add|mark|marks|retire|list ; pin add --at S --text T --by NAME ; look [--draft N]
+    promo flow check add|mark|marks|retire|list ; pin add --at S --text T --by NAME | edit ID [--at S] [--text T] --by NAME | remove ID --by NAME ; look [--draft N]
     promo flow ab add|pick|drafts|judge|list ; restore --draft N [--scene ID] --by NAME | --undo K --by NAME
     promo flow autopilot start|pass begin|pass end|replan|pause|resume|stop|status ; assume add|overturn
     promo flow scout list|add|miss                real screens of the product as the app scenes' storyboard frames
@@ -1366,7 +1366,7 @@ def _draft_extras(pd, st, i):
                 board=dict({k: sb[k] for k in ("line", "fixed", "broken", "open", "held", "total", "passing")},
                            rows=[{k: x[k] for k in ("id", "what", "scene", "status", "change", "source")} for x in sb["rows"]]),
                 look=dict(mean=lk["mean"], scenes=[dict(scene=k, d=v["d"], pair=_media(v["pair"])) for k, v in sorted(lk["scenes"].items())]) if lk else None,
-                pins=[dict(id=p["id"], at_s=p["at_s"], scene=p.get("scene"), text=p["text"], by=p["by"]) for p in st.get("pins") or [] if p["draft"] == i + 1],
+                pins=[dict(id=p["id"], at_s=p["at_s"], scene=p.get("scene"), text=p["text"], by=p["by"]) for p in st.get("pins") or [] if p["draft"] == i + 1 and not p.get("removed")],
                 judged=AB.result(jp)["line"] if jp else None, restorable=os.path.isdir(os.path.join(fdir(pd), "versions", f"d{i + 1}")))
 
 
@@ -1855,8 +1855,20 @@ def _restore_cli(pd, a):
 
 
 def _pin_cli(pd, a):
-    pid, scene = FC.pin(pd, a.draft, a.at, a.text, a.by, a.scene, a.story)
-    print(f"pinned {pid}" + (f" on scene {scene}" if scene else "") + ": it goes into the next round as a check")
+    if a.action == "add":
+        if a.at is None or a.text is None:
+            raise FlowError("pin add needs --at and --text")
+        pid, scene = FC.pin(pd, a.draft, a.at, a.text, a.by, a.scene, a.story)
+        print(f"pinned {pid}" + (f" on scene {scene}" if scene else "") + ": it goes into the next round as a check")
+        return True
+    if not a.id:
+        raise FlowError(f"pin {a.action} needs the note's id (n1, n2, ...)")
+    if a.action == "edit":
+        scene = FC.pin_edit(pd, a.id, a.by, a.text, a.at)
+        print(f"changed {a.id}" + (f" (scene {scene})" if scene else "") + ": the next round checks the new words")
+    else:
+        FC.pin_remove(pd, a.id, a.by)
+        print(f"removed {a.id}: its check is retired")
     return True
 
 
@@ -1917,7 +1929,8 @@ def main(argv=None):
     p.add_argument("--by"); p.add_argument("--draft", type=int); g = p.add_mutually_exclusive_group(); g.add_argument("--pass", dest="ok", action="store_true", default=None)
     g.add_argument("--fail", dest="ok", action="store_false"); p.add_argument("--evidence"); p.add_argument("--family"); p.add_argument("--file"); p.add_argument("--why")
     p.add_argument("--json", action="store_true")
-    p = P("pin"); p.add_argument("action", choices=["add"]); p.add_argument("--draft", type=int); p.add_argument("--at", type=float, required=True); p.add_argument("--text", required=True)
+    p = P("pin"); p.add_argument("action", choices=["add", "edit", "remove"]); p.add_argument("id", nargs="?"); p.add_argument("--draft", type=int); p.add_argument("--at", type=float)
+    p.add_argument("--text")
     p.add_argument("--by", required=True); p.add_argument("--scene"); p.add_argument("--story")
     p = P("look"); p.add_argument("--draft", type=int); p.add_argument("--story")
     p = P("restore"); p.add_argument("--draft", type=int); p.add_argument("--scene"); p.add_argument("--shot", action="append", default=[]); p.add_argument("--undo", type=int)

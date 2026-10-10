@@ -107,11 +107,16 @@ Every path below that says `file` is `{"$file": "<absolute path>"}` (the host tu
 
 **Above every tab** (`PF.forYou`): an autopilot card while a run is on (clock, goal, "Stop and show me the draft"), each unanswered blind pick (Left / Right /
 No difference / Can't tell; disabled until both sides load) and the agent's choices with "Change this". **Drafts tab**, per draft: the check line of that file, the
-blind comparison, "Pin a note at this moment" (pauses the player, the note box asks "What should change at 0:14.5?"), the pinned notes (click seeks), the checks
+blind comparison, our own player (`player.js`: a mark on the seek bar per note, hover reads it, click edits, drag moves, N or double-click adds one at that
+moment; the storyboard's scenes under the bar, a frame preview on hover, the note shown over the picture as playback passes it, frame steps, J/K/L, loop
+in/out, speed, full screen, `?` lists the keys; the player is kept across repaints so the clip never reloads), the notes list (click seeks; New / Changed /
+Removing until sent), one "Send to the agent" for every unsent change (`PF.noteChange`, `notesView`, `notesUnsettled`: a sent change shows as sent until the
+published pins carry it), the checks
 with Fixed / Broken / Still open / Holds, the look pairs, "Let the agent keep working" (30 min / 1 hour / 2 hours, only on the latest draft with checks,
 `PF.canAutopilot`) and on earlier drafts "Go back to this version" (the whole draft asks twice; one scene from a select).
 
-Actions: `pin {draft, at, when, text}`, `restore {draft, scene, what}`, `ab {pair, side, label, question}`, `autopilot {op: start|stop, minutes, what}`,
+Actions: `pins {draft, count, list, ops}` (every note added, changed or removed since the last send; `list` is the numbered text the agent reads, `ops` the
+same as data; the agent runs `promo flow pin add|edit|remove` per change), `restore {draft, scene, what}`, `ab {pair, side, label, question}`, `autopilot {op: start|stop, minutes, what}`,
 `scene_note {story, scene, beat, text}` (a comment on one storyboard scene; the agent runs `promo flow scene note`, changes the scene, then `scene resolve`), `overturn {id, choice, text}`, `forget {id, text}`, `approve`, `pick`, `changes`, `feedback`, `generate {what}`, `widget {widget, title, text}` (a message the person sent from a widget's bar; the agent changes that panel or the video, then republishes), `request {text, where}` (an ask for content: documents, scripts, plans, scene changes), `density {story, every, what}` (every 0 = back to start and end frames); `share {kind: draft|final, n, item, dest, dest_label}` (the agent runs `promo flow share <kind> <n> --to <dest> --by NAME`), `settings {output}` (`home`, `repo`, `default` or a folder; the agent runs `promo config output`, then republishes).
 
 `gate.gate` is what the `approve` and `pick` actions guard on (`/gate/gate` vs payload `gate`). The first state after activation is `{}` with summary status "Starting": the app shows its Getting started screen with a light travelling the pane's border (`#glow`, mode `wait`); the first real state flashes it once (`arrive`, 1.6 s) and it goes quiet. Reduced motion keeps only the soft edge.

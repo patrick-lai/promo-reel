@@ -288,6 +288,48 @@ def pin(pd, n, at_s, text, by, scene=None, story=None):
     return pid, scene
 
 
+def _live_pin(st, pid):
+    p = next((x for x in st.get("pins") or [] if x["id"] == pid and not x.get("removed")), None)
+    if p is None:
+        raise F.FlowError(f"no pinned note {pid}: the Stage shows each note's id on the draft it is pinned to")
+    return p
+
+
+def pin_edit(pd, pid, by, text=None, at_s=None):
+    """The person rewords or moves a pinned note. A new wording or scene retires the old note's check (its marks stay with it) and makes a new one
+    for the round that takes it; a move inside the same scene keeps the check."""
+    if text is None and at_s is None:
+        raise F.FlowError("say what changes: --text, --at or both")
+    if at_s is not None and at_s < 0:
+        raise F.FlowError("--at is the moment in seconds (0 or more)")
+    st = F.load(pd)
+    p = _live_pin(st, pid)
+    text = p["text"] if text is None else " ".join(text.split())
+    story, scene = (p.get("story"), p.get("scene")) if at_s is None else scene_at(pd, st, at_s, p.get("story"))
+    cid = p["check"]
+    if text != p["text"] or scene != p.get("scene"):
+        retire(pd, cid, f"the person changed pinned note {pid}", by)
+        cid = add(pd, text, scene=scene, story=story, source="pin", by=by)
+        st = F.load(pd)
+        p = _live_pin(st, pid)
+    c = find(st, cid)
+    p.update(at_s=p["at_s"] if at_s is None else round(float(at_s), 2), scene=scene, story=story, text=c["what"], check=cid, round=c["round"], edited=F.now())
+    F.log(st, f"pin {pid} edited")
+    F.save(pd, st)
+    return scene
+
+
+def pin_remove(pd, pid, by):
+    """The person takes a pinned note back: its check is retired and the note leaves the draft."""
+    st = F.load(pd)
+    p = _live_pin(st, pid)
+    retire(pd, p["check"], f"the person removed pinned note {pid}", by)
+    st = F.load(pd)
+    _live_pin(st, pid)["removed"] = dict(by=F.human(by), at=F.now())
+    F.log(st, f"pin {pid} removed")
+    F.save(pd, st)
+
+
 # ---- the look against the references ---------------------------------------------------------------------------------------------------------
 LOOK_CHECK = "The look stays as close to the references as the best draft so far"
 

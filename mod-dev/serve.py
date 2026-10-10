@@ -187,10 +187,16 @@ def run_action(pd, name, payload):
         return {"ok": True, "message": "making frames and samples (promo flow make)", "pending": False}
     elif name == "share":
         return {"ok": True, "message": f"upload {payload['item']} to {payload['dest_label']}: `promo flow share {payload['kind']} {payload['n']} --to {payload['dest']} --by NAME` is the agent's to run", "pending": True}
-    elif name in ("pin", "ab", "forget", "overturn", "restore", "autopilot"):
+    elif name == "pins":
+        for o in payload["ops"]:
+            argv = dict(add=["pin", "add", "--draft", str(payload["draft"]), "--at", str(o.get("at")), "--text", str(o.get("text"))],
+                        edit=["pin", "edit", o["key"]] + (["--at", str(o["at"])] if "at" in o else []) + (["--text", o["text"]] if "text" in o else []),
+                        remove=["pin", "remove", o["key"]])[o["op"]]
+            if flow.main(["--project", pd, *argv, "--by", BY]) != 0:
+                return {"ok": False, "error": f"promo flow pin {o['op']} failed (see the harness console)", "pending": False}
+    elif name in ("ab", "forget", "overturn", "restore", "autopilot"):
         a = payload
-        argv = dict(pin=["pin", "add", "--draft", str(a.get("draft")), "--at", str(a.get("at")), "--text", str(a.get("text")), "--by", BY],
-                    ab=["ab", "pick", str(a.get("pair")), "--side", str(a.get("side")), "--by", BY],
+        argv = dict(ab=["ab", "pick", str(a.get("pair")), "--side", str(a.get("side")), "--by", BY],
                     forget=["lessons", "--forget", str(a.get("id")), "--by", BY],
                     overturn=["assume", "overturn", str(a.get("id")), "--text", str(a.get("text")), "--by", BY],
                     restore=["restore", "--draft", str(a.get("draft")), "--by", BY] + (["--scene", str(a["scene"])] if a.get("scene") else []),

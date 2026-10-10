@@ -33,6 +33,13 @@
     camera: '<rect x="3" y="6" width="14" height="10" rx="2"/><path d="M7 6l1.2-2h3.6L13 6"/><circle cx="10" cy="11" r="2.5"/>',
     shield: '<path d="M10 3l6 2.2v4.6c0 3.3-2.4 5.9-6 7.2-3.6-1.3-6-3.9-6-7.2V5.2z"/><path d="M7.5 10l2 2 3.5-4"/>',
     expand: '<path d="M11.5 3.5h5v5M8.5 16.5h-5v-5M16.5 3.5L11 9M3.5 16.5L9 11"/>',
+    stepL: '<path d="M5 4.5v11"/><path d="M15 4.5v11l-7.5-5.5z" fill="currentColor" stroke="none"/>',
+    stepR: '<path d="M15 4.5v11"/><path d="M5 4.5v11l7.5-5.5z" fill="currentColor" stroke="none"/>',
+    loop: '<path d="M4 9V8a3 3 0 0 1 3-3h9M13.5 2.5L16 5l-2.5 2.5M16 11v1a3 3 0 0 1-3 3H4M6.5 17.5L4 15l2.5-2.5"/>',
+    vol: '<path d="M3.5 7.5h3L10 4.5v11l-3.5-3h-3z"/><path d="M13 7.5a3.5 3.5 0 0 1 0 5M15 5.5a6.5 6.5 0 0 1 0 9"/>',
+    mute: '<path d="M3.5 7.5h3L10 4.5v11l-3.5-3h-3z"/><path d="M13 8l4 4M17 8l-4 4"/>',
+    keys: '<rect x="2.5" y="5" width="15" height="10" rx="2"/><path d="M5.5 8h.1M8.5 8h.1M11.5 8h.1M14.5 8h.1M6.5 12h7"/>',
+    shrink: '<path d="M16.5 8.5h-5v-5M3.5 11.5h5v5M11.5 8.5L17 3M8.5 11.5L3 17"/>',
     folder: '<path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h3L9 7h6.5A1.5 1.5 0 0 1 17 8.5v6a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 14.5z"/>'
   };
   window.icon = function (name, cls) {

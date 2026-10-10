@@ -83,7 +83,7 @@ def write_brief(pd):
     if not r:
         return None
     key = FC.round_key(r)
-    pins = [p for p in st.get("pins") or [] if p.get("round") == key]
+    pins = [p for p in st.get("pins") or [] if p.get("round") == key and not p.get("removed")]
     over = [a for a in st.get("assumptions") or [] if a.get("overturned")]
     try:
         b = BR.load(pd)

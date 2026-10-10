@@ -9,9 +9,9 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   const STAGE_TAB = { scripts: "scripts", pick: "scripts", storyboard: "storyboard", assets: "assets", keyframes: "storyboard", confirm: "storyboard", drafts: "draft", review: "draft", final: "draft" };
   const BADGE_TEXT = { working: "With the agent", waiting: "Your turn", done: "Done", attention: "Needs attention" };
   const ACTION_WORD = { approve: "your approval", pick: "your picks", changes: "your changes", feedback: "your feedback", generate: "your request", request: "your request", scene_note: "your comment", density: "your request", share: "your upload request", settings: "your folder choice",
-    widget: "your message from the panel", pin: "your note", restore: "your restore request", ab: "your pick", autopilot: "your go", overturn: "your change", forget: "your request" };
+    widget: "your message from the panel", pins: "your notes", restore: "your restore request", ab: "your pick", autopilot: "your go", overturn: "your change", forget: "your request" };
   /* Composer kinds beyond plain changes/feedback: the button says what sending does. */
-  const COMPOSE_SEND = { request: "Send request", overturn: "Send change", pin: "Pin note", scene: "Send comment" };
+  const COMPOSE_SEND = { request: "Send request", overturn: "Send change", scene: "Send comment" };
   const KIND_ICON = { script: "doc", treatment: "spark", shotlist: "table", direction: "film", edit: "cut", audio: "music", capture: "camera", schedule: "clock", deliverables: "download", risks: "shield", research: "link", review: "refresh", notes: "doc" };
   const QUICK = [["Full script", "Write the full script as a document I can read: voice-over, on-screen text and action for every scene."], ["Shot list", "Add a shot list: one row per shot with time, picture, camera, caption, voice and proof."],
     ["Edit plan", "Add an edit plan: the cut list on the timeline with transitions, rhythm and what holds still."], ["Audio plan", "Add an audio plan: voice lines, music cues, sound effects and mix targets."],
@@ -32,6 +32,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
 
   const S = {
     files: [], fileSent: [], fileSend: null, fileErr: "", fileNote: "", fileDrag: false, fv: 0,
+    notes: {}, noteSeq: 0, player: null,
     booted: false, held: false, heldTimer: 0, builtAt: 0, previewUntil: 0, version: null, summary: {}, doc: {}, pending: null, offline: false, readonly: false,
     tab: null, userTab: false, stage: null, picks: new Set(), style: null, ownStyle: "", boardIdx: 0, draftSel: null, earlier: false, filter: null, checksOpen: false, assumeOpen: false,
     ref: "", settingsOpen: false, setSel: null, setText: "", compose: false, composeKind: null, reader: null, sbView: "scenes", cmtPending: 0, cmtTotal: 0, cmtShown: 0, cmtChip: null, docGroup: null, docQ: "", docBase: null, docOpened: new Set(), reqHint: "", sending: null, justSent: null, stall: false, err: "", stale: null, stash: null, updated: false, stepsOpen: false, lastAction: null, title: "", lastBadge: "", noState: false,
@@ -593,7 +594,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   /* A clip the person is watching (playing, or just paused or scrubbed) is never rebuilt under them by an agent update. */
   const PREVIEW_GRACE_MS = 20000;
   function previewing() {
-    if (Date.now() < S.previewUntil) return true;
+    if (Date.now() < S.previewUntil || (S.player && S.player.api.busy())) return true;
     for (const v of ctx.root.querySelectorAll("video,audio")) if (!v.paused && !v.ended) return true;
     return false;
   }
@@ -2030,17 +2031,17 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     }
     if (it) {
       const dur = h("span", { class: "dur" });
-      const player = h("div", { class: "player", style: "position:relative" });
+      const player = h("div", { class: "player" + (it.final ? "" : " has-pfp"), style: "position:relative" });
       const r = it.path ? mref(it.path) : null;
       const delivered = d.stage === "final" && it.final && PF.finalState(d).ok;
       dur.textContent = r && !r.error ? fmtSize(r.size) : "";
       if (!r) player.append(h("div", { class: "mid" }, ic("film"), h("span", { text: "This video file is not available." })));
       else if (r.error) player.append(h("div", { class: "mid", role: "alert" }, ic("alert"), h("span", { text: r.error })));
       else lazyInto(player, r, (u) => {
-        const v = h("video", { src: u + "#t=0.5", controls: "", preload: "metadata", playsinline: "", "aria-label": it.label });
-        S.vid = v;
-        v.addEventListener("loadedmetadata", () => { if (v.duration && isFinite(v.duration)) dur.textContent = fmtTime(v.duration) + (v.videoWidth ? " · " + v.videoWidth + "×" + v.videoHeight : ""); });
-        return v;
+        const p = draftPlayer(it, r, u);
+        const v = p.video, facts = () => { if (v.duration && isFinite(v.duration)) dur.textContent = fmtTime(v.duration) + (v.videoWidth ? " · " + v.videoWidth + "×" + v.videoHeight : ""); };
+        if (v.readyState >= 1) facts(); else v.addEventListener("loadedmetadata", facts, { once: true });
+        return p.el;
       }, { manual: r.size > BIG_DRAFT, manualText: "Load video (" + fmtSize(r.size) + ")" });
       /* The file is one unit: icon, name, facts, and its one action on the same row. */
       const dl = r && !r.error ? downloadButton(it.label, PF.downloadName(r, it.label), () => getMedia(r)) : null;
@@ -2092,24 +2093,56 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     const soft = v && v.state === "checked" && /warning|not checked/i.test(v.line || "");
     if (v) out.push(h("p", { class: "verify", "data-state": soft ? "warned" : v.state }, ic(v.state === "checked" && !soft ? "check" : v.state === "failed" || soft ? "alert" : "clock"), h("span", { text: v.line })));
     if (it.judged) out.push(h("p", { class: "sub judged file-note", text: it.judged + "." }));
-    out.push(pinBlock(it, n));
+    out.push(notesBlock(it, n));
     out.push(checksBlock(it), lookBlock(it));
     if (PF.canAutopilot(S.doc, it)) out.push(autopilotStart());
     if (it.restorable && n !== latest) out.push(restoreBlock(it, n));
     return out.filter(Boolean);
   }
-  function pinBlock(it, n) {
-    const pins = arr(it.pins);
-    const seek = (t) => { if (S.vid && S.vid.isConnected) { S.vid.currentTime = t; S.vid.focus(); } };
-    const btn = h("button", { type: "button", class: "btn ghost", "data-quiet": "1", "data-k": "pin-" + n, disabled: !canAsk() }, ic("plus"), "Pin a note at this moment");
-    btn.addEventListener("click", () => {
-      const at = S.vid && S.vid.isConnected && isFinite(S.vid.currentTime) ? Math.round(S.vid.currentTime * 10) / 10 : 0;
-      if (S.vid && S.vid.isConnected) S.vid.pause();
-      openKind("pin", { draft: n, at, when: PF.clockT(at) }, "What should change at " + PF.clockT(at) + "?");
-    });
-    return h("section", { class: "pins", "aria-label": "Notes pinned to " + it.label }, h("div", { class: "pins-h" }, btn, h("span", { class: "sub", text: "Pause where something is wrong, then pin it: it goes to that scene." })),
-      pins.length ? h("ul", { class: "pin-list" }, pins.map((p) => h("li", null, h("button", { type: "button", class: "lchip", "data-k": "seek-" + p.id, title: "Go to " + PF.clockT(p.at_s), onclick: () => seek(p.at_s) }, ic("play"), PF.clockT(p.at_s)),
-        p.scene ? h("span", { class: "chip", text: "Scene " + p.scene }) : null, h("span", { class: "pin-t", text: p.text })))) : null);
+  /* The player is kept across repaints (an agent update or a note change rebuilds the tab), so the clip never reloads or jumps back under the person. */
+  function draftPlayer(it, r, u) {
+    const n = it.final ? 0 : +it.id.slice(1);
+    const scenes = arr(arr(S.doc.boards)[0] && S.doc.boards[0].scenes);
+    const view = { notes: n ? notesFor(it, n) : [], scenes, editable: !!n && !S.readonly };
+    if (S.player && S.player.ref === r.upload_id + "|" + it.id) { S.player.api.update(view); return S.player.api; }
+    const api = PFPlayer.create({ h, ic, src: u, label: it.label, ...view, newKey: () => "l" + ++S.noteSeq, onChange: (ch) => noteChange(n, ch) });
+    S.player = { ref: r.upload_id + "|" + it.id, api };
+    return api;
+  }
+  const noteBox = (n) => S.notes[n] || (S.notes[n] = { ops: [], sent: [] });
+  function notesFor(it, n) {
+    const b = noteBox(n);
+    b.sent = PF.notesUnsettled(b.sent, it.pins);
+    return PF.notesView(it.pins, b.ops, b.sent);
+  }
+  function noteChange(n, ch) {
+    const it = arr(S.doc.drafts)[n - 1];
+    const b = noteBox(n);
+    b.ops = PF.noteChange(b.ops, it.pins, ch);
+    say(ch.op === "remove" ? "Note marked for removal. Send your notes when you are done." : "Note kept. Send your notes when you are done.");
+    render(true);
+  }
+  function notesBlock(it, n) {
+    const b = noteBox(n), view = notesFor(it, n);
+    const live = (f) => { if (S.player && S.player.ref.endsWith("|" + it.id)) f(S.player.api); };
+    const count = b.ops.length, blocked = !canAsk();
+    const STATE = { new: ["New", "warn"], edited: ["Changed", "warn"], removed: ["Removing", "bad"] };
+    const sendBar = count ? h("div", { class: "notes-send", role: "group", "aria-label": "Notes not sent yet" },
+      h("span", { class: "notes-count" }, h("b", { text: String(count) }), count === 1 ? " change not sent yet" : " changes not sent yet"),
+      h("button", { type: "button", class: "btn ghost", "data-quiet": "1", "data-k": "notes-undo", text: "Discard", onclick: () => { b.ops = []; render(true); say("Unsent note changes discarded"); } }),
+      h("button", { type: "button", class: "btn primary", "data-k": "notes-send", disabled: blocked, title: blocked ? "Your last message is still waiting for the agent" : "",
+        onclick: () => send("pins", { draft: n, count, list: PF.notesMessage(b.ops, it.pins), ops: b.ops }) }, ic("send"), "Send to the agent")) : null;
+    return h("section", { class: "pins", "aria-label": "Notes on " + it.label },
+      h("div", { class: "pins-h" }, h("button", { type: "button", class: "btn ghost", "data-quiet": "1", "data-k": "pin-" + n, disabled: S.readonly, onclick: () => live((p) => p.addAt()) }, ic("plus"), "Add a note"),
+        h("span", { class: "sub", text: "Press N while watching, or double-click the timeline. Hover a mark to read it, click to edit, drag to move." })),
+      sendBar,
+      view.length ? h("ul", { class: "pin-list" }, view.map((p) => h("li", { "data-state": p.state },
+        h("button", { type: "button", class: "lchip", "data-k": "seek-" + p.key, title: "Go to " + PF.clockT(p.at), onclick: () => live((x) => x.seek(p.at)) }, ic("play"), PF.clockT(p.at)),
+        p.scene ? h("span", { class: "chip", text: "Scene " + p.scene }) : null,
+        p.sent ? h("span", { class: "chip", text: "Sent" }) : STATE[p.state] ? h("span", { class: "chip " + STATE[p.state][1], text: STATE[p.state][0] }) : null,
+        h("span", { class: "pin-t" + (p.state === "removed" ? " gone" : ""), text: p.text }),
+        !p.sent && !S.readonly ? h("button", { type: "button", class: "btn ghost pin-ed", "data-quiet": "1", "data-k": "ed-" + p.key, text: p.state === "removed" ? "Keep" : "Edit",
+          onclick: () => (p.state === "removed" ? noteChange(n, { op: "edit", key: p.key, at: p.at }) : live((x) => x.edit(p.key))) }) : null))) : null);
   }
   function checksBlock(it) {
     const b = it.board;
@@ -2384,7 +2417,6 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       if (!text) return;
       if (S.composeKind === "overturn") return send("overturn", { id: S.composeData.id, choice: S.composeData.choice, text });
       if (S.composeKind === "scene") return send("scene_note", { story: S.composeData.story, scene: S.composeData.scene, beat: S.composeData.beat, text });
-      if (S.composeKind === "pin") return send("pin", { draft: S.composeData.draft, at: S.composeData.at, when: S.composeData.when, text });
       if (S.composeKind === "request") return send("request", { text, where: ({ plan: "Plan", scripts: "Scripts", storyboard: "Storyboard", assets: "Assets", draft: "Drafts", widgets: "Workbench" })[S.tab] || "Stage" });
       if (m.g && m.g.kind === "style") return send("changes", { stage: "discover", text: "Style: " + text + refTail() });
       if (m.changes === "feedback") return send("feedback", { round: m.round, max_rounds: m.max, text });
@@ -2408,7 +2440,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     const id = "a" + ++M.seq;
     if (again && payload && typeof payload.text === "string" && !/^\(sent again\) /.test(payload.text)) payload = { ...payload, text: "(sent again) " + payload.text };
     S.lastAction = { name, payload };
-    S.sending = { id, name, again, timer: setTimeout(() => { if (S.sending && S.sending.id === id) { S.sending = null; S.err = "No answer from the host. Check the chat before sending again."; render(); } }, 20000) };
+    S.sending = { id, name, payload, again, timer: setTimeout(() => { if (S.sending && S.sending.id === id) { S.sending = null; S.err = "No answer from the host. Check the chat before sending again."; render(); } }, 20000) };
     S.err = "";
     post({ type: "action", id, name, payload });
     render();
@@ -2421,6 +2453,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     S.sending = null;
     if (m.ok) {
       if (sent.name === "scene_note") S.cmtPending++;
+      if (sent.name === "pins") { const b = noteBox(sent.payload.draft); b.sent = [...b.sent, ...b.ops]; b.ops = []; }
       S.err = "";
       S.justSent = { key: gateKey(), name: sent.name, saw: false };
       if (S.compose) { el.note.value = ""; S.compose = false; S.composeKind = null; }

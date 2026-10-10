@@ -297,6 +297,61 @@
   const DENSITY_CHOICES = [{ every: 0, label: "Start and end" }, { every: 10, label: "Every 10 s" }, { every: 5, label: "Every 5 s" }, { every: 2, label: "Every 2 s" }];
   const clockT = (s) => { const t = Math.round(Math.max(0, s || 0) * 10), m = Math.floor(t / 600), rem = t - m * 600, sec = Math.floor(rem / 10), fr = rem % 10; return m + ":" + String(sec).padStart(2, "0") + (fr ? "." + fr : ""); };
 
+  /* Notes on a draft's timeline. The person adds, rewords, moves and removes notes locally, as often as they like; one Send hands every change to
+     the agent at once (`pins` action). A note is keyed by its pin id (n3) once the flow has it, by a local key (l1) before. `ops` are the unsent
+     changes, `sent` the ones the agent has not published back yet. */
+  const noteText = (t) => String(t == null ? "" : t).trim().replace(/\s+/g, " ");
+  const noteAt = (t) => Math.max(0, Math.round((+t || 0) * 100) / 100);
+  function noteChange(ops, pins, ch) {
+    const list = arr(ops).slice(), i = list.findIndex((o) => o.key === ch.key), was = i < 0 ? null : list[i];
+    if (i >= 0) list.splice(i, 1);
+    const pin = arr(pins).find((p) => p.id === ch.key);
+    let next = null;
+    if (ch.op === "remove") next = pin ? { key: ch.key, op: "remove" } : null;
+    else {
+      next = was && was.op !== "remove" ? { ...was } : pin ? { key: ch.key, op: "edit" } : { key: ch.key, op: "add", at: 0, text: "" };
+      if (ch.at != null) next.at = noteAt(ch.at);
+      if (ch.text != null) next.text = noteText(ch.text);
+      if (pin && next.at === pin.at_s) delete next.at;
+      if (pin && next.text === pin.text) delete next.text;
+      if ((next.op === "edit" && next.at == null && next.text == null) || (next.op === "add" && !next.text)) next = null;
+    }
+    if (next) list.splice(i < 0 ? list.length : i, 0, next);
+    return list;
+  }
+  function notesView(pins, ops, sent) {
+    const mine = new Map(arr(ops).map((o) => [o.key, o])), gone = new Map(arr(sent).map((o) => [o.key, o]));
+    const out = arr(pins).map((p) => {
+      const o = mine.get(p.id) || gone.get(p.id);
+      return { key: p.id, id: p.id, at: o && o.at != null ? o.at : p.at_s, text: o && o.text != null ? o.text : p.text, scene: p.scene || null, by: p.by || "",
+        state: !o ? "saved" : o.op === "remove" ? "removed" : "edited", sent: !!o && !mine.has(p.id), was: o ? { at: p.at_s, text: p.text } : null };
+    });
+    for (const [o, isSent] of [...arr(sent).map((o) => [o, true]), ...arr(ops).map((o) => [o, false])])
+      if (o.op === "add") out.push({ key: o.key, id: null, at: o.at, text: o.text, scene: null, by: "", state: "new", sent: isSent, was: null });
+    return out.sort((a, b) => a.at - b.at || String(a.key).localeCompare(String(b.key)));
+  }
+  /* What the agent has not published back yet: an added note shows up as a pin with its words near its time, an edit as the pin's new values, a removal
+     as the pin gone. */
+  function notesUnsettled(sent, pins) {
+    const ps = arr(pins);
+    return arr(sent).filter((o) => {
+      if (o.op === "add") return !ps.some((p) => noteText(p.text) === o.text && Math.abs(p.at_s - o.at) <= 0.06);
+      const p = ps.find((x) => x.id === o.key);
+      if (o.op === "remove" || !p) return !!p;
+      return (o.at != null && Math.abs(p.at_s - o.at) > 0.06) || (o.text != null && noteText(p.text) !== o.text);
+    });
+  }
+  function notesMessage(ops, pins) {
+    const q = (t) => "\u201c" + t + "\u201d";
+    return arr(ops).map((o, i) => {
+      const p = arr(pins).find((x) => x.id === o.key);
+      const line = o.op === "add" ? "new note at " + clockT(o.at) + " (--at " + o.at + "): " + q(o.text)
+        : o.op === "remove" ? "remove " + o.key + " (" + q(p ? p.text : "") + ")"
+        : "change " + o.key + (o.at != null ? ": move to " + clockT(o.at) + " (--at " + o.at + ")" : "") + (o.text != null ? (o.at != null ? ", " : ": ") + "new words " + q(o.text) : "");
+      return "(" + (i + 1) + ") " + line;
+    }).join(" ");
+  }
+
   /* The settings pane's "where are videos saved" field. promo/home.py (parse_output) has the final say; this only keeps a bad value from being sent
      and shows where the next video would go. */
   const withSlug = (t) => { t = String(t || "").trim().replace(/\/+$/, ""); return t.endsWith("/{slug}") ? t : t + "/{slug}"; };
@@ -488,7 +543,7 @@
     return true;
   }
 
-  const api = { spaceVideo, spaceFree, FILES_TAB, FILES_MAX, fileProblem, addFiles, filesMessage, isVideoFile, WIDGET_TAB, WIDGET_PX, widgetsFor, widgetHeight, widgetDoc, themeCss, widgetMessage, settleWait, SETTLE_GAP_MS, PREVIEW_POLL_MS, commentCount, forYou, canAutopilot, jobView, clockS, aboutS, arr, mref, fileBad, missingFile, missingAll, hasPreview, noFrame, sceneStatus, model, finalState, missingRule, previewRule, bodyOf, downloadName, textFileName, wordsOf, parseBlocks, inline, plain, paginate, outline, findPages, markSplit, readMinutes, frameTimeline, DENSITY_CHOICES, clockT, shareRows, outputProblem, previewOutput, outputDirty };
+  const api = { spaceVideo, spaceFree, FILES_TAB, FILES_MAX, fileProblem, addFiles, filesMessage, isVideoFile, WIDGET_TAB, WIDGET_PX, widgetsFor, widgetHeight, widgetDoc, themeCss, widgetMessage, settleWait, SETTLE_GAP_MS, PREVIEW_POLL_MS, commentCount, forYou, canAutopilot, jobView, clockS, aboutS, arr, mref, fileBad, missingFile, missingAll, hasPreview, noFrame, sceneStatus, model, finalState, missingRule, previewRule, bodyOf, downloadName, textFileName, wordsOf, parseBlocks, inline, plain, paginate, outline, findPages, markSplit, readMinutes, frameTimeline, DENSITY_CHOICES, clockT, noteChange, notesView, notesUnsettled, notesMessage, shareRows, outputProblem, previewOutput, outputDirty };
   root.PF = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof window !== "undefined" ? window : globalThis);

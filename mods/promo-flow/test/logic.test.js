@@ -390,3 +390,25 @@ test("space plays or pauses the video being watched, and leaves typing, buttons 
   assert.equal(L.spaceFree("BUTTON", false, false), false);
   assert.equal(L.spaceFree("BUTTON", false, true), true);                 // Close button of the open clip
 });
+
+test("timeline notes: local changes fold into one list, edits back to the saved note drop out, and the message names every change", () => {
+  const pins = [{ id: "n1", at_s: 5, scene: "02", text: "logo is tiny", by: "Pat" }, { id: "n2", at_s: 9, scene: "03", text: "too loud", by: "Pat" }];
+  let ops = L.noteChange([], pins, { op: "add", key: "l1", at: 14.234, text: "  the  sentence is cut " });
+  ops = L.noteChange(ops, pins, { op: "edit", key: "n1", at: 6 });
+  ops = L.noteChange(ops, pins, { op: "remove", key: "n2" });
+  ops = L.noteChange(ops, pins, { op: "edit", key: "l1", text: "the sentence is cut off" });
+  assert.deepEqual(ops, [{ key: "l1", op: "add", at: 14.23, text: "the sentence is cut off" }, { key: "n1", op: "edit", at: 6 }, { key: "n2", op: "remove" }]);
+  assert.deepEqual(L.notesView(pins, ops, []).map((n) => [n.key, n.at, n.state]), [["n1", 6, "edited"], ["n2", 9, "removed"], ["l1", 14.23, "new"]]);
+  assert.equal(L.notesMessage(ops, pins), "(1) new note at 0:14.2 (--at 14.23): “the sentence is cut off” (2) change n1: move to 0:06 (--at 6) (3) remove n2 (“too loud”)");
+  assert.deepEqual(L.noteChange(ops, pins, { op: "edit", key: "n1", at: 5 }).map((o) => o.key), ["l1", "n2"]);       // moved back: nothing to send
+  assert.deepEqual(L.noteChange(ops, pins, { op: "remove", key: "l1" }).map((o) => o.key), ["n1", "n2"]);            // a local note just goes
+});
+
+test("timeline notes: sent changes wait until the published pins show them", () => {
+  const sent = [{ key: "l1", op: "add", at: 14.23, text: "cut off" }, { key: "n1", op: "edit", text: "bigger logo" }, { key: "n2", op: "remove" }];
+  const before = [{ id: "n1", at_s: 5, text: "logo is tiny" }, { id: "n2", at_s: 9, text: "too loud" }];
+  assert.equal(L.notesUnsettled(sent, before).length, 3);
+  assert.ok(L.notesView(before, [], sent).every((n) => n.sent));
+  const after = [{ id: "n1", at_s: 5, text: "bigger logo" }, { id: "n3", at_s: 14.23, text: "cut off" }];
+  assert.deepEqual(L.notesUnsettled(sent, after), []);
+});

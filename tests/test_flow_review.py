@@ -173,6 +173,23 @@ def test_a_pinned_note_lands_on_its_scene_and_goes_into_the_next_round(pd, tmp_p
     assert brief.index("see my pinned note") < brief.index("## Checks") and "Pinned at 5.0 s of draft 1, scene 02" in brief
 
 
+def test_a_pinned_note_can_be_reworded_moved_and_taken_back(pd, tmp_path):
+    at_drafts(pd, tmp_path)
+    pid, _ = FC.pin(pd, 1, 5.0, "the logo is tiny here", "Pat")
+    old = F.load(pd)["pins"][0]["check"]
+    FC.pin_edit(pd, pid, "Pat", text="the logo should be twice as big", at_s=1.0)
+    st = F.load(pd)
+    assert next(c for c in st["checks"] if c["id"] == old)["retired"]
+    new = next(c for c in st["checks"] if c["source"] == "pin" and not c["retired"])
+    assert new["what"] == "the logo should be twice as big" and new["scene"] == "01"
+    assert F.snapshot(pd)["drafts"][0]["pins"] == [dict(id=pid, at_s=1.0, scene="01", text="the logo should be twice as big", by="Pat")]
+    FC.pin_remove(pd, pid, "Pat")
+    assert F.snapshot(pd)["drafts"][0]["pins"] == []
+    assert all(c["retired"] for c in F.load(pd)["checks"] if c["source"] == "pin")
+    with pytest.raises(F.FlowError):
+        FC.pin_edit(pd, pid, "Pat", text="again")
+
+
 def report(tmp_path, shas, rows):
     p = str(tmp_path / "acme-1080-check.json")
     write(p, json.dumps(dict(ok=True, failed=False, results=rows, outputs=[dict(file="x", sha256=s) for s in shas])))
@@ -341,3 +358,5 @@ def test_cli_reads_do_not_publish_and_changes_rewrite_the_brief(pd, tmp_path, mo
     assert F.main(["--project", pd, "check", "list"]) == 0 and not log.exists()
     assert "Draft 1:" in capsys.readouterr().out
     assert F.main(["--project", pd, "pin", "add", "--at", "1.0", "--text", "too loud here", "--by", "Pat"]) == 0 and log.exists()
+    assert F.main(["--project", pd, "pin", "edit", "n1", "--at", "2.0", "--by", "Pat"]) == 0
+    assert F.main(["--project", pd, "pin", "remove", "n1", "--by", "Pat"]) == 0 and F.snapshot(pd)["drafts"][0]["pins"] == []

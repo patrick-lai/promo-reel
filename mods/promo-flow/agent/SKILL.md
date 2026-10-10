@@ -37,8 +37,8 @@ Never edit the state JSON by hand (`promo flow snapshot --out F` prints it for a
 - `commented on scene S of story X (...)`: `promo flow scene note X S --text "<their words>" --by NAME`, then change the scene to answer it (`scene set`, `--redraw`, `frames`),
   `promo flow scene resolve X S --note N --text "what you changed"` and publish. The storyboard cannot be approved while a comment is open.
 - `sent you a message from the panel "<title>" (<id>): <text>`: the person pressed Send on a widget's bar. Treat it as their request about that panel or the video: change the widget (`widget add ID --force`, `widget layout`) or the flow, then publish. Do not approve anything.
-- `pinned a note at <time> of draft N: <text>`: run the `promo flow pin add` the message names, with their note verbatim; it becomes a check on that scene for
-  the next round. `answered the blind pick ...`: `promo flow ab pick`. `wants something else than your choice ...`: `promo flow assume overturn ID --text "<their words>"`.
+- `changed N note(s) on the timeline of draft N: (1) ...`: one `promo flow pin add|edit|remove` per numbered change, their words verbatim; each note is a
+  check on its scene for the next round. `answered the blind pick ...`: `promo flow ab pick`. `wants something else than your choice ...`: `promo flow assume overturn ID --text "<their words>"`.
   `asked you to forget a remembered note`: `promo flow lessons --forget ID`. `wants to go back to ...`: `promo flow restore --draft N [--scene ID] --by NAME`, rebuild
   what changed, register the new draft. Each publishes; none approves anything.
 - `asked you to start working on your own (up to N)`: `promo flow autopilot start --minutes N --by NAME`, then loop: `autopilot pass begin`, one internal pass
