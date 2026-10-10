@@ -230,6 +230,18 @@ def test_the_look_may_not_move_away_from_the_references(pd, tmp_path, monkeypatc
     assert row["status"] == "fail" and row["change"] == "broken" and "moved away" in row["why"]
 
 
+def test_only_the_newest_drafts_carry_look_images_so_the_stage_stays_under_its_file_cap(pd, tmp_path, monkeypatch):
+    at_drafts(pd, tmp_path, n=4)
+    img(os.path.join(pd, "reference", "r1", "cuts", "cut-001.jpg"), (20, 20, 60))
+    monkeypatch.setattr(W, "grab", lambda path, t, dst, width=960: (img(str(dst), (22, 22, 62)), True)[1])
+    for n in range(1, 5):
+        FC.look(pd, n)
+    drafts = F.snapshot(pd)["drafts"]
+    has_pair = [any(x["pair"] for x in d["look"]["scenes"]) for d in drafts]
+    assert has_pair == [False, False, True, True]
+    assert all(d["look"]["mean"] < 0.05 and d["look"]["scenes"] for d in drafts)          # the score and the scene list stay for every draft
+
+
 class Clock:
     def __init__(self):
         self.t = datetime.datetime(2026, 10, 7, 9, 0, tzinfo=datetime.timezone.utc)

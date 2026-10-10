@@ -1379,6 +1379,9 @@ def _fit_files(snap):
     return ED.fit_files(snap)
 
 
+LOOK_IMAGE_DRAFTS = 2     # the host copies every `$file` and a state holds at most 200: only the newest drafts carry their look pair images (older ones keep the score)
+
+
 def _draft_extras(pd, st, i):
     """Per draft for the Stage: what was checked on this file, the checks it fixed, broke or left open, its look against the references,
     the notes pinned to it, the blind comparison it was in, and whether its version can be restored."""
@@ -1389,7 +1392,8 @@ def _draft_extras(pd, st, i):
     return dict(verify=FC.verify_view(d),
                 board=dict({k: sb[k] for k in ("line", "fixed", "broken", "open", "held", "total", "passing")},
                            rows=[{k: x[k] for k in ("id", "what", "scene", "status", "change", "source")} for x in sb["rows"]]),
-                look=dict(mean=lk["mean"], scenes=[dict(scene=k, d=v["d"], pair=_media(v["pair"])) for k, v in sorted(lk["scenes"].items())]) if lk else None,
+                look=dict(mean=lk["mean"], scenes=[dict(scene=k, d=v["d"], pair=_media(v["pair"]) if i >= len(st["drafts"]) - LOOK_IMAGE_DRAFTS else None)
+                                                   for k, v in sorted(lk["scenes"].items())]) if lk else None,
                 pins=[dict(id=p["id"], at_s=p["at_s"], scene=p.get("scene"), text=p["text"], by=p["by"]) for p in st.get("pins") or [] if p["draft"] == i + 1 and not p.get("removed")],
                 judged=AB.result(jp)["line"] if jp else None, restorable=os.path.isdir(os.path.join(fdir(pd), "versions", f"d{i + 1}")))
 
