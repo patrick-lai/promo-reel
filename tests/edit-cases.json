@@ -1,0 +1,956 @@
+{
+ "_": "Shared cases for the editor's edits: pytest runs them through promo/editor.py apply_ops, node --test through PF.editApply (mods/promo-flow/logic.js), so the Stage's instant preview and the render cannot drift. `expect` is a subset of the result; `error` a part of the message.",
+ "B": 0.5,
+ "spec": {
+  "timeline": {
+   "bpm": 120,
+   "beats": 32
+  },
+  "output": {
+   "name": "t",
+   "duration": 16.0
+  },
+  "music": {
+   "asset": "music-a",
+   "bpm": 120,
+   "track_beat": 0.5,
+   "track_offset": 0.0,
+   "edit": {
+    "segments": [
+     [
+      0,
+      0,
+      32
+     ]
+    ],
+    "crossfade": 0.03,
+    "gains": [
+     {
+      "beats": [
+       24,
+       32
+      ],
+      "db": -3
+     }
+    ],
+    "silence_from_beat": 31
+   }
+  },
+  "vo": {
+   "engine": "files",
+   "asset": "vo-files",
+   "lines": [
+    {
+     "id": "a1",
+     "shot": "01",
+     "at": 0.5,
+     "file": "a1.wav",
+     "text": "One.",
+     "sha256": "x"
+    },
+    {
+     "id": "a2",
+     "shot": "02",
+     "at": 2.5,
+     "file": "a2.wav",
+     "text": "Two."
+    },
+    {
+     "id": "a3",
+     "shot": "03",
+     "at": 0.2,
+     "file": "a3.wav",
+     "text": "Three."
+    }
+   ]
+  },
+  "sfx": {
+   "library": {
+    "hit": {
+     "asset": "sfx-hit"
+    }
+   }
+  },
+  "mix": {
+   "bus_db": {
+    "music": -5,
+    "sfx": -8,
+    "vo": 1.5
+   }
+  },
+  "shots": [
+   {
+    "id": "01",
+    "beats": [
+     0,
+     8
+    ],
+    "type": "clip",
+    "source": "rec-a",
+    "t_in": 1.0,
+    "overlays": [
+     {
+      "type": "caption",
+      "text": "Tell it.",
+      "t": [
+       0,
+       3
+      ]
+     }
+    ]
+   },
+   {
+    "id": "02",
+    "beats": [
+     8,
+     16
+    ],
+    "type": "clip",
+    "source": "rec-b",
+    "t_in": 0,
+    "speed": 2,
+    "overlays": [
+     {
+      "type": "caption",
+      "text": "It plans.",
+      "t": [
+       0.5,
+       2.5
+      ]
+     },
+     {
+      "type": "text",
+      "text": "late",
+      "t": [
+       2.5,
+       4
+      ]
+     }
+    ],
+    "sfx": [
+     {
+      "sfx": "hit",
+      "at": 0.5,
+      "db": -5
+     },
+     {
+      "sfx": "hit",
+      "at": 3.0
+     }
+    ]
+   },
+   {
+    "id": "03",
+    "beats": [
+     16,
+     24
+    ],
+    "type": "card",
+    "source": "rec-c",
+    "ui": false
+   },
+   {
+    "id": "04",
+    "beats": [
+     24,
+     32
+    ],
+    "type": "dawn",
+    "name": "Acme"
+   }
+  ]
+ },
+ "cases": [
+  {
+   "name": "swap a shot's footage and where it starts",
+   "ops": "swap 02 rec-z t_in=1.5",
+   "expect": {
+    "shots": [
+     {
+      "id": "01"
+     },
+     {
+      "id": "02",
+      "source": "rec-z",
+      "t_in": 1.5
+     },
+     "..."
+    ]
+   }
+  },
+  {
+   "name": "a clip from an earlier project gets the project's prefix",
+   "ops": "swap 03 jev:rec-board",
+   "expect": {
+    "shots": [
+     {},
+     {},
+     {
+      "id": "03",
+      "source": "jev-rec-board"
+     },
+     "..."
+    ]
+   }
+  },
+  {
+   "name": "a shot without footage cannot be swapped",
+   "ops": "swap 04 rec-a",
+   "error": "has no footage to swap"
+  },
+  {
+   "name": "trim moves one cut",
+   "ops": "trim 01 end=6",
+   "expect": {
+    "shots": [
+     {
+      "id": "01",
+      "beats": [
+       0,
+       6
+      ]
+     },
+     {
+      "id": "02",
+      "beats": [
+       6,
+       16
+      ]
+     },
+     "..."
+    ]
+   }
+  },
+  {
+   "name": "trim start moves the cut before the shot",
+   "ops": "trim 03 start=14",
+   "expect": {
+    "shots": [
+     {},
+     {
+      "id": "02",
+      "beats": [
+       8,
+       14
+      ]
+     },
+     {
+      "id": "03",
+      "beats": [
+       14,
+       24
+      ]
+     },
+     "..."
+    ]
+   }
+  },
+  {
+   "name": "a cut stays between its neighbours",
+   "ops": "trim 01 end=16",
+   "error": "must stay between beats 0 and 16"
+  },
+  {
+   "name": "trimming the last shot changes the length and clamps the music",
+   "ops": "trim 04 end=28",
+   "expect": {
+    "timeline": {
+     "beats": 28
+    },
+    "output": {
+     "duration": 14
+    },
+    "music": {
+     "edit": {
+      "segments": [
+       [
+        0,
+        0,
+        28
+       ]
+      ],
+      "gains": [
+       {
+        "beats": [
+         24,
+         28
+        ],
+        "db": -3
+       }
+      ]
+     }
+    },
+    "shots": [
+     {},
+     {},
+     {},
+     {
+      "id": "04",
+      "beats": [
+       24,
+       28
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "move reorders and rewrites beats, lengths kept",
+   "ops": "move 03 before=01",
+   "expect": {
+    "shots": [
+     {
+      "id": "03",
+      "beats": [
+       0,
+       8
+      ]
+     },
+     {
+      "id": "01",
+      "beats": [
+       8,
+       16
+      ]
+     },
+     {
+      "id": "02",
+      "beats": [
+       16,
+       24
+      ]
+     },
+     {
+      "id": "04",
+      "beats": [
+       24,
+       32
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "move after",
+   "ops": "trim 01 end=4\nmove 01 after=02",
+   "expect": {
+    "shots": [
+     {
+      "id": "02",
+      "beats": [
+       0,
+       12
+      ]
+     },
+     {
+      "id": "01",
+      "beats": [
+       12,
+       16
+      ]
+     },
+     "..."
+    ]
+   }
+  },
+  {
+   "name": "split: the source runs on, captions, sounds and voice lines go to their half",
+   "ops": "split 02 at=4",
+   "expect": {
+    "shots": [
+     {},
+     {
+      "id": "02",
+      "beats": [
+       8,
+       12
+      ],
+      "t_in": 0,
+      "overlays": [
+       {
+        "type": "caption",
+        "text": "It plans.",
+        "t": [
+         0.5,
+         2.5
+        ]
+       }
+      ],
+      "sfx": [
+       {
+        "sfx": "hit",
+        "at": 0.5,
+        "db": -5
+       }
+      ]
+     },
+     {
+      "id": "02b",
+      "beats": [
+       12,
+       16
+      ],
+      "t_in": 4,
+      "overlays": [
+       {
+        "type": "caption",
+        "text": "It plans.",
+        "t": [
+         0,
+         0.5
+        ]
+       },
+       {
+        "type": "text",
+        "text": "late",
+        "t": [
+         0.5,
+         2
+        ]
+       }
+      ],
+      "sfx": [
+       {
+        "sfx": "hit",
+        "at": 1
+       }
+      ]
+     },
+     {
+      "id": "03",
+      "beats": [
+       16,
+       24
+      ]
+     },
+     "..."
+    ],
+    "vo": {
+     "lines": [
+      {
+       "id": "a1"
+      },
+      {
+       "id": "a2",
+       "shot": "02b",
+       "at": 0.5
+      },
+      {
+       "id": "a3"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "split outside the shot is refused",
+   "ops": "split 02 at=8",
+   "error": "must be inside the shot"
+  },
+  {
+   "name": "delete ripples: later shots move up, the film and its music get shorter, its voice lines go",
+   "ops": "delete 02",
+   "expect": {
+    "shots": [
+     {
+      "id": "01",
+      "beats": [
+       0,
+       8
+      ]
+     },
+     {
+      "id": "03",
+      "beats": [
+       8,
+       16
+      ]
+     },
+     {
+      "id": "04",
+      "beats": [
+       16,
+       24
+      ]
+     }
+    ],
+    "timeline": {
+     "beats": 24
+    },
+    "output": {
+     "duration": 12
+    },
+    "music": {
+     "edit": {
+      "segments": [
+       [
+        0,
+        0,
+        24
+       ]
+      ],
+      "gains": []
+     }
+    },
+    "vo": {
+     "lines": [
+      {
+       "id": "a1"
+      },
+      {
+       "id": "a3"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "the only shot cannot go",
+   "ops": "delete 01\ndelete 02\ndelete 03\ndelete 04",
+   "error": "only shot"
+  },
+  {
+   "name": "caption: change, add, remove",
+   "ops": "caption 01 \"Say \\\"it\\\" once.\"\ncaption 03 \"New card.\"\ncaption 02 \"\"",
+   "expect": {
+    "shots": [
+     {
+      "overlays": [
+       {
+        "type": "caption",
+        "text": "Say \"it\" once.",
+        "t": [
+         0,
+         3
+        ]
+       }
+      ]
+     },
+     {
+      "overlays": [
+       {
+        "type": "text",
+        "text": "late"
+       }
+      ]
+     },
+     {
+      "overlays": [
+       {
+        "type": "caption",
+        "text": "New card.",
+        "t": [
+         0,
+         4
+        ]
+       }
+      ]
+     },
+     "..."
+    ]
+   }
+  },
+  {
+   "name": "another music track is laid from its offset",
+   "ops": "music jev:music-b offset=2.5",
+   "expect": {
+    "music": {
+     "asset": "jev-music-b",
+     "track_offset": 2.5,
+     "track_beat": 0.5,
+     "bpm": 120,
+     "edit": {
+      "segments": [
+       [
+        0,
+        0,
+        32
+       ]
+      ],
+      "gains": []
+     }
+    }
+   }
+  },
+  {
+   "name": "same track, new offset keeps the edit",
+   "ops": "music music-a offset=1",
+   "expect": {
+    "music": {
+     "asset": "music-a",
+     "track_offset": 1,
+     "edit": {
+      "silence_from_beat": 31
+     }
+    }
+   }
+  },
+  {
+   "name": "bus level",
+   "ops": "bus music -3",
+   "expect": {
+    "mix": {
+     "bus_db": {
+      "music": -3,
+      "sfx": -8
+     }
+    }
+   }
+  },
+  {
+   "name": "voice: move, level, mute, unmute, another shot",
+   "ops": "vo a1 at=1.25 db=-4 mute\nvo a2 shot=03 at=0\nvo a1 unmute",
+   "expect": {
+    "vo": {
+     "lines": [
+      {
+       "id": "a1",
+       "at": 1.25,
+       "db": -4
+      },
+      {
+       "id": "a2",
+       "shot": "03",
+       "at": 0
+      },
+      {
+       "id": "a3"
+      }
+     ]
+    }
+   },
+   "absent": [
+    [
+     "vo",
+     "lines",
+     0,
+     "mute"
+    ]
+   ]
+  },
+  {
+   "name": "a take from an earlier project replaces the file and drops the old pin",
+   "ops": "vo a1 take=jev:voices/final/a1.wav",
+   "expect": {
+    "vo": {
+     "lines": [
+      {
+       "id": "a1",
+       "file": "takes/jev-a1.wav"
+      },
+      "..."
+     ]
+    }
+   },
+   "absent": [
+    [
+     "vo",
+     "lines",
+     0,
+     "sha256"
+    ]
+   ]
+  },
+  {
+   "name": "unknown voice line",
+   "ops": "vo z9 mute",
+   "error": "there is no voice line z9"
+  },
+  {
+   "name": "sound effects: add (library entry made), set, remove",
+   "ops": "sfx 01 add jev:sfx-pop at=0.5 db=-6\nsfx 02 set 2 at=3.5 db=-2\nsfx 02 rm 1",
+   "expect": {
+    "sfx": {
+     "library": {
+      "hit": {
+       "asset": "sfx-hit"
+      },
+      "jev-sfx-pop": {
+       "asset": "jev-sfx-pop"
+      }
+     }
+    },
+    "shots": [
+     {
+      "sfx": [
+       {
+        "sfx": "jev-sfx-pop",
+        "at": 0.5,
+        "db": -6
+       }
+      ]
+     },
+     {
+      "sfx": [
+       {
+        "sfx": "hit",
+        "at": 3.5,
+        "db": -2
+       }
+      ]
+     },
+     "..."
+    ]
+   }
+  },
+  {
+   "name": "no such sound number",
+   "ops": "sfx 01 rm 1",
+   "error": "has 0 sounds"
+  },
+  {
+   "name": "unknown shot",
+   "ops": "caption 09 \"x\"",
+   "error": "there is no shot 09"
+  },
+  {
+   "name": "a batch is checked as a whole: the error names its line",
+   "ops": "bus music -2\n\nmove 05 before=01",
+   "error": "line 3: there is no shot 05"
+  },
+  {
+   "name": "grade a plate; a second grade adds to it; off removes it",
+   "ops": "grade 03 contrast=1.1 saturation=0.9\ngrade 03 temperature=5600",
+   "expect": {
+    "shots": [
+     {},
+     {},
+     {
+      "id": "03",
+      "grade": {
+       "contrast": 1.1,
+       "saturation": 0.9,
+       "temperature": 5600
+      }
+     },
+     "..."
+    ]
+   }
+  },
+  {
+   "name": "the app's own pixels are never graded",
+   "ops": "grade 01 contrast=1.2",
+   "error": "never graded (rule 2)"
+  },
+  {
+   "name": "a grade out of range is refused",
+   "ops": "grade 03 contrast=4",
+   "error": "contrast must be between 0.5 and 2"
+  },
+  {
+   "name": "fades in and out, then off",
+   "ops": "fade 04 in=0.5 out=1.5\nfade 01 out=0.25\nfade 01 off",
+   "expect": {
+    "shots": [
+     {},
+     {},
+     {},
+     {
+      "id": "04",
+      "fade": {
+       "in": 0.5,
+       "out": 1.5
+      }
+     }
+    ]
+   },
+   "absent": [
+    [
+     "shots",
+     0,
+     "fade"
+    ]
+   ]
+  },
+  {
+   "name": "fades longer than the shot are refused",
+   "ops": "fade 04 in=3 out=2",
+   "error": "longer than shot 04"
+  },
+  {
+   "name": "speed of a shot with footage",
+   "ops": "speed 02 1.5",
+   "expect": {
+    "shots": [
+     {},
+     {
+      "id": "02",
+      "speed": 1.5
+     },
+     "..."
+    ]
+   }
+  },
+  {
+   "name": "speed of a shot without footage",
+   "ops": "speed 04 2",
+   "error": "no footage to speed up"
+  },
+  {
+   "name": "character effects on the music, the voice, one line, the mix; off",
+   "ops": "fx music radio amount=0.6\nfx vo tape\nfx vo:a2 telephone\nfx mix vintage\nfx vo off",
+   "expect": {
+    "music": {
+     "fx": {
+      "preset": "radio",
+      "amount": 0.6
+     }
+    },
+    "mix": {
+     "fx": "vintage"
+    },
+    "vo": {
+     "lines": [
+      {
+       "id": "a1"
+      },
+      {
+       "id": "a2",
+       "fx": "telephone"
+      },
+      {
+       "id": "a3"
+      }
+     ]
+    }
+   },
+   "absent": [
+    [
+     "vo",
+     "fx"
+    ]
+   ]
+  },
+  {
+   "name": "a level change of the music over beats, then clear",
+   "ops": "gain music from=8 to=16 db=-6 ramp=0.3",
+   "expect": {
+    "music": {
+     "edit": {
+      "gains": [
+       {
+        "beats": [
+         24,
+         32
+        ],
+        "db": -3
+       },
+       {
+        "beats": [
+         8,
+         16
+        ],
+        "db": -6,
+        "ramp": 0.3
+       }
+      ]
+     }
+    }
+   }
+  },
+  {
+   "name": "gain clear",
+   "ops": "gain music clear",
+   "expect": {
+    "music": {
+     "edit": {
+      "gains": []
+     }
+    }
+   }
+  }
+ ],
+ "parse": [
+  {
+   "text": "swap 07 rec-w-ask t_in=1.2 ; caption 07 \"Tell it; what\"\n# a comment\nvo a3 at=2 mute",
+   "ops": [
+    {
+     "op": "swap",
+     "shot": "07",
+     "source": "rec-w-ask",
+     "t_in": 1.2
+    },
+    {
+     "op": "caption",
+     "shot": "07",
+     "text": "Tell it; what"
+    },
+    {
+     "op": "vo",
+     "line": "a3",
+     "at": 2,
+     "mute": true
+    }
+   ]
+  },
+  {
+   "text": "import \"/x y/a.wav\" kind=music licence=CC0 source=https://x",
+   "ops": [
+    {
+     "op": "import",
+     "path": "/x y/a.wav",
+     "kind": "music",
+     "licence": "CC0",
+     "source": "https://x"
+    }
+   ]
+  },
+  {
+   "text": "trim 07 end=x",
+   "error": "line 1: end must be a number"
+  },
+  {
+   "text": "frob 1",
+   "error": "unknown edit 'frob'"
+  },
+  {
+   "text": "caption 07 \"open",
+   "error": "a quote is not closed"
+  },
+  {
+   "text": "import a.wav kind=music licence=CC0",
+   "error": "import needs source="
+  },
+  {
+   "text": "",
+   "error": "no edits"
+  },
+  {
+   "text": "grade 03 contrast=1.1 vignette=0.3 ; fade 04 out=1.5\nspeed 02 0.5\nfx vo:a3 radio amount=0.5\ngain music from=0 to=8 db=-4",
+   "ops": [
+    {
+     "op": "grade",
+     "shot": "03",
+     "contrast": 1.1,
+     "vignette": 0.3
+    },
+    {
+     "op": "fade",
+     "shot": "04",
+     "out": 1.5
+    },
+    {
+     "op": "speed",
+     "shot": "02",
+     "speed": 0.5
+    },
+    {
+     "op": "fx",
+     "target": "vo:a3",
+     "preset": "radio",
+     "amount": 0.5
+    },
+    {
+     "op": "gain",
+     "from": 0,
+     "to": 8,
+     "db": -4
+    }
+   ]
+  },
+  {
+   "text": "fx music lofi",
+   "error": "fx preset is one of"
+  }
+ ]
+}

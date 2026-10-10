@@ -543,7 +543,406 @@
     return true;
   }
 
-  const api = { spaceVideo, spaceFree, FILES_TAB, FILES_MAX, fileProblem, addFiles, filesMessage, isVideoFile, WIDGET_TAB, WIDGET_PX, widgetsFor, widgetHeight, widgetDoc, themeCss, widgetMessage, settleWait, SETTLE_GAP_MS, PREVIEW_POLL_MS, commentCount, forYou, canAutopilot, jobView, clockS, aboutS, arr, mref, fileBad, missingFile, missingAll, hasPreview, noFrame, sceneStatus, model, finalState, missingRule, previewRule, bodyOf, downloadName, textFileName, wordsOf, parseBlocks, inline, plain, paginate, outline, findPages, markSplit, readMinutes, frameTimeline, DENSITY_CHOICES, clockT, noteChange, notesView, notesUnsettled, notesMessage, shareRows, outputProblem, previewOutput, outputDirty };
+  /* ---- the editor: the same edit language and the same edits as promo/editor.py, so the preview is what the render makes (tests/edit-cases.json runs both) ---- */
+  const EDIT_OPS = ["swap", "trim", "move", "split", "delete", "caption", "music", "bus", "vo", "sfx", "grade", "fade", "speed", "fx", "gain", "import"];
+  const GRADE_KEYS = ["brightness", "contrast", "saturation", "gamma", "temperature", "vignette"];
+  const GRADE_RANGE = { brightness: [-0.5, 0.5], contrast: [0.5, 2], saturation: [0, 2.5], gamma: [0.5, 2], temperature: [2500, 10000], vignette: [0, 1] };
+  const FX_PRESETS = ["radio", "tape", "vintage", "telephone", "vinyl", "crackle", "none"];
+  const BUSES = ["music", "sfx", "vo", "amb"];
+  const IMPORT_KINDS = ["music", "sfx", "voice", "video"];
+  class EditError extends Error {}
+  const eerr = (n, m) => { throw new EditError("line " + n + ": " + m); };
+  const n6 = (x) => Math.round(+x * 1e6) / 1e6;
+  /* Tokens like Python's shlex (posix, whitespace split): quotes group words, a backslash escapes inside double quotes, `;` outside quotes ends an op. */
+  function editTokens(line, n) {
+    const out = [[]];
+    let cur = null, q = null;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (q) {
+        if (c === q) q = null;
+        else if (c === "\\" && q === '"' && (line[i + 1] === '"' || line[i + 1] === "\\")) cur += line[++i];
+        else cur += c;
+      } else if (c === '"' || c === "'") { q = c; cur = cur == null ? "" : cur; }
+      else if (c === "\\" && i + 1 < line.length) { cur = (cur == null ? "" : cur) + line[++i]; }
+      else if (/\s/.test(c)) { if (cur != null) { out[out.length - 1].push(cur); cur = null; } }
+      else if (c === ";") { if (cur != null) { out[out.length - 1].push(cur); cur = null; } out.push([]); }
+      else cur = (cur == null ? "" : cur) + c;
+    }
+    if (q) throw new EditError("line " + n + ": No closing quotation in '" + line.trim() + "' (a quote is not closed)");
+    if (cur != null) out[out.length - 1].push(cur);
+    return out.filter((t) => t.length);
+  }
+  const numOf = (v, what, n) => { const x = Number(v); if (v == null || String(v).trim() === "" || !isFinite(x)) eerr(n, what + " must be a number, not '" + v + "'"); return x; };
+  function kvOf(toks, n, allowed, flags) {
+    const kv = {}, fl = [];
+    for (const t of toks) {
+      const i = t.indexOf("=");
+      if (i >= 0) { const k = t.slice(0, i); if (!allowed.includes(k)) eerr(n, "unknown setting " + k + "= (use " + allowed.map((x) => x + "=").join(", ") + ")"); kv[k] = t.slice(i + 1); }
+      else if ((flags || []).includes(t)) fl.push(t);
+      else eerr(n, "did not understand '" + t + "'");
+    }
+    return { kv, fl };
+  }
+  function editParse(text) {
+    const ops = [];
+    String(text || "").split(/\r?\n/).forEach((raw, k) => {
+      const n = k + 1;
+      if (!raw.trim() || raw.trim().startsWith("#")) return;
+      for (const t of editTokens(raw, n)) {
+        const op = t[0].toLowerCase(), a = t.slice(1);
+        const need = (i, what) => (a.length > i ? a[i] : eerr(n, "`" + op + "` needs " + what));
+        let o;
+        if (op === "swap") {
+          const sid = need(0, "a shot id"), src = need(1, "a footage id"), { kv } = kvOf(a.slice(2), n, ["t_in"]);
+          o = { op, shot: sid, source: src };
+          if ("t_in" in kv) o.t_in = numOf(kv.t_in, "t_in", n);
+        } else if (op === "trim") {
+          const sid = need(0, "a shot id"), { kv } = kvOf(a.slice(1), n, ["end", "start"]), ks = Object.keys(kv);
+          if (ks.length !== 1) eerr(n, "trim takes one of end=BEAT or start=BEAT");
+          o = { op, shot: sid, [ks[0]]: numOf(kv[ks[0]], ks[0], n) };
+        } else if (op === "move") {
+          const sid = need(0, "a shot id"), { kv } = kvOf(a.slice(1), n, ["before", "after"]);
+          if (Object.keys(kv).length !== 1) eerr(n, "move takes one of before=SHOT or after=SHOT");
+          o = { op, shot: sid, ...kv };
+        } else if (op === "split") {
+          const sid = need(0, "a shot id"), { kv } = kvOf(a.slice(1), n, ["at"]);
+          if (!("at" in kv)) eerr(n, "split needs at=BEATS (how far into the shot)");
+          o = { op, shot: sid, at: numOf(kv.at, "at", n) };
+        } else if (op === "delete") {
+          o = { op, shot: need(0, "a shot id") };
+          if (a.length > 1) eerr(n, "delete takes only a shot id");
+        } else if (op === "caption") {
+          const sid = need(0, "a shot id");
+          if (a.length !== 2) eerr(n, 'caption takes a shot id and the words in quotes, e.g. caption 07 "Tell it what to ship."');
+          o = { op, shot: sid, text: a[1].split(/\s+/).filter(Boolean).join(" ") };
+        } else if (op === "music") {
+          o = { op, asset: need(0, "an asset id") };
+          const { kv } = kvOf(a.slice(1), n, ["offset"]);
+          if ("offset" in kv) o.offset = numOf(kv.offset, "offset", n);
+        } else if (op === "bus") {
+          const b = need(0, "a bus (music, sfx, vo or amb)");
+          if (!BUSES.includes(b)) eerr(n, "bus is one of " + BUSES.join(", ") + ", not '" + b + "'");
+          if (a.length !== 2) eerr(n, "bus takes a bus and a level in dB, e.g. bus music -3");
+          o = { op, bus: b, db: numOf(a[1], "the level", n) };
+        } else if (op === "vo") {
+          const lid = need(0, "a voice line id"), { kv, fl } = kvOf(a.slice(1), n, ["at", "shot", "db", "take"], ["mute", "unmute"]);
+          if (!Object.keys(kv).length && !fl.length) eerr(n, "vo " + lid + " needs at=, shot=, db=, take=, mute or unmute");
+          if (fl.includes("mute") && fl.includes("unmute")) eerr(n, "mute or unmute, not both");
+          o = { op, line: lid };
+          for (const k of ["at", "db"]) if (k in kv) o[k] = numOf(kv[k], k, n);
+          for (const k of ["shot", "take"]) if (k in kv) o[k] = kv[k];
+          if (fl.length) o.mute = fl[0] === "mute";
+        } else if (op === "sfx") {
+          const sid = need(0, "a shot id"), act = need(1, "add, rm or set");
+          if (act === "add") {
+            const { kv } = kvOf(a.slice(3), n, ["at", "db"]);
+            o = { op, shot: sid, act, sfx: need(2, "a sound name"), at: numOf(kv.at == null ? 0 : kv.at, "at", n) };
+            if ("db" in kv) o.db = numOf(kv.db, "db", n);
+          } else if (act === "rm" || act === "set") {
+            const i = numOf(need(2, "the number of the sound (1 = the first)"), "the sound number", n);
+            if (!Number.isInteger(i) || i < 1) eerr(n, "sounds are numbered from 1");
+            const { kv } = kvOf(a.slice(3), n, act === "set" ? ["at", "db"] : []);
+            if (act === "set" && !Object.keys(kv).length) eerr(n, "sfx set needs at= or db=");
+            o = { op, shot: sid, act, i };
+            for (const k of Object.keys(kv)) o[k] = numOf(kv[k], k, n);
+          } else eerr(n, "sfx takes add, rm or set, not '" + act + "'");
+        } else if (op === "grade") {
+          const sid = need(0, "a shot id");
+          if (a.length === 2 && a[1] === "off") o = { op, shot: sid, off: true };
+          else {
+            const { kv } = kvOf(a.slice(1), n, GRADE_KEYS);
+            if (!Object.keys(kv).length) eerr(n, "grade needs one of " + GRADE_KEYS.map((k) => k + "=").join(", ") + ", or off");
+            o = { op, shot: sid };
+            for (const [k, v] of Object.entries(kv)) { const x = numOf(v, k, n), [lo, hi] = GRADE_RANGE[k]; if (x < lo || x > hi) eerr(n, k + " must be between " + lo + " and " + hi); o[k] = x; }
+          }
+        } else if (op === "fade") {
+          const sid = need(0, "a shot id");
+          if (a.length === 2 && a[1] === "off") o = { op, shot: sid, off: true };
+          else {
+            const { kv } = kvOf(a.slice(1), n, ["in", "out"]);
+            if (!Object.keys(kv).length) eerr(n, "fade needs in=SECONDS and/or out=SECONDS, or off");
+            o = { op, shot: sid };
+            for (const [k, v] of Object.entries(kv)) o[k] = numOf(v, k, n);
+            if (Object.keys(kv).some((k) => o[k] < 0)) eerr(n, "a fade cannot be negative");
+          }
+        } else if (op === "speed") {
+          const sid = need(0, "a shot id");
+          if (a.length !== 2) eerr(n, "speed takes a shot id and a factor, e.g. speed 07 1.5");
+          const x = numOf(a[1], "the speed", n);
+          if (x < 0.1 || x > 8) eerr(n, "speed must be between 0.1 and 8");
+          o = { op, shot: sid, speed: x };
+        } else if (op === "fx") {
+          const tgt = need(0, "what it applies to: music, vo, vo:LINE or mix");
+          if (!(["music", "vo", "mix"].includes(tgt) || tgt.startsWith("vo:"))) eerr(n, "fx applies to music, vo, vo:LINE or mix, not '" + tgt + "'");
+          const pre = need(1, "a preset (" + FX_PRESETS.join(", ") + ") or off");
+          if (pre !== "off" && !FX_PRESETS.includes(pre)) eerr(n, "fx preset is one of " + FX_PRESETS.join(", ") + " (or off), not '" + pre + "'");
+          const { kv } = kvOf(a.slice(2), n, ["amount"]);
+          o = { op, target: tgt, preset: pre };
+          if ("amount" in kv) { o.amount = numOf(kv.amount, "amount", n); if (o.amount < 0 || o.amount > 1) eerr(n, "amount is between 0 and 1"); }
+        } else if (op === "gain") {
+          if (need(0, "music") !== "music") eerr(n, "gain works on the music (gain music from=BEAT to=BEAT db=DB)");
+          if (a.length === 2 && a[1] === "clear") o = { op, clear: true };
+          else {
+            const { kv } = kvOf(a.slice(1), n, ["from", "to", "db", "ramp"]);
+            if (!["from", "to", "db"].every((k) => k in kv)) eerr(n, "gain music needs from=BEAT to=BEAT db=DB");
+            o = { op };
+            for (const k of ["from", "to", "db", "ramp"]) if (k in kv) o[k] = numOf(kv[k], k, n);
+            if (o.to <= o.from) eerr(n, "gain to= must be after from=");
+          }
+        } else if (op === "import") {
+          const path = need(0, "a file path"), { kv } = kvOf(a.slice(1), n, ["kind", "licence", "source", "id"]);
+          if (!IMPORT_KINDS.includes(kv.kind)) eerr(n, "import needs kind= one of " + IMPORT_KINDS.join(", "));
+          for (const k of ["licence", "source"]) if (!String(kv[k] || "").trim()) eerr(n, "import needs " + k + '="..." (rule 4: every file carries a licence and where it came from; "My own recording" is fine for the person\'s own)');
+          o = { op, path, ...kv };
+        } else eerr(n, "unknown edit '" + t[0] + "' (one of " + EDIT_OPS.join(", ") + ")");
+        o._n = n;
+        ops.push(o);
+      }
+    });
+    if (!ops.length) throw new EditError("no edits: write one edit per line, e.g. `swap 07 rec-w-ask` or `music music-eternal-hope`");
+    return ops;
+  }
+  const qtok = (s) => (/^[\w.:/@+-]+$/.test(String(s)) ? String(s) : '"' + String(s).replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"');
+  const fnum = (x) => { const v = n6(x); return Number.isInteger(v) ? String(v) : String(v); };
+  /* Ops back to edit text: one per line, the same text promo/editor.py's text_of writes. */
+  function editText(ops) {
+    return arr(ops).map((o) => {
+      const x = o.op;
+      if (x === "swap") return "swap " + o.shot + " " + o.source + ("t_in" in o ? " t_in=" + fnum(o.t_in) : "");
+      if (x === "trim") return "trim " + o.shot + " " + ("end" in o ? "end=" + fnum(o.end) : "start=" + fnum(o.start));
+      if (x === "move") return "move " + o.shot + " " + ("before" in o ? "before=" + o.before : "after=" + o.after);
+      if (x === "split") return "split " + o.shot + " at=" + fnum(o.at);
+      if (x === "delete") return "delete " + o.shot;
+      if (x === "caption") return "caption " + o.shot + ' "' + String(o.text).replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
+      if (x === "music") return "music " + o.asset + ("offset" in o ? " offset=" + fnum(o.offset) : "");
+      if (x === "bus") return "bus " + o.bus + " " + fnum(o.db);
+      if (x === "vo") return "vo " + o.line + " " + [...["at", "shot", "db", "take"].filter((k) => k in o).map((k) => k + "=" + (k === "at" || k === "db" ? fnum(o[k]) : qtok(o[k]))), ...("mute" in o ? [o.mute ? "mute" : "unmute"] : [])].join(" ");
+      if (x === "sfx") return o.act === "add" ? "sfx " + o.shot + " add " + o.sfx + " at=" + fnum(o.at) + ("db" in o ? " db=" + fnum(o.db) : "") : "sfx " + o.shot + " " + o.act + " " + o.i + ["at", "db"].filter((k) => k in o).map((k) => " " + k + "=" + fnum(o[k])).join("");
+      if (x === "grade") return "grade " + o.shot + " " + (o.off ? "off" : GRADE_KEYS.filter((k) => k in o).map((k) => k + "=" + fnum(o[k])).join(" "));
+      if (x === "fade") return "fade " + o.shot + " " + (o.off ? "off" : ["in", "out"].filter((k) => k in o).map((k) => k + "=" + fnum(o[k])).join(" "));
+      if (x === "speed") return "speed " + o.shot + " " + fnum(o.speed);
+      if (x === "fx") return "fx " + o.target + " " + o.preset + ("amount" in o ? " amount=" + fnum(o.amount) : "");
+      if (x === "gain") return o.clear ? "gain music clear" : "gain music " + ["from", "to", "db", "ramp"].filter((k) => k in o).map((k) => k + "=" + fnum(o[k])).join(" ");
+      if (x === "import") return "import " + qtok(o.path) + " kind=" + o.kind + " licence=" + qtok(o.licence) + " source=" + qtok(o.source) + (o.id ? " id=" + qtok(o.id) : "");
+      return "";
+    }).join("\n");
+  }
+  const localId = (ref) => { ref = String(ref); const i = ref.indexOf(":"); if (i < 0) return ref; const p = ref.slice(0, i), id = ref.slice(i + 1); return id.startsWith(p + "-") ? id : p + "-" + id; };
+  const takeFile = (ref) => { ref = String(ref); const i = ref.indexOf(":"); if (i < 0) return ref; return "takes/" + ref.slice(0, i) + "-" + ref.slice(i + 1).split("/").pop(); };
+  const clone = (x) => JSON.parse(JSON.stringify(x == null ? null : x));
+  const beatsOf = (s) => ("beats" in s ? [+s.beats[0], +s.beats[1]] : [s.bars[0] * 4, s.bars[1] * 4]);
+  const setBeats = (s, b0, b1) => { delete s.bars; s.beats = [n6(b0), n6(b1)]; };
+  function findShot(shots, sid, n) { const i = shots.findIndex((s) => String(s.id) === String(sid)); if (i < 0) eerr(n, "there is no shot " + sid); return i; }
+  const lineId = (l) => String(l.id != null ? l.id : l.shot);
+  function voLine(raw, lid, n) {
+    const lines = arr((raw.vo || {}).lines);
+    const ln = lines.find((x) => lineId(x) === String(lid));
+    if (!ln) eerr(n, "there is no voice line " + lid + (lines.length ? " (lines: " + lines.map(lineId).join(", ") + ")" : " (this video has no voice-over)"));
+    return ln;
+  }
+  function retimeOk(s, b0, b1, bpb, n) {
+    if (arr(s.segs).length && s.segs.some((g) => "dur" in g)) eerr(n, "shot " + s.id + " has explicit segs durations, so its length cannot change here: ask the agent to re-time it");
+    const bars = (b1 - b0) / bpb;
+    for (const c of arr(s.cards)) if (c.bars && c.bars[1] !== "end" && +c.bars[1] > bars + 1e-9) eerr(n, "shot " + s.id + " card '" + (c.text || c.text_from) + "' runs to bar " + c.bars[1] + ", past the " + n6(bars) + "-bar shot");
+  }
+  function rebeat(shots) { let cur = 0; for (const s of shots) { const [b0, b1] = beatsOf(s); setBeats(s, cur, cur + (b1 - b0)); cur += b1 - b0; } return cur; }
+  function setLength(raw, beats, B) {
+    (raw.timeline = raw.timeline || {}).beats = n6(beats);
+    (raw.output = raw.output || {}).duration = n6(Math.round(beats * B * 1000) / 1000);
+    const m = raw.music;
+    if (m && m.edit && typeof m.edit === "object") {
+      const e = m.edit;
+      e.segments = arr(e.segments).filter(([t0]) => t0 < beats).map(([t0, k0, k1]) => [n6(t0), n6(k0), n6(Math.min(k1, k0 + beats - t0))]);
+      if (e.silence_from_beat != null && e.silence_from_beat >= beats) delete e.silence_from_beat;
+      e.gains = arr(e.gains).filter((g) => g.beats[0] < beats).map((g) => ({ ...g, beats: [n6(g.beats[0]), n6(Math.min(g.beats[1], beats))] }));
+    }
+  }
+  function shiftItems(items, key, cut, first) {
+    const out = [];
+    for (const it0 of arr(items)) {
+      const it = clone(it0);
+      if (key === "t" && Array.isArray(it.t) && it.t.length === 2) {
+        const a = +it.t[0], b = +it.t[1];
+        if (first && a < cut) out.push(it);
+        else if (!first && b > cut) { it.t = [n6(Math.max(0, a - cut)), n6(b - cut)]; out.push(it); }
+      } else if (key === "at" && "at" in it) {
+        if (first === (+it.at < cut)) { if (!first) it.at = n6(Math.round((+it.at - cut) * 1000) / 1000); out.push(it); }
+      } else out.push(it);
+    }
+    return out;
+  }
+  /* The spec data (promo.yaml as JSON) after `ops`, and {new shot id: the shot it was split from}; throws an EditError naming the line. */
+  function editApply(raw0, ops, B, bpb) {
+    bpb = bpb || 4;
+    const raw = clone(raw0) || {}, origin = {};
+    const shots = (raw.shots = raw.shots || []);
+    for (const o of arr(ops)) {
+      const n = o._n || "?", x = o.op;
+      if (x === "swap") {
+        const s = shots[findShot(shots, o.shot, n)];
+        if (!("source" in s)) eerr(n, "shot " + o.shot + " (" + (s.type || "clip") + ") has no footage to swap");
+        s.source = localId(o.source);
+        if ("t_in" in o) s.t_in = o.t_in;
+      } else if (x === "trim") {
+        let i = findShot(shots, o.shot, n), nw;
+        if ("start" in o) { if (i === 0) eerr(n, "the first shot starts at beat 0"); i -= 1; nw = +o.start; } else nw = +o.end;
+        const a = shots[i], [a0] = beatsOf(a);
+        if (i === shots.length - 1) {
+          if (!(nw > a0)) eerr(n, "shot " + a.id + " would end before it starts (it starts at beat " + n6(a0) + ")");
+          retimeOk(a, a0, nw, bpb, n); setBeats(a, a0, nw); setLength(raw, nw, B); continue;
+        }
+        const b = shots[i + 1], [, b1] = beatsOf(b);
+        if (!(a0 < nw && nw < b1)) eerr(n, "the cut between " + a.id + " and " + b.id + " must stay between beats " + n6(a0) + " and " + n6(b1));
+        retimeOk(a, a0, nw, bpb, n); retimeOk(b, nw, b1, bpb, n);
+        setBeats(a, a0, nw); setBeats(b, nw, b1);
+      } else if (x === "move") {
+        const i = findShot(shots, o.shot, n), ref = "before" in o ? o.before : o.after;
+        if (String(ref) === String(o.shot)) eerr(n, "a shot cannot move next to itself");
+        const [s] = shots.splice(i, 1);
+        shots.splice(findShot(shots, ref, n) + ("after" in o ? 1 : 0), 0, s);
+        rebeat(shots);
+      } else if (x === "split") {
+        const i = findShot(shots, o.shot, n), s = shots[i], [b0, b1] = beatsOf(s), k = +o.at;
+        if (!(k > 0 && k < b1 - b0)) eerr(n, "split at= must be inside the shot (between 0 and " + n6(b1 - b0) + " beats)");
+        if (arr(s.segs).length) eerr(n, "shot " + s.id + " is made of segs: split it by hand");
+        const ids = new Set(shots.map((z) => String(z.id)));
+        const nid = String(s.id) + [..."bcdefghijklmnopqrstuvwxyz"].find((c) => !ids.has(String(s.id) + c));
+        const cut = n6(k * B), t = clone(s);
+        t.id = nid;
+        setBeats(s, b0, b0 + k); setBeats(t, b0 + k, b1);
+        if ("source" in t) t.t_in = n6(Math.round((+(s.t_in || 0) + cut * +(s.speed || 1)) * 1000) / 1000);
+        for (const [key, field] of [["overlays", "t"], ["sfx", "at"]]) if (key in s) {
+          const all = s[key];
+          s[key] = shiftItems(all, field, cut, true); t[key] = shiftItems(all, field, cut, false);
+          for (const part of [s, t]) if (!part[key].length) delete part[key];
+        }
+        shots.splice(i + 1, 0, t);
+        origin[nid] = origin[String(s.id)] || String(s.id);
+        for (const ln of arr((raw.vo || {}).lines)) if (String(ln.shot) === String(s.id) && +(ln.at || 0) >= cut) { ln.shot = nid; ln.at = n6(Math.round((+(ln.at || 0) - cut) * 1000) / 1000); }
+      } else if (x === "delete") {
+        const i = findShot(shots, o.shot, n);
+        if (shots.length === 1) eerr(n, "the video's only shot cannot be deleted");
+        const [s] = shots.splice(i, 1);
+        if (raw.vo && arr(raw.vo.lines).length) raw.vo.lines = raw.vo.lines.filter((ln) => String(ln.shot) !== String(s.id));
+        setLength(raw, rebeat(shots), B);
+      } else if (x === "caption") {
+        const s = shots[findShot(shots, o.shot, n)], ovs = arr(s.overlays), caps = ovs.filter((v) => v && v.type === "caption");
+        if (!o.text) { s.overlays = ovs.filter((v) => !caps.includes(v)); if (!s.overlays.length) delete s.overlays; }
+        else if (caps.length) caps[0].text = o.text;
+        else { const [b0, b1] = beatsOf(s); s.overlays = [...ovs, { type: "caption", text: o.text, t: [0, n6(Math.round((b1 - b0) * B * 1000) / 1000)] }]; }
+      } else if (x === "music") {
+        let m = raw.music || {};
+        const aid = localId(o.asset), beats = +((raw.timeline || {}).beats || 0);
+        if (aid !== m.asset || !m.edit) m = { ...m, asset: aid, bpm: n6(60 / B), track_beat: n6(B), track_offset: n6(o.offset || 0), edit: { segments: [[0, 0, n6(beats)]], crossfade: 0.03, gains: [] } };
+        else if ("offset" in o) m.track_offset = n6(o.offset);
+        raw.music = m;
+      } else if (x === "bus") {
+        raw.mix = raw.mix || {}; raw.mix.bus_db = raw.mix.bus_db || {}; raw.mix.bus_db[o.bus] = o.db;
+      } else if (x === "vo") {
+        const ln = voLine(raw, o.line, n);
+        if ("shot" in o) { findShot(shots, o.shot, n); ln.shot = String(o.shot); }
+        if ("at" in o) ln.at = o.at;
+        if ("db" in o) ln.db = o.db;
+        if ("take" in o) {
+          if ((raw.vo || {}).engine !== "files") eerr(n, "this voice-over is synthesised, so a recorded take cannot replace a line");
+          ln.file = takeFile(o.take); delete ln.sha256;
+        }
+        if (o.mute === true) ln.mute = true; else if (o.mute === false) delete ln.mute;
+      } else if (x === "grade") {
+        const s = shots[findShot(shots, o.shot, n)];
+        if (o.off) delete s.grade;
+        else {
+          if (s.ui !== false) eerr(n, "shot " + o.shot + " shows the product, and its pixels are never graded (rule 2); grade plates (ui: false) only");
+          s.grade = { ...(s.grade || {}) }; for (const k of GRADE_KEYS) if (k in o) s.grade[k] = o[k];
+        }
+      } else if (x === "fade") {
+        const s = shots[findShot(shots, o.shot, n)];
+        if (o.off) delete s.fade;
+        else {
+          const [b0, b1] = beatsOf(s), f = s.fade || {};
+          if (["in", "out"].reduce((t, k) => t + +(k in o ? o[k] : f[k] || 0), 0) > (b1 - b0) * B + 1e-6) eerr(n, "the fades are longer than shot " + o.shot);
+          s.fade = { ...f }; for (const k of ["in", "out"]) if (k in o) s.fade[k] = o[k];
+        }
+      } else if (x === "speed") {
+        const s = shots[findShot(shots, o.shot, n)];
+        if (!("source" in s)) eerr(n, "shot " + o.shot + " has no footage to speed up or slow down");
+        s.speed = o.speed;
+      } else if (x === "fx") {
+        const fx = "amount" in o ? { preset: o.preset, amount: o.amount } : o.preset;
+        if (o.target.startsWith("vo:")) { const ln = voLine(raw, o.target.slice(3), n); if (o.preset === "off") delete ln.fx; else ln.fx = fx; }
+        else {
+          if (o.target !== "mix" && !raw[o.target]) eerr(n, "this video has no " + (o.target === "vo" ? "voice-over" : o.target));
+          raw[o.target] = raw[o.target] || {};
+          if (o.preset === "off") delete raw[o.target].fx; else raw[o.target].fx = fx;
+        }
+      } else if (x === "gain") {
+        const m = raw.music || {};
+        if (!m.edit || typeof m.edit !== "object") eerr(n, "this video has no music edit to change the level of");
+        if (o.clear) m.edit.gains = [];
+        else { const g = { beats: [o.from, o.to], db: o.db }; if ("ramp" in o) g.ramp = o.ramp; m.edit.gains = [...arr(m.edit.gains), g]; }
+      } else if (x === "sfx") {
+        const s = shots[findShot(shots, o.shot, n)];
+        let lst = arr(s.sfx);
+        if (o.act === "add") {
+          const name = localId(o.sfx);
+          raw.sfx = raw.sfx || {}; raw.sfx.library = raw.sfx.library || {};
+          if (!(name in raw.sfx.library)) raw.sfx.library[name] = { asset: name };
+          const e = { sfx: name, at: o.at };
+          if ("db" in o) e.db = o.db;
+          s.sfx = [...lst, e];
+        } else {
+          if (!(o.i >= 1 && o.i <= lst.length)) eerr(n, "shot " + o.shot + " has " + lst.length + " sound" + (lst.length !== 1 ? "s" : "") + ", so there is no number " + o.i);
+          if (o.act === "rm") { lst = [...lst.slice(0, o.i - 1), ...lst.slice(o.i)]; if (lst.length) s.sfx = lst; else delete s.sfx; }
+          else { const e = lst[o.i - 1]; for (const k of ["at", "db"]) if (k in o) e[k] = o[k]; }
+        }
+      }
+    }
+    return { raw, origin };
+  }
+  /* The person's edits as a stack: every change is one op; undo moves the last one aside, redo puts it back, a new change drops what was undone. */
+  const editPush = (st, op) => ({ done: [...arr(st && st.done), op], undone: [] });
+  const editUndo = (st) => { const d = arr(st && st.done); return d.length ? { done: d.slice(0, -1), undone: [...arr(st.undone), d[d.length - 1]] } : st; };
+  const editRedo = (st) => { const u = arr(st && st.undone); return u.length ? { done: [...arr(st.done), u[u.length - 1]], undone: u.slice(0, -1) } : st; };
+  /* What a Render will redo, from the edits and the editor state: the shots whose picture changes, the sound steps, and about how long it takes
+     (the per-step seconds the last build stamped). Built-in shot types draw in shot-local time, so moving one does not re-render it. */
+  function editSummary(ops, edit) {
+    ops = arr(ops); edit = edit || {};
+    const est = edit.estimate || {}, byId = new Map(arr(edit.shots).map((s) => [String(s.id), s]));
+    const local = (id) => { const s = byId.get(String(id)); return !!(s && s.local); };
+    const shots = new Set(), steps = new Set();
+    const after = (id) => { const ids = arr(edit.shots).map((s) => String(s.id)), i = ids.indexOf(String(id)); return i < 0 ? [] : ids.slice(i); };
+    for (const o of ops) {
+      if (o.op === "swap" || o.op === "caption" || o.op === "speed") shots.add(String(o.shot));
+      else if (o.op === "grade" || o.op === "fade") { shots.add(String(o.shot)); steps.add("grade"); }
+      else if (o.op === "gain" || (o.op === "fx" && o.target === "music")) steps.add("music");
+      else if (o.op === "fx" && o.target !== "mix") steps.add("vo");
+      else if (o.op === "trim") { const ids = arr(edit.shots).map((s) => String(s.id)), i = ids.indexOf(String(o.shot)); if ("start" in o) { if (i > 0) shots.add(ids[i - 1]); } else if (i + 1 < ids.length) shots.add(ids[i + 1]); shots.add(String(o.shot)); }
+      else if (o.op === "split") { shots.add(String(o.shot)); shots.add(String(o.shot) + "b"); for (const id of after(o.shot)) if (!local(id)) shots.add(id); }
+      else if (o.op === "move" || o.op === "delete") { for (const s of arr(edit.shots)) if (!local(s.id)) shots.add(String(s.id)); if (o.op === "delete") { shots.delete(String(o.shot)); steps.add("music"); } }
+      else if (o.op === "music") steps.add("music");
+      else if (o.op === "vo") { steps.add("events"); if ("take" in o) steps.add("vo"); }
+      else if (o.op === "sfx") steps.add("events");
+      else if (o.op === "import") steps.add("import");
+      if (!["import", "grade", "fade"].includes(o.op)) steps.add("mix");
+    }
+    if (shots.size) steps.add("events");
+    const graded = ops.filter((o) => o.op === "grade" || o.op === "fade").map((o) => String(o.shot)), full = [...shots].filter((id) => !graded.includes(id) || ops.some((o) => o.op !== "grade" && o.op !== "fade" && String(o.shot) === id));
+    const n = shots.size;
+    const secs = full.length * (est.shot || 30) + (n - full.length) * 6 + [...steps].reduce((a, k) => a + (+est[k] || 0), 0) + (ops.length ? (+est.assemble || 20) + (+est.contact || 8) : 0);
+    const parts = [n ? n + " shot" + (n === 1 ? "" : "s") : null, steps.has("music") ? "music" : null, steps.has("vo") ? "voice" : null, steps.has("mix") ? "mix" : null].filter(Boolean);
+    return { shots: [...shots], steps: [...steps], secs: Math.round(secs), line: parts.length ? parts.join(" + ") + ", " + aboutS(secs) : "nothing to render" };
+  }
+
+  /* The `edit` action's message is the mod.json template with the ops in it, at most 2000 characters: longer edit lists go as edit.txt. */
+  const EDIT_INLINE_MAX = 1400;
+  const editInline = (opsLine) => String(opsLine || "").length <= EDIT_INLINE_MAX;
+  const editFilesMessage = (count, line) => "[mod:promo-flow] The person rendered " + count + " edits from the Stage's editor (" + line + "). They are attached as edit.txt, one per line. Run: promo flow edit render --file .commission/attachments/edit.txt --by \"<their name>\", then publish. Do not approve anything.";
+  const shq = (t) => '"' + String(t || "").replace(/["\\$`]/g, "\\$&") + '"';
+  const importMessage = (name, kind, licence, source) => "[mod:promo-flow] The person imported a " + kind + " file in the Stage's editor (attached): " + name + ". Licence: " + licence + ". Source: " + source + ". Run: promo flow edit import .commission/attachments/" + name + " --kind " + kind
+    + " --licence " + shq(licence) + " --source " + shq(source) + " --by \"<their name>\" (rule 4: it is refused without both), then publish. It shows up in the editor's bin. Do not approve anything.";
+
+  const api = { EDIT_INLINE_MAX, editInline, editFilesMessage, importMessage, EditError, editParse, editText, editApply, editPush, editUndo, editRedo, editSummary, localId, takeFile, spaceVideo, spaceFree, FILES_TAB, FILES_MAX, fileProblem, addFiles, filesMessage, isVideoFile, WIDGET_TAB, WIDGET_PX, widgetsFor, widgetHeight, widgetDoc, themeCss, widgetMessage, settleWait, SETTLE_GAP_MS, PREVIEW_POLL_MS, commentCount, forYou, canAutopilot, jobView, clockS, aboutS, arr, mref, fileBad, missingFile, missingAll, hasPreview, noFrame, sceneStatus, model, finalState, missingRule, previewRule, bodyOf, downloadName, textFileName, wordsOf, parseBlocks, inline, plain, paginate, outline, findPages, markSplit, readMinutes, frameTimeline, DENSITY_CHOICES, clockT, noteChange, notesView, notesUnsettled, notesMessage, shareRows, outputProblem, previewOutput, outputDirty };
   root.PF = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof window !== "undefined" ? window : globalThis);

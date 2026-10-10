@@ -25,7 +25,7 @@ sys.path.insert(0, HERE)
 import serve  # noqa: E402
 
 CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-STAGES = ["discover", "scripts", "pick", "storyboard", "assets", "keyframes", "confirm", "drafts", "review", "autopilot", "final"]
+STAGES = ["discover", "scripts", "pick", "storyboard", "assets", "keyframes", "confirm", "drafts", "review", "autopilot", "final", "edit"]
 WIDTHS = [(380, 780), (520, 900), (900, 900), (1100, 900)]
 
 
@@ -449,6 +449,63 @@ UICHECK = r"""(async () => {
     await wait(450);
     ok('and is gone afterwards', !Q('#content .pf-out'));
   }
+  if (step === 'edit') {
+    ok('the Edit tab opens by itself at the drafts stage', Q('#tab-edit') && Q('#tab-edit').getAttribute('aria-selected') === 'true', (Q('.tab[aria-selected=true]') || {}).id);
+    ok('the editor is there', await until(() => QA('.ed-clip').length === 4), QA('.ed-clip').length);
+    ok('the draft is a milestone: the stepper is Draft, Review, Final', QA('#stepper li').length === 3 && /^Production/.test(Q('#stepNo').textContent), QA('#stepper li').length + ' ' + Q('#stepNo').textContent);
+    ok('the planning tabs give way to the editor', !Q('#tab-scripts') && !Q('#tab-storyboard') && !Q('#tab-assets') && !!Q('#tab-draft'), QA('.tab').map((t) => t.dataset.tab).join());
+    ok('the agent\'s preview clip is in the inspector', !!Q('.ed-pv[data-pv="p1"] video'));
+    ok('the bin lists this video\'s footage, music, voice and sounds', QA('.ed-item').length >= 10 && ['footage', 'music', 'voice', 'sfx', 'draft'].every((k) => Q('.ed-item[data-kind="' + k + '"]')), QA('.ed-item').length);
+    const lane = (k) => Q('.ed-lane[data-lane="' + k + '"]');
+    ok('the timeline has every track', ['v', 'cap', 'vo', 'music', 'sfx'].every((k) => lane(k)) && QA('.ed-vob').length === 3 && QA('.ed-mus').length === 1 && QA('.ed-sfx').length === 2 && QA('.ed-capb').length === 2,
+      [QA('.ed-vob').length, QA('.ed-mus').length, QA('.ed-sfx').length, QA('.ed-capb').length].join(' '));
+    const w1 = () => Q('.ed-clip[data-shot="01"]').getBoundingClientRect().width, fitW = w1();
+    ok('the timeline opens fitted, with a zoom bar and presets', !!Q('[data-k=ed-zoom-fit]') && Q('[data-k=ed-zoom-fit]').getAttribute('aria-pressed') === 'true' && /Fit/.test(Q('.ed-zlab').textContent), Q('.ed-zlab').textContent);
+    await click('[data-k=ed-zoom-4]');
+    ok('the 4x preset makes every clip four times wider', Math.abs(w1() / fitW - 4) < 0.1 && Q('[data-k=ed-zoom-4]').getAttribute('aria-pressed') === 'true' && /^4×/.test(Q('.ed-zlab').textContent), (w1() / fitW).toFixed(2) + ' ' + Q('.ed-zlab').textContent);
+    await click('[data-k=ed-zoom-out]');
+    ok('zoom out steps back', w1() < fitW * 4 - 1 && w1() > fitW, (w1() / fitW).toFixed(2));
+    Q('.ed-scroll').dispatchEvent(new WheelEvent('wheel', { deltaY: -40, ctrlKey: true, clientX: Q('.ed-scroll').getBoundingClientRect().left + 60, bubbles: true, cancelable: true })); await wait(150);
+    ok('ctrl + wheel (a pinch) zooms in smoothly', w1() > fitW * 3, (w1() / fitW).toFixed(2));
+    await click('[data-k=ed-zoom-fit]');
+    ok('Fit shows the whole film again', Math.abs(w1() - fitW) < 1 && Q('.ed-scroll').scrollLeft === 0, w1() + ' ' + fitW);
+    Q('.ed-clip[data-shot="03"]').dispatchEvent(new PointerEvent('pointerdown', { clientX: Q('.ed-clip[data-shot="03"]').getBoundingClientRect().left + 5, button: 0, bubbles: true, pointerId: 6 }));
+    Q('.ed-lanes').dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 6 })); await wait(100);
+    await click('[data-k=ed-zoom-shot]');
+    const c3 = Q('.ed-clip[data-shot="03"]').getBoundingClientRect(), sc = Q('.ed-scroll').getBoundingClientRect();
+    ok('Shot zooms to the selected shot and brings it into view', c3.width > sc.width * 0.8 && c3.left >= sc.left - 1 && c3.right <= sc.right + 1, c3.left + '..' + c3.right + ' in ' + sc.left + '..' + sc.right);
+    await click('[data-k=ed-zoom-fit]');
+    ok('the unbuilt shot says so', Q('.ed-clip[data-shot="03"]').classList.contains('stale') && !Q('.ed-clip[data-shot="01"]').classList.contains('stale'));
+    const pend = () => +((Q('[data-k=ed-pending]') || {}).textContent || '').replace(/\D/g, '');
+    const lanes = Q('.ed-lanes'), c1 = Q('.ed-clip[data-shot="01"]').getBoundingClientRect();
+    const pe = (type, x, y) => lanes.dispatchEvent(new PointerEvent(type, { clientX: x, clientY: y, button: 0, buttons: type === 'pointerup' ? 0 : 1, bubbles: true, pointerId: 7, isPrimary: true }));
+    const pps = c1.width / 2;                         /* shot 01 is 2 s */
+    Q('.ed-clip[data-shot="01"] .ed-edge').dispatchEvent(new PointerEvent('pointerdown', { clientX: c1.right - 2, clientY: c1.top + 10, button: 0, buttons: 1, bubbles: true, pointerId: 7, isPrimary: true })); pe('pointermove', c1.right - 2 + pps * 0.5 + 2, c1.top + 10); pe('pointerup', c1.right - 2 + pps * 0.5 + 2, c1.top + 10); await wait(200);
+    ok('dragging a cut trims on the beat grid', pend() === 1 && Math.abs(Q('.ed-clip[data-shot="01"]').getBoundingClientRect().width - pps * 2.5) < 2, pend() + ' ' + Q('.ed-clip[data-shot="01"]').getBoundingClientRect().width + ' want ' + pps * 2.5);
+    Q('.ed-clip[data-shot="02"]').dispatchEvent(new PointerEvent('pointerdown', { clientX: Q('.ed-clip[data-shot="02"]').getBoundingClientRect().left + 10, button: 0, bubbles: true, pointerId: 8 })); pe('pointerup', 0, 0); await wait(150);
+    const src = Q('[data-k=ins-source]');
+    ok('the inspector shows the selected shot', !!src && /Shot 02/.test(Q('.ed-ih').textContent), (Q('.ed-ih') || {}).textContent);
+    src.value = 'rec-board'; src.dispatchEvent(new Event('change')); await wait(150);
+    ok('swapping its footage is an edit, and the shot reads not rendered', pend() === 2 && Q('.ed-clip[data-shot="02"]').classList.contains('stale') && Q('[data-k=ins-source]').value === 'rec-board' && /not rendered/i.test(Q('.ed-insp').textContent), pend());
+    Q('.ed-vob[data-vo="v2"]').dispatchEvent(new PointerEvent('pointerdown', { clientX: Q('.ed-vob[data-vo="v2"]').getBoundingClientRect().left + 3, button: 0, bubbles: true, pointerId: 9 })); pe('pointerup', 0, 0); await wait(150);
+    await click('[data-k=ins-vo-mute]');
+    ok('muting a voice line is an edit and the line greys out', pend() === 3 && Q('.ed-vob[data-vo="v2"]').classList.contains('muted'), pend());
+    await click('[data-k=ed-undo]');
+    ok('undo takes the last edit back', pend() === 2 && !Q('.ed-vob[data-vo="v2"]').classList.contains('muted'), pend());
+    await click('[data-k=ed-redo]'); await click('[data-k=ed-undo]');
+    ok('redo puts it back (and undo again)', pend() === 2);
+    await click('[data-k="sug-try:s1"]');
+    ok('trying the agent\'s suggestion previews its music', /brighter|Music bright|music-bright/i.test(Q('.ed-mus').textContent) && /Trying/.test(Q('.ed-note').textContent), Q('.ed-mus').textContent);
+    await click('[data-k="sug-try:s1"]');
+    ok('the Render line says what re-renders', /2 shots \+ mix/.test(Q('.ed-sum').textContent), Q('.ed-sum').textContent);
+    ok('Quick preview is offered for the changed shots', Q('[data-k=ed-preview]') && !Q('[data-k=ed-preview]').disabled && /shot|–/.test(Q('[data-k=ed-preview]').title), (Q('[data-k=ed-preview]') || {}).title);
+    await click('[data-k=ed-render]');
+    ok('Render sends the edits to the agent as one action', await until(() => /action edit -> .*trim 01 end=5 ; swap 02 rec-board/.test(log())), log().split('\n').find((l) => /action edit/.test(l)) || 'no edit action');
+    ok('the editor does not overflow the pane', Q('.ed').scrollWidth <= Q('.ed').clientWidth + 1 && Q('#scroller').scrollWidth <= Q('#scroller').clientWidth + 1, Q('.ed').scrollWidth + ' > ' + Q('.ed').clientWidth);
+    ok('on a narrow pane the bin is a drawer', getComputedStyle(Q('.ed-bin')).display === 'none' && !!Q('[data-k=ed-bin-toggle]'), getComputedStyle(Q('.ed-bin')).display);
+    await click('[data-k=ed-bin-toggle]');
+    ok('the drawer opens', getComputedStyle(Q('.ed-bin')).display !== 'none');
+  }
   if (step === 'pick') {
     const badge = () => Q('#badgeText').textContent;
     const read = Q('[data-k="open-script:A"]');
@@ -481,12 +538,14 @@ WIDE = r"""(async () => {
 })()"""
 
 
-def uicheck(sh):
+def uicheck(sh, only=()):
     bad = 0
-    for r in sh.js(WIDE, sh.open("widgets", 900, 1000, False)) or []:
+    for r in ([] if only else sh.js(WIDE, sh.open("widgets", 900, 1000, False)) or []):
         bad += not r["pass"]
         print(("ok   " if r["pass"] else "FAIL ") + f"widgets-wide: {r['name']}" + (f"  [{r['info']}]" if r["info"] and not r["pass"] else ""))
-    for st in ["starting", "plan", "widgets", "dense", "pick", "review", "autopilot", "storyboard", "foryou-many"]:
+    for st in ["starting", "plan", "widgets", "dense", "pick", "review", "autopilot", "storyboard", "foryou-many", "edit"]:
+        if only and st not in only:
+            continue
         mod = sh.open(st, 520, 1000, False)
         for r in sh.js(UICHECK, mod) or []:
             bad += not r["pass"]
@@ -521,7 +580,7 @@ def main():
     made = []
     if a.check:
         try:
-            bad = uicheck(sh)
+            bad = uicheck(sh, only)
         finally:
             sh.close()
             srv.shutdown()

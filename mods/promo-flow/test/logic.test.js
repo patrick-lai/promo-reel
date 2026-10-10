@@ -412,3 +412,66 @@ test("timeline notes: sent changes wait until the published pins show them", () 
   const after = [{ id: "n1", at_s: 5, text: "bigger logo" }, { id: "n3", at_s: 14.23, text: "cut off" }];
   assert.deepEqual(L.notesUnsettled(sent, after), []);
 });
+
+/* ---- the editor: the shared cases in tests/edit-cases.json run here through PF.editApply and in pytest through promo/editor.py ---- */
+const CASES = require("../../../tests/edit-cases.json");
+function subset(want, got, path) {
+  if (Array.isArray(want)) {
+    const more = want.length > 0 && want[want.length - 1] === "...";
+    const w = more ? want.slice(0, -1) : want;
+    assert.ok(Array.isArray(got) && (more ? got.length >= w.length : got.length === w.length), path + ": " + JSON.stringify(got) + " has " + (got || []).length + " items, expected " + w.length);
+    w.forEach((v, i) => subset(v, got[i], path + "[" + i + "]"));
+  } else if (want && typeof want === "object") {
+    assert.ok(got && typeof got === "object", path + ": " + JSON.stringify(got));
+    for (const [k, v] of Object.entries(want)) { assert.ok(k in got, path + "." + k + " missing in " + JSON.stringify(got)); subset(v, got[k], path + "." + k); }
+  } else assert.equal(got, want, path);
+}
+for (const c of CASES.cases) test("edit case: " + c.name, () => {
+  const before = JSON.stringify(CASES.spec);
+  if (c.error) { assert.throws(() => L.editApply(CASES.spec, L.editParse(c.ops), CASES.B), (e) => e instanceof L.EditError && e.message.includes(c.error)); return; }
+  const { raw } = L.editApply(CASES.spec, L.editParse(c.ops), CASES.B);
+  subset(c.expect, raw, "$");
+  for (const p of c.absent || []) { let x = raw; for (const k of p.slice(0, -1)) x = x[k]; assert.ok(!(p[p.length - 1] in x), p.join(".") + " should be gone"); }
+  assert.equal(JSON.stringify(CASES.spec), before);
+});
+for (const c of CASES.parse) test("edit parse: " + (c.text.slice(0, 30) || "empty"), () => {
+  if (c.error) { assert.throws(() => L.editParse(c.text), (e) => e instanceof L.EditError && e.message.includes(c.error)); return; }
+  const strip = (ops) => ops.map(({ _n, ...o }) => o);
+  assert.deepEqual(strip(L.editParse(c.text)), c.ops);
+  assert.deepEqual(strip(L.editParse(L.editText(L.editParse(c.text)))), c.ops);
+});
+test("editText writes what the person did as edit text, one op per line, and reads back the same", () => {
+  const ops = [{ op: "swap", shot: "07", source: "jev:rec-board", t_in: 1.25 }, { op: "caption", shot: "07", text: 'Say "it" once; then go.' }, { op: "vo", line: "a3", at: 2, shot: "08", mute: true },
+    { op: "sfx", shot: "07", act: "add", sfx: "hit", at: 0.5, db: -5 }, { op: "music", asset: "music-b", offset: 3 }, { op: "trim", shot: "07", end: 34 }, { op: "move", shot: "07", before: "03" }];
+  const text = L.editText(ops);
+  assert.equal(text.split("\n")[1], 'caption 07 "Say \\"it\\" once; then go."');
+  assert.deepEqual(L.editParse(text).map(({ _n, ...o }) => o), ops);
+});
+test("undo and redo walk the edit stack; a new edit drops what was undone", () => {
+  let st = { done: [], undone: [] };
+  st = L.editPush(st, { op: "bus", bus: "music", db: -3 });
+  st = L.editPush(st, { op: "caption", shot: "01", text: "x" });
+  st = L.editUndo(st);
+  assert.deepEqual(st.done.map((o) => o.op), ["bus"]);
+  assert.deepEqual(st.undone.map((o) => o.op), ["caption"]);
+  st = L.editRedo(st);
+  assert.deepEqual(st.done.map((o) => o.op), ["bus", "caption"]);
+  st = L.editUndo(L.editUndo(st));
+  assert.equal(st.done.length, 0);
+  assert.equal(L.editUndo(st), st);
+  st = L.editPush(st, { op: "delete", shot: "02" });
+  assert.deepEqual(st.undone, []);
+});
+test("the Render line says what re-renders and about how long, from the build's own timings", () => {
+  const edit = { estimate: { shot: 20, music: 2, mix: 5, assemble: 25, contact: 8, events: 0.1 }, shots: [{ id: "01", local: true }, { id: "02", local: false }, { id: "03", local: true }] };
+  assert.equal(L.editSummary([], edit).line, "nothing to render");
+  const m = L.editSummary([{ op: "music", asset: "x" }], edit);
+  assert.deepEqual(m.shots, []);
+  assert.equal(m.line, "music + mix, under a minute");
+  const s = L.editSummary([{ op: "swap", shot: "03", source: "y" }, { op: "bus", bus: "music", db: -3 }], edit);
+  assert.deepEqual(s.shots, ["03"]);
+  assert.match(s.line, /^1 shot \+ mix, /);
+  /* moving shots: built-in types draw in shot-local time, so only the project type (02) renders again */
+  assert.deepEqual(L.editSummary([{ op: "move", shot: "03", before: "01" }], edit).shots, ["02"]);
+  assert.deepEqual(L.editSummary([{ op: "trim", shot: "01", end: 6 }], edit).shots.sort(), ["01", "02"]);
+});

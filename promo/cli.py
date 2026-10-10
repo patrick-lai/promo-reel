@@ -22,6 +22,12 @@ from .spec import SpecError, load_spec
 
 QA_ONLY_KEYS = ("named", "contact_at")
 AUDIO_KEYS = ("audio",)         # shot `audio:` lines only change the clip-audio / events / mix steps, never the rendered picture
+EVENT_KEYS = ("sfx", "label", "notes", "move")      # sound cues and EDL wording: the events / mix / assemble steps, never the picture
+# Built-in types that draw in shot-local time: moving one of these shots along the timeline, length unchanged, does not change a frame of it.
+# (livestream, horizon, dawn and project types read the shot's global start, so their digest keeps the absolute beats.)
+LOCAL_TIME = {"promo.shots.clip", "promo.shots.card", "promo.shots.cinema", "promo.shots.screen", "promo.shots.anime"}
+POST_KEYS = ("grade", "fade")    # shot keys applied by ffmpeg on the rendered segment: a new grade or fade re-encodes it, it never re-renders the shot
+SEG_CACHE_BYTES = 4 << 30       # build/<WxH>/segs/.cache: every render by its digest, so swapping a shot back is instant; oldest go first past this
 SHOT_CODE = ["render", "overlays", "spec", "footage", "shots/__init__", "shots/clip", "shots/card", "shots/livestream", "livestream", "live2d"]
 
 
@@ -31,7 +37,49 @@ def log(args, *a):
 
 
 # ---------------------------------------------------------------- steps: plan (key, digest, outputs) + run
-def shot_digest(spec, shot):
+def local_time(shot):
+    from .shots import get_type
+    try:
+        return type(get_type(shot.type)).__module__ in LOCAL_TIME
+    except KeyError:
+        return False
+
+
+def post_filter(cfg, dur):
+    """The ffmpeg -vf of a shot's `grade` (plates only: promo/editor.py refuses it on a UI shot) and `fade`, or None."""
+    vf = []
+    g = cfg.get("grade") or {}
+    eq = {k: g[k] for k in ("brightness", "contrast", "saturation", "gamma") if k in g}
+    if eq:
+        vf.append("eq=" + ":".join(f"{k}={float(v):g}" for k, v in eq.items()))
+    if g.get("temperature"):
+        vf.append(f"colortemperature=temperature={float(g['temperature']):g}")
+    if g.get("vignette"):
+        vf.append(f"vignette=angle={0.15 + 0.9 * float(g['vignette']):.3f}")
+    f = cfg.get("fade") or {}
+    if f.get("in"):
+        vf.append(f"fade=t=in:st=0:d={float(f['in']):g}")
+    if f.get("out"):
+        vf.append(f"fade=t=out:st={max(0.0, dur - float(f['out'])):.3f}:d={float(f['out']):g}")
+    return ",".join(vf) or None
+
+
+def apply_post(spec, shot):
+    """Re-encode the shot's segment through its post filter, with the renderer's own x264 settings so the segments still concat as a stream copy."""
+    vf = post_filter(shot.cfg, shot.dur)
+    if not vf:
+        return
+    seg = spec.seg_path(shot.id)
+    tmp = seg[:-4] + ".post.mp4"
+    subprocess.run(["nice", "-n", "10", "ffmpeg", "-v", "error", "-y", "-i", seg, "-vf", vf, "-threads", "2", "-c:v", "libx264", "-preset", "slow", "-crf", "16",
+                    "-profile:v", "high", "-pix_fmt", "yuv420p", "-g", "60", "-bf", "2", "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709",
+                    "-an", tmp], check=True)
+    os.replace(tmp, seg)
+
+
+def shot_digest(spec, shot, legacy=False, raw=False):
+    """What the rendered picture of `shot` depends on. `legacy=True` is the formula before EVENT_KEYS and beat lengths (see _legacy_fresh);
+    `raw=True` leaves out the post filter (POST_KEYS), the key of the ungraded render in the segment cache."""
     clips = {cid: FT.verified_sha(spec, cid) for cid in sorted(FT.referenced(spec, {shot.id})) if os.path.exists(FT.clip_path(spec, cid))}
     plates = {k: v for k, v in (spec.raw.get("plates") or {}).items()}
     code = SHOT_CODE + (["shots/anime", "styles", "claims"] if shot.type == "anime" else [])
@@ -45,7 +93,10 @@ def shot_digest(spec, shot):
     if shot.type in ("horizon", "dawn"):    # the show-level horizon_text layer (drawn into every horizon shot) + the resolved preset
         code = code + ["shots/horizon", "shots/brand", "pane3d", "styles"]
         extra = [spec.style, spec.raw.get("horizon_text"), spec.timeline.bpm]
-    cfg = {k: v for k, v in shot.cfg.items() if k not in QA_ONLY_KEYS + AUDIO_KEYS}      # QA-only / audio-only keys never force a re-render
+    cfg = {k: v for k, v in shot.cfg.items() if k not in QA_ONLY_KEYS + AUDIO_KEYS + (() if legacy else EVENT_KEYS) + (POST_KEYS if raw else ())}   # QA / audio / cue keys never force a re-render
+    if not legacy and local_time(shot):
+        cfg = {k: v for k, v in cfg.items() if k not in ("beats", "bars")}
+        cfg["beats_len"] = round(shot.b1 - shot.b0, 6)
     return digest(cfg, shot.n, spec.raw.get("style"), plates, spec.scale, spec.fps, clips, spec.raw.get("livestream"),
                   os.environ.get("PROMO_DEBUG") == "1",
                   code_hash(*code, extra_files=spec.plugins), *extra)
@@ -92,14 +143,19 @@ def plan(spec):
         def go(a):
             ctx = RenderContext.from_spec(spec)
             os.makedirs(spec.segs_dir, exist_ok=True)
+            if os.path.exists(spec.seg_path(shot.id)):
+                os.remove(spec.seg_path(shot.id))          # a new file, never written into: the segment cache holds a link to the old one
             edl = get_type(shot.type).render(ctx, shot)
             with open(os.path.join(spec.segs_dir, f"{shot.id}.edl.json"), "w") as f:
                 json.dump(edl, f, indent=1)
         return go
     for s in spec.shots:
         add(f"shot {s.id}", f"shot_{s.id}_{spec.OW}", (lambda s=s: shot_digest(spec, s)), [spec.seg_path(s.id)], shot_run(s))
-    # QA-only shot keys (named boxes, contact_at) never make the events step stale (same rule as shot_digest)
-    qa_free_shots = lambda: [{k: v for k, v in sh.items() if k not in QA_ONLY_KEYS} if isinstance(sh, dict) else sh
+        steps[-1].update(legacy=(lambda s=s: shot_digest(spec, s, legacy=True)), seg=dict(mp4=spec.seg_path(s.id), edl=os.path.join(spec.segs_dir, f"{s.id}.edl.json")))
+        if post_filter(s.cfg, s.dur):
+            steps[-1].update(raw=(lambda s=s: shot_digest(spec, s, raw=True)), post=(lambda s=s: apply_post(spec, s)))
+    # QA-only shot keys (named boxes, contact_at) and the picture's grade / fade never make the events step stale
+    qa_free_shots = lambda: [{k: v for k, v in sh.items() if k not in QA_ONLY_KEYS + POST_KEYS} if isinstance(sh, dict) else sh
                              for sh in (spec.raw.get("shots") or [])] if spec.raw.get("shots") is not None else None
     add("events", "events", lambda: digest(qa_free_shots(), spec.raw.get("vo", {}).get("lines"), spec.raw.get("timeline"), spec.fps,
                                           code_hash("events", "spec", "shots/clip", "shot_audio", extra_files=spec.plugins)),
@@ -112,19 +168,76 @@ def plan(spec):
         vj = os.path.join(spec.vo_dir, "vo.json")
         vo_sigs = {l["file"]: file_sig(os.path.join(spec.vo_dir, l["file"])) for l in json.load(open(vj))["lines"]} if os.path.exists(vj) else {}
         clip_sigs = {l["id"]: file_sig(l["file"]) for l in shot_audio.lines(spec)}
-        return digest(spec.raw.get("mix"), spec.raw.get("sfx"), spec.duration, file_sig(events_path(spec)), clip_sigs,
+        vo_lines = [[vo.line_id(l), l.get("db"), l.get("mute")] for l in (spec.raw.get("vo") or {}).get("lines") or []]     # per-line level and mute
+        return digest(spec.raw.get("mix"), spec.raw.get("sfx"), spec.duration, file_sig(events_path(spec)), clip_sigs, vo_lines,
                       file_sig(music_path(spec)) if spec.raw.get("music") else None,
                       file_sig(vj), vo_sigs, sfx_sigs, audiofx.spec_fx(spec.raw), code_hash("mix", "audiofx"))
     add("mix", "mix", mix_dig, [mix.master_path(spec, m["name"]) for m in spec.masters], lambda a: mix.run(spec),
         deps=["sfx", "vo", "events"] + (["clip-audio"] if shot_audio.has_lines(spec) else []) + (["music"] if spec.raw.get("music") else []))
     outs = [spec.output_path(m.get("suffix", "")) for m in spec.masters]
+    def assemble_run(a):
+        for o in outs:          # a new file each time: a registered draft may be a hardlink to the last one (flow/drafts/dN.mp4)
+            if os.path.exists(o):
+                os.remove(o)
+        assemble.run(spec)
     add("assemble", f"assemble_{spec.OW}",
         lambda: digest({s.id: file_sig(spec.seg_path(s.id)) for s in spec.shots}, {m["name"]: file_sig(mix.master_path(spec, m["name"])) for m in spec.masters},
                        spec.raw.get("mix", {}).get("masters"), spec.duration, spec.name, code_hash("assemble")),
-        outs, lambda a: assemble.run(spec), deps=[f"shot {s.id}" for s in spec.shots] + ["mix"])
+        outs, assemble_run, deps=[f"shot {s.id}" for s in spec.shots] + ["mix"])
     add("contact", f"contact_{spec.OW}", lambda: digest(file_sig(outs[0]), [s.get("contact_at") for s in spec.shots], spec.title, code_hash("contact")),
         [contact.contact_paths(spec)[0]], lambda a: contact.run(spec), deps=["assemble"])
     return steps
+
+
+def _legacy_fresh(stamps, st, dig):
+    """TODO(remove after one release): a shot stamped before EVENT_KEYS / beat lengths joined the digest still counts as fresh once, so the
+    new formula does not re-render every shot of every project (15-25 min); `promo build` rewrites the stamp with the new digest."""
+    return bool(st.get("legacy")) and stamps.is_fresh(st["key"], st["legacy"](), st["outputs"])
+
+
+def is_fresh(stamps, st, dig):
+    return stamps.is_fresh(st["key"], dig, st["outputs"]) or _legacy_fresh(stamps, st, dig)
+
+
+def _seg_cache(st, dig):
+    d = os.path.join(os.path.dirname(st["seg"]["mp4"]), ".cache")
+    return os.path.join(d, dig + ".mp4"), os.path.join(d, dig + ".edl.json")
+
+
+def _cache_put(st, dig):
+    """Keep this render under its digest (a hardlink: no copy) so the same shot comes back instantly after a swap and a swap back."""
+    mp4, edl = _seg_cache(st, dig)
+    os.makedirs(os.path.dirname(mp4), exist_ok=True)
+    for src, dst in ((st["seg"]["mp4"], mp4), (st["seg"]["edl"], edl)):
+        if not os.path.isfile(src):
+            continue
+        if os.path.exists(dst):
+            os.remove(dst)
+        try:
+            os.link(src, dst)
+        except OSError:
+            shutil.copyfile(src, dst)
+    files = sorted((os.path.join(os.path.dirname(mp4), f) for f in os.listdir(os.path.dirname(mp4)) if f.endswith(".mp4")), key=os.path.getmtime, reverse=True)
+    total = 0
+    for f in files:
+        total += os.path.getsize(f)
+        if total > SEG_CACHE_BYTES:
+            for x in (f, f[:-4] + ".edl.json"):
+                if os.path.exists(x):
+                    os.remove(x)
+
+
+def _cache_get(st, dig):
+    mp4, edl = _seg_cache(st, dig)
+    if not os.path.isfile(mp4):
+        return False
+    for src, dst in ((mp4, st["seg"]["mp4"]), (edl, st["seg"]["edl"])):
+        if os.path.exists(dst):
+            os.remove(dst)
+        if os.path.isfile(src):
+            os.link(src, dst)
+    os.utime(mp4)
+    return True
 
 
 def run_step(spec, args, st):
@@ -133,10 +246,31 @@ def run_step(spec, args, st):
     if not args.force and stamps.is_fresh(st["key"], dig, st["outputs"]):
         print(f"skip  {st['name']} (unchanged)")
         return False
+    if not args.force and _legacy_fresh(stamps, st, dig):
+        old = stamps.get(st["key"]) or {}
+        stamps.write(st["key"], dig, **{k: v for k, v in old.items() if k != "digest"})
+        print(f"skip  {st['name']} (unchanged; stamp updated)")
+        return False
+    if not args.force and st.get("seg") and _cache_get(st, dig):
+        stamps.write(st["key"], dig, at=time.time(), secs=0.0, cached=True)
+        print(f"reuse {st['name']} (rendered before with these exact inputs)")
+        return False
     t0 = time.time()
-    print(f"run   {st['name']}", flush=True)
-    st["run"](args)
+    if st.get("post"):                       # a grade or fade: start from the ungraded render when it is cached, then filter it
+        raw = st["raw"]()
+        if not args.force and _cache_get(st, raw):
+            print(f"grade {st['name']} (from its cached render)", flush=True)
+        else:
+            print(f"run   {st['name']}", flush=True)
+            st["run"](args)
+            _cache_put(st, raw)
+        st["post"]()
+    else:
+        print(f"run   {st['name']}", flush=True)
+        st["run"](args)
     stamps.write(st["key"], dig, at=time.time(), secs=round(time.time() - t0, 1))
+    if st.get("seg"):
+        _cache_put(st, dig)
     return True
 
 
@@ -242,7 +376,7 @@ def cmd_status(spec, args):
         exists = all(os.path.exists(o) for o in st["outputs"])
         try:
             dig = st["dig"]()
-            fresh = stamps.is_fresh(st["key"], dig, st["outputs"])
+            fresh = is_fresh(stamps, st, dig)
         except Exception as e:  # noqa: BLE001  (inputs not available yet)
             dig, fresh = None, False
         if not exists:

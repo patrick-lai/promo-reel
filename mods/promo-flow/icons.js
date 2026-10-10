@@ -40,6 +40,8 @@
     mute: '<path d="M3.5 7.5h3L10 4.5v11l-3.5-3h-3z"/><path d="M13 8l4 4M17 8l-4 4"/>',
     keys: '<rect x="2.5" y="5" width="15" height="10" rx="2"/><path d="M5.5 8h.1M8.5 8h.1M11.5 8h.1M14.5 8h.1M6.5 12h7"/>',
     shrink: '<path d="M16.5 8.5h-5v-5M3.5 11.5h5v5M11.5 8.5L17 3M8.5 11.5L3 17"/>',
+    undo: '<path d="M7.5 5L4 8.5 7.5 12"/><path d="M4.5 8.5H12a4 4 0 0 1 0 8H8"/>',
+    redo: '<path d="M12.5 5L16 8.5 12.5 12"/><path d="M15.5 8.5H8a4 4 0 0 0 0 8h4"/>',
     folder: '<path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h3L9 7h6.5A1.5 1.5 0 0 1 17 8.5v6a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 14.5z"/>'
   };
   window.icon = function (name, cls) {

@@ -1,7 +1,7 @@
 {
   "id": "promo-flow",
   "name": "Promo flow",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "protocol": 2,
   "description": "Plan, storyboard and review a produced video with the person in the loop.",
   "entry": "index.html",
@@ -27,7 +27,11 @@
     "ab":     {"message": "[mod:promo-flow] {by} answered the blind pick {pair} ({question}): {label}. Run: promo flow ab pick {pair} --side {side} --by \"{by}\", then publish."},
     "autopilot": {"message": "[mod:promo-flow] {by} asked you to {op} working on your own ({what}). Run: promo flow autopilot {op} --minutes {minutes} --by \"{by}\" (--minutes only for start). While it runs, work in passes (promo flow autopilot pass begin, then pass end) until it reports done, blocked or out of time, and publish after every pass."},
     "overturn": {"message": "[mod:promo-flow] {by} wants something else than your choice \"{choice}\" ({id}): {text}. Run: promo flow assume overturn {id} --text \"<their words>\" --by \"{by}\", then publish. It becomes a check for the next draft."},
-    "forget": {"message": "[mod:promo-flow] {by} asked you to forget a remembered note: {text}. Run: promo flow lessons --forget {id} --by \"{by}\", then publish."}
+    "forget": {"message": "[mod:promo-flow] {by} asked you to forget a remembered note: {text}. Run: promo flow lessons --forget {id} --by \"{by}\", then publish."},
+    "edit": {"message": "[mod:promo-flow] {by} edited the video in the Stage's editor ({count} changes after {draft}: {list}). Run: promo flow edit render --by \"{by}\" --file - with these edits on stdin, one per line (here ` ; ` separates them): {ops}. It builds only what changed, checks it and registers the next draft; then publish. Do not approve anything."},
+    "edit_preview": {"message": "[mod:promo-flow] {by} wants a quick preview of {where} with their {count} edits from the Stage's editor. Run: promo flow edit apply --by \"{by}\" --file - with these edits on stdin, one per line (here ` ; ` separates them): {ops}. Then promo flow edit preview {range} (only those shots and the sound are built; the clip shows in the editor), then publish. Do not register a draft or approve anything."},
+    "edit_bin": {"message": "[mod:promo-flow] {by} opened the earlier project {name} in the editor's bin. Run: promo flow edit bin --open \"{name}\", then publish."},
+    "edit_keep": {"message": "[mod:promo-flow] {by} kept your editor suggestion {id} ({note}); its edits are now in their pending edits and render with their next Render. Run: promo flow edit keep {id} --by \"{by}\", then publish."}
   },
   "skill": "agent/SKILL.md"
 }

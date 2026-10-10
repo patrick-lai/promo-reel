@@ -6,8 +6,8 @@
   /media/<upload_id>   the file, with Range support
   ?mod=promo-projects  the resume picker: stages picker* (fixture projects at several steps; --real-picker adds your own as `picker-real`)
   --project DIR        serve a REAL project as stage `live`: every request re-reads `promo flow snapshot`, and POST /api/action runs the real
-                       `promo flow` command behind the click (approve / pick / generate = `promo flow make`, settings = `promo config output`, against a throwaway
-                       config file unless PROMO_CONFIG is set), so the whole flow can be driven by hand.
+                       `promo flow` command behind the click (approve / pick / generate = `promo flow make`, edit = `promo flow edit render`, settings = `promo config
+                       output`, against a throwaway config file unless PROMO_CONFIG is set), so the whole flow can be driven by hand.
 """
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ import json
 import mimetypes
 import os
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -203,6 +204,27 @@ def run_action(pd, name, payload):
                     autopilot=["autopilot", str(a.get("op")), "--by", BY] + (["--minutes", str(a["minutes"])] if a.get("op") == "start" else []))[name]
         rc = flow.main(["--project", pd, *argv])
         return {"ok": rc == 0, "error": f"promo flow {argv[0]} failed (see the harness console)", "pending": False}
+    elif name == "edit":
+        out = open(os.path.join(pd, "flow", "edit", "render.log"), "a")          # what the render printed: build steps run / skipped, check, the draft
+        job = subprocess.Popen([sys.executable, "-m", "promo", "flow", "--project", pd, "edit", "render", "--by", BY, "--file", "-"], cwd=ROOT, env={**os.environ, "PYTHONPATH": ROOT},
+                               stdin=subprocess.PIPE, stdout=out, stderr=subprocess.STDOUT, text=True)
+        job.stdin.write(str(payload.get("ops", "")).replace(" ; ", "\n") + "\n")
+        job.stdin.close()
+        LIVE["jobs"].append(job)
+        return {"ok": True, "message": "rendering the edit (promo flow edit render): only what changed is built", "pending": False}
+    elif name == "edit_preview":
+        script = (f"{shlex.quote(sys.executable)} -m promo flow --project {shlex.quote(pd)} edit apply --by {BY} --file - && "
+                  f"{shlex.quote(sys.executable)} -m promo flow --project {shlex.quote(pd)} edit preview {payload.get('range', '')}")
+        out = open(os.path.join(pd, "flow", "edit", "render.log"), "a")
+        job = subprocess.Popen(["sh", "-c", script], cwd=ROOT, env={**os.environ, "PYTHONPATH": ROOT}, stdin=subprocess.PIPE, stdout=out, stderr=subprocess.STDOUT, text=True)
+        job.stdin.write(str(payload.get("ops", "")).replace(" ; ", "\n") + "\n")
+        job.stdin.close()
+        LIVE["jobs"].append(job)
+        return {"ok": True, "message": f"applying the edits and building a preview of {payload.get('where')}", "pending": False}
+    elif name in ("edit_bin", "edit_keep"):
+        argv = ["edit", "bin", "--open", str(payload.get("name"))] if name == "edit_bin" else ["edit", "keep", str(payload.get("id")), "--by", BY]
+        rc = flow.main(["--project", pd, *argv])
+        return {"ok": rc == 0, "error": f"promo flow {' '.join(argv[:2])} failed (see the harness console)", "pending": False}
     elif name == "density":
         args = ["--clear"] if not payload.get("every") else ["--every", str(payload["every"])]
         rc = flow.main(["--project", pd, "density", "--story", payload["story"], *args])

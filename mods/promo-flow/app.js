@@ -6,10 +6,11 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   const STAGE_IDS = ["discover", "scripts", "pick", "storyboard", "assets", "keyframes", "confirm", "drafts", "review", "final"];
   const STAGE_LABEL = { discover: "Style & references", scripts: "Scripts", pick: "Pick stories", storyboard: "Storyboard", assets: "Asset plan", keyframes: "Keyframes", confirm: "Final confirmation", drafts: "First drafts", review: "Review rounds", final: "Final" };
   const SHORT = { discover: "Style", scripts: "Scripts", pick: "Pick", storyboard: "Storyboard", assets: "Assets", keyframes: "Keyframes", confirm: "Confirm", drafts: "Drafts", review: "Review", final: "Final" };
-  const STAGE_TAB = { scripts: "scripts", pick: "scripts", storyboard: "storyboard", assets: "assets", keyframes: "storyboard", confirm: "storyboard", drafts: "draft", review: "draft", final: "draft" };
+  const STAGE_TAB = { scripts: "scripts", pick: "scripts", storyboard: "storyboard", assets: "assets", keyframes: "storyboard", confirm: "storyboard", drafts: "edit", review: "draft", final: "draft" };
   const BADGE_TEXT = { working: "With the agent", waiting: "Your turn", done: "Done", attention: "Needs attention" };
   const ACTION_WORD = { approve: "your approval", pick: "your picks", changes: "your changes", feedback: "your feedback", generate: "your request", request: "your request", scene_note: "your comment", density: "your request", share: "your upload request", settings: "your folder choice",
-    widget: "your message from the panel", pins: "your notes", restore: "your restore request", ab: "your pick", autopilot: "your go", overturn: "your change", forget: "your request" };
+    widget: "your message from the panel", pins: "your notes", restore: "your restore request", ab: "your pick", autopilot: "your go", overturn: "your change", forget: "your request",
+    edit: "your edits", edit_preview: "your preview request", edit_bin: "your request", edit_keep: "your pick" };
   /* Composer kinds beyond plain changes/feedback: the button says what sending does. */
   const COMPOSE_SEND = { request: "Send request", overturn: "Send change", scene: "Send comment" };
   const KIND_ICON = { script: "doc", treatment: "spark", shotlist: "table", direction: "film", edit: "cut", audio: "music", capture: "camera", schedule: "clock", deliverables: "download", risks: "shield", research: "link", review: "refresh", notes: "doc" };
@@ -251,11 +252,19 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   const readable = () => !hasDoc() || (typeof S.doc.stage === "string" && Array.isArray(S.doc.steps));
   const isStarting = () => !hasDoc();
   const hasSettings = () => !!(S.doc && S.doc.settings && S.doc.settings.output);
-  const steps = () => (isStarting() ? STAGE_IDS.map((id, i) => ({ id, label: STAGE_LABEL[id], state: i === 0 ? "current" : "todo" })) : arr(S.doc.steps));
+  /* Reaching the first draft is a milestone: the plan (style, scripts, storyboard, assets) is behind the person, so from then on the stepper is the
+     production phase alone, Draft, Review, Final, and the planning tabs give way to the editor. Scripts stay one click away in the editor's bin. */
+  const PRODUCTION = ["drafts", "review", "final"];
+  const PHASE_LABEL = { drafts: "Draft", review: "Review", final: "Final" };
+  const inProduction = () => hasDoc() && STAGE_IDS.indexOf(S.doc.stage) >= STAGE_IDS.indexOf("drafts");
+  const steps = () => (isStarting() ? STAGE_IDS.map((id, i) => ({ id, label: STAGE_LABEL[id], state: i === 0 ? "current" : "todo" }))
+    : inProduction() ? arr(S.doc.steps).filter((x) => PRODUCTION.includes(x.id)).map((x) => ({ ...x, label: PHASE_LABEL[x.id] })) : arr(S.doc.steps));
   const gate = () => (S.doc && S.doc.gate) || null;
   const stageIdx = () => STAGE_IDS.indexOf(S.doc.stage);
   const sceneIds = () => new Set(arr(S.doc.boards).flatMap((b) => arr(b.scenes).map((s) => String(s.id))));
   const gTab = () => STAGE_TAB[(gate() && gate().stage) || S.doc.stage];
+  /* The tab the gate's question is about: the editor opens first at the drafts stage, but a draft is approved after watching it in Drafts. */
+  const askTab = () => (gTab() === "edit" ? "draft" : gTab());
   const gateKey = () => (S.doc.stage || "") + "|" + (gate() ? gate().gate + "|" + gate().kind : "-");
 
   const curBoard = () => { const bs = arr(S.doc.boards); if (S.boardIdx >= bs.length) S.boardIdx = 0; return bs[S.boardIdx] || null; };
@@ -269,14 +278,16 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
 
   function tabList() {
     const d = S.doc, t = [], b = curBoard();
-    if (arr(d.scripts).length) t.push({ id: "scripts", label: "Scripts", n: d.scripts.length });
-    if (b) t.push({ id: "storyboard", label: "Storyboard", n: arr(b.scenes).length });
-    if (arr(d.assets).length) { const m = model(); t.push({ id: "assets", label: "Assets", n: m.total, title: "Assets: " + m.total + " rows for this story (" + m.n.ready + " ready, " + m.n.mock + " mock, " + m.n.todo + " to make" + (m.n.missing ? ", " + m.n.missing + " missing" : "") + ")" }); }
+    const prod = inProduction() && !!d.edit;
+    if (arr(d.scripts).length && !prod) t.push({ id: "scripts", label: "Scripts", n: d.scripts.length });
+    if (b && !prod) t.push({ id: "storyboard", label: "Storyboard", n: arr(b.scenes).length });
+    if (arr(d.assets).length && !prod) { const m = model(); t.push({ id: "assets", label: "Assets", n: m.total, title: "Assets: " + m.total + " rows for this story (" + m.n.ready + " ready, " + m.n.mock + " mock, " + m.n.todo + " to make" + (m.n.missing ? ", " + m.n.missing + " missing" : "") + ")" }); }
     if (arr(d.docs).length || (arr(d.scripts).length && stageIdx() >= STAGE_IDS.indexOf("scripts"))) t.push({ id: "plan", label: "Plan", n: readables().length || null, title: "Plan: full scripts and production documents. Ask the agent to add more." });
     if (t.length) t.push({ id: PF.FILES_TAB, label: "Add files", n: S.files.length || null, title: "Add files: drop your own footage or pictures here for the agent" });
     const wn = PF.widgetsFor(d, "workbench").length;
     if (wn) t.push({ id: PF.WIDGET_TAB, label: "Workbench", n: wn, title: "Workbench: panels the agent built for this job" });
     if (arr(d.drafts).length || arr(d.finals).length || arr(d.rounds).length || stageIdx() >= STAGE_IDS.indexOf("drafts")) t.push({ id: "draft", label: "Drafts", n: arr(d.drafts).length + arr(d.finals).length || null });
+    if (d.edit && stageIdx() >= STAGE_IDS.indexOf("drafts")) { const n = S.editor ? S.editor.api.pending().length : 0; t.push({ id: "edit", label: "Edit", n: n || null, title: "Edit: change the cut, footage, captions, voice, music and sound, hear it at once, then render a new draft" + (n ? " (" + n + " edits not rendered yet)" : "") }); }
     return t;
   }
 
@@ -298,7 +309,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     const st = !hasDoc() ? [] : steps();
     const finished = st.length > 0 && st.every((x) => x.state === "done");
     const cur = finished ? st.length - 1 : Math.max(0, st.findIndex((x) => x.state === "current"));
-    el.stepNo.textContent = finished ? "All " + st.length + " steps done" : "Step " + (cur + 1) + " of " + st.length;
+    el.stepNo.textContent = (inProduction() ? "Production \u00b7 " : "") + (finished ? "All " + st.length + " steps done" : "Step " + (cur + 1) + " of " + st.length);
     const noConn = S.noState && !hasDoc();
     if (noConn) el.stepNo.textContent = "Not connected";
     else if (isStarting()) el.stepNo.textContent = "Starting";
@@ -321,7 +332,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       el.stepper.dataset.key = key;
       el.stepper.replaceChildren(...st.map((x) => h("li", { class: x.state + (x.stale && x.state === "current" ? " flag" : ""), title: x.label + (x.stale ? " (needs approval again)" : ""), "aria-current": x.state === "current" ? "step" : null },
         h("i", { class: "seg" }), h("span", { class: "lab", text: SHORT[x.id] || x.label }))));
-      el.stepsList.replaceChildren(...st.map((x, i) => h("li", { class: x.state + (x.stale && x.state === "current" ? " flag" : ""), "aria-current": x.state === "current" ? "step" : null },
+      el.stepsList.replaceChildren(...(inProduction() ? [h("li", { class: "done milestone" }, h("span", { class: "mark" }, ic("check")), h("span", { text: "Plan approved: style, scripts, storyboard and assets" }))] : []), ...st.map((x, i) => h("li", { class: x.state + (x.stale && x.state === "current" ? " flag" : ""), "aria-current": x.state === "current" ? "step" : null },
         h("span", { class: "mark" }, x.state === "done" ? ic("check") : x.stale ? ic("alert") : String(i + 1)), h("span", { text: x.label }), x.stale ? h("span", { class: "why", text: "Needs approval again" }) : null)));
     }
     /* While a run is on, the current segment fills with its real progress (done / total); otherwise it is solid. */
@@ -331,7 +342,8 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     const c = st[cur];
     el.curLab.textContent = c ? SHORT[c.id] || c.label : "";
     el.curLab.style.setProperty("--i", String(cur));
-    el.curLab.classList.toggle("right", cur >= 6);
+    el.curLab.style.setProperty("--n", String(Math.max(1, st.length)));
+    el.curLab.classList.toggle("right", cur >= Math.ceil(st.length * 0.6));
     el.stepsBtn.replaceChildren(ic("chevron"));
     el.stepsBtn.hidden = !hasDoc();
     el.settingsBtn.hidden = !hasSettings();
@@ -539,7 +551,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     const show = list.length > 1;
     el.tabs.hidden = !show;
     el.sc.dataset.tabs = show ? "1" : "";
-    const cur = gTab(), waiting = !!gate() && !S.readonly;
+    const cur = askTab(), waiting = !!gate() && !S.readonly;
     const key = list.map((t) => t.id + t.n).join() + "|" + cur + waiting + S.readonly;
     if (el.tabs.dataset.key !== key) {
       el.tabs.dataset.key = key;
@@ -589,12 +601,13 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     if (tab === "assets") return [d.assets, d.to_make, d.boards, common, PF.widgetsFor(d, tab)];
     if (tab === "draft") return [d.drafts, d.finals, d.rounds, d.rounds_used, d.rounds_max, d.share, common, PF.widgetsFor(d, tab)];
     if (tab === "plan") return [d.docs, d.scripts, d.boards && d.boards.map((b) => b.id), d.lessons, common, PF.widgetsFor(d, tab)];
+    if (tab === "edit") return [d.edit, d.bin, d.job && d.job.state, arr(d.drafts).length, common];
     return [d.intent, d.style, common];
   }
   /* A clip the person is watching (playing, or just paused or scrubbed) is never rebuilt under them by an agent update. */
   const PREVIEW_GRACE_MS = 20000;
   function previewing() {
-    if (Date.now() < S.previewUntil || (S.player && S.player.api.busy())) return true;
+    if (Date.now() < S.previewUntil || (S.player && S.player.api.busy()) || (S.editor && S.tab === "edit" && S.editor.api.busy())) return true;
     for (const v of ctx.root.querySelectorAll("video,audio")) if (!v.paused && !v.ended) return true;
     return false;
   }
@@ -691,7 +704,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     else if (S.settingsOpen) view = viewSettings();
     else if (!list.length) view = viewOverview();
     else if (S.reader) view = viewReader(S.reader, false);
-    else view = ({ scripts: viewScripts, storyboard: viewStoryboard, assets: viewAssets, draft: viewDraft, plan: viewPlan, [PF.FILES_TAB]: viewFiles, [PF.WIDGET_TAB]: viewWorkbench }[S.tab] || viewOverview)();
+    else view = ({ scripts: viewScripts, storyboard: viewStoryboard, assets: viewAssets, draft: viewDraft, edit: viewEdit, plan: viewPlan, [PF.FILES_TAB]: viewFiles, [PF.WIDGET_TAB]: viewWorkbench }[S.tab] || viewOverview)();
     if (calm) view.classList.add("calm");
     const pinned = S.tab && S.tab !== PF.WIDGET_TAB && !S.settingsOpen && !S.reader && hasDoc() && readable() ? PF.widgetsFor(S.doc, S.tab) : [];
     if (pinned.length) (view.querySelector(":scope > .stack") || view).prepend(widgetGrid(pinned));
@@ -1808,7 +1821,8 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     if (e.key !== " " || e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || S.modal) return;
     const t = (e.composedPath && e.composedPath()[0]) || e.target;
     if (!PF.spaceFree(t && t.tagName, t && t.isContentEditable, LB.open)) return;
-    const v = PF.spaceVideo([...el.lb.querySelectorAll("video"), ...el.content.querySelectorAll("video")], LB.open ? el.lb.querySelector("video") : null, S.lastVid);
+    if (S.tab === "edit" && S.editor && !LB.open) { e.preventDefault(); spaceHeld = true; if (!e.repeat) S.editor.api.toggle(); return; }
+    const v = PF.spaceVideo([...el.lb.querySelectorAll("video"), ...el.content.querySelectorAll("video:not(.ed video)")], LB.open ? el.lb.querySelector("video") : null, S.lastVid);
     if (!v) return;
     e.preventDefault();
     spaceHeld = true;
@@ -1973,6 +1987,52 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       more.length ? h("details", { class: "more" }, h("summary", { text: "Details" }), ...more) : null), prow);
   }
 
+  /* ----- the editor (editor.js): one instance kept across repaints, so playback, zoom and the person's pending edits survive an agent update ----- */
+  function viewEdit() {
+    const d = S.doc;
+    if (!d.edit || (d.edit.error && !arr(d.edit.shots).length)) return h("div", { class: "pane empty fill" }, h("div", { class: "ring" }, ic(d.edit ? "alert" : "cut")),
+      h("h2", { text: d.edit ? "The editor can't open this project right now" : "The editor opens once the video is built" }), h("p", { text: d.edit ? d.edit.error : "It needs the project's promo.yaml. Ask the agent if this stays empty." }));
+    const view = { edit: d.edit, bin: d.bin || {}, readonly: S.readonly };
+    if (S.editor) S.editor.api.update(view);
+    else S.editor = { api: PFEditor.create({ h, ic, ...view, getMedia, download: downloadButton, canSend: () => canAsk() && !S.editSend,
+      onOps: () => renderTabs(tabList()), onRender: editRender, onPreview: editPreview, onAsk: (where) => openRequest("", "What should the agent try? It can answer with edits you try here before you keep them.", "Ask about " + clip(where.replace(/^editor: /, ""), 60), where),
+      onImport: editImport, onOpenProject: (name) => send("edit_bin", { name }), onKeep: (x) => send("edit_keep", { id: x.id, note: x.note }),
+      onDraft: (id) => { S.draftSel = "d" + (+id.slice(1) - 1); pickTab("draft"); }, onScript: (id) => openScriptModal("script:" + id) }) };
+    return h("div", { class: "pane ed-pane" }, S.editor.api.el);
+  }
+  /* Render: the edits go as one `edit` action; a list too long for the 2000-character message goes as edit.txt through the files bridge. */
+  function editRender(text, ops, sm) {
+    if (!canAsk() || S.editSend) return false;
+    const n = arr(S.doc.drafts).length;
+    const payload = { draft: n ? "draft " + n : "the first draft", count: ops.length, list: sm.line, ops: text.split("\n").join(" ; ") };
+    if (PF.editInline(payload.ops)) { send("edit", payload); return true; }
+    return editFiles([new File([text + "\n"], "edit.txt", { type: "text/plain" })], PF.editFilesMessage(ops.length, sm.line));
+  }
+  function editPreview(text, ops, span) {
+    if (!canAsk() || S.editSend) return false;
+    const line = text.split("\n").join(" ; ");
+    if (!PF.editInline(line)) { toast("Too many edits for a quick preview. Render a draft instead."); return false; }
+    send("edit_preview", { where: span.where, range: span.args, count: ops.length, ops: line });
+    return true;
+  }
+  function editImport(file, kind, licence, source) {
+    if (!canAsk() || S.editSend) return false;
+    return editFiles([file], PF.importMessage(file.name, kind, licence, source));
+  }
+  function editFiles(files, text) {
+    const id = "f" + ++M.seq;
+    S.editSend = { id, timer: setTimeout(() => { if (S.editSend && S.editSend.id === id) { S.editSend = null; if (S.editor) S.editor.api.failed(); toast("No answer from the host. Check the chat before sending again."); } }, 120000) };
+    post({ type: "files", id, files, text });
+    say("Sending to the agent");
+    return true;
+  }
+  function onEditFilesResult(m) {
+    clearTimeout(S.editSend.timer);
+    S.editSend = null;
+    if (m.ok) { S.justSent = { key: gateKey(), name: "edit", saw: false }; startStall(); say("Sent. The agent has it."); renderGate(); }
+    else { if (S.editor) S.editor.api.failed(); toast(m.error || "That didn't go through. Try again."); }
+  }
+
   /* ----- draft ----- */
   const hhmm = (iso) => { const t = Date.parse(iso || ""); if (isNaN(t)) return ""; const dt = new Date(t), tm = dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); return dt.toDateString() === new Date().toDateString() ? tm : dt.toLocaleDateString([], { day: "numeric", month: "short" }) + ", " + tm; };
   /* Saves the draft through the same blob the player uses: getMedia reuses the cached object URL or asks the host, even while the player still shows its manual load tile.
@@ -2047,7 +2107,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       const dl = r && !r.error ? downloadButton(it.label, PF.downloadName(r, it.label), () => getMedia(r)) : null;
       const meta = h("div", { class: "file-id" }, h("span", { class: "file-ic", "aria-hidden": "true" }, ic("film")),
         h("span", { class: "file-main" }, h("b", { text: it.label + (it.after ? " \u00b7 after " + it.after : "") }), h("span", { class: "file-meta" }, dur, it.rel ? h("span", { class: "path", text: it.rel }) : null), it.note ? h("span", { class: "file-note", text: it.note }) : null),
-        delivered ? null : dl);
+        delivered ? null : dl, d.edit && !it.final && !S.readonly ? h("button", { type: "button", class: "btn ghost sm", "data-k": "open-editor", onclick: () => pickTab("edit") }, ic("cut"), "Open in editor") : null);
       left.append(h("div", null, player, meta));
       if (!it.final) left.append(...draftReview(it, drafts));
       if (delivered) {
@@ -2283,7 +2343,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
         }
       }
     }
-    const tabs = tabList(), gt = gTab();
+    const tabs = tabList(), gt = askTab();
     /* Only the draft makes the person go and watch it first. The plan is approved from wherever they are: no "Open story B before you decide" detour. */
     if (g.kind === "draft" && gt && (gt !== S.tab || S.reader) && tabs.some((t) => t.id === gt)) {
       m.reviewTab = gt;
@@ -2389,16 +2449,16 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
 
   function openCompose() { S.compose = true; S.composeKind = null; S.reqTitle = ""; renderGate(); el.note.focus(); }
   /* Ask the agent to add or change something (a document, a script, more frames). The text goes into the same note box as every other message, so dictation works. */
-  function openRequest(text, hint, title) {
+  function openRequest(text, hint, title, where) {
     if (S.readonly || S.pending || S.justSent || S.sending) return;
-    S.compose = true; S.composeKind = "request"; S.reqHint = hint || ""; S.reqTitle = title || "";
+    S.compose = true; S.composeKind = "request"; S.reqHint = hint || ""; S.reqTitle = title || ""; S.reqWhere = where || null;
     el.note.value = text || "";
     renderGate();
     el.note.focus();
     el.note.setSelectionRange(el.note.value.length, el.note.value.length);
   }
   const canAsk = () => !(S.readonly || S.offline || S.pending || S.justSent || S.sending);
-  function closeCompose() { S.compose = false; S.composeKind = null; S.err = ""; renderGate(); el.btn2.focus(); }
+  function closeCompose() { S.compose = false; S.composeKind = null; S.reqWhere = null; S.err = ""; renderGate(); el.btn2.focus(); }
   el.btn2.addEventListener("click", () => {
     const m = S.cur;
     if (m && m.mode === "wait") { if (S.stall && !S.pending && S.lastAction) send(S.lastAction.name, S.lastAction.payload, true); return; }
@@ -2417,7 +2477,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       if (!text) return;
       if (S.composeKind === "overturn") return send("overturn", { id: S.composeData.id, choice: S.composeData.choice, text });
       if (S.composeKind === "scene") return send("scene_note", { story: S.composeData.story, scene: S.composeData.scene, beat: S.composeData.beat, text });
-      if (S.composeKind === "request") return send("request", { text, where: ({ plan: "Plan", scripts: "Scripts", storyboard: "Storyboard", assets: "Assets", draft: "Drafts", widgets: "Workbench" })[S.tab] || "Stage" });
+      if (S.composeKind === "request") return send("request", { text, where: S.reqWhere || ({ plan: "Plan", scripts: "Scripts", storyboard: "Storyboard", assets: "Assets", draft: "Drafts", edit: "Edit", widgets: "Workbench" })[S.tab] || "Stage" });
       if (m.g && m.g.kind === "style") return send("changes", { stage: "discover", text: "Style: " + text + refTail() });
       if (m.changes === "feedback") return send("feedback", { round: m.round, max_rounds: m.max, text });
       return send("changes", { stage: m.stage, text });
@@ -2447,6 +2507,8 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   }
   function onResult(m) {
     if (S.fileSend && S.fileSend.id === m.id) return onFilesResult(m);
+    if (S.editSend && S.editSend.id === m.id) return onEditFilesResult(m);
+    if (!m.ok && S.sending && S.sending.id === m.id && S.sending.name === "edit" && S.editor) S.editor.api.failed();
     if (!S.sending || S.sending.id !== m.id) return;
     clearTimeout(S.sending.timer);
     const sent = S.sending;
@@ -2508,6 +2570,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     S.version = m.version;
     S.summary = m.summary || {};
     S.doc = m.state && typeof m.state === "object" && !Array.isArray(m.state) ? m.state : {};
+    if (S.editor && S.doc.edit) S.editor.api.update({ edit: S.doc.edit, bin: S.doc.bin || {}, readonly: !!m.readonly });     // the editor takes news in place: playback and pending edits stay
     const cc = PF.commentCount(S.doc);
     S.cmtPending = Math.max(0, S.cmtPending - Math.max(0, cc.total - S.cmtTotal)); S.cmtTotal = cc.total;
     S.pending = m.pending || null;

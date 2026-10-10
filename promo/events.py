@@ -5,7 +5,7 @@ Per-shot `sfx:` entries:
     {sfx: name, src: <source s>, [offset: s], [db: ...]}           mapped through the shot type's src_to_out (dropped if off-screen)
     {sfx: typing, src_runs: [{start, step, count}, ...], [db: ...]} every key time mapped through src_to_out; event t = first time
 Global time = round(round(shot_t0 + out, 3) + offset, 3) exactly like the legacy `add(name, g(...) - 0.12)`.
-VO times come from `vo.lines[].at` (shot-local) via the same g().
+VO times come from `vo.lines[].at` (shot-local) via the same g(); a line with `mute: true` has none.
 Clip audio (`shot.audio`, promo/shot_audio.py) lands in `clips`: [{id, shot, t, bus, db, lufs, file (relative to build/), text}].
 """
 from __future__ import annotations
@@ -58,6 +58,8 @@ def compute_events(spec):
             add(name, None if out is None else (out + offset if offset else out), db, **extra)
     vo = {}
     for line in spec.raw.get("vo", {}).get("lines", []):
+        if line.get("mute"):            # a muted line (the editor's mute) gets no event, so the mix leaves it out like a line without one
+            continue
         vo[str(line.get("id", line["shot"]))] = spec.g(line["shot"], line.get("at", 0.0))
     ev = dict(sfx=sorted(sfx, key=lambda e: e["t"]), vo=vo)
     from . import shot_audio

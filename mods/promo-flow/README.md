@@ -5,9 +5,10 @@
 The promo flow (`promo flow ...`, see `promo/flow.py`) as a mod: a web app that the host mounts into its own page and shows in its Stage (right pane, about 380 to 900 px wide, full height),
 with a short summary card in the chat. The agent publishes state; the person's clicks come back to the agent as `[mod:promo-flow] ...` messages. In CommissionAI the agent publishes with `commissionctl mod publish promo-flow --file F`.
 
-    mod.json        manifest: slash command, activation message, actions approve | pick | changes | feedback | generate | share | resume, agent skill
+    mod.json        manifest: slash command, activation message, actions approve | pick | changes | feedback | generate | share | resume | edit | edit_bin | edit_keep | ..., agent skill
     index.html      shell (header + stepper, tabs, content, sticky gate bar, lightbox)
     app.js          registers window.commissionMods["promo-flow"] = mount({root, post}) -> {receive, unmount}; rendering, lazy media; icons.js inline SVG icons; style.css
+    player.js       the draft player (notes on the timeline); editor.js the Edit tab (window.PFEditor); logic.js the pure parts (window.PF, node --test)
     agent/SKILL.md  what the agent learns (publish with `promo flow snapshot`, react to `[mod:promo-flow]`)
 
 No build step, no network, no storage. Classic scripts, loaded once into the host's window; everything they define lives inside `mount`, so the only globals are `commissionMods`, `PF` and `icon`.
@@ -139,6 +140,43 @@ waiting pick says so; queued job items are a count, never blank tiles (`JOB_QUEU
 tail while the agent holds the turn; the storyboard's timeline marks any scene with a frame not made (`k-unmade`) and the frames count
 carries "N not made"; the asset group's open line says "1 for the agent to record · 1 to make"; the Plan tab's empty search offers "Clear search".
 
+**Production phase.** Reaching the drafts stage is a milestone: the stepper shows only Draft, Review and Final ("Production · Step 1 of 3", the
+steps list starts with "Plan approved"), and once the editor has a project the Scripts, Storyboard and Assets tabs give way to Edit and Drafts
+(scripts open from the editor's bin; Plan and Add files stay).
+
+**Edit tab** (`editor.js`, `PFEditor.create({h, ic, edit, bin, getMedia, download, onRender, onAsk, onImport, onOpenProject, onKeep, onDraft})`), from the drafts stage on (the
+default tab at `drafts`; a draft is still approved after watching it in Drafts, which also has "Open in editor"). A bin (this video's footage, plates,
+music, voice takes, sounds, scripts and drafts; earlier projects by name and counts until opened), a viewer, an inspector and a timeline with five lanes:
+picture (each shot with a filmstrip; a grade or fade not rendered yet is shown with CSS; trim by dragging its right edge on the beat grid, reorder by dragging it, B splits at the playhead, Delete ripples),
+captions, voice (drag a line to move it, Delete or M mutes), music (waveform; drop a track from the bin to swap) and sound effects (drag to move). Per lane
+M / S and a level that becomes a `bus` edit. Space plays, Cmd+Z / Shift+Cmd+Z undo and redo. Zoom is a factor of Fit (the whole film): a bar over the timeline has − / +, a slider, presets Fit, 2×, 4×, 8× and Shot (the selected shot fills the view) and says what is on screen ("4× · 14 s on screen"); + / −, 0 (fit) and Z (shot) work from the keyboard, Ctrl/Cmd+wheel or a trackpad pinch zoom around the pointer, and buttons keep the playhead where it is. Every change is an op of the edit
+language (`promo/editor.py`, `PF.editParse` / `editText`), applied at once to a copy of the published spec (`PF.editApply`) for the preview; the same
+cases run in pytest and node (`tests/edit-cases.json`). Playback: the AudioContext is the clock; picture is each shot's rendered segment (a moved or
+trimmed shot keeps it, the second half of a split plays it further in) or, with a "Not rendered yet" badge and the caption drawn over it, the source
+footage at `t_in`; sound is the music edit (or another track from its offset), each voice line and sound at its time, bus levels and a duck under the
+voice: a rough mix, Render makes the real one. "Render draft" sends `edit {draft, count, list, ops}` (ops joined with ` ; `; over `PF.EDIT_INLINE_MAX`
+characters they go as `edit.txt` through the files bridge instead, `PF.editFilesMessage`); the line beside it (`PF.editSummary`) says what re-renders
+and about how long, from the build's own step times. "Ask the agent about this" opens the note box as a `request` with `where` naming the selection;
+the agent can answer with `promo flow edit suggest`, which shows as a card to Try (previewed on top of the pending edits), Keep (`edit_keep {id, note}`;
+its edits join the pending ones) or Dismiss. Import takes a file with its licence and source (or "My own recording") through the files bridge
+(`PF.importMessage`); Export saves the masters, stems, music edit, every voice line and segment, the EDL and the edit list. The editor is kept across
+repaints and takes each new state in place (`api.update`), so playback, zoom and unrendered edits survive an agent update.
+
+    edit    {fps, bpm, beat_s, beats, duration, beats_per_bar, resolution, spec (timeline/output/music/vo/sfx/mix/shots of promo.yaml), sig,
+             shots [{id, start_s, end_s, beats, type, source, t_in, speed, caption, ui, scene, local, seg, fresh, src_preview, src_t, generated, sfx [{i, sfx, at, db}]}],
+             strip (one picture: THUMBS frames per shot, one row per shot), strip_cols, vo {engine, lines [{id, shot, at, at_s, dur, text, db, muted, gain_db, file}]},
+             music {asset, label, file (music-edit.wav, when built), raw, offset, track_beat, peaks[400], fresh, licence}, sfx_lib [{name, file}], sfx_events,
+             buses {music, sfx, vo}, duck {db, pre, post}, masters {name: file}, stems {music, vo, sfx}, edl (text), master_video, fresh, estimate {step: secs},
+             generated (the generator of a GENERATED promo.yaml, else null), suggestions [{id, note, text, by, kept}], log [{at, by, text, kind, draft}], files_note,
+             previews [{id, start, end, shots, note, by, at, file}] (the newest 3 clips `promo flow edit preview` cut: a span rebuilt with the new mix)}
+             or {error} when promo.yaml cannot be read; null before the drafts stage
+    bin     {here [{key "kind:id", id, kind footage|plate|music|sfx|voice|script|draft, label, dur, licence, used_in, poster, media}],
+             projects [{name, title, counts {kind: n}, poster, open, items (as here, with media only once opened: `edit_bin`)}]}
+
+The host keeps at most 200 files per state: `editor.fit_files` gives way in a fixed order (older drafts' look stills, earlier projects' media and
+posters, posters, unused takes, the bin's media, stems, ...) and says so in `edit.files_note`.
+Actions: `edit {draft, count, list, ops}`, `edit_preview {where, range, count, ops}` ("Quick preview": the agent applies the edits and runs `promo flow edit preview` on the selected or changed shots, no draft), `edit_bin {name}`, `edit_keep {id, note}`.
+
 ## Develop
     .venv/bin/python mod-dev/serve.py            # builds a fixture project, serves http://127.0.0.1:8765/dev/harness.html
     .venv/bin/python mod-dev/shoot.py            # screenshots to /tmp/promo-flow-shots/v1/ (headless Chrome)
@@ -149,8 +187,8 @@ carries "N not made"; the asset group's open line says "1 for the agent to recor
 
 The harness plays the host: mounts the mod into its page in a shadow root like CommissionAI does, puts a stand-in Mic button in the dictate slot, switch stage, dark/light, pane width (380 / 520 / 900),
 offline, readonly, reduce motion, hold state (loading), media failures, a new version arriving mid-edit (with or without the step changing), and the bridge log with the rendered action messages.
-Stages: the ten flow stages plus `autopilot` (a run in progress), `starting`, `storyboard-partial`, `plan` (17 documents, one of 12 000 words), `dense` (frames every 5 s), `assets-error`, `stale-approval`, `long-content`, `review-maxed`.
-    .venv/bin/python mod-dev/shoot.py --check    # interaction checks in headless Chrome: reader paging, find, contents, requests, cadence, escaping
+Stages: the ten flow stages plus `edit` (a small real project for the editor: four clips, voice, music, sounds, one unbuilt shot, a suggestion, an earlier project), `autopilot` (a run in progress), `starting`, `storyboard-partial`, `plan` (17 documents, one of 12 000 words), `dense` (frames every 5 s), `assets-error`, `stale-approval`, `long-content`, `review-maxed`.
+    .venv/bin/python mod-dev/shoot.py --check [--only edit]   # interaction checks in headless Chrome: reader paging, find, contents, requests, cadence, escaping, the editor
 
 **Read full script** (Scripts and Pick) opens the script in a dialog over the pane: the cards and the footer decision stay behind it (inert), Esc or the close button returns focus to the link; the Plan tab's documents still open in the tab.
 

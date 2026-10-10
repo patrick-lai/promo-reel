@@ -37,6 +37,8 @@ page (stepper, scripts, storyboards, assets, drafts, rounds) to show.
                                                   control was caught, and a blind comparison did not prefer the reviewed draft (promo/flowcheck.py, promo/abtest.py)
     promo flow check add|mark|marks|retire|list ; pin add --at S --text T --by NAME | edit ID [--at S] [--text T] --by NAME | remove ID --by NAME ; look [--draft N]
     promo flow ab add|pick|drafts|judge|list ; restore --draft N [--scene ID] --by NAME | --undo K --by NAME
+    promo flow edit view|timeline|look|listen|preview|apply|render|import|bin|suggest|keep|replay   the Stage's timeline editor: edits in a short language applied to promo.yaml
+                                                  as text, rebuilt incrementally into the next draft (promo/editor.py has the language)
     promo flow autopilot start|pass begin|pass end|replan|pause|resume|stop|status ; assume add|overturn
     promo flow scout list|add|miss                real screens of the product as the app scenes' storyboard frames
     promo flow second-opinion [--draft N]         the judge checks put to a second model family (grok, headless)
@@ -620,21 +622,24 @@ def add_council(pd, kind, file, note=""):
 
 
 def add_draft(pd, file, note="", report=None):
-    """Register a draft, keep the plan it was built from (so it can be restored) and, with `report`, attach its own `promo check` report."""
+    """Register a draft: its file is kept as flow/drafts/d<N>.mp4 (a clone where the disk allows), so every draft can still be watched after the
+    next build writes the same out/ path; the plan it was built from is kept (so it can be restored) and, with `report`, its own `promo check` report."""
     st = load(pd)
     if STAGES.index(st["stage"]) < STAGES.index("drafts"):
         raise FlowError("drafts start after the final confirmation")
     if not os.path.isfile(file):
         raise FlowError(f"no such file {file}")
     sha = GV.sha256(file)
-    rec = dict(file=os.path.abspath(file), note=note, at=now(), cycle=st["cycle"], sha=sha)
+    n = len(st["drafts"]) + 1
+    from .editor import keep_draft_file
+    kept = keep_draft_file(pd, n, os.path.abspath(file))          # its own file: the next build may write the same out/ path
+    rec = dict(file=kept, source=os.path.abspath(file), note=note, at=now(), cycle=st["cycle"], sha=sha)
     if report:                                   # a report of another file refuses the draft before it is registered, so a retry adds no duplicate
         rec["verify"] = dict(at=now(), report=os.path.abspath(report), rows=FC.report_rows(report, sha, "this draft"))
     st["drafts"].append(rec)
     st["gates"].pop("draft-approved", None)
     log(st, f"draft {os.path.basename(file)}")
     save(pd, st)
-    n = len(st["drafts"])
     VR.keep(pd, f"d{n}")
     return n
 
@@ -1341,7 +1346,8 @@ def snapshot(pd):
     docs = _docs(pd, st)
     place = st.get("place") or dict(zip(("project", "repo"), home.current_project()))
     job = _job(pd)
-    return _fit_bodies(dict(summary=_summary(pd, st, gate, pc, used, job), title=_clip((st["intent"].split(".")[0] or "Production"), 80), intent=st["intent"],
+    edit, bin_ = _editor_state(pd, st)
+    return _fit_files(_fit_bodies(dict(edit=edit, bin=bin_, summary=_summary(pd, st, gate, pc, used, job), title=_clip((st["intent"].split(".")[0] or "Production"), 80), intent=st["intent"],
                 stage=st["stage"], stage_label=LABEL[st["stage"]], stage_since=since, cycle=st["cycle"], rounds_used=used, rounds_max=MAX_ROUNDS, steps=steps,
                 stale_steps=stale,
                 style=(st.get("discover") or {}) and dict(style=st["discover"].get("style"), refs=st["discover"].get("refs", []), no_refs=st["discover"].get("no_refs", False)) or None,
@@ -1352,7 +1358,25 @@ def snapshot(pd):
                 approvals={k: dict(by=v["by"], at=v["at"], fresh=gate_ok(pd, st, k)) for k, v in st["gates"].items()},
                 pairs=[AB.person_view(pd, p) for p in st.get("pairs") or [] if p["kind"] == "person"], autopilot=AU.view(st),
                 assumptions=[dict(id=a["id"], text=a["text"], scene=a.get("scene"), overturned=a.get("overturned")) for a in st.get("assumptions") or []],
-                scout=SC.summary(SC.listing(pd)), lessons=[dict(id=x["id"], line=x["line"], videos=x["videos"]) for x in LS.top(st.get("person"))]))
+                scout=SC.summary(SC.listing(pd)), lessons=[dict(id=x["id"], line=x["line"], videos=x["videos"]) for x in LS.top(st.get("person"))])))
+
+
+def _editor_state(pd, st):
+    """`edit` and `bin` for the Stage's editor, from the drafts stage on (None before). A problem reading them is shown in the editor, never
+    a Stage that cannot update."""
+    from . import editor as ED
+    if st["stage"] not in ED.EDIT_STAGES:
+        return None, None
+    try:
+        return ED.view(pd, st), ED.bin_(pd, st)
+    except Exception as e:  # noqa: BLE001
+        print(f"promo flow: the editor's state could not be built: {e}", file=sys.stderr)
+        return dict(error=f"The editor could not read this project: {_clip(str(e), 200)}"), None
+
+
+def _fit_files(snap):
+    from . import editor as ED
+    return ED.fit_files(snap)
 
 
 def _draft_extras(pd, st, i):
@@ -1372,7 +1396,7 @@ def _draft_extras(pd, st, i):
 
 PUBLISH_AFTER = {"init", "advance", "discover", "script", "recommend", "doc", "widget", "plan", "story", "scene", "density", "council", "approve", "asset", "frames", "make",
                  "draft", "round", "final", "revise", "note", "resume", "share", "check", "pin", "look", "restore", "ab", "autopilot", "assume", "lessons",
-                 "recipe", "second-opinion", "scout", "notes"}
+                 "recipe", "second-opinion", "scout", "notes", "edit"}
 PUBLISH_TIMEOUT_S = 300          # the host copies every frame and clip on publish
 
 
@@ -1878,7 +1902,12 @@ def _look_cli(pd, a):
     return True
 
 
-EXTRA = {"check": _check_cli, "pin": _pin_cli, "look": _look_cli, "restore": _restore_cli, "ab": _ab_cli, "autopilot": _autopilot_cli, "assume": _assume_cli,
+def _edit_cli(pd, a):
+    from . import editor as ED
+    return ED.cli(pd, a)
+
+
+EXTRA = {"edit": _edit_cli, "check": _check_cli, "pin": _pin_cli, "look": _look_cli, "restore": _restore_cli, "ab": _ab_cli, "autopilot": _autopilot_cli, "assume": _assume_cli,
          "lessons": _lessons_cli, "recipe": _recipe_cli, "calibration": _calibration_cli, "second-opinion": _second_cli, "scout": _scout_cli, "notes": _notes_cli}
 
 
@@ -1952,6 +1981,13 @@ def main(argv=None):
     p = P("scout"); p.add_argument("action", choices=["list", "add", "miss"]); p.add_argument("--story"); p.add_argument("--scene"); p.add_argument("--file")
     p.add_argument("--which", default="both", choices=["start", "end", "both"]); p.add_argument("--url"); p.add_argument("--why"); p.add_argument("--json", action="store_true")
     p = P("notes"); p.add_argument("action", choices=["add", "show"]); p.add_argument("text", nargs="?")
+    p = P("edit"); p.add_argument("action", choices=["view", "timeline", "look", "listen", "preview", "apply", "render", "import", "bin", "suggest", "keep", "replay"])
+    p.add_argument("arg", nargs="?", help="apply/render/suggest: the edit text (or --file); import: the file; keep: the suggestion id")
+    p.add_argument("--file", help="the edit text from a file (- = stdin)"); p.add_argument("--by"); p.add_argument("--note", default=""); p.add_argument("--kind")
+    p.add_argument("--licence"); p.add_argument("--source"); p.add_argument("--id"); p.add_argument("--open"); p.add_argument("--close")
+    p.add_argument("--scale", type=float, choices=(0.5, 1, 2)); p.add_argument("--json", action="store_true"); p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--at", type=float); p.add_argument("--shot"); p.add_argument("--from", dest="from_", type=float); p.add_argument("--to", type=float)
+    p.add_argument("--frames", type=int); p.add_argument("--stem", choices=["mix", "music", "vo", "sfx"])
     p = P("final"); p.add_argument("action", choices=["add"]); p.add_argument("file")
     P("revise").add_argument("--feedback", required=True)
     p = P("note"); p.add_argument("text"); p.add_argument("--kind", default="other", choices=NOTE_KINDS); p.add_argument("--done", action="store_true")

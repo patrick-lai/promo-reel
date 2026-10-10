@@ -473,6 +473,160 @@ def picker_states(tmp, finished):
     return out
 
 
+EDIT_SPEC = """# The editor fixture: four real clips, three voice lines, music and sounds. Built for real (fresh stamps), except shot 03.
+project: {name: acme-edit, title: Acme Tasks editor fixture}
+output: {name: acme-edit, resolution: 1080, fps: 25, duration: 8.0}
+paths: {build: build, out: out}
+assets: assets.yaml
+footage: footage/manifest.yaml
+timeline: {bpm: 120, beats: 16}
+music:
+  asset: music-calm
+  bpm: 120
+  track_beat: 0.5
+  track_offset: 0.0
+  edit: {segments: [[0, 0, 16]], crossfade: 0.03, gains: []}
+vo:
+  engine: files
+  asset: vo-takes
+  lines:
+  - {id: v1, shot: '01', at: 0.3, file: v1.wav, text: Tell it what to ship.}
+  - {id: v2, shot: '02', at: 0.2, file: v2.wav, text: It makes a plan.}
+  - {id: v3, shot: '04', at: 0.1, file: v3.wav, text: You merge it.}
+sfx:
+  library:
+    hit: {asset: sfx-hit}
+    chime: {asset: sfx-chime}
+mix:
+  bus_db: {music: -5.0, sfx: -8.0, vo: 1.5}    # bus levels
+shots:
+- id: '01'
+  beats: [0, 4]
+  type: clip
+  source: rec-ask
+  t_in: 0.0
+  overlays:
+  - {type: caption, text: Tell it what to ship., t: [0, 2]}
+  sfx:
+  - {sfx: hit, at: 0.0, db: -5}
+- id: '02'
+  beats: [4, 8]
+  type: clip
+  source: rec-plan
+  t_in: 0.5
+  overlays:
+  - {type: caption, text: It makes a plan., t: [0, 2]}
+- id: '03'
+  beats: [8, 12]
+  type: clip
+  source: rec-board
+  t_in: 0.0
+- id: '04'
+  beats: [12, 16]
+  type: clip
+  source: rec-merged
+  t_in: 0.0
+  sfx:
+  - {sfx: chime, at: 1.0, db: -6}
+"""
+EDIT_ASSETS = """assets:
+- {id: music-calm, kind: music, path: media/music/calm.wav, licence: CC0-1.0, source_url: https://freepd.com/calm}
+- {id: music-bright, kind: music, path: media/music/bright.wav, licence: CC0-1.0, source_url: https://freepd.com/bright}
+- {id: sfx-hit, kind: sfx, path: media/sfx/hit.wav, licence: CC0-1.0 (synthesised), source_url: https://example.com/sfx}
+- {id: sfx-chime, kind: sfx, path: media/sfx/chime.wav, licence: CC0-1.0 (synthesised), source_url: https://example.com/sfx}
+- {id: vo-takes, kind: vo, path: media/voices, licence: My own recording (Sam), source_url: recorded by Sam}
+"""
+
+
+def edit_project(tmp, name, clips, music=("calm", 220), earlier=False):
+    """A small real promo project for the editor: clips (ffmpeg test patterns with posters and previews), music, voice takes, sounds; its build
+    outputs made directly (no render) and stamped with the real step digests, so the editor reads them as built. Shot 03 is left unbuilt."""
+    import yaml as Y
+    from promo import cli
+    from promo import events as EV
+    from promo import footage as FT
+    from promo import vo as VO
+    from promo.cache import Stamps
+    from promo.spec import load_spec
+    pd = os.path.join(tmp, name)
+    if os.path.isdir(pd):
+        shutil.rmtree(pd)
+    os.makedirs(os.path.join(pd, "footage"))
+    write(os.path.join(pd, "promo.yaml"), EDIT_SPEC.replace("acme-edit", name))
+    write(os.path.join(pd, "assets.yaml"), EDIT_ASSETS)
+    for n, hz in (("calm", music[1]), ("bright", 330)):
+        wav(os.path.join(pd, "media", "music", n + ".wav"), hz, 9.0)
+    wav(os.path.join(pd, "media", "sfx", "hit.wav"), 90, 0.3)
+    wav(os.path.join(pd, "media", "sfx", "chime.wav"), 880, 0.8)
+    for i, hz in enumerate((300, 360, 420)):
+        wav(os.path.join(pd, "media", "voices", f"v{i + 1}.wav"), hz, 1.4)
+    wav(os.path.join(pd, "media", "voices", "takes", "v1-warmer.wav"), 280, 1.6)
+    rows = []
+    for cid, src in clips:
+        p = os.path.join(pd, "footage", cid + ".mp4")
+        mp4(p, src, 4, "640x360")
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", p, "-frames:v", "1", os.path.join(pd, "footage", cid + "-poster.png")], check=True)
+        rows.append(dict(id=cid, shots=[], path=p, sha256=GV_sha(p), app_commit="0123456789abcdef0123456789abcdef01234567", capture="?demo=1 headless", framing="full window",
+                         resolution="640x360", dpr=2, fps=25.0, captured_at="2026-10-09T10:00:00Z", notes="fixture", demo=True))
+    Y.safe_dump({"clips": rows}, open(os.path.join(pd, "footage", "manifest.yaml"), "w"), sort_keys=False)
+    if earlier:
+        return pd
+    spec = load_spec(os.path.join(pd, "promo.yaml"))
+    VO.run_files(spec)
+    EV.write_events(spec)
+    os.makedirs(spec.segs_dir, exist_ok=True)
+    src_of = dict(clips)
+    for s in spec.shots:
+        if s.id != "03":
+            mp4(spec.seg_path(s.id), src_of[s.get("source")], s.dur, "640x360")
+            json.dump(dict(src=s.get("source")), open(os.path.join(spec.segs_dir, s.id + ".edl.json"), "w"))
+    os.makedirs(os.path.join(spec.audio_dir, "stems"), exist_ok=True)
+    for f in ("music-edit.wav", "mix-web.wav", "mix-social.wav", "stems/music.wav", "stems/vo.wav", "stems/sfx.wav"):
+        wav(os.path.join(spec.audio_dir, f), music[1], 8.0)
+    for nm in __import__("promo.sfx", fromlist=["x"]).NAMES:
+        wav(os.path.join(spec.sfx_dir, nm + ".wav"), 500, 0.1)
+    mp4(spec.output_path(""), "testsrc2", 8, "640x360")
+    os.makedirs(os.path.dirname(spec.output_path("")), exist_ok=True)
+    write(os.path.join(spec.out, "EDL.md"), "| shot | time |\n|---|---|\n| 01 | 0.00-2.00 |\n| 02 | 2.00-4.00 |\n| 03 | 4.00-6.00 |\n| 04 | 6.00-8.00 |\n")
+    from promo import contact
+    still(contact.contact_paths(spec)[0], "Contact sheet", (40, 40, 60))
+    stamps = Stamps(spec.build)
+    for st in cli.plan(spec):
+        if st["name"] == "shot 03":
+            continue
+        if all(os.path.exists(o) for o in st["outputs"]):
+            stamps.write(st["key"], st["dig"](), at=0, secs={"mix": 6.0, "music": 1.5, "assemble": 9.0, "contact": 3.0}.get(st["name"], 12.0 if st["name"].startswith("shot") else 0.2))
+    return pd
+
+
+def GV_sha(p):
+    import hashlib
+    return hashlib.sha256(open(p, "rb").read()).hexdigest()
+
+
+def edit_stage(tmp):
+    """The `edit` stage: a project at its first draft with the editor's bin, one unbuilt shot, an agent suggestion and an earlier project."""
+    earlier = edit_project(tmp, "jev-explainer", [("rec-board", "smptebars"), ("rec-diff", "rgbtestsrc")], earlier=True)
+    F.init(earlier, "A short explainer of the board for new team members.")
+    home.remember(earlier)
+    pd = edit_project(tmp, "acme-edit", [("rec-ask", "testsrc2"), ("rec-plan", "testsrc"), ("rec-board", "smptehdbars"), ("rec-merged", "mandelbrot")])
+    F.init(pd, INTENT)
+    st = F.load(pd)
+    st["stage"] = "drafts"
+    F.save(pd, st)
+    from promo.spec import load_spec
+    F.add_draft(pd, load_spec(os.path.join(pd, "promo.yaml")).output_path(""), "First cut with rough levels.")
+    from promo import editor as ED
+    ED.suggest(pd, "music music-bright offset=0\nbus music -3", "Try the brighter track, a little lower under the voice")
+    ED.open_bin(pd, "jev-explainer")
+    clip = os.path.join(pd, "flow", "edit", "previews", "p1.mp4")
+    mp4(clip, "testsrc", 2, "640x360")
+    st = F.load(pd)
+    st["edit"]["previews"] = [dict(id="p1", file=os.path.relpath(clip, pd), start=2.0, end=4.0, shots=["02"], note="Shot 02 with the warmer take", by="agent", at=F.now())]
+    F.save(pd, st)
+    return F.snapshot(pd)
+
+
 def build(keep=None):
     tmp = keep or tempfile.mkdtemp(prefix="promo-flow-fixtures-")
     os.makedirs(tmp, exist_ok=True)
@@ -686,6 +840,7 @@ def _build(tmp):
     res = {k: out[k] for k in order}
     res["starting"] = {}
     res.update(picker_states(tmp, pd))
+    res["edit"] = edit_stage(tmp)
     return res, tmp
 
 

@@ -1,7 +1,7 @@
 """Mix + duck + master (port of build_mix.py, generic). `promo mix`.
 
 Inputs: build/audio/events.json, build/audio/music-edit.wav, SFX wavs (assets), VO stems (build/vo/vo.json).
-Spec (mix:): sr, bus_db {music, sfx, vo}, vo_line_lufs, duck {db, attack, release, pre, post}, fade_out, masters [...]
+Spec (mix:): sr, bus_db {music, sfx, vo}, vo_line_lufs (each VO line levelled to it, then its own `db`; a `mute: true` line has no event, so no sound), duck {db, attack, release, pre, post}, fade_out, masters [...]
 SFX library entries may carry `duck_music: {db, dur}` (music dips under that SFX); `typing` entries use
 {variants, gain_jitter [lo, hi], pan_jitter, seed} with ONE seeded rng consumed in event order (same as legacy).
 Clip audio (events.json `clips`, promo/shot_audio.py): bus vo is placed in the vo stem and ducks music (+ sfx by duck.clip_sfx_db);
@@ -100,6 +100,11 @@ def master_path(spec, name):
     return os.path.join(spec.audio_dir, f"mix-{name}.wav")
 
 
+def vo_line_gain_db(cfg, line, measured_lufs):
+    """Gain that levels a VO line to `mix.vo_line_lufs`, plus the line's own `db` offset (quiet and loud lines keep their dynamics)."""
+    return cfg.get("vo_line_lufs", -16.0) - measured_lufs + float(line.get("db", 0.0) or 0.0)
+
+
 def run(spec, force=False):
     cfg = spec.raw.get("mix", {})
     SR = int(cfg.get("sr", 48000))
@@ -143,6 +148,7 @@ def run(spec, force=False):
     # VO: level each line to vo_line_lufs, place at its event time
     vo_marks = []
     meta = json.load(open(os.path.join(spec.vo_dir, "vo.json"))) if os.path.exists(os.path.join(spec.vo_dir, "vo.json")) else dict(lines=[])
+    spec_lines = {str(x.get("id", x["shot"])): x for x in (spec.raw.get("vo") or {}).get("lines") or []}
     for line in meta["lines"]:
         t = ev["vo"].get(str(line.get("id", line["shot"])))
         if t is None:
@@ -155,7 +161,7 @@ def run(spec, force=False):
         x = audiofx.apply(x, sr0, audiofx.line_fx(spec.raw, lid), t0=t, where=f"vo line {lid} fx")
         meter = pyln.Meter(sr0)
         L = meter.integrated_loudness(x) if len(x) > sr0 * 0.5 else -20
-        x = x * db(cfg.get("vo_line_lufs", -16.0) - L)
+        x = x * db(vo_line_gain_db(cfg, spec_lines.get(lid) or line, L))
         if sr0 != SR:
             x = resample_poly(x, SR, sr0, axis=0)
         if x.shape[1] == 1:

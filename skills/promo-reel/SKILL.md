@@ -26,7 +26,7 @@ Start with THE FLOW (below). Everything lives in `<save location>/<name>/` (see 
 | 5 | **assets** | list ALL assets the cut will use (screenshots, pictures, recordings, music, voice, sfx) with `promo flow asset add`, then **MAKE a real sample of each** with `promo flow asset make`: a concept still, a ~7 s clip, a 20 s music excerpt, a voice read-through, the sfx hits. The person must be able to look at / hear every asset before deciding; a placeholder is not a preview, and `approve assets-approved` is refused until every asset has one | **ONE plan review**: storyboard + assets + the go for drafts. `approve assets-approved --by NAME` (the older `storyboard-approved` / `final-confirmation` names mean the same). Making a planned asset real does not stale it; changing what is planned or the board does |
 | 6 | **keyframes** | generate the remaining keyframes, replace every mock (`promo flow needs`) | |
 | 7 | **confirm** | no question: the plan approval already was the go; `advance` and build the drafts | |
-| 8 | **drafts** | build first drafts, `promo flow draft add`, SHOW them (SendUserFile) | |
+| 8 | **drafts** | build first drafts, `promo flow draft add`, SHOW them (SendUserFile). From here the Stage's **Edit** tab lets the person cut, swap footage or music, move or mute voice lines and hear it at once; their Render arrives as `promo flow edit render` (only what changed rebuilds; promo/editor.py has the edit language, `edit suggest` answers their "try ..." with edits to preview) | |
 | 9 | **review** | <= 5 rounds: `round start --feedback "<verbatim>"`, every note becomes a check, council (lens 0 intent + web research of the topic and examples of good videos), one batch, one draft, measure it, blind-compare it, `round close` (see "Every draft is held to every note" below); at the cap their restated direction is `promo flow revise --feedback "<verbatim>"` (a new cycle) | feedback or `approve draft-approved` |
 | 10 | **final** | `final add`; further feedback = `promo flow revise` (new cycle, council again) | |
 
@@ -49,6 +49,22 @@ Start with THE FLOW (below). Everything lives in `<save location>/<name>/` (see 
   until it reports done, blocked (one `autopilot replan --note` after two passes that fixed nothing) or out of time. `NOTES.md` in the project is the video's
   living memory (`promo flow notes add TEXT` for your own lines): read it first when you resume. `promo flow calibration` says how often the council's verdict
   matched what the person did next.
+
+### After the first draft: edit surgically, never rebuild the video
+From the drafts stage on the Stage is an editor (Edit tab: bin, viewer, timeline, inspector) and you edit the same timeline from the CLI. Change only
+what the note is about, look and listen to that part, and leave the rest of the film alone:
+- **Read**: `promo flow edit timeline` (every shot with beats, times, source, caption, grade, fade, sounds; every voice line; the music and mix; what is built).
+- **See**: `promo flow edit look --shot 07` / `--at 41.2` / `--from 40 --to 44 --frames 6`, then read the PNG (a NOT BUILT tile shows the source at t_in).
+- **Hear**: `promo flow edit listen --from 40 --to 44 [--stem vo|music|sfx]`: a WAV, loudness, a 0.25 s envelope and the voice lines and sounds in the span.
+- **Edit**: `promo flow edit apply --dry-run --file -` first (the promo.yaml diff and the exact build steps that will run), then `apply --by NAME`.
+  The language (one per line): swap, trim, move, split, delete, caption, music, bus, vo (at/shot/db/mute/take), sfx add|rm|set, grade (plates only, `ui: false`:
+  never the app's pixels), fade, speed, fx (music, vo, vo:LINE, mix), gain (music over beats), import. Full reference: `promo/editor.py`.
+- **Check one part fast**: `promo flow edit preview --shot 07` or `--from 38 --to 44` builds only those shots and the sound and cuts a clip with the new mix
+  (about 10 s for one changed shot); it shows in the editor for the person. A grade or fade re-encodes the cached render, it never re-renders the shot.
+- **Draft**: `promo flow edit render --by NAME` (or `--file -` with edits): only what changed rebuilds, `promo check` runs, the file is kept as
+  flow/drafts/dN.mp4 and registered. Moving a built-in shot does not re-render it; swapping back is instant (segment cache).
+- **Offer options instead of asking**: `promo flow edit suggest --file - --note "Brighter track, 3 dB lower"`, one per option; the person tries and keeps them.
+- A GENERATED promo.yaml: after its generator runs again, `promo flow edit replay --by NAME` puts the logged edits back on top.
 
 ### Fan out: spec once, build in parallel, agents review, then the person
 The loop is **spec -> parallel build -> agent review -> (repeat) -> person**; the person chooses whether to go round again. Do not do these one at a time.
