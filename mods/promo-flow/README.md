@@ -110,7 +110,7 @@ Every path below that says `file` is `{"$file": "<absolute path>"}` (the host tu
 No difference / Can't tell; disabled until both sides load) and the agent's choices with "Change this". **Drafts tab**, per draft: the check line of that file, the
 blind comparison, our own player (`player.js`: a mark on the seek bar per note, hover reads it, click edits, drag moves, N or double-click adds one at that
 moment; the storyboard's scenes under the bar, a frame preview on hover, the note shown over the picture as playback passes it, frame steps, J/K/L, loop
-in/out, speed, full screen, `?` lists the keys; the player is kept across repaints so the clip never reloads), the notes list (click seeks; New / Changed /
+in/out, speed, full screen (in the CommissionAI app, whose web view shows full screen as a blank picture, it fills the window from the top layer instead), `?` lists the keys; the player is kept across repaints so the clip never reloads), the notes list (click seeks; New / Changed /
 Removing until sent), one "Send to the agent" for every unsent change (`PF.noteChange`, `notesView`, `notesUnsettled`: a sent change shows as sent until the
 published pins carry it), the checks
 with Fixed / Broken / Still open / Holds, the look pairs, "Let the agent keep working" (30 min / 1 hour / 2 hours, only on the latest draft with checks,

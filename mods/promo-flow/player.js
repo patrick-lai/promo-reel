@@ -7,6 +7,8 @@
   const FLASH_MS = 2600;
   const CLUSTER_PX = 14;
   const DRAG_PX = 4;
+  // CommissionAI's app web view shows an element in full screen as a blank picture while the sound plays on, so there the player fills the window instead
+  const NATIVE_FS = !/CommissionAI\//.test(navigator.userAgent);
   const KEYS = [
     ["Space / K", "Play or pause"], ["J / L", "Back / forward 5 s"], ["← / →", "Back / forward 1 s (Shift: 5 s)"], [", / .", "One frame back / forward"],
     ["[ / ]", "Previous / next note"], ["N", "New note at the playhead"], ["E", "Edit the note at the playhead"], ["I / O", "Loop from / to here"],
@@ -317,9 +319,17 @@
     function fullscreen() {
       const rootNode = el.getRootNode();
       if (rootNode.fullscreenElement === el) return document.exitFullscreen();
-      if (el.classList.contains("max")) { el.classList.remove("max"); return; }
-      if (!el.requestFullscreen) { el.classList.add("max"); return; }
-      el.requestFullscreen().catch(() => el.classList.add("max"));   // the host's frame may not allow full screen: fill the pane instead
+      if (el.classList.contains("max")) return setMax(false);
+      if (!NATIVE_FS || !el.requestFullscreen) return setMax(true);
+      el.requestFullscreen().catch(() => setMax(true));   // the host's frame may not allow full screen: fill the window instead
+    }
+    function setMax(on) {
+      // the top layer, so no panel of the host's page can paint over the player; a [popover] that is not showing is hidden, so it is set only while filled
+      if (on && el.showPopover) { el.popover = "manual"; el.showPopover(); }
+      if (!on && el.matches("[popover]")) { if (el.matches(":popover-open")) el.hidePopover(); el.removeAttribute("popover"); }
+      el.classList.toggle("max", on);
+      fsBtn.replaceChildren(ic(on ? "shrink" : "expand"));
+      el.focus({ preventScroll: true });
     }
     function toggleHelp(on) { help.hidden = on == null ? !help.hidden : !on; }
 
@@ -336,7 +346,7 @@
         i: () => { loop = { a: video.currentTime, b: loop && loop.b > video.currentTime ? loop.b : d }; paint(); },
         o: () => { loop = { a: loop && loop.a < video.currentTime ? loop.a : 0, b: video.currentTime }; paint(); },
         x: () => { loop = null; paint(); }, m: () => { video.muted = !video.muted; }, f: fullscreen, "?": () => toggleHelp(),
-        Home: () => seek(0), End: () => seek(d), Escape: () => { if (!help.hidden) toggleHelp(false); else if (el.classList.contains("max")) el.classList.remove("max"); else return false; },
+        Home: () => seek(0), End: () => seek(d), Escape: () => { if (!help.hidden) toggleHelp(false); else if (el.classList.contains("max")) setMax(false); else return false; },
       }[k.length === 1 ? k.toLowerCase() : k] || (/^[0-9]$/.test(k) ? () => seek((d * +k) / 10) : null);
       if (!act || act() === false) return;
       e.preventDefault();

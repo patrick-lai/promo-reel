@@ -384,6 +384,11 @@ UICHECK = r"""(async () => {
     ok('the note shows as a mark on the bar before anything is sent', QA('.pfp-mark[data-state=new]').length === 1 && /1 change not sent yet/.test(Q('.notes-send').textContent) && !/action pins/.test(log()));
     Q('.pfp-mark').dispatchEvent(new PointerEvent('pointerenter')); await wait(100);
     ok('hovering the mark reads the note', !Q('.pfp-card').hidden && /The cursor hides the merged count/.test(Q('.pfp-card').textContent));
+    Q('.pfp [aria-label="Full screen (F)"]').click(); await wait(400);   // not a user gesture here, so full screen is refused and the player fills the window, as in the app
+    const filled = Q('.pfp').getBoundingClientRect();
+    ok('full screen falls back to filling the window above every panel', Q('.pfp').matches('.max:popover-open') && filled.width === innerWidth && filled.height === innerHeight, Q('.pfp').className + ' ' + filled.width + 'x' + filled.height);
+    Q('.pfp').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await wait(200);
+    ok('Escape puts the player back in the page', !Q('.pfp').matches('.max, [popover]') && Q('.pfp').getBoundingClientRect().width < innerWidth, Q('.pfp').className);
     await click('[data-k=notes-send]'); await wait(400);
     ok('the notes reach the agent with the draft and time', /action pins -> \[mod:promo-flow\] Sam changed 1 note\(s\) on the timeline of draft 3: \(1\) new note at 0:00\.5 \(--at 0\.5\): \u201cThe cursor hides the merged count\u201d Run one command per change/.test(log()), log().slice(0, 300));
     window.harness.setStage('autopilot'); await wait(400); window.harness.setStage('review'); await wait(900);
