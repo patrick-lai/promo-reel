@@ -153,7 +153,7 @@ def run_files(spec):
             info = sf.info(p)
             frames, sr = info.frames, info.samplerate
         meta.append(dict(id=line_id(line), shot=str(line["shot"]), host=line.get("host"), text=line["text"], file=p,
-                         dur=round(frames / sr, 3), sr=sr, trim=line.get("trim")))
+                         dur=round(frames / sr, 3), sr=sr, trim=line.get("trim"), db=float(line.get("db", 0.0))))
     if bad:
         raise RuntimeError("VO files gate failed:\n  - " + "\n  - ".join(bad))
     os.makedirs(spec.vo_dir, exist_ok=True)

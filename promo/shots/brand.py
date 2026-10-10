@@ -76,16 +76,27 @@ def _font(path, px, wght, opsz_cap=60):
             return ImageFont.load_default()
     f = ImageFont.truetype(path, px)
     try:
-        axes = f.get_variation_axes()
-        vals = []
-        for a in axes:
-            nm = a["name"].decode() if isinstance(a["name"], bytes) else str(a["name"])
-            v = min(opsz_cap, px) if "ptical" in nm else wght
-            vals.append(min(max(v, a["minimum"]), a["maximum"]))
-        f.set_variation_by_axes(vals)
+        f.set_variation_by_axes(axis_values(f.get_variation_axes(), px, wght, opsz_cap))
     except Exception:           # static font, or Pillow built without FreeType variation support
         pass
     return f
+
+
+def axis_values(axes, px, wght, opsz_cap=60):
+    """Values for a variable font's axes, in axis order: the optical size follows the pixel size (capped), the Weight axis gets `wght`,
+    and every other axis (e.g. the system serif's GRAD grade axis) keeps its default: setting those to the weight value pins them at
+    their maximum and turns the lockup black-heavy."""
+    vals = []
+    for a in axes:
+        nm = (a["name"].decode() if isinstance(a["name"], bytes) else str(a["name"])).lower()
+        if "ptical" in nm or nm == "opsz":
+            v = min(opsz_cap, px)
+        elif "weight" in nm or nm == "wght":
+            v = wght
+        else:
+            v = a["default"]
+        vals.append(min(max(v, a["minimum"]), a["maximum"]))
+    return vals
 
 
 def _bez(p0, p1, p2, n=14):

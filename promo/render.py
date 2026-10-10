@@ -63,7 +63,14 @@ class RenderContext:
         if isinstance(weight, str):
             weight = weight.encode()
         f = ImageFont.truetype(self.font_path, int(size * self.K))
-        f.set_variation_by_name(weight)
+        try:
+            f.set_variation_by_name(weight)
+        except ValueError:                   # a named instance spelt differently ("Semibold" vs "SemiBold", "Semi Bold"): match ignoring case and spaces
+            want = weight.decode().lower().replace(" ", "").replace("-", "")
+            for nm in f.get_variation_names():
+                if nm.decode().lower().replace(" ", "").replace("-", "") == want:
+                    f.set_variation_by_name(nm)
+                    break
         return f
 
 

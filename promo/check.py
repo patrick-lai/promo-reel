@@ -101,6 +101,11 @@ def _anime_effective_dpr(spec, warns, limit=1.5):
     return out
 
 
+def line_max_wer(line, default):
+    """The most word errors a VO line may have in the read-back: the project's `qa.vo_max_wer`, or the line's own `max_wer` (a line that is meant to be too fast to follow)."""
+    return float(line.get("max_wer", default))
+
+
 def run(spec):
     rep = Report()
     qa = spec.qa
@@ -291,7 +296,7 @@ def run(spec):
                 for k, v in {**(qa.get("asr_aliases") or {}), **(ln.get("asr_aliases") or {})}.items():   # alias: heard-as -> script word
                     hyp_s = re.sub(re.escape(k), v, hyp_s, flags=re.I)
                 w = wer(norm_words(ref_s), norm_words(hyp_s))
-                if w > maxw_:
+                if w > line_max_wer(ln, maxw_):
                     bad.append(f"{sid}: WER {w:.2f} (heard {txt!r})")
             rep.add("vo-script", "FAIL" if bad else "PASS", "; ".join(bad) if bad else f"{len(lines)} lines match the script (WER <= {maxw_})")
 

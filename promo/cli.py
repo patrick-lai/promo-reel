@@ -80,6 +80,7 @@ def apply_post(spec, shot):
 def shot_digest(spec, shot, legacy=False, raw=False):
     """What the rendered picture of `shot` depends on. `legacy=True` is the formula before EVENT_KEYS and beat lengths (see _legacy_fresh);
     `raw=True` leaves out the post filter (POST_KEYS), the key of the ungraded render in the segment cache."""
+    from .shots import get_type
     clips = {cid: FT.verified_sha(spec, cid) for cid in sorted(FT.referenced(spec, {shot.id})) if os.path.exists(FT.clip_path(spec, cid))}
     plates = {k: v for k, v in (spec.raw.get("plates") or {}).items()}
     code = SHOT_CODE + (["shots/anime", "styles", "claims"] if shot.type == "anime" else [])
@@ -90,7 +91,8 @@ def shot_digest(spec, shot, legacy=False, raw=False):
     extra = [spec.style, spec.raw.get("claims")] if shot.type in ("cinema", "screen") else []
     if shot.type == "anime":        # card text can come from claims tables; the band/typography from the resolved preset
         extra = [spec.style, spec.raw.get("claims"), spec.timeline.bpm]
-    if shot.type in ("horizon", "dawn"):    # the show-level horizon_text layer (drawn into every horizon shot) + the resolved preset
+    if shot.type in ("horizon", "dawn") or getattr(get_type(shot.type), "draws_horizon_text", False):
+        # the show-level horizon_text layer (drawn into every horizon shot, and into project types that declare `draws_horizon_text = True`) + the resolved preset
         code = code + ["shots/horizon", "shots/brand", "pane3d", "styles"]
         extra = [spec.style, spec.raw.get("horizon_text"), spec.timeline.bpm]
     cfg = {k: v for k, v in shot.cfg.items() if k not in QA_ONLY_KEYS + AUDIO_KEYS + (() if legacy else EVENT_KEYS) + (POST_KEYS if raw else ())}   # QA / audio / cue keys never force a re-render
@@ -124,7 +126,7 @@ def plan(spec):
         def vo_dig():
             cfg, man = spec.raw["vo"], A.load_manifest(spec)
             if cfg.get("engine") == "files":
-                return digest([[vo.line_id(l), l["shot"], l["text"], l.get("sha256"), file_sig(vo.line_file(spec, l, man))] for l in cfg["lines"]],
+                return digest([[vo.line_id(l), l["shot"], l["text"], l.get("sha256"), l.get("db"), file_sig(vo.line_file(spec, l, man))] for l in cfg["lines"]],
                               code_hash("vo"))
             # only what changes the audio: engine/voice/lang/speed + each line's shot/text/tts (not `at` / `asr_aliases`)
             cfg = dict({k: v for k, v in cfg.items() if k != "lines"}, lines=[[l["shot"], l["text"], l.get("tts")] for l in cfg["lines"]])

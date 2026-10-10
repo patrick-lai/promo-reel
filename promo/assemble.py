@@ -39,6 +39,27 @@ def build_edl(spec):
     return edl
 
 
+def fade_out_filter(duration, fade):
+    """ffmpeg -vf value fading the picture to black over the last `fade` s of a `duration` s film (None for no fade)."""
+    fade = float(fade or 0)
+    if fade <= 0:
+        return None
+    fade = min(fade, duration)
+    return f"fade=t=out:st={duration - fade:.3f}:d={fade:.3f}:color=black"
+
+
+def fade_out_video(spec, vid):
+    """`output.fade_out: <s>`: fade the picture to black over the last N seconds (the audio master has its own `mix.fade_out`).
+    Re-encodes the concatenated video once (crf 14); without the option the segments stay a stream copy."""
+    vf = fade_out_filter(spec.duration, (spec.raw.get("output") or {}).get("fade_out"))
+    if not vf:
+        return vid
+    out = os.path.join(spec.segs_dir, "video-faded.mp4")
+    subprocess.run(["nice", "-n", "10", "ffmpeg", "-v", "error", "-y", "-threads", "2", "-i", vid, "-vf", vf, "-c:v", "libx264", "-preset", "slow", "-crf", "14",
+                    "-profile:v", "high", "-pix_fmt", "yuv420p", "-g", "60", "-bf", "2", "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709", out], check=True)
+    return out
+
+
 def run(spec, force=False):
     os.makedirs(spec.out, exist_ok=True)
     lst = os.path.join(spec.segs_dir, "list.txt")
@@ -51,6 +72,7 @@ def run(spec, force=False):
             f.write(f"file '{p}'\n")
     vid = os.path.join(spec.segs_dir, "video-only.mp4")
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-threads", "2", "-f", "concat", "-safe", "0", "-i", lst, "-c", "copy", vid], check=True)
+    vid = fade_out_video(spec, vid)
     outs = []
     for m in spec.masters:
         wav = master_path(spec, m["name"])

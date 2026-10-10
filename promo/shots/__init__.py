@@ -23,7 +23,11 @@ def get_type(name):
 
 
 class ShotType:
-    """Base class with the default (no-op) event/QA hooks."""
+    """Base class with the default (no-op) event/QA hooks.
+    `draws_horizon_text = True` on a project type that paints the show-level `horizon_text` words (promo.shots.horizon.HorizonText):
+    editing those words then makes its cached shots stale, like the built-in horizon / dawn types."""
+
+    draws_horizon_text = False
 
     def render(self, ctx, shot):
         raise NotImplementedError

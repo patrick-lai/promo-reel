@@ -39,6 +39,8 @@ Shot `dawn` (the held sunrise end card): a thin navy -> teal rim rising from the
 `reach: [0.05, 0.22]`), turning amber only in the last 0.6 s (`amber_at` seconds, shot-local; `amber_s` ramp, default
 0.45 s). Product `name` in serif (`name_frac` 0.065 at `name_y` 0.47). `wordmark` (small tracked) and `tagline` (fades in
 at +1.0 s) are optional and have NO default text: omit them and only `name` renders.
+    fine_print, fine_print_at, fine_print_frac, fine_print_y     a block of tiny dim text near the bottom (a joke disclaimer): text, start (s), size / frame height, y
+    font_path                       project-relative font file for the brand lockup (the product's own wordmark face)
     name, wordmark, tagline         texts; name_at (0.3), tagline_at (1.0), rise_s (3.0), name_frac, name_y, wordmark_y, tagline_y
     amber_at: 2.4                   seconds into the card where the amber starts (default: shot duration - 0.6)
     reach: [0.12, 0.80]             the old tall glow; with `amber_at: 0` and name_frac 0.11 / name_y 0.40 this restores the
@@ -567,9 +569,35 @@ class Dawn(ShotType):
             put(lambda d: d.text((OW / 2, cfg["tagline_y"] * OH), shot.cfg["tagline"], font=f, fill=(226, 228, 232, 255), anchor="mm"), cfg["tagline_at"])
         return out
 
+    def _fine_print(self, ctx, shot):
+        """(RGBA layer, t_on) for the optional `fine_print` block: a few lines of tiny, dim sans text near the bottom, wrapped to 80 % of the width.
+        Keys: fine_print (text), fine_print_at (s, default 3.5), fine_print_frac (font size / frame height, default 0.0105), fine_print_y (0.91)."""
+        txt = shot.cfg.get("fine_print")
+        if not txt:
+            return None
+        OW, OH = ctx.OW, ctx.OH
+        size = float(shot.cfg.get("fine_print_frac", 0.0105)) * OH
+        f = load_font(font_candidates(style_of(ctx.spec), "sans"), size)
+        lines, cur = [], ""
+        for w in str(txt).split():
+            nxt = (cur + " " + w).strip()
+            if f.getlength(nxt) <= 0.80 * OW:
+                cur = nxt
+            else:
+                lines.append(cur)
+                cur = w
+        lines.append(cur)
+        im = Image.new("RGBA", (OW, OH), (0, 0, 0, 0))
+        d = ImageDraw.Draw(im)
+        y0, lh = float(shot.cfg.get("fine_print_y", 0.91)) * OH, size * 1.45
+        for i, ln in enumerate(lines):
+            d.text((OW / 2, y0 + i * lh), ln, font=f, fill=(206, 210, 224, 170), anchor="mm")
+        return im, float(shot.cfg.get("fine_print_at", 3.5))
+
     def render(self, ctx, shot):
         spec = ctx.spec
         cfg = self._cfg(spec, shot)
+        fine = self._fine_print(ctx, shot)
         wm_parts = isinstance(shot.cfg.get("wordmark"), (list, tuple))      # `wordmark:` as a list of {text, color, weight} = brand lockup parts
         brand = shot.cfg.get("name_style") == "brand" and (shot.cfg.get("name") or wm_parts)
         layers = [] if brand else self._texts(ctx, shot, cfg)
@@ -585,6 +613,10 @@ class Dawn(ShotType):
                 if _os.path.exists(em):
                     bcfg["emblem_path"] = em                # project-relative transparent PNG (+ optional emblem.json centre)
             serif = font_candidates(style_of(ctx.spec), "serif")
+            if shot.cfg.get("font_path"):                   # the product's own wordmark face (project-relative), ahead of the preset serifs
+                fp = ctx.spec.resolve(shot.cfg["font_path"])
+                if _os.path.exists(fp):
+                    serif = [fp] + serif
 
         def f(i, t):
             out = Image.fromarray(dawn_array(ctx.OW, ctx.OH, t, cfg)).convert("RGBA")
@@ -593,6 +625,8 @@ class Dawn(ShotType):
             for lay, t_on in layers:
                 a = R.ease((t - t_on) / fade, "out") if t > t_on else 0.0
                 out = _composite(out, lay, a, 0, 0)
+            if fine:
+                out = _composite(out, fine[0], R.ease((t - fine[1]) / 0.5, "out") if t > fine[1] else 0.0, 0, 0)
             return out
 
         R.run_shot(ctx, shot, f)
