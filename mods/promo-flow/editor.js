@@ -17,7 +17,7 @@
   /* A music video (edit.mv, style anime-mv) adds the Lyrics lane under the picture and drops empty Captions / Voice lanes. */
   const LANE_PX = { v: 46, lyr: 30, cap: 22, vo: 36, music: 40, sfx: 32 };
   const LYR_LABEL = { band: "Under the picture", center: "On the picture", vertical: "Vertical (tategaki)", big: "One huge word" };
-  const ANIM_LABEL = { fade: "Fade", type: "Type on", ink: "Ink in", none: "Cut" };
+  const ANIM_LABEL = { fade: "Fade", type: "Type on", ink: "Ink in", drop: "Raindrops", none: "Cut" };
   const FX_LABEL = { whiteout: "Whiteout", flash: "Flash", ink: "Ink wipe", iris: "Iris", smear: "Smear", rgb: "RGB split" };
   const AUDIO_LANES = ["vo", "music", "sfx"];
   const KIND_ICON = { footage: "film", plate: "image", music: "music", sfx: "wave", voice: "wave", script: "doc", draft: "film" };

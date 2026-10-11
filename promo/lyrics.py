@@ -17,6 +17,7 @@ Anims (`anim`):
     fade       the whole line fades in / out over `fade_s`
     type       characters appear one by one across the first 60 % of the sung span (min 0.04 s each), then hold
     ink        per character: fade + 4 px rise + blur-to-sharp, staggered like `type`
+    drop       per character: falls in from above like a raindrop and lands with a small bounce, staggered like `type` (titles)
     none       hard on / off
 `sung: [a, b]` is what `promo lyrics align` measured on the vocal; `t` defaults to it. Lines it could not place carry
 `unsynced: true` (gate lyrics-sync WARNs).
@@ -379,11 +380,15 @@ def char_alpha(line, k, n, t):
     if t < a or t >= b:
         return 0.0, 0.0
     fo = min(1.0, (b - t) / line["fade_s"]) if line["anim"] != "none" and line["fade_s"] > 0 else 1.0
-    if line["anim"] in ("type", "ink"):
+    if line["anim"] in ("type", "ink", "drop"):
         span = max(min((b - a) * 0.6, 0.09 * n), 0.04 * n)
         t_k = a + span * k / max(n, 1)
         if t < t_k:
             return 0.0, 0.0
+        if line["anim"] == "drop":                        # falls in like a raindrop: accelerates, lands, a small overshoot back up
+            p = min(1.0, (t - t_k) / 0.32)
+            fall = (1 - p) ** 2 - 0.06 * np.sin(np.pi * min(1.0, max(0.0, (p - 0.8) / 0.2)))
+            return min(1.0, p * 3) * fo, fall
         p = min(1.0, (t - t_k) / 0.12)
         return p * fo, (1 - p)
     if line["anim"] == "none":
@@ -446,7 +451,7 @@ class LyricLayer:
                 if al < 1:
                     spr = spr.copy()
                     spr.putalpha(spr.split()[3].point(lambda v, a_=al: int(v * a_)))
-                dy = rise * 4 * self.ctx.K if line["anim"] == "ink" else 0
+                dy = rise * 4 * self.ctx.K if line["anim"] == "ink" else -rise * line["size"] * 1.6 * self.ctx.K if line["anim"] == "drop" else 0
                 out.alpha_composite(spr, (int(round(x - pad)), int(round(y - pad + dy))))
         return out
 

@@ -123,6 +123,8 @@ def test_type_on_reveals_characters_in_order():
     later = [L.char_alpha(line, k, 6, 2.6)[0] for k in range(6)]
     assert before[0] > 0 and before[-1] == 0 and all(x == 1 for x in later)
     assert L.char_alpha(line, 0, 6, 4.0)[0] == 0                           # gone at the end
+    drop = dict(line, anim="drop")
+    assert L.char_alpha(drop, 0, 6, 1.05)[1] > 0.5 and abs(L.char_alpha(drop, 0, 6, 2.0)[1]) < 1e-9     # high above at first, landed later
 
 
 # ---------------------------------------------------------------- a tiny anime-mv project
@@ -264,20 +266,21 @@ def test_bible_gate_flags_plates_from_an_older_bible(tmp_path):
         Image.new("RGB", (64, 36), (9, 9, 9)).save(f)
         f.with_name(f.name + ".gen.json").write_text(json.dumps(dict(provider="test", kind="image", prompt="p", at="now", sha256="x", bible=b)))
         G.register_existing(spec, str(f), f"k02-t{n}", shots=["02"])
-    spec = load_spec(str(d / "promo.yaml"), plugins=False)
     from promo import footage as FT
+    spec = load_spec(str(d / "promo.yaml"), plugins=False)
+    assert [t["id"] for t in MV.takes(spec)["02"]] == ["k02-t1", "k02-t2"]
+    MV.use(spec, "02", "k02-t1")
+    spec = load_spec(str(d / "promo.yaml"), plugins=False)
     _, st, msg = SC.look_bible_gate(spec, FT.load(spec))
-    assert st == "WARN" and "k02-t1" in msg and "k02-t2" not in msg
-    tk = MV.takes(spec)["02"]
-    assert [t["id"] for t in tk] == ["k02-t1", "k02-t2"]
-    plan = [r for r in MV.plan(spec)]
-    assert plan == []                                                     # shot 02 has no plate: block
-    MV.use(spec, "02", "k02-t2")
+    assert st == "WARN" and "k02-t1" in msg and "k02-t2" not in msg       # the take in use predates the bible
     raw = yaml.safe_load((d / "promo.yaml").read_text())
-    assert raw["shots"][1]["still"] == "k02-t2"
-    raw["shots"][1].update(still="k02-t1", plate=dict(kind="still", prompt="p"))
+    raw["shots"][1]["plate"] = dict(kind="still", prompt="p")
     (d / "promo.yaml").write_text(yaml.safe_dump(raw, allow_unicode=True, sort_keys=False))
-    assert MV.latest(load_spec(str(d / "promo.yaml"), plugins=False)) == {"02": "k02-t2"}          # the newest take of the current bible
+    spec = load_spec(str(d / "promo.yaml"), plugins=False)
+    assert MV.latest(spec) == {"02": "k02-t2"}                           # the newest take of the current bible
+    MV.use(spec, "02", "k02-t2")
+    spec = load_spec(str(d / "promo.yaml"), plugins=False)
+    assert SC.look_bible_gate(spec, FT.load(spec))[1] == "PASS"          # the old take is still registered, but nobody uses it
 
 
 def test_plate_prompt_is_bible_then_cast_then_scene():

@@ -76,7 +76,7 @@ EDIT_STAGES = ("drafts", "review", "final")
 OPS = ("swap", "trim", "move", "split", "delete", "caption", "music", "bus", "vo", "sfx", "grade", "fade", "speed", "fx", "gain", "layout", "host", "mood",
        "gesture", "say", "import", "lyric", "plate", "look", "marker")
 LYRIC_LAYOUTS = ("band", "center", "vertical", "big")            # promo/lyrics.py
-LYRIC_ANIMS = ("fade", "type", "ink", "none")
+LYRIC_ANIMS = ("fade", "type", "ink", "drop", "none")
 MV_FX = ("whiteout", "flash", "ink", "iris", "smear", "rgb")      # promo/shots/mv.py FX
 MV_PARTICLES = ("petals", "bubbles", "motes", "snow", "rain")
 PLATE_KINDS = ("video", "still")

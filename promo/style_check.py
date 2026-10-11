@@ -917,10 +917,12 @@ def look_bible_gate(spec, man):
     bible = spec.raw.get("look_bible")
     if not bible:
         return ("look-bible", "WARN", "no look_bible: every plate prompt should start from one shared look + character sheet (`promo mv bible`)")
+    from . import footage as FT
     bid = MV.bible_id(bible)
+    used = FT.referenced(spec)                 # takes nobody uses (older drafts' takes) do not matter
     off = []
     for cid, c in sorted(man.items()):
-        if not (c or {}).get("generated"):
+        if cid not in used or not (c or {}).get("generated"):
             continue
         side = str(c.get("path", "")) + ".gen.json"
         if not os.path.isfile(side):            # registered by hand (`promo footage add`): nothing says which bible it came from
@@ -929,7 +931,7 @@ def look_bible_gate(spec, man):
         if meta.get("bible") != bid:
             off.append(cid)
     return ("look-bible", "WARN" if off else "PASS",
-            f"plates made without the current look bible {bid}: {', '.join(off)} (regenerate, or keep them on purpose)" if off
+            f"plates in use made without the current look bible {bid}: {', '.join(off)} (regenerate, or keep them on purpose)" if off
             else f"every generated plate carries look bible {bid}")
 
 

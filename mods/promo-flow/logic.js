@@ -547,7 +547,7 @@
   const EDIT_OPS = ["swap", "trim", "move", "split", "delete", "caption", "music", "bus", "vo", "sfx", "grade", "fade", "speed", "fx", "gain", "layout", "host", "mood", "gesture", "say", "import", "lyric", "plate", "look", "marker"];
   /* Music videos (promo/lyrics.py, promo/shots/mv.py); tests/test_editor.py keeps them equal to promo/editor.py's. */
   const LYRIC_LAYOUTS = ["band", "center", "vertical", "big"];
-  const LYRIC_ANIMS = ["fade", "type", "ink", "none"];
+  const LYRIC_ANIMS = ["fade", "type", "ink", "drop", "none"];
   const MV_FX = ["whiteout", "flash", "ink", "iris", "smear", "rgb"];
   const MV_PARTICLES = ["petals", "bubbles", "motes", "snow", "rain"];
   const PLATE_KINDS = ["video", "still"];
