@@ -27,7 +27,7 @@ EVENT_KEYS = ("sfx", "label", "notes", "move")      # sound cues and EDL wording
 # (livestream, horizon, dawn and project types read the shot's global start, so their digest keeps the absolute beats.)
 LOCAL_TIME = {"promo.shots.clip", "promo.shots.card", "promo.shots.cinema", "promo.shots.screen", "promo.shots.anime"}
 POST_KEYS = ("grade", "fade")    # shot keys applied by ffmpeg on the rendered segment: a new grade or fade re-encodes it, it never re-renders the shot
-SEG_CACHE_BYTES = 4 << 30       # build/<WxH>/segs/.cache: every render by its digest, so swapping a shot back is instant; oldest go first past this
+SEG_CACHE_BYTES = 1 << 30       # build/<WxH>/segs/.cache: renders by digest, so swapping a shot back is instant; oldest go first past 1 GB (a miss only re-renders)
 SHOT_CODE = ["render", "overlays", "spec", "footage", "shots/__init__", "shots/clip", "shots/card", "shots/livestream", "livestream", "live2d"]
 
 

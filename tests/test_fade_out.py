@@ -26,7 +26,7 @@ def test_last_frame_is_black_and_first_is_not():
         duration = 4.0
         segs_dir = d
         raw = {"output": {"fade_out": 1.5}}
-    out = A.fade_out_video(Spec, src)
+    out = A.final_video(Spec, src)
     def luma(t):
         raw = subprocess.run(["ffmpeg", "-v", "error", "-ss", str(t), "-i", out, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "gray", "-"], capture_output=True, check=True).stdout
         return float(np.frombuffer(raw, np.uint8).mean())
@@ -34,4 +34,6 @@ def test_last_frame_is_black_and_first_is_not():
     assert luma(3.0) < luma(2.0)                          # fading
     assert luma(3.9) < 30                                 # (almost) black at the end
     Spec.raw = {"output": {}}
-    assert A.fade_out_video(Spec, src) == src             # no option: stream copy path unchanged
+    plain = A.final_video(Spec, src)                      # no fade: still the one delivery encode, nothing darkened
+    out = plain
+    assert luma(3.9) > 200

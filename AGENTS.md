@@ -118,4 +118,6 @@ Hand over: `out/<name>-1080.mp4` (web, -14 LUFS), `out/<name>-1080-social.mp4` (
 - Render one shot at a time (ffmpeg `-threads 2`); never run two renders at once. Heavy renders hold
   the box-wide heavy lock (`promo` takes it itself; see above). A full 1080 build takes ~15-25 min on 8 cores.
 - Do not commit media, builds or the music file; `.gitignore` covers `media/`, `build/`, `out/`, `*.mov`, `*.mp4`, `*.wav`, `*.mp3`, models.
+- Disk: masters are encoded once at H.264 CRF 23 (`output.crf` to change; the crf 16 shot segments stay the editing source), assemble deletes its
+  intermediates, the shot-render cache is capped at 1 GB per project, and flow drafts are APFS clones of the master. Do not keep extra full-size copies.
 - Do not git push or publish unless the human asked for that specific action.

@@ -48,18 +48,6 @@ def fade_out_filter(duration, fade):
     return f"fade=t=out:st={duration - fade:.3f}:d={fade:.3f}:color=black"
 
 
-def fade_out_video(spec, vid):
-    """`output.fade_out: <s>`: fade the picture to black over the last N seconds (the audio master has its own `mix.fade_out`).
-    Re-encodes the concatenated video once (crf 14); without the option the segments stay a stream copy."""
-    vf = fade_out_filter(spec.duration, (spec.raw.get("output") or {}).get("fade_out"))
-    if not vf:
-        return vid
-    out = os.path.join(spec.segs_dir, "video-faded.mp4")
-    subprocess.run(["nice", "-n", "10", "ffmpeg", "-v", "error", "-y", "-threads", "2", "-i", vid, "-vf", vf, "-c:v", "libx264", "-preset", "slow", "-crf", "14",
-                    "-profile:v", "high", "-pix_fmt", "yuv420p", "-g", "60", "-bf", "2", "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709", out], check=True)
-    return out
-
-
 WATERMARK = "TEST · 試作 · unlicensed audio · not for publication"
 
 
@@ -80,19 +68,26 @@ def watermark_png(spec, path, text=WATERMARK):
     return path
 
 
-def watermark_video(spec, vid):
-    """Burn the TEST watermark into every frame (top-left, inside the frame) while a `test_only` asset is in the spec."""
-    from . import assets as A
-    tests = A.test_only_assets(spec)
-    if not tests:
-        return vid
-    png = watermark_png(spec, os.path.join(spec.segs_dir, "watermark.png"))
-    out = os.path.join(spec.segs_dir, "video-watermarked.mp4")
-    m = int(24 * spec.OW / 1920)
-    subprocess.run(["nice", "-n", "10", "ffmpeg", "-v", "error", "-y", "-threads", "2", "-i", vid, "-i", png, "-filter_complex", f"[0:v][1:v]overlay={m}:{m}",
-                    "-c:v", "libx264", "-preset", "slow", "-crf", "14", "-profile:v", "high", "-pix_fmt", "yuv420p", "-g", "60", "-bf", "2",
-                    "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709", out], check=True)
-    print(f"watermarked (test-only assets: {', '.join(tests)})", flush=True)
+DELIVERY_CRF = 23          # the masters people watch and drafts are cloned from: ~15x smaller than the crf 16 segments, no visible loss
+
+
+def final_video(spec, vid, watermark=False):
+    """The delivered picture: the stream-copied segments encoded ONCE (H.264, `output.crf`, default 23), with the TEST watermark
+    (`watermark`: a `test_only` asset is in the mix) and `output.fade_out` in the same pass. The crf 16 segments stay the editing source."""
+    out_cfg = spec.raw.get("output") or {}
+    inputs, chain, label = ["-i", vid], [], "[0:v]"
+    if watermark:
+        png = watermark_png(spec, os.path.join(spec.segs_dir, "watermark.png"))
+        m = int(24 * spec.OW / 1920)
+        inputs += ["-i", png]
+        chain.append(f"{label}[1:v]overlay={m}:{m}[wm]")
+        label = "[wm]"
+    fade = fade_out_filter(spec.duration, out_cfg.get("fade_out"))
+    chain.append(f"{label}{fade or 'null'}[v]")
+    out = os.path.join(spec.segs_dir, "video-final.mp4")
+    subprocess.run(["nice", "-n", "10", "ffmpeg", "-v", "error", "-y", "-threads", "2", *inputs, "-filter_complex", ";".join(chain), "-map", "[v]",
+                    "-c:v", "libx264", "-preset", "slow", "-crf", str(out_cfg.get("crf", DELIVERY_CRF)), "-profile:v", "high", "-pix_fmt", "yuv420p",
+                    "-g", "60", "-bf", "2", "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709", out], check=True)
     return out
 
 
@@ -108,8 +103,11 @@ def run(spec, force=False):
             f.write(f"file '{p}'\n")
     vid = os.path.join(spec.segs_dir, "video-only.mp4")
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-threads", "2", "-f", "concat", "-safe", "0", "-i", lst, "-c", "copy", vid], check=True)
-    vid = fade_out_video(spec, vid)
-    vid = watermark_video(spec, vid)
+    from . import assets as A
+    tests = A.test_only_assets(spec)
+    concat, vid = vid, final_video(spec, vid, watermark=bool(tests))
+    if tests:
+        print(f"watermarked (test-only assets: {', '.join(tests)})", flush=True)
     outs = []
     for m in spec.masters:
         wav = master_path(spec, m["name"])
@@ -121,5 +119,7 @@ def run(spec, force=False):
                        + ["-t", f"{spec.duration}", "-movflags", "+faststart", out], check=True)
         print("wrote", out, flush=True)
         outs.append(out)
+    for f in (concat, vid):              # full-size intermediates: the segments and the masters are what is kept
+        os.remove(f)
     build_edl(spec)
     return outs

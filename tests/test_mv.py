@@ -228,6 +228,24 @@ def test_a_take_wins_over_the_placeholder_fill(tmp_path):
     assert px[0] > 180 and px[2] < 80, px
 
 
+@needs_jp_font
+def test_assemble_keeps_only_segments_and_a_small_master(tmp_path):
+    """One delivery encode: the master is far smaller than the crf 16 segments it is cut from, and no full-size intermediate stays behind."""
+    from promo import assemble
+    from promo.mix import master_path
+    d, spec = project(tmp_path)
+    ctx = RenderContext.from_spec(spec)
+    for shot in spec.shots:
+        shot.cfg["particles"] = {"kind": "petals", "n": 40}               # moving detail, so the encode has something to compress
+        SMV.MV().render(ctx, shot)
+    os.makedirs(spec.audio_dir, exist_ok=True)
+    sf.write(master_path(spec, "web"), np.zeros((int(48000 * spec.duration), 2), np.float32), 48000)
+    out = assemble.run(spec)[0]
+    segs = sum(os.path.getsize(spec.seg_path(s.id)) for s in spec.shots)
+    assert os.path.getsize(out) < segs / 2
+    assert sorted(f for f in os.listdir(spec.segs_dir) if f.endswith(".mp4") and not f[:2].isdigit()) == []
+
+
 def test_particles_are_deterministic_and_move():
     cfg = {"kind": "petals", "n": 10, "seed": 4}
     a, b = SMV.particle_state(cfg, 1.0, (1920, 818)), SMV.particle_state(cfg, 1.0, (1920, 818))
@@ -315,8 +333,7 @@ def test_test_only_audio_is_watermarked_and_cannot_be_shared(tmp_path):
     os.makedirs(spec.segs_dir, exist_ok=True)
     vid = os.path.join(spec.segs_dir, "v.mp4")
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=0x8899aa:s=1920x1080:d=0.2:r=30", "-pix_fmt", "yuv420p", vid], check=True)
-    out = assemble.watermark_video(spec, vid)
-    assert out != vid
+    out = assemble.final_video(spec, vid, watermark=True)
     png = tmp_path / "w.png"
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", out, "-frames:v", "1", str(png)], check=True)
     a = np.asarray(Image.open(png).convert("RGB")).astype(int)

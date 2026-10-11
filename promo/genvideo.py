@@ -188,7 +188,7 @@ def strip_watermark(path: Path, kind: str, keep: float = 0.9) -> str | None:
     shutil.copyfile(path, raw)
     vf = f"crop=iw*{keep}:ih*{keep}:0:0,scale=1920:1080:flags=lanczos,unsharp=5:5:0.4"
     if kind == "video":
-        cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(raw), "-vf", vf, "-map", "0:v", "-map", "0:a?", "-c:v", "libx264", "-crf", "14",
+        cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(raw), "-vf", vf, "-map", "0:v", "-map", "0:a?", "-c:v", "libx264", "-crf", "18",
                "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", str(path)]      # keep the generator's audio (voices, ambience)
     else:
         cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(raw), "-vf", vf, str(path)]
