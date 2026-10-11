@@ -10,6 +10,7 @@ Spec keys:
 """
 from __future__ import annotations
 
+from .. import motion as M
 from .. import render as R
 from ..overlays import apply_overlays, build_overlays
 from ..spec import resolve_cam_keys
@@ -40,7 +41,15 @@ class Clip(ShotType):
         keys = resolve_cam_keys(cfg["cam"], total)
         seg_keys = [resolve_cam_keys(s["cam"], s["dur"]) if s.get("cam") else None for s in segs]
         blur = cfg.get("blur", 1)
-        overlays = build_overlays(ctx, cfg.get("overlays"))
+        motion = M.resolve(spec, cfg)
+        overlays = build_overlays(ctx, cfg.get("overlays"), motion)
+        if motion.get("camera") == "spring":
+            cam_fn = M.spring_cam(keys, total, ctx.fps)
+            seg_fns = [M.spring_cam(k_, s["dur"], ctx.fps) if k_ else None for k_, s in zip(seg_keys, segs)]
+        else:
+            cam_fn = lambda t: R.cam_at(keys, t)                                                    # noqa: E731
+            seg_fns = [(lambda t, k_=k_: R.cam_at(k_, t)) if k_ else None for k_ in seg_keys]
+        punch = motion.get("punch", 0)
 
         def f(i, t):
             k = max(j for j, (a, b) in enumerate(bounds) if t >= a - 1e-6)
@@ -49,8 +58,10 @@ class Clip(ShotType):
             u = min(1.0, (t - a) / max(b - a, 1e-6))
             st = s["t_in"] + (s["t_out"] - s["t_in"]) * u
             im = srcs[k].frame(st, blur=blur)
-            cam = R.cam_at(seg_keys[k], t - a) if seg_keys[k] else R.cam_at(keys, t)
-            out = R.frame_cam(ctx, im, *cam).convert("RGBA")
+            cx, cy, w = seg_fns[k](t - a) if seg_fns[k] else cam_fn(t)
+            if punch:
+                w *= 1 - punch * M.burst(t)
+            out = R.frame_cam(ctx, im, cx, cy, w).convert("RGBA")
             return apply_overlays(overlays, out, t)
 
         try:

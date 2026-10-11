@@ -13,27 +13,46 @@ from __future__ import annotations
 
 from PIL import Image, ImageDraw, ImageFilter
 
+from . import motion as M
 from . import render as R
 
 
 class Overlay:
     role = "overlay"
 
-    def __init__(self, ctx, cfg):
+    def __init__(self, ctx, cfg, settle=False, delay=0.0):
         self.ctx, self.cfg = ctx, cfg
         self.t0, self.t1 = cfg.get("t", [0.0, 99.0])
+        self.t0 += delay
         self.fin = cfg.get("fade_in", 0.18)
         self.fout = cfg.get("fade_out", 0.12)
+        self.settle = settle
         self.layer = self.build()
+        if settle:
+            bb = self.layer.getbbox()
+            self.bb = bb and (bb[0], max(bb[1] - 2, 0), bb[2], min(bb[3] + 2, self.layer.height))
+            self.sprite = bb and self.layer.crop(self.bb)
 
     def build(self):
         raise NotImplementedError
 
     def alpha(self, t):
-        return R.alpha_at(t, self.t0, self.t1, self.fin, self.fout)
+        if not self.settle:
+            return R.alpha_at(t, self.t0, self.t1, self.fin, self.fout)
+        if t < self.t0 or t > self.t1:
+            return 0.0
+        return min(M.smoothstep((t - self.t0) / self.fin) if self.fin else 1.0,
+                   M.smoothstep((self.t1 - t) / self.fout) if self.fout else 1.0)
 
     def apply(self, out, t):
-        return R.over(out, self.layer, self.alpha(t))
+        a = self.alpha(t)
+        if not self.settle or not self.bb or a <= 0:
+            return R.over(out, self.layer, a)
+        dy = M.OVERLAY_RISE * self.ctx.K * M.settle(t - self.t0)     # rise on entrance only: an exit just fades
+        whole = int(dy)
+        sprite = self.sprite if dy == whole else self.sprite.transform(self.sprite.size, Image.AFFINE, (1, 0, 0, 0, 1, whole - dy),
+                                                                         Image.BICUBIC)
+        return R.over(out, sprite, a, (self.bb[0], self.bb[1] + whole))
 
     def box(self):
         """Pill box in 1080-canvas units (1920x1080 space) or None."""
@@ -74,7 +93,7 @@ class Scrim(Overlay):
     """Soft dark ellipse behind a title (port of the shot-01 scrim). Composited at full alpha unless `t` is given."""
     role = "scrim"
 
-    def __init__(self, ctx, cfg):
+    def __init__(self, ctx, cfg, settle=False, delay=0.0):
         cfg = dict(cfg)
         self.always = "t" not in cfg
         super().__init__(ctx, cfg)
@@ -101,12 +120,20 @@ class Scrim(Overlay):
 TYPES = {"caption": Caption, "pill": Pill, "text": Text, "scrim": Scrim}
 
 
-def build_overlays(ctx, cfgs):
-    out = []
+def build_overlays(ctx, cfgs, motion=None):
+    """`motion` is the shot's resolved motion block (promo.motion.resolve); `overlay: settle` makes overlays that enter
+    on the same frame arrive STAGGER s apart, in list order, each rising into place."""
+    settle = (motion or {}).get("overlay") == "settle"
+    out, entering = [], {}
     for c in cfgs or []:
         if c["type"] not in TYPES:
             raise ValueError(f"unknown overlay type {c['type']!r} (have {sorted(TYPES)})")
-        out.append(TYPES[c["type"]](ctx, c))
+        delay = 0.0
+        if settle and c["type"] != "scrim":
+            t0 = round(c.get("t", [0.0])[0], 3)
+            delay = M.STAGGER * entering.get(t0, 0)
+            entering[t0] = entering.get(t0, 0) + 1
+        out.append(TYPES[c["type"]](ctx, c, settle and c["type"] != "scrim", delay))
     return out
 
 

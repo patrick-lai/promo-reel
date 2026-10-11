@@ -109,6 +109,9 @@ def shot_digest(spec, shot, legacy=False, raw=False):
             vj = os.path.join(spec.vo_dir, "vo.json")
             takes = {l["file"]: file_sig(os.path.join(spec.vo_dir, l["file"])) for l in json.load(open(vj))["lines"]} if os.path.exists(vj) else {}
             extra += [(spec.raw.get("vo") or {}).get("lines"), file_sig(vj), takes, spec.duration, [(s.id, s.b0, s.b1, s.type, s.cfg.get("layout")) for s in spec.shots]]
+    if spec.raw.get("motion") or shot.cfg.get("motion"):
+        code = code + ["motion"]
+        extra = extra + [spec.raw.get("motion")]
     cfg = {k: v for k, v in shot.cfg.items() if k not in QA_ONLY_KEYS + AUDIO_KEYS + (() if legacy else EVENT_KEYS) + (POST_KEYS if raw else ())}   # QA / audio / cue keys never force a re-render
     if not legacy and local_time(shot):
         cfg = {k: v for k, v in cfg.items() if k not in ("beats", "bars")}

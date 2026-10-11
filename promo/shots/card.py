@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from PIL import Image, ImageEnhance, ImageFilter
 
+from .. import motion as M
 from .. import render as R
 from ..overlays import apply_overlays, build_overlays
 from . import ShotType, shot_type
@@ -31,7 +32,7 @@ class Card(ShotType):
         if pb:
             base = Image.blend(base, R.dark_plate(ctx), pb)
         base = base.convert("RGBA")
-        overlays = build_overlays(ctx, cfg.get("overlays"))
+        overlays = build_overlays(ctx, cfg.get("overlays"), M.resolve(spec, cfg))
         OW, OH, n, push = ctx.OW, ctx.OH, shot.n, cfg.get("push", 0.03)
 
         def f(i, t):
