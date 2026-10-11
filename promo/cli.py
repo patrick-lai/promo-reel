@@ -464,6 +464,21 @@ def cmd_footage(spec, args):
         e = FT.add(spec, args.path, args.id, shots=args.shots, commit=args.commit, capture=args.capture, framing=args.framing, dpr=args.dpr,
                    notes=args.notes, demo=args.demo, captured_at=args.captured_at)
         return dict(ok=True, clip=e, manifest=FT.manifest_path(spec))
+    if args.fcmd == "scan":
+        from . import glitch as GL
+        man = FT.load(spec)
+        ids = args.ids or sorted(FT.referenced(spec))
+        unknown = [i for i in ids if i not in man]
+        if unknown:
+            raise FT.FootageError(f"not in the footage manifest: {', '.join(unknown)}")
+        clips = []
+        for cid in ids:
+            c = man[cid]
+            path = FT.expand_env(c["path"])
+            res = GL.cached_scan(spec, cid, path, c.get("sha256")) if os.path.exists(path) else dict(error=f"file not found: {path}", glitches=[])
+            ok = {int(x) for x in (c.get("glitch_ok") or [])}
+            clips.append(dict(res, id=cid, glitches=[g for g in res["glitches"] if g["frame"] not in ok]))
+        return dict(ok=all(not c["glitches"] and not c.get("error") for c in clips), clips=clips)
 
 
 def print_footage(args, r):
@@ -473,8 +488,18 @@ def print_footage(args, r):
     elif args.fcmd == "list":
         for c in r["clips"]:
             print(f"{c['id']:<22} {c.get('resolution', '?'):<10} dpr {c.get('dpr', '?')}  {c['app_commit'][:8] if c.get('app_commit') else '?'}  shots {','.join(c['referenced_by']) or '-':<8} {'demo ' if c.get('demo') else ''}{c['path']}")
+    elif args.fcmd == "scan":
+        from . import glitch as GL
+        for c in r["clips"]:
+            state = c.get("error") or (f"{len(c['glitches'])} one-frame paint glitches: {GL.describe(c['glitches'])}" if c["glitches"] else f"clean ({c['frames']} frames)")
+            print(f"{'ok  ' if not c['glitches'] and not c.get('error') else 'FAIL'} {c['id']:<26} {state}")
+        if not r["ok"]:
+            print("re-record with the paint-safe recorder (capture/lib/recorder.mjs); a reviewed false positive goes in the clip's glitch_ok list")
     else:
         print(f"updated {r['manifest']}: {r['clip']['id']} sha256 {r['clip']['sha256']}")
+        if r["clip"].get("glitches"):
+            print(f"WARN {r['clip']['id']}: one-frame paint glitches at frames {', '.join(map(str, r['clip']['glitches'][:12]))}: re-record with "
+                  "capture/lib/recorder.mjs (`promo check` fails on them)")
 
 
 def cmd_new(args):
@@ -563,7 +588,7 @@ def build_parser():
     add("needs", "the handoff: what promo-reel still needs from the calling agent (footage to capture, plates to generate, human review)", False).add_argument("--json", action="store_true")
     add("assets", "validate the assets manifest and print a table", True)
     add("fetch", "download missing assets (sha256 verified)")
-    ft = sub.add_parser("footage", help="footage manifest: verify | list | add", parents=[common])
+    ft = sub.add_parser("footage", help="footage manifest: verify | list | add | scan", parents=[common])
     fs = ft.add_subparsers(dest="fcmd", required=True)
     for nm, h in (("verify", "check every referenced clip exists + sha256 matches"), ("list", "list manifest clips")):
         q = fs.add_parser(nm, help=h, parents=[common])
@@ -579,6 +604,9 @@ def build_parser():
     q.add_argument("--notes", default="")
     q.add_argument("--demo", action="store_true", help="demo-mode footage")
     q.add_argument("--captured-at")
+    q.add_argument("--json", action="store_true")
+    q = fs.add_parser("scan", help="find one-frame paint glitches (half-painted screenshots) in clips", parents=[common])
+    q.add_argument("ids", nargs="*", help="clip ids (default: every clip the spec uses)")
     q.add_argument("--json", action="store_true")
     add("sfx", "synthesise SFX wavs")
     add("vo", "render VO lines with Kokoro")

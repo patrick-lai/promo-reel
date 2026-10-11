@@ -240,7 +240,9 @@ reference. Structurally prevent that:
 1. **Brief** (after STEP 0): audience, length, claims, tone. Only claims the footage shows. Write it in `projects/<name>/docs/`.
 2. **Shot list**: one line per shot with beats (BPM grid), what the UI shows, caption (short: fits the 608 px 9:16-safe column at 32 px, ~35 chars), SFX/VO. Cuts on beats.
 3. **Capture**: the agent records (never the person): shot ids + app commit go to the capturing agent (you, or a sub-agent); it follows `capture/README.md` and register each take with
-   `promo footage add` (sha256, commit, URL params, dpr). Reference clips by id; never by path.
+   `promo footage add` (sha256, commit, URL params, dpr). Reference clips by id; never by path. Record with the paint-safe kit
+   (`capture/lib/`: native-DPR screenshots, settled frames); `footage add` warns and `promo check` fails `footage-glitch` on
+   one-frame half-painted frames, and the fix is a re-take (`promo footage scan` to re-check).
 4. **Spec**: `promo new <name>` scaffolds `projects/<name>/`. Fill `promo.yaml` (timeline, shots, overlays, sfx, vo, mix, qa) and
    `assets.yaml` (music/vo/sfx/font with licence + source_url). Custom shot types go in the project `shots.py` via `@shot_type`.
    **Sound character** (old radio, tape, telephone, vinyl): never hand-roll it in a project script or fake it with a noise bed. Set `fx:` on

@@ -43,6 +43,7 @@ The agent records every take itself (headless browser against the real app or it
 - **Dwell:** start each take ~1 s before the action and hold ~2 s after it (captions need >= 2 s holds; the editor needs handles).
 - **Distractions:** if the UI shows something that must not appear (bubbles, badges, cost counters, wrong project), ask for a reshoot with it disabled, or plan a crop that excludes it. Never fix it in post.
 - **Stills:** full-resolution PNG screenshots for card/tile shots.
+- **Paint-safe frames:** record with `capture/lib/recorder.mjs` (screenshots at the page's own DPR, never rescaled; each frame kept only once 3 captures match). A hand-rolled recorder catches half-painted frames (a panel's background missing for one frame) that nobody sees until the draft; `promo footage scan` finds them and `promo check` fails `footage-glitch` until the take is redone.
 - **Handoff = the footage manifest.** Media stays on the box (never git, never LFS). The capturing agent registers every take in `projects/<name>/footage/manifest.yaml` with `promo footage add <abs path> --id ... --shots ... --commit <full app SHA> --capture '<URL params>' --framing '...' --dpr 2 [--demo]` (computes sha256, probes resolution/fps, refreshes the table in `manifest.md`). Capture scripts follow `capture/README.md`. `promo build` refuses to run if a referenced clip is missing or its sha256 changed.
 
 ## 4. Spec
@@ -77,7 +78,7 @@ promo -p projects/<name>/promo.yaml --scale 2 build   # 3840x2160 master from th
 Builds are idempotent: each step stamps a hash of its inputs and is skipped when nothing changed. `--force` rebuilds.
 
 ## 6. Check (automated gates)
-`promo check` must pass (exit 0) before review. Gates: asset licences + spec lint, footage present + sha256 match (WARN on DPR1 sources pushed >1.5x and on demo-mode footage), duration, resolution/fps/frame count, loudness and true peak per master, every cut on the beat grid, caption hold >= 2 s, captions inside the safe zone, contact sheet generated, VO transcribed back and matched word-for-word to the script (skipped with a warning if whisper is not installed), and build freshness. Report: `out/<name>-<tag>-check.json`; `promo check --json` / `promo status --json` print machine-readable results (stdout only, always with `ok`).
+`promo check` must pass (exit 0) before review. Gates: asset licences + spec lint, footage present + sha256 match (WARN on DPR1 sources pushed >1.5x and on demo-mode footage), duration, resolution/fps/frame count, loudness and true peak per master, every cut on the beat grid, caption hold >= 2 s, captions inside the safe zone, contact sheet generated, no one-frame paint glitches in referenced captures (`footage-glitch`), VO transcribed back and matched word-for-word to the script (skipped with a warning if whisper is not installed), and build freshness. Report: `out/<name>-<tag>-check.json`; `promo check --json` / `promo status --json` print machine-readable results (stdout only, always with `ok`).
 
 ## 7. Review (**HUMAN / visual judgement**; the agent prepares, does not decide)
 Look at the contact sheet and watch the whole video with sound before asking for review. Things no gate can judge:

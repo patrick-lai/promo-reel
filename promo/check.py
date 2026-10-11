@@ -129,6 +129,10 @@ def run(spec):
         dpr_w = _anime_effective_dpr(spec, dpr_w)
         rep.add("footage-dpr", "WARN" if dpr_w else "PASS", "; ".join(dpr_w) if dpr_w else "no soft-upscale risk (dpr >= 2 or push-in <= 1.5x)")
         rep.add("footage-demo", "WARN" if demo else "PASS", f"demo-mode footage in use: {', '.join(demo)}" if demo else "no demo-mode footage")
+        from . import glitch as GL
+        gl = GL.findings(spec)
+        rep.add("footage-glitch", "FAIL" if gl else "PASS", ("; ".join(gl) + ": re-record with capture/lib/recorder.mjs (a reviewed false positive goes in "
+                "the clip's glitch_ok)") if gl else "no one-frame paint glitches in the referenced captures")
     except FT.FootageError as e:
         rep.add("footage", "FAIL", str(e))
     probs = spec.validate()

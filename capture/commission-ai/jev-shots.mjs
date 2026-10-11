@@ -1,6 +1,6 @@
 import fs from "node:fs";
-import { launch, open, dismiss, COMMIT, CSS, markCursorOverlay } from "./lib.mjs";
-import { Recorder, FOOT, flush } from "./rec.mjs";
+import { launch, open, dismiss, COMMIT, CSS, markCursorOverlay } from "./app.mjs";
+import { Recorder, FOOT, flush } from "../lib/recorder.mjs";
 const SHOT = process.argv[2];
 const DRY = !!process.env.DRY;
 const MAXF = process.env.MAXF ? Number(process.env.MAXF) : Infinity;
@@ -64,7 +64,7 @@ const shots = {
     await clickAt(p, p.getByText("Build", { exact: true }).first()); await rec.skip(2500);
     await clickAt(p, p.getByRole("button", { name: /^New/ }).filter({ hasText: /New/ }).last()); await rec.skip(800);
     await clickAt(p, p.getByText("Write a ticket").first()); await rec.skip(3500);
-    if (DRY) { for (const k of [0, 1, 2]) { fs.writeFileSync(`${FOOT}/dbg-${k}.png`, await rec.shot()); await rec.skip(1500); } console.log("menus", await p.locator("[role=menu]").count()); return; }
+    if (DRY) { for (const k of [0, 1, 2]) { fs.writeFileSync(`${FOOT}/dbg-${k}.png`, (await rec.shot()).png); await rec.skip(1500); } console.log("menus", await p.locator("[role=menu]").count()); return; }
     await clickAt(p, p.getByText("New ticket", { exact: true }).first()); await rec.skip(1500);
     await clickAt(p, p.getByPlaceholder(/What should change/).first()); await rec.skip(600);
     const focused = await p.evaluate(() => document.activeElement && document.activeElement.getAttribute("placeholder"));
@@ -141,7 +141,7 @@ const shots = {
     await clickAt(p, ops); await rec.skip(3000);
     await clickAt(p, p.getByRole("tab", { name: /^Review/ }).first()); await rec.skip(3000);
     for (let k = 0; k < 40 && (await p.locator(".ai-mark").count()) === 0; k++) await rec.skip(500);
-    if ((await p.locator(".ai-mark").count()) === 0) { fs.writeFileSync(`${FOOT}/dbg-review.png`, await rec.shot()); console.log("BODY", (await p.locator("body").innerText()).slice(0, 700).replace(/\n+/g, " | ")); throw new Error("review pick mark never appeared"); }
+    if ((await p.locator(".ai-mark").count()) === 0) { fs.writeFileSync(`${FOOT}/dbg-review.png`, (await rec.shot()).png); console.log("BODY", (await p.locator("body").innerText()).slice(0, 700).replace(/\n+/g, " | ")); throw new Error("review pick mark never appeared"); }
     await p.evaluate(CURSOR); markCursorOverlay(p);
     const pl = mkPlan(p, [1700, 900]);
     const mark = () => p.locator(".ai-mark").first();
