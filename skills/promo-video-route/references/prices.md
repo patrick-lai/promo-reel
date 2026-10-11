@@ -33,11 +33,11 @@ From the public catalogue (`GET https://openrouter.ai/api/v1/videos/models`; `pr
 
 | Model | 4 s at 480p | 4 s at 720p | Lengths |
 |---|---|---|---|
-| Seedance 1.5 Pro (default) | $0.05 | $0.10 | 4-12 s (1080p $0.23) |
+| Seedance 1.5 Pro | $0.05 | $0.10 | 4-12 s (1080p $0.23) |
 | Seedance 2.0 Mini | $0.13 | $0.30 | 4-15 s |
 | Seedance 2.0 Fast | $0.16 | $0.36 | 4-15 s |
 | Seedance 2.0 | $0.27 | $0.60 | 4-15 s (1080p $1.50, 4K $3.11) |
-| Seedance 2.5 | $0.41 | $0.92 | 4-30 s |
+| Seedance 2.5 (default) | $0.41 | $0.92 | 4-30 s |
 
 The same Seedance 2.0 clip at 720p is ~$0.60 here against ~$0.92 on Higgsfield Plus and $1.44 on the Runway API; 1.5 Pro at 480p is the cheapest draft of any route.
 

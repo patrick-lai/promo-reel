@@ -108,7 +108,7 @@ grok, codex/GPT, a person with a recorder. promo-reel only specifies, ingests an
      and `promo gen plan --run` are the optional fallback that drives those CLIs headless (one-shot, ~1 min each) when you have no generator of your own.
   5. Seedance on the person's OpenRouter key (pay per job, never picked by `auto`): `promo gen models` (prices), then
      `commissionctl secret exec OPENROUTER_API_KEY -- promo gen video "..." --out F --provider openrouter [--model M --res 480p --seconds 4 --first-frame IMG]`
-     (`--dry-run` prices it without sending). Each job is refused over `--max-usd` (default $0.40) or the daily cap (PROMO_GEN_DAILY_USD, default $2);
+     (`--dry-run` prices it without sending). Each job is refused over `--max-usd` (default $0.50) or the daily cap (PROMO_GEN_DAILY_USD, default $2);
      `promo gen spend` shows the ledger. Draft at 480p, then the final from the same prompt and `--seed`. In the flow the person does this
      themselves in the Stage's **Studio** tab (`promo flow studio run|use`, promo/studio.py): takes are samples until registered.
      The Studio also lists "Grok (your subscription)" (`--model cli:grok`, the default when grok is logged in): the grok CLI animates a still

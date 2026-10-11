@@ -12,10 +12,10 @@ He rebuilds Higgsfield's character-swap app on pay-per-use APIs, driven by an ag
 
 ## What we took
 - **Cheap draft, then a final from the same settings.** Every Studio take records its prompt, model and **seed**. "Final at 720p" re-runs
-  the take at the next resolution with the same seed. Defaults are cheap: Seedance 1.5 Pro, 480p, 4 s, no sound (about $0.05).
+  the take at the next resolution with the same seed. Defaults: Seedance 2.5, 480p, 4 s, no sound (about $0.41); Seedance 1.5 Pro (about $0.05) and Grok Imagine Lite ($0.02 a second) stay in the list for cheap tries.
 - **Money is shown before the click.**
   - The Generate button shows the price.
-  - A take over the per-take limit ($0.40) or the daily cap ($2) is refused, with the reason shown.
+  - A take over the per-take limit ($0.50) or the daily cap ($2) is refused, with the reason shown.
   - The ledger keeps each take's estimate next to what OpenRouter billed.
 - **A gallery of takes.** Every try is kept: the ones still being made (with a live clock), the finished ones (playable, with their real
   cost) and the failed ones (with OpenRouter's reason).

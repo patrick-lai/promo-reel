@@ -1,7 +1,7 @@
 """Seedance and Grok Imagine video through OpenRouter, for NON-UI plates (AGENTS.md rule 1 carve-out): the catalogue, a price before every job, the job, a spend ledger.
 
     promo gen models [--json]                        the video models with what 4 s at 480p / 720p costs (catalogue is public, no key needed)
-    promo gen video "prompt" --out F --provider openrouter [--model M --res 480p --seconds 4 --first-frame IMG --audio --max-usd 0.40 --dry-run]
+    promo gen video "prompt" --out F --provider openrouter [--model M --res 480p --seconds 4 --first-frame IMG --audio --max-usd 0.50 --dry-run]
     promo gen spend [--json]                          today's and all-time spend from the ledger
 
 The key comes only from OPENROUTER_API_KEY; run under `commissionctl secret exec OPENROUTER_API_KEY -- promo ...` so it is never seen, logged or
@@ -23,11 +23,11 @@ from pathlib import Path
 
 API = "https://openrouter.ai/api/v1"
 FAMILIES = ("bytedance/seedance", "x-ai/grok-imagine-video")
-DEFAULT_MODEL = "bytedance/seedance-1-5-pro"     # the cheapest 4 s clip on OpenRouter: drafts first, a dearer model once the idea works
+DEFAULT_MODEL = "bytedance/seedance-2.5"         # the newest Seedance (~$0.41 for 4 s at 480p); 1.5 Pro (~$0.05) stays in the list for cheap drafts
 TEST_MODEL = "x-ai/grok-imagine-video-1.5-lite"  # 2 cents a second at 480p from 1 s: the cheapest way to prove the pipeline end to end
 DEFAULT_RES = "480p"
 DEFAULT_SECONDS = 4
-DEFAULT_MAX_USD = 0.40
+DEFAULT_MAX_USD = 0.50           # one 4 s 480p take of the default model fits; anything dearer needs --max-usd
 DEFAULT_DAILY_USD = 2.0
 FPS = 24                       # Seedance renders 24 fps; OpenRouter bills it in video tokens of w*h*fps*s/1024
 POLL_S = 5

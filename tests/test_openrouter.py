@@ -23,7 +23,7 @@ PRO = dict(id="bytedance/seedance-1-5-pro", name="ByteDance: Seedance 1.5 Pro", 
            pricing_skus={"video_tokens": "0.0000024", "video_tokens_without_audio": "0.0000012"})
 V25 = dict(id="bytedance/seedance-2.5", name="ByteDance: Seedance 2.5", supported_resolutions=["480p", "720p"], supported_aspect_ratios=["16:9", "4:3"],
            supported_sizes=["854x480", "752x560", "1280x720", "1112x834"], supported_durations=list(range(4, 31)), supported_frame_images=["first_frame"],
-           generate_audio=True, pricing_skus={"video_tokens": "0.0000107", "video_tokens_without_audio": "0.0000107"})
+           generate_audio=True, seed=True, pricing_skus={"video_tokens": "0.0000107", "video_tokens_without_audio": "0.0000107"})
 GROK = dict(id="x-ai/grok-imagine-video-1.5-lite", name="SpaceXAI: Grok Imagine Video 1.5 Lite", supported_resolutions=["480p", "720p"],
             supported_aspect_ratios=["16:9"], supported_sizes=None, supported_durations=list(range(1, 16)), supported_frame_images=["first_frame"],
             generate_audio=None, seed=None, pricing_skus={"cents_per_image_input": "1", "cents_per_video_output_second_480p": "2", "cents_per_video_output_second_720p": "3"})
@@ -171,7 +171,7 @@ def test_studio_take_animates_a_storyboard_frame_and_shows_in_the_stage(api, pro
     assert take["status"] == "done" and take["cost"] == 0.05 and take["video"]["$file"].endswith("flow/studio/t1.mp4")
     assert take["start_label"] == "TA, scene 01 start" and take["start_ref"] == "A/01/start"
     assert take["seed"] == sent["seed"]
-    F.main(["--project", proj, "studio", "run", "--prompt", "dusk over a city", "--res", "720p", "--seed", str(take["seed"])])
+    F.main(["--project", proj, "studio", "run", "--prompt", "dusk over a city", "--res", "720p", "--seed", str(take["seed"]), "--model", PRO["id"]])
     assert api.sent[1]["seed"] == take["seed"] and api.sent[1]["resolution"] == "720p"
     assert [f["id"] for f in studio["frames"]] == ["A/01/start", "A/01/end"]          # scene 02 is real: its frames would be made-up UI
     assert F.main(["--project", proj, "studio", "run", "--prompt", "x", "--start", "A/02/start"]) == 1
