@@ -57,7 +57,7 @@ def _request(method, path, body=None, auth=True, raw=False, timeout=60):
     if auth:
         key = os.environ.get("OPENROUTER_API_KEY")
         if not key:
-            raise OpenRouterError("no OpenRouter key: run under `commissionctl secret exec OPENROUTER_API_KEY -- ...`")
+            raise OpenRouterError("no OpenRouter key: run under `commissionctl secret exec OPENROUTER_API_KEY -- ...` (a missing key opens the secure box for the person; or `commissionctl secret request OPENROUTER_API_KEY --reason ...`)")
         headers["Authorization"] = "Bearer " + key
     req = urllib.request.Request(API + path, method=method, headers=headers, data=json.dumps(body).encode() if body is not None else None)
     try:

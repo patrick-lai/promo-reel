@@ -12,7 +12,7 @@ promo-reel specifies and ingests plates (`promo gen plan` / `promo gen register`
 When the person has an OpenRouter key (saved as the board secret `OPENROUTER_API_KEY`), Seedance runs from promo-reel itself, no connector needed:
 `promo gen models` lists the Seedance models with what 4 s costs (catalogue is public), and
 `commissionctl secret exec OPENROUTER_API_KEY -- promo gen video "..." --out F --provider openrouter --model bytedance/seedance-2.5 --res 480p --seconds 4`
-runs one job (`--first-frame IMG` animates a still, `--dry-run` only prices it). Draft at 480p with the cheapest model, then make the final
+runs one job (`--first-frame IMG` animates a still, `--dry-run` only prices it). A missing key opens the secure key box for the person by itself; tell them, end the turn and rerun once they save it. Draft at 480p with the cheapest model, then make the final
 from the same prompt and `--seed`. Jobs over `--max-usd` (default $0.50) or the daily cap (`PROMO_GEN_DAILY_USD`, $2) are refused; the ledger
 (`promo gen spend`) keeps estimate and billed cost. Prices: `references/prices.md`.
 
