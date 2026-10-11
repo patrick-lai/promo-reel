@@ -2010,14 +2010,29 @@ def _look_cli(pd, a):
 
 
 def _studio_cli(pd, a):
+    need = dict(use=("take", "asset"), rerun=("take",), restyle=("take", "prompt"), frame=("frame",), suggest=("frame", "prompt")).get(a.action, ())
+    if any(not getattr(a, k) for k in need):
+        raise FlowError(f"studio {a.action} needs {' and '.join('--' + k for k in need)}")
     if a.action == "use":
-        if not (a.take and a.asset):
-            raise FlowError("studio use needs --take and --asset")
         print(f"take {a.take} is now the sample of {a.asset}: {ST.use(pd, a.take, a.asset)['note']}")
         return True
-    t = ST.run(pd, a.prompt or "", a.model, a.res, a.seconds, a.aspect, a.audio, a.preset, _studio_start(pd, a.start) if a.start else None, a.start,
-               a.max_usd, a.seed, on_change=lambda: publish_live(pd))
-    print(f"take {t['id']}: {t['file']} ({t['model']}, {t['resolution']}, {t['seconds']} s, cost ${t['cost'] if t['cost'] is not None else '?'}, estimate ${t['estimate']})")
+    if a.action == "frame":
+        print(_studio_start(pd, a.frame))
+        return True
+    if a.action == "suggest":
+        ST.suggest(pd, a.frame, a.prompt)
+        publish_live(pd)
+        print(f"suggested for {a.frame}: {a.prompt}")
+        return True
+    live = lambda: publish_live(pd)  # noqa: E731
+    if a.action == "rerun":
+        t = ST.rerun(pd, a.take, a.res, a.max_usd, on_change=live)
+    elif a.action == "restyle":
+        t = ST.restyle(pd, a.take, a.prompt, a.model or ST.EDIT, a.max_usd, on_change=live)
+    else:
+        t = ST.run(pd, a.prompt or "", a.model or OR.DEFAULT_MODEL, a.res or OR.DEFAULT_RES, a.seconds, a.aspect, a.audio, a.preset, _studio_start(pd, a.start) if a.start else None, a.start,
+                   a.max_usd, a.seed, on_change=live, end=_studio_start(pd, a.end) if a.end else None, end_ref=a.end)
+    print(f"take {t['id']}: {t['file']} ({t['model']}, {t['resolution'] or 'source size'}, {t['seconds']} s, cost ${t['cost'] if t['cost'] is not None else '?'}, estimate ${t['estimate']})")
     return True
 
 
@@ -2108,10 +2123,11 @@ def main(argv=None):
     p.add_argument("--scale", type=float, choices=(0.5, 1, 2)); p.add_argument("--json", action="store_true"); p.add_argument("--dry-run", action="store_true")
     p.add_argument("--at", type=float); p.add_argument("--shot"); p.add_argument("--from", dest="from_", type=float); p.add_argument("--to", type=float)
     p.add_argument("--frames", type=int); p.add_argument("--stem", choices=["mix", "music", "vo", "sfx"])
-    p = P("studio"); p.add_argument("action", choices=["run", "use"]); p.add_argument("--prompt"); p.add_argument("--model", default=OR.DEFAULT_MODEL)
-    p.add_argument("--res", default=OR.DEFAULT_RES); p.add_argument("--seconds", type=int, default=OR.DEFAULT_SECONDS); p.add_argument("--aspect", default="16:9")
+    p = P("studio"); p.add_argument("action", choices=["run", "rerun", "restyle", "frame", "suggest", "use"]); p.add_argument("--prompt"); p.add_argument("--model", help=f"default {OR.DEFAULT_MODEL}; restyle: {ST.EDIT}")
+    p.add_argument("--res", help=f"default {OR.DEFAULT_RES}; rerun: leave out to keep the take's resolution"); p.add_argument("--seconds", type=int, default=OR.DEFAULT_SECONDS); p.add_argument("--aspect", default="16:9")
     p.add_argument("--audio", action="store_true"); p.add_argument("--preset", choices=list(ST.SENTENCE)); p.add_argument("--start", help="storyboard frame id (story/scene/start) or an image file")
-    p.add_argument("--max-usd", type=float, default=OR.DEFAULT_MAX_USD); p.add_argument("--seed", type=int); p.add_argument("--take"); p.add_argument("--asset")
+    p.add_argument("--end", help="the last frame, like --start (models that list last_frame)"); p.add_argument("--frame", help="frame / suggest: a storyboard frame id")
+    p.add_argument("--max-usd", type=float, default=OR.DEFAULT_MAX_USD); p.add_argument("--seed", type=int); p.add_argument("--take", help="rerun / restyle / use: a take id (restyle also takes a generated plate file)"); p.add_argument("--asset")
     p = P("final"); p.add_argument("action", choices=["add"]); p.add_argument("file")
     P("revise").add_argument("--feedback", required=True)
     p = P("note"); p.add_argument("text"); p.add_argument("--kind", default="other", choices=NOTE_KINDS); p.add_argument("--done", action="store_true")

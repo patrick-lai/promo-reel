@@ -27,6 +27,9 @@ V25 = dict(id="bytedance/seedance-2.5", name="ByteDance: Seedance 2.5", supporte
 GROK = dict(id="x-ai/grok-imagine-video-1.5-lite", name="SpaceXAI: Grok Imagine Video 1.5 Lite", supported_resolutions=["480p", "720p"],
             supported_aspect_ratios=["16:9"], supported_sizes=None, supported_durations=list(range(1, 16)), supported_frame_images=["first_frame"],
             generate_audio=None, seed=None, pricing_skus={"cents_per_image_input": "1", "cents_per_video_output_second_480p": "2", "cents_per_video_output_second_720p": "3"})
+EDIT = dict(id="black-forest-labs/flux-video-edit", name="Black Forest Labs: FLUX Video Edit", supported_resolutions=None, supported_aspect_ratios=None,
+            supported_sizes=None, supported_durations=None, supported_frame_images=None, generate_audio=False, seed=False,
+            pricing_skus={"cents_per_second_output": "3"})
 VEO = dict(id="google/veo-3.1", name="Veo", supported_resolutions=["720p"], supported_aspect_ratios=["16:9"], supported_sizes=["1280x720"],
            supported_durations=[4], pricing_skus={"duration_seconds_without_audio": "0.20"})
 
@@ -40,7 +43,7 @@ class FakeOpenRouter:
     def __call__(self, method, path, body=None, auth=True, raw=False, timeout=60):
         assert not auth or os.environ.get("OPENROUTER_API_KEY") == KEY
         if path == "/videos/models":
-            return {"data": [PRO, V25, GROK, VEO]}
+            return {"data": [PRO, V25, GROK, EDIT, VEO]}
         if method == "POST":
             self.sent.append(body)
             return {"id": "job1", "status": "pending", "polling_url": "x"}
@@ -211,3 +214,57 @@ def test_a_grok_subscription_take_runs_on_the_cli_and_bills_nothing(api, proj, m
     take = F.snapshot(proj)["studio"]["takes"][0]
     assert take["status"] == "done" and take["cost"] == 0 and asked["provider"] == "grok" and asked["first_frame"].endswith("01-s.png")
     assert api.sent == [] and OR.spend()["total"] == 0
+
+
+def test_a_final_resends_the_takes_stored_request_with_only_the_resolution_changed(api, proj):
+    F.main(["--project", proj, "studio", "run", "--prompt", "dusk", "--model", PRO["id"], "--start", "A/01/start", "--end", "A/01/end", "--preset", "orbit"])
+    draft = STU.load(proj)[0]
+    assert draft["request"]["frame_images"][1]["image_url"]["url"].startswith(OR.FILE)       # kept by path, never the bytes
+    assert [f["frame_type"] for f in api.sent[0]["frame_images"]] == ["first_frame", "last_frame"]
+    assert F.main(["--project", proj, "studio", "rerun", "--take", "t1", "--res", "720p"]) == 0
+    first, final = api.sent
+    assert final == dict(first, resolution="720p")
+    t2 = STU.load(proj)[1]
+    assert t2["kind"] == "rerun" and t2["from"] == "t1" and t2["seed"] == draft["seed"] and t2["end_ref"] == "A/01/end"
+    view = F.snapshot(proj)["studio"]["takes"]
+    assert "request" not in view[0] and view[0]["resend"] and view[1]["end_label"] == "TA, scene 01 end"
+    assert F.main(["--project", proj, "studio", "rerun", "--take", "t1", "--res", "4K"]) == 1            # the model has no 4K
+    assert len(api.sent) == 2
+
+
+def test_an_end_frame_goes_only_to_a_model_that_lists_one(api, proj):
+    assert F.main(["--project", proj, "studio", "run", "--prompt", "dusk", "--model", V25["id"], "--end", "A/01/end"]) == 1
+    assert "takes no last frame" in STU.load(proj)[0]["error"] and api.sent == []
+    assert next(m for m in F.snapshot(proj)["studio"]["models"] if m["id"] == PRO["id"])["last_frame"]
+
+
+def test_a_take_is_restyled_by_flux_video_edit_and_a_screen_recording_is_refused(api, proj, tmp_path):
+    F.main(["--project", proj, "studio", "run", "--prompt", "dusk", "--model", PRO["id"]])
+    assert F.main(["--project", proj, "studio", "restyle", "--take", "t1", "--prompt", "make it blue hour"]) == 0
+    sent = api.sent[1]
+    assert set(sent) == {"model", "prompt", "input_references"} and sent["model"] == EDIT["id"] and sent["prompt"] == G.NEG + "make it blue hour"
+    ref = sent["input_references"][0]
+    assert ref["type"] == "video_url" and base64.b64decode(ref["video_url"]["url"].split(",", 1)[1]) == b"MP4DATA"
+    t2 = STU.load(proj)[1]
+    assert t2["kind"] == "restyle" and t2["from"] == "t1" and t2["estimate"] == 0.12        # 3 cents a second, 4 s source
+    studio = F.snapshot(proj)["studio"]
+    assert studio["edit"] == dict(id=EDIT["id"], name="FLUX Video Edit", per_second=0.03, minimum=0)
+    assert EDIT["id"] not in [m["id"] for m in studio["models"]]                              # not a prompt-to-clip model
+    rec = tmp_path / "screen.mp4"
+    rec.write_bytes(b"REC")
+    assert F.main(["--project", proj, "studio", "restyle", "--take", str(rec), "--prompt", "x"]) == 1
+    (tmp_path / "screen.mp4.gen.json").write_text(json.dumps(dict(generated=True)))
+    assert F.main(["--project", proj, "studio", "restyle", "--take", str(rec), "--prompt", "x"]) == 0
+    assert len(api.sent) == 3
+    with pytest.raises(OR.OpenRouterError, match="edits a clip"):
+        OR.run(EDIT["id"], "x", tmp_path / "e.mp4")
+
+
+def test_a_frame_description_is_the_setting_only_and_shows_in_the_composer(api, proj, capsys):
+    assert F.main(["--project", proj, "studio", "frame", "--frame", "A/01/start"]) == 0
+    assert capsys.readouterr().out.strip().endswith("01-s.png")
+    assert F.main(["--project", proj, "studio", "suggest", "--frame", "A/01/start", "--prompt", "a dashboard glowing on a desk"]) == 1
+    assert F.main(["--project", proj, "studio", "suggest", "--frame", "A/01/start", "--prompt", "Low dusk light over  wet rooftops, 35 mm, calm"]) == 0
+    sug = F.snapshot(proj)["studio"]["suggestion"]
+    assert sug["frame"] == "A/01/start" and sug["prompt"] == "Low dusk light over wet rooftops, 35 mm, calm"
+    assert api.sent == []

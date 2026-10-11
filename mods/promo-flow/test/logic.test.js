@@ -531,3 +531,41 @@ test("studio: a subscription model has no per-clip price and says so", () => {
   assert.deepEqual([L.studioGo(st, ch).ok, L.studioGo(st, ch).label], [true, "Generate · on your plan"]);
   assert.match(L.studioPayload(st, ch).what, /on their own subscription$/);
 });
+
+test("studio: a picked start or end frame must be looked at before a take can run, and an end frame needs a model that takes one", () => {
+  const st = studioState();
+  const ch = L.studioChoice(st, { prompt: "dusk", seconds: 4, start: "A/01/start", end: "A/01/end" });
+  assert.equal(ch.end, null);                                                   // this model lists no last frame
+  assert.match(L.studioGo(st, ch).why, /Look at the frame above and tick the box first/);
+  assert.equal(L.studioGo(st, ch, false, true).ok, true);
+  st.models[0].last_frame = true;
+  st.models[0].image_input = 0.01;
+  const both = L.studioChoice(st, { prompt: "dusk", seconds: 4, start: "A/01/start", end: "A/01/end" });
+  assert.match(L.studioGo(st, both).why, /frames above/);
+  assert.equal(L.studioPrice(both), 0.066);                                     // 4 s plus two input pictures
+  assert.equal(L.studioPayload(st, both).flags, "--start A/01/start --end A/01/end");
+});
+
+test("studio: the final of a draft is its stored request at the next resolution, paid only after a confirm", () => {
+  const st = studioState({ spend: { today: 0.5, total: 1, cap: 2 } });
+  const t = { id: "t1", status: "done", model: "bytedance/seedance-1-5-pro", resolution: "480p", seconds: 4, aspect: "16:9", prompt: "dusk", seed: 9 };
+  const f = L.studioFinal(st, t);
+  assert.deepEqual([f.ok, f.res, f.price, f.paid, f.label], [true, "720p", 0.1036, true, "Final at 720p · ~$0.10"]);
+  assert.deepEqual(f.payload, { take: "t1", res: "720p", what: "Seedance 1.5 Pro, 720p, 4 s, seed 9, about $0.10" });
+  assert.equal(L.studioSpendLine(st, f.price), "About $0.10. Today $0.50 of the $2.00 daily cap is spent; $1.40 is left after this.");
+  assert.equal(L.studioFinal(st, { ...t, resolution: "720p" }), null);          // nothing above 720p
+  assert.equal(L.studioFinal(st, { ...t, kind: "restyle" }), null);
+  assert.match(L.studioFinal(studioState({ spend: { today: 1.95, cap: 2 } }), t).why, /daily cap/);
+});
+
+test("studio: a restyle is priced per second of the take and says what should change", () => {
+  const st = studioState({ edit: { id: "black-forest-labs/flux-video-edit", name: "FLUX Video Edit", per_second: 0.03, minimum: 0 } });
+  const t = { id: "t2", status: "done", seconds: 4 };
+  assert.match(L.studioRestyle(st, t, " ").why, /what should change/);
+  const r = L.studioRestyle(st, t, " make it blue hour ");
+  assert.deepEqual([r.ok, r.price, r.label], [true, 0.12, "Restyle · ~$0.12"]);
+  assert.deepEqual(r.payload, { take: "t2", prompt: "make it blue hour", what: "FLUX Video Edit on take t2, 4 s, about $0.12" });
+  assert.equal(L.studioRestyle({ ...st, edit: null }, t, "x"), null);
+  assert.equal(L.studioRestyle(st, { ...t, status: "failed" }, "x"), null);
+  assert.match(L.studioRestyle({ ...st, max_usd: 0.1 }, t, "x").why, /over the \$0.10 limit/);
+});

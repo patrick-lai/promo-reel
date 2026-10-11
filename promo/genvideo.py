@@ -272,14 +272,27 @@ def _run_provider(p: dict, text: str, out_p: Path, timeout: int) -> str:
 
 def generate_openrouter(prompt: str, out: str, seconds: float = OR.DEFAULT_SECONDS, aspect: str = "16:9", people: bool = False,
                         model: str = OR.DEFAULT_MODEL, resolution: str = OR.DEFAULT_RES, first_frame=None, audio: bool = False,
-                        max_usd: float = OR.DEFAULT_MAX_USD, on_status=None, seed: int | None = None) -> dict:
+                        max_usd: float = OR.DEFAULT_MAX_USD, on_status=None, seed: int | None = None, last_frame=None) -> dict:
     """A video plate through OpenRouter (Seedance, Grok Imagine): the plate guard leads the prompt; the sidecar keeps the model, the job id and the real cost."""
+    m = OR.model(model)
+    if OR.is_edit(m):
+        raise OR.OpenRouterError(f"{m['name']} edits a clip; restyle a take instead (promo flow studio restyle)")
+    OR.check_params(m, int(seconds), resolution, aspect)
+    body = OR.body_for(m, (NEG_PEOPLE if people else NEG) + prompt.strip(), int(seconds), resolution, aspect, first_frame, audio, seed, last_frame)
+    return openrouter_send(body, out, max_usd, on_status, prompt=prompt)
+
+
+def openrouter_send(body: dict, out: str, max_usd: float = OR.DEFAULT_MAX_USD, on_status=None, prompt: str | None = None, seconds: float | None = None,
+                    source: str | None = None) -> dict:
+    """Send one stored OpenRouter request (a new one, or an earlier take's `request` again) and write the plate's sidecar.
+    `seconds` and `source` are an edit job's source clip: its length prices the job, and the sidecar names it."""
     out_p = Path(out).expanduser().resolve()
-    job = OR.run(model, (NEG_PEOPLE if people else NEG) + prompt.strip(), out_p, int(seconds), resolution, aspect, first_frame, audio,
-                 seed=seed, max_usd=max_usd, on_status=on_status)
-    meta = dict(generated=True, kind="video", watermark_cropped=None, provider=f"openrouter:{model}", prompt=prompt, seconds=seconds, aspect=aspect,
-                resolution=resolution, first_frame=str(first_frame) if first_frame else None, audio=bool(audio), seed=seed, job_id=job["job_id"],
-                cost_usd=job["cost"], estimate_usd=job["estimate"], sha256=sha256(out_p), at=time.strftime("%Y-%m-%dT%H:%M:%S"), **probe_media(out_p))
+    job = OR.send(body, out_p, max_usd, on_status, seconds=seconds)
+    frames = {f["frame_type"]: f["image_url"]["url"][len(OR.FILE):] for f in body.get("frame_images") or []}
+    meta = dict(generated=True, kind="video", watermark_cropped=None, provider=f"openrouter:{body['model']}", prompt=prompt or body["prompt"],
+                seconds=body.get("duration", seconds), aspect=body.get("aspect_ratio"), resolution=body.get("resolution"), first_frame=frames.get("first_frame"),
+                last_frame=frames.get("last_frame"), source=source, audio=bool(body.get("generate_audio")), seed=body.get("seed"), job_id=job["job_id"],
+                cost_usd=job["cost"], estimate_usd=job["estimate"], request=body, sha256=sha256(out_p), at=time.strftime("%Y-%m-%dT%H:%M:%S"), **probe_media(out_p))
     Path(str(out_p) + ".gen.json").write_text(json.dumps(meta, indent=1))
     _mark_ok("openrouter", "video")
     return meta
@@ -394,6 +407,7 @@ def main(argv):
             q.add_argument("--model", default=OR.DEFAULT_MODEL, help="openrouter: model id (`promo gen models`)")
             q.add_argument("--res", default=OR.DEFAULT_RES, help="480p | 720p | 1080p | 4K, as the model allows (openrouter; grok takes 480p or 720p)")
             q.add_argument("--first-frame", help="image the clip starts from (animate a still; openrouter and grok)")
+            q.add_argument("--last-frame", help="image the clip ends on (openrouter models that list last_frame, e.g. Seedance 2.5)")
             q.add_argument("--audio", action="store_true", help="openrouter: let the model make sound too (Seedance only; dearer on some models)")
             q.add_argument("--max-usd", type=float, default=OR.DEFAULT_MAX_USD, help="openrouter: refuse a job priced above this")
             q.add_argument("--dry-run", action="store_true", help="openrouter: print the request and its price, submit nothing")
@@ -436,11 +450,11 @@ def main(argv):
             if a.dry_run:
                 m = OR.model(a.model)
                 OR.check_params(m, int(a.seconds), a.res, a.aspect)
-                body = OR.body_for(m, NEG + a.prompt, a.seconds, a.res, a.aspect, None, a.audio)
-                print(json.dumps(dict(request=body, first_frame=a.first_frame, estimate_usd=OR.estimate(m, int(a.seconds), a.res, a.aspect, a.audio, bool(a.first_frame))), indent=1))
+                body = OR.body_for(m, NEG + a.prompt, a.seconds, a.res, a.aspect, a.first_frame, a.audio, last_frame=a.last_frame)
+                print(json.dumps(dict(request=body, estimate_usd=OR.price_of(m, body)), indent=1))
                 return 0
             meta = generate_openrouter(a.prompt, a.out, int(a.seconds), a.aspect, a.people, a.model, a.res, a.first_frame, a.audio, a.max_usd,
-                                       on_status=lambda s, j: print(f"  {s} ({j})", file=sys.stderr))
+                                       on_status=lambda s, j: print(f"  {s} ({j})", file=sys.stderr), last_frame=a.last_frame)
         except OR.OpenRouterError as e:
             raise SystemExit(f"promo gen: {e}") from None
     elif a.cmd == "video":

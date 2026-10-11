@@ -10,7 +10,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   const BADGE_TEXT = { working: "With the agent", waiting: "Your turn", done: "Done", attention: "Needs attention" };
   const ACTION_WORD = { approve: "your approval", pick: "your picks", changes: "your changes", feedback: "your feedback", generate: "your request", request: "your request", scene_note: "your comment", density: "your request", share: "your upload request", settings: "your folder choice",
     widget: "your message from the panel", pins: "your notes", restore: "your restore request", ab: "your pick", autopilot: "your go", overturn: "your change", forget: "your request",
-    edit: "your edits", edit_preview: "your preview request", edit_bin: "your request", edit_keep: "your pick", studio: "your take", studio_use: "your pick" };
+    edit: "your edits", edit_preview: "your preview request", edit_bin: "your request", edit_keep: "your pick", studio: "your take", studio_use: "your pick", studio_rerun: "your final", studio_restyle: "your restyle", studio_describe: "your request" };
   /* Composer kinds beyond plain changes/feedback: the button says what sending does. */
   const COMPOSE_SEND = { request: "Send request", overturn: "Send change", scene: "Send comment" };
   const KIND_ICON = { script: "doc", treatment: "spark", shotlist: "table", direction: "film", edit: "cut", audio: "music", capture: "camera", schedule: "clock", deliverables: "download", risks: "shield", research: "link", review: "refresh", notes: "doc" };
@@ -48,6 +48,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       else if (k === "text") n.textContent = v;
       else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
       else if (k === "style") n.setAttribute("style", v);
+      else if (k === "value" && tag === "textarea") n.value = v;          /* a textarea ignores the attribute: its text is the property */
       else n.setAttribute(k, v === true ? "" : v);
     }
     for (const c of kids.flat(Infinity)) if (c != null && c !== false) n.append(c.nodeType ? c : document.createTextNode(String(c)));
@@ -1356,21 +1357,61 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     return h("div", { class: "st-field" }, h("span", { class: "st-lbl", text: label }),
       h("div", { class: "seg-ctl wrap", role: "group", "aria-label": label }, opts.map(([id, text]) => h("button", { type: "button", "data-k": key + "-" + id, "aria-pressed": String(cur === id), onclick: () => pick(id) }, text))));
   }
+  /* The frames the person picked, as one key: ticking "I looked at it" holds only for exactly these frames. */
+  const stReviewKey = () => [S.st.start, S.st.end].filter(Boolean).join("|");
+  const stChecked = () => !!stReviewKey() && S.stChecked === stReviewKey();
+  function frameStrip(frames, which, cur, pick) {
+    const strip = h("div", { class: "st-frames", role: "group", "aria-label": (which === "end" ? "End on" : "Start from") + " a storyboard frame" },
+      h("button", { type: "button", class: "st-frame none", "data-k": "st-" + which + "-none", "aria-pressed": String(!cur), onclick: () => pick(null) },
+        h("span", { text: which === "end" ? "No end frame" : "From the prompt only" })),
+      frames.map((f) => {
+        const slot = h("span", { class: "st-fslot" });
+        const r = frameMedia(f.id);
+        if (r && !r.error) lazyInto(slot, r, (u) => h("img", { src: u, alt: "", draggable: "false" }), { compact: true });
+        return h("button", { type: "button", class: "st-frame", title: f.label, "aria-label": (which === "end" ? "End on " : "Start from ") + f.label, "data-k": "st-" + which + "-" + f.id,
+          "aria-pressed": String(cur === f.id), onclick: () => pick(f.id) }, slot);
+      }));
+    fadeX(strip);
+    return strip;
+  }
+  /* The prepared input, reviewed before any paid run: the picked frames shown large, a tick that they show no app, text or logos, and a
+     button that asks the agent to describe the frame's setting into the prompt (nothing billed). */
+  function frameReview(st, frameLabel) {
+    const picked = [["start", S.st.start], ["end", S.st.end]].filter(([, id]) => id);
+    const sug = st.suggestion;
+    const box = h("div", { class: "st-review", "data-k": "st-review" },
+      h("div", { class: "st-review-frames" }, picked.map(([which, id]) => {
+        const slot = h("span", { class: "st-rslot" });
+        const r = frameMedia(id);
+        if (r && !r.error) lazyInto(slot, r, (u) => h("img", { src: u, alt: (which === "end" ? "End frame: " : "Start frame: ") + (frameLabel(id) || id) }));
+        return h("figure", { class: "st-rframe" }, slot, h("figcaption", {}, h("span", { text: (which === "end" ? "Ends on " : "Starts from ") + (frameLabel(id) || id) }),
+          h("button", { type: "button", class: "btn ghost", "data-quiet": "1", "data-k": "st-describe-" + which, disabled: !canAsk(), title: "The agent looks at this frame and writes its light, place, lens and mood into a prompt. Nothing is billed.",
+            onclick: () => send("studio_describe", { frame: id, label: frameLabel(id) || id }) }, ic("spark"), "Describe this frame")));
+      })),
+      h("label", { class: "st-check" }, h("input", { type: "checkbox", checked: stChecked(), "data-k": "st-checked", disabled: S.readonly,
+        onchange: (e) => { S.stChecked = e.target.checked ? stReviewKey() : null; render(true); } }),
+        h("span", { text: "I looked: no app screens, no text and no logos in " + (picked.length > 1 ? "these frames" : "this frame") + "." })));
+    if (sug && picked.some(([, id]) => id === sug.frame)) box.append(h("div", { class: "st-sug", role: "status", "data-k": "st-sug" },
+      h("p", {}, h("b", { text: "The agent describes " + (frameLabel(sug.frame) || sug.frame) + ": " }), h("span", { text: sug.prompt })),
+      h("button", { type: "button", class: "btn ghost", "data-quiet": "1", "data-k": "st-sug-use", disabled: S.readonly || S.st.prompt === sug.prompt,
+        onclick: () => { S.st.prompt = sug.prompt; S.stCaret = null; render(true); } }, ic("check"), S.st.prompt === sug.prompt ? "In the prompt" : "Use as the prompt")));
+    return box;
+  }
   function studioComposer(st, ch) {
     const set = (k, v) => { S.st[k] = v; render(true); };
     const blocked = !canAsk();
-    const go = PF.studioGo(st, ch, blocked);
+    const go = PF.studioGo(st, ch, blocked, stChecked());
     const btn = h("button", { type: "button", class: "btn primary st-go", "data-k": "st-go", disabled: !go.ok, text: go.label });
     const why = h("p", { class: "hint st-why", role: "status", text: go.why });
     const sent = h("p", { class: "st-sent" });
     const refresh = () => {
-      const c = stChoice(), g = PF.studioGo(st, c, !canAsk());
+      const c = stChoice(), g = PF.studioGo(st, c, !canAsk(), stChecked());
       btn.disabled = !g.ok; btn.textContent = g.label; why.textContent = g.why;
       sent.textContent = c ? PF.studioPrompt(st, c) : "";
     };
     const frames = arr(st.frames);
     const frameLabel = (id) => (frames.find((f) => f.id === id) || {}).label;
-    btn.addEventListener("click", () => { const c = stChoice(); if (c && PF.studioGo(st, c, !canAsk()).ok) send("studio", PF.studioPayload(st, c, frameLabel(c.start))); });
+    btn.addEventListener("click", () => { const c = stChoice(); if (c && PF.studioGo(st, c, !canAsk(), stChecked()).ok) send("studio", PF.studioPayload(st, c, frameLabel(c.start), null, frameLabel(c.end))); });
     const prompt = h("textarea", { class: "st-prompt", rows: "4", maxlength: "1200", "data-k": "st-prompt", "data-dictate": "", "aria-label": "What the clip shows", value: S.st.prompt,
       placeholder: "Dusk light drifting over a quiet city, slow and calm", disabled: S.readonly,
       oninput: (e) => { S.st.prompt = e.target.value; S.stCaret = e.target.selectionStart; refresh(); },
@@ -1382,17 +1423,10 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     prompt.id = "st-prompt-in";
     box.append(stSeg("Camera", [["", "None"], ...arr(st.presets).map((p) => [p.id, p.label])], S.st.preset || "", (id) => set("preset", id || null), "st-cam"));
     if (frames.length) {
-      const strip = h("div", { class: "st-frames", role: "group", "aria-label": "Start from a storyboard frame" },
-        h("button", { type: "button", class: "st-frame none", "data-k": "st-f-none", "aria-pressed": String(!S.st.start), onclick: () => set("start", null) }, h("span", { text: "From the prompt only" })),
-        frames.map((f) => {
-          const slot = h("span", { class: "st-fslot" });
-          const r = frameMedia(f.id);
-          if (r && !r.error) lazyInto(slot, r, (u) => h("img", { src: u, alt: "", draggable: "false" }), { compact: true });
-          return h("button", { type: "button", class: "st-frame", title: f.label, "aria-label": "Start from " + f.label, "data-k": "st-f-" + f.id, "aria-pressed": String(S.st.start === f.id), onclick: () => set("start", f.id) }, slot);
-        }));
-      fadeX(strip);
-      box.append(h("div", { class: "st-field" }, h("span", { class: "st-lbl", text: "Start frame" }), strip,
-        S.st.start ? h("span", { class: "hint", text: "Animates " + (frameLabel(S.st.start) || S.st.start) + "." } ) : null));
+      box.append(h("div", { class: "st-field" }, h("span", { class: "st-lbl", text: "Start frame" }), frameStrip(frames, "start", S.st.start, (id) => set("start", id))));
+      if (ch && ch.m.last_frame) box.append(h("div", { class: "st-field" }, h("span", { class: "st-lbl", text: "End frame" }), frameStrip(frames, "end", S.st.end, (id) => set("end", id)),
+        h("span", { class: "hint", text: "The clip lands on this frame. " + ch.m.name + " takes a first and a last frame." })));
+      if (S.st.start || (ch && ch.end)) box.append(frameReview(st, frameLabel));
     }
     if (ch) {
       box.append(h("div", { class: "st-field" }, h("label", { class: "st-lbl", for: "st-model", text: "Model" }),
@@ -1433,38 +1467,56 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     const plates = arr(st.plates);
     const acts = h("div", { class: "st-tacts" },
       h("button", { type: "button", class: "btn ghost", "data-quiet": "1", "data-k": "st-again-" + t.id, disabled: S.readonly, onclick: () => {
-        S.st = { prompt: t.prompt, model: t.model, res: t.resolution, seconds: t.seconds, aspect: t.aspect, audio: t.audio, preset: t.preset, start: arr(st.frames).some((f) => f.id === t.start_ref) ? t.start_ref : null };
+        const known = (id) => (arr(st.frames).some((f) => f.id === id) ? id : null);
+        S.st = { prompt: t.prompt, model: t.model, res: t.resolution, seconds: t.seconds, aspect: t.aspect, audio: t.audio, preset: t.preset, start: known(t.start_ref), end: known(t.end_ref) };
         S.stCaret = null; render(true); const p = el.content.querySelector('[data-k="st-prompt"]'); if (p) p.focus();
       } }, ic("refresh"), "Same settings"));
-    const up = m && t.status === "done" ? m.resolutions[m.resolutions.indexOf(t.resolution) + 1] : null;
-    if (up) {
-      /* the reference studio's habit: try at 480p, then pay for the bigger one from the same prompt and seed */
-      const fc = PF.studioChoice(st, { prompt: t.prompt, model: t.model, res: up, seconds: t.seconds, aspect: t.aspect, audio: t.audio, preset: t.preset, start: t.start_ref });
-      const g = PF.studioGo(st, fc, !canAsk());
-      acts.append(h("button", { type: "button", class: "btn ghost", "data-quiet": "1", "data-k": "st-final-" + t.id, disabled: !g.ok || fc.res !== up, title: g.why || "Same prompt and seed as this take, at " + up,
-        onclick: () => send("studio", PF.studioPayload(st, fc, t.start_label, t.seed)) }, ic("spark"), "Final at " + up + (g.price != null && !m.subscription ? " \u00b7 ~" + PF.usd(g.price) : "")));
-    }
+    /* the reference studio's habit: try at 480p, then pay for the bigger one: the same request (prompt, frames, seed) sent again, after a confirm */
+    const fin = PF.studioFinal(st, t, !canAsk());
+    if (fin) acts.append(h("button", { type: "button", class: "btn ghost", "data-quiet": "1", "data-k": "st-final-" + t.id, disabled: !fin.ok, title: fin.why || "The same request as this take, at " + fin.res,
+      onclick: () => { if (!fin.paid) return send("studio_rerun", fin.payload); S.stConfirm = t.id; S.stRestyle = null; render(true); } }, ic("spark"), fin.label));
+    if (st.edit && t.status === "done") acts.append(h("button", { type: "button", class: "btn ghost", "data-quiet": "1", "data-k": "st-restyle-" + t.id, disabled: !canAsk(), "aria-expanded": String((S.stRestyle || {}).take === t.id),
+      title: "Change this clip with " + st.edit.name + ": the prompt says what changes", onclick: () => { S.stRestyle = (S.stRestyle || {}).take === t.id ? null : { take: t.id, prompt: "" }; S.stConfirm = null; render(true); } }, ic("brush"), "Restyle"));
     if (t.status === "done" && plates.length) {
       const sel = h("select", { class: "st-use", "aria-label": "Use take " + t.id + " as the sample of", "data-k": "st-use-" + t.id, disabled: !canAsk() },
         h("option", { value: "", text: "Use as sample of…" }), plates.map((p) => h("option", { value: p.id, text: p.label })));
       sel.addEventListener("change", () => { const p = plates.find((x) => x.id === sel.value); if (p) send("studio_use", { take: t.id, asset: p.id, label: p.label }); });
       acts.append(sel);
     }
+    let extra = null;
+    if (fin && S.stConfirm === t.id) extra = h("div", { class: "st-confirm", role: "group", "aria-label": "Confirm the final", "data-k": "st-confirm-" + t.id },
+      h("p", { text: "The final at " + fin.res + " is the same request as this take, paid again. " + PF.studioSpendLine(st, fin.price) }),
+      h("div", { class: "st-act" }, h("button", { type: "button", class: "btn primary", "data-k": "st-confirm-go", disabled: !fin.ok, onclick: () => { S.stConfirm = null; send("studio_rerun", fin.payload); } }, "Spend ~" + PF.usd(fin.price)),
+        h("button", { type: "button", class: "btn ghost", "data-k": "st-confirm-no", onclick: () => { S.stConfirm = null; render(true); } }, "Cancel")));
+    else if ((S.stRestyle || {}).take === t.id) {
+      const rs = () => PF.studioRestyle(st, t, S.stRestyle.prompt, !canAsk());
+      const go = h("button", { type: "button", class: "btn primary", "data-k": "st-restyle-go", disabled: !rs().ok, text: rs().label,
+        onclick: () => { const r = rs(); if (r.ok) { S.stRestyle = null; send("studio_restyle", r.payload); } } });
+      const why = h("p", { class: "hint", role: "status", text: rs().why || PF.studioSpendLine(st, rs().price) });
+      extra = h("div", { class: "st-confirm", role: "group", "aria-label": "Restyle take " + t.id },
+        h("label", { class: "st-lbl", for: "st-rs-" + t.id, text: "What should change" }),
+        h("textarea", { id: "st-rs-" + t.id, class: "st-prompt", rows: "2", maxlength: "600", "data-k": "st-restyle-prompt", value: S.stRestyle.prompt, placeholder: "Make it blue hour, wet streets",
+          oninput: (e) => { S.stRestyle.prompt = e.target.value; const r = rs(); go.disabled = !r.ok; go.textContent = r.label; why.textContent = r.why || PF.studioSpendLine(st, r.price); } }),
+        h("div", { class: "st-act" }, go, h("button", { type: "button", class: "btn ghost", "data-k": "st-restyle-no", onclick: () => { S.stRestyle = null; render(true); } }, "Cancel")), why);
+    }
+    const from = t.kind === "rerun" ? "Final of " + t.from : t.kind === "restyle" ? "Restyle of " + t.from : null;
     return h("article", { class: "card st-take", "data-aid": "take-" + t.id, "aria-label": "Take " + t.id },
       media,
       h("div", { class: "st-tbody" },
-        h("div", { class: "chips" }, h("span", { class: "chip", text: short }), h("span", { class: "chip", text: t.resolution + " · " + t.seconds + " s · " + t.aspect }),
+        h("div", { class: "chips" }, h("span", { class: "chip", text: short }), h("span", { class: "chip", text: [t.resolution, t.seconds + " s", t.aspect].filter(Boolean).join(" · ") }),
+          from ? h("span", { class: "chip", text: from }) : null,
           cost ? h("span", { class: "chip" + (t.cost != null ? " ok" : ""), title: m && m.subscription ? "Made on your own subscription" : t.cost != null ? "What OpenRouter billed" : "Estimate until OpenRouter reports the cost", text: cost }) : null,
           t.preset ? h("span", { class: "chip", text: (arr(st.presets).find((p) => p.id === t.preset) || {}).label || t.preset }) : null,
           t.start_label ? h("span", { class: "chip", title: "Animated from " + t.start_label, text: "From frame" }) : null,
+          t.end_label ? h("span", { class: "chip", title: "Lands on " + t.end_label, text: "To frame" }) : null,
           arr(t.used_for).map((a) => h("span", { class: "chip accent", text: "Sample of " + ((plates.find((p) => p.id === a) || {}).label || a) }))),
         h("p", { class: "st-tprompt", title: t.prompt, text: t.prompt }),
         t.error ? h("p", { class: "st-err", role: "alert", text: t.error }) : null,
-        acts));
+        acts, extra));
   }
   function viewStudio() {
     const st = studio();
-    if (!S.st) S.st = { prompt: "", model: st.default_model, res: "480p", seconds: 4, aspect: (curBoard() || {}).aspect || "16:9", audio: false, preset: null, start: null };
+    if (!S.st) S.st = { prompt: "", model: st.default_model, res: "480p", seconds: 4, aspect: (curBoard() || {}).aspect || "16:9", audio: false, preset: null, start: null, end: null };
     const ch = stChoice();
     const takes = arr(st.takes);
     const gallery = h("section", { class: "st-gallery", "aria-label": "Takes" }, secH("Takes", takes.length || null),

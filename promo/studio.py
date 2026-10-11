@@ -1,13 +1,22 @@
 """The Stage's Studio tab: Seedance and Grok Imagine takes through OpenRouter, laid out like Higgsfield (prompt, model, length, resolution, aspect, a camera move,
 an optional storyboard frame to animate, the price on the button, a gallery of takes).
 
-    promo flow studio run --prompt "..." [--model M --res 480p --seconds 4 --aspect 16:9 --audio --preset push --start STORY/SCENE/start|FILE]
+    promo flow studio run --prompt "..." [--model M --res 480p --seconds 4 --aspect 16:9 --audio --preset push --start STORY/SCENE/start|FILE --end ...]
+    promo flow studio rerun --take t3 [--res 720p]  the take's stored request sent again (same prompt, frames and seed), at another resolution for a final
+    promo flow studio restyle --take t3 --prompt "make it dusk"   FLUX Video Edit on a take (or a generated plate file); never a screen recording
+    promo flow studio frame --frame STORY/SCENE/start            the picture's path, for the agent to look at
+    promo flow studio suggest --frame STORY/SCENE/start --prompt "..."   the agent's description of that frame's setting, offered in the composer
     promo flow studio use --take t3 --asset ID      the take becomes that asset's sample (flow/samples.json)
 
 Takes are planning samples of NON-UI plates (AGENTS.md rule 1): the plate guard leads every prompt, they never enter the footage manifest from
 here, and a take reaches a cut only through `promo gen register` like any other generated plate.
 
-    flow/studio/takes.json   [{id, prompt, preset, model, resolution, seconds, aspect, audio, start, status, job_id, estimate, cost, file, error, at, updated, used_for}]
+    flow/studio/takes.json   [{id, kind, from, prompt, preset, model, resolution, seconds, aspect, audio, seed, start, start_ref, end, end_ref, request,
+                               status, job_id, estimate, cost, file, error, at, updated, used_for}]
+    flow/studio/suggest.json {frame, prompt, at}
+
+`request` is the OpenRouter body exactly as it was sent, pictures named by path (openrouter.body_for): a rerun or a final sends it again
+with only the resolution changed, rather than rebuilding it from the composer's choices (docs/reference-higgsfield-studio.md).
 """
 from __future__ import annotations
 
@@ -15,6 +24,7 @@ import datetime
 import json
 import os
 import random
+import re
 
 from . import assetplan as AP
 from . import genvideo as GV
@@ -32,6 +42,9 @@ PRESETS = [("static", "Static", "Locked-off camera, no camera movement."),
 SENTENCE = {k: s for k, _, s in PRESETS}
 STOPPED_S = OR.TIMEOUT_S + 120          # a take still "running" this long after its last update lost its process
 GROK = "cli:grok"                       # the person's own grok login: video on their subscription, nothing billed per take
+EDIT = OR.EDIT_MODELS[0]
+# a frame description is the setting only: the plate guard already rules out UI, text and logos, so naming them in the prompt invites them back
+NOT_SETTING = re.compile(r"\b(ui|user[- ]interface|interface|screens?|apps?|application|dashboard|software|logos?|brand|text|captions?|letters|typography|words)\b", re.I)
 
 
 class StudioError(Exception):
@@ -80,44 +93,150 @@ def prompt_text(prompt, preset):
     return (prompt.strip() + (" " + SENTENCE[preset] if preset else "")).strip()
 
 
-def run(pd, prompt, model=OR.DEFAULT_MODEL, resolution=OR.DEFAULT_RES, seconds=OR.DEFAULT_SECONDS, aspect="16:9", audio=False, preset=None,
-        start=None, start_ref=None, max_usd=OR.DEFAULT_MAX_USD, seed=None, on_change=None):
-    """Make one take. The take is in takes.json from the first moment (queued, then OpenRouter's statuses, then done or failed with the reason),
-    and `on_change()` runs after every change so the Stage can follow it. `start` is the frame's file, `start_ref` what the person picked
-    (a storyboard frame id), kept so "same settings" can pick it again. Every take has a seed: a final at a higher resolution reuses the
-    draft's seed and prompt, the cheap-draft-then-final habit of Higgsfield-style studios (docs/reference-higgsfield-studio.md)."""
-    if not prompt.strip():
-        raise StudioError("a take needs a prompt")
-    text = prompt_text(prompt, preset)
-    if start and not os.path.isfile(start):
-        raise StudioError(f"start frame not found: {start_ref or start}")
+def _new_take(pd, **fields):
+    """Add a queued take to takes.json and return its id; it shows in the gallery from this moment."""
     takes = load(pd)
     tid = f"t{max((int(t['id'][1:]) for t in takes), default=0) + 1}"
-    seed = random.randrange(2 ** 31) if seed is None else seed
-    rel = os.path.join("flow", "studio", tid + ".mp4")
     now = _now()
-    takes.append(dict(id=tid, prompt=prompt.strip(), preset=preset, model=model, resolution=resolution, seconds=seconds, aspect=aspect, audio=bool(audio), seed=seed,
-                      start=os.path.relpath(start, pd) if start else None, start_ref=start_ref, status="queued", job_id=None, estimate=None, cost=None,
-                      file=None, error=None, at=now, updated=now, used_for=[]))
+    takes.append(dict(dict(id=tid, kind="generate", prompt="", preset=None, resolution=None, seconds=None, aspect=None, audio=False, seed=None, start=None, start_ref=None,
+                           end=None, end_ref=None, request=None), **fields, id=tid, status="queued", job_id=None, estimate=None, cost=None, file=None, error=None,
+                      at=now, updated=now, used_for=[]))
     _save(pd, takes)
-    ping = on_change or (lambda: None)
-    ping()
+    return tid
+
+
+def _follow(pd, tid, ping, send):
+    """Run `send(out, on_status)` for take `tid`, keeping takes.json and the Stage in step; a failure stays in the gallery with its reason."""
+    rel = os.path.join("flow", "studio", tid + ".mp4")
 
     def status(s, jid):
         _update(pd, tid, status="generating" if s in ("pending", "in_progress") else s, job_id=jid)
         ping()
-    if model == GROK:
-        return _run_grok(pd, tid, rel, prompt_text(prompt, preset), seconds, aspect, resolution, start, ping)
     try:
-        meta = GV.generate_openrouter(prompt_text(prompt, preset), os.path.join(pd, rel), seconds, aspect, model=model, resolution=resolution,
-                                      first_frame=start, audio=audio, max_usd=max_usd, on_status=status, seed=seed)
+        meta = send(os.path.join(pd, rel), status)
     except OR.OpenRouterError as e:
         _update(pd, tid, status="failed", error=str(e))
         ping()
         raise
-    _update(pd, tid, status="done", file=rel, cost=meta["cost_usd"], estimate=meta["estimate_usd"], job_id=meta["job_id"])
+    _update(pd, tid, status="done", file=rel, cost=meta["cost_usd"], estimate=meta["estimate_usd"], job_id=meta["job_id"], request=meta["request"])
     ping()
-    return next(t for t in load(pd) if t["id"] == tid)
+    return take(pd, tid)
+
+
+def take(pd, tid):
+    t = next((t for t in load(pd) if t["id"] == tid), None)
+    if not t:
+        raise StudioError(f"no take {tid}")
+    return t
+
+
+def run(pd, prompt, model=OR.DEFAULT_MODEL, resolution=OR.DEFAULT_RES, seconds=OR.DEFAULT_SECONDS, aspect="16:9", audio=False, preset=None,
+        start=None, start_ref=None, max_usd=OR.DEFAULT_MAX_USD, seed=None, on_change=None, end=None, end_ref=None):
+    """Make one take. The take is in takes.json from the first moment (queued, then OpenRouter's statuses, then done or failed with the reason),
+    and `on_change()` runs after every change so the Stage can follow it. `start` / `end` are the first and last frames' files, `start_ref` /
+    `end_ref` what the person picked (storyboard frame ids), kept so "same settings" can pick them again. Every take has a seed and keeps
+    the request it sent, so a final at a higher resolution is the same job again (`rerun`)."""
+    if not prompt.strip():
+        raise StudioError("a take needs a prompt")
+    for path, ref, which in ((start, start_ref, "start"), (end, end_ref, "end")):
+        if path and not os.path.isfile(path):
+            raise StudioError(f"{which} frame not found: {ref or path}")
+    if end and model == GROK:
+        raise StudioError("grok on your subscription takes a start frame only; pick a model that lists an end frame")
+    seed = random.randrange(2 ** 31) if seed is None else seed
+    tid = _new_take(pd, prompt=prompt.strip(), preset=preset, model=model, resolution=resolution, seconds=seconds, aspect=aspect, audio=bool(audio), seed=seed,
+                    start=os.path.relpath(start, pd) if start else None, start_ref=start_ref, end=os.path.relpath(end, pd) if end else None, end_ref=end_ref)
+    ping = on_change or (lambda: None)
+    ping()
+    if model == GROK:
+        return _run_grok(pd, tid, os.path.join("flow", "studio", tid + ".mp4"), prompt_text(prompt, preset), seconds, aspect, resolution, start, ping)
+    return _follow(pd, tid, ping, lambda out, status: GV.generate_openrouter(prompt_text(prompt, preset), out, seconds, aspect, model=model, resolution=resolution,
+                                                                             first_frame=start, audio=audio, max_usd=max_usd, on_status=status, seed=seed,
+                                                                             last_frame=end))
+
+
+def rerun(pd, tid, resolution=None, max_usd=OR.DEFAULT_MAX_USD, on_change=None):
+    """The same job as take `tid` again: its stored request, with only the resolution changed when one is given (the paid final after a
+    cheap draft). A take made on the person's grok subscription has no request; it runs again from its settings and seed."""
+    t = take(pd, tid)
+    if t.get("kind") == "restyle":
+        raise StudioError(f"take {tid} is a restyle; restyle its source again instead")
+    res = resolution or t["resolution"]
+    if not t.get("request"):
+        start, end = (os.path.join(pd, t[k]) if t.get(k) else None for k in ("start", "end"))
+        return run(pd, t["prompt"], t["model"], res, t["seconds"], t["aspect"], t["audio"], t["preset"], start, t["start_ref"], max_usd, t["seed"], on_change,
+                   end, t.get("end_ref"))
+    m = OR.model(t["model"])
+    OR.check_params(m, t["request"]["duration"], res, t["request"]["aspect_ratio"])
+    body = dict(t["request"], resolution=res)
+    nid = _new_take(pd, **{k: t.get(k) for k in ("prompt", "preset", "model", "seconds", "aspect", "audio", "seed", "start", "start_ref", "end", "end_ref")},
+                    kind="rerun", resolution=res, request=body, **{"from": tid})
+    ping = on_change or (lambda: None)
+    ping()
+    return _follow(pd, nid, ping, lambda out, status: GV.openrouter_send(body, out, max_usd, status, prompt=t["prompt"]))
+
+
+def _plate_source(pd, source):
+    """The clip a restyle starts from: a finished Studio take, or a file whose sidecar says it is a generated plate. A screen recording is
+    refused: restyling it would edit the app's UI (rules 1 and 2)."""
+    if re.fullmatch(r"t\d+", source):
+        t = take(pd, source)
+        if t["status"] != "done":
+            raise StudioError(f"take {source} is not finished")
+        return os.path.join(pd, t["file"]), source
+    path = os.path.abspath(source)
+    try:
+        with open(path + ".gen.json") as f:
+            generated = json.load(f).get("generated") is True
+    except (FileNotFoundError, ValueError):
+        generated = False
+    if not generated:
+        raise StudioError(f"{source} is not a generated plate (no .gen.json sidecar saying so); only Studio takes and generated plates can be "
+                          "restyled, never a screen recording (AGENTS.md rules 1 and 2)")
+    return path, os.path.basename(path)
+
+
+def restyle(pd, source, prompt, model=EDIT, max_usd=OR.DEFAULT_MAX_USD, on_change=None):
+    """Video to video (FLUX Video Edit): the prompt says what changes in a generated plate; the plate guard still leads it."""
+    if not prompt.strip():
+        raise StudioError("a restyle needs a prompt that says what changes")
+    path, label = _plate_source(pd, source)
+    m = OR.model(model)
+    if not OR.is_edit(m):
+        raise StudioError(f"{model} makes clips from a prompt; a restyle needs an edit model ({', '.join(OR.EDIT_MODELS)})")
+    seconds = GV.probe_media(path)["duration"]
+    body = OR.edit_body(m, GV.NEG + prompt.strip(), path)
+    src = take(pd, source) if re.fullmatch(r"t\d+", source) else {}
+    tid = _new_take(pd, kind="restyle", prompt=prompt.strip(), model=model, seconds=round(seconds, 2), aspect=src.get("aspect"), resolution=src.get("resolution"),
+                    request=body, **{"from": label})
+    ping = on_change or (lambda: None)
+    ping()
+    return _follow(pd, tid, ping, lambda out, status: GV.openrouter_send(body, out, max_usd, status, prompt=prompt, seconds=seconds, source=path))
+
+
+def _suggest_path(pd):
+    return os.path.join(_dir(pd), "suggest.json")
+
+
+def suggest(pd, frame, prompt):
+    """The agent's description of a storyboard frame's setting (light, place, lens, mood), offered in the composer. Nothing is billed."""
+    prompt = " ".join(prompt.split())
+    if not prompt:
+        raise StudioError("the suggestion is empty")
+    if NOT_SETTING.search(prompt):
+        raise StudioError(f"describe the setting only (light, place, lens, mood); {NOT_SETTING.search(prompt).group(0)!r} names what the plate guard "
+                          "keeps out (rule 1), and naming it invites it back")
+    os.makedirs(_dir(pd), exist_ok=True)
+    with open(_suggest_path(pd), "w") as f:
+        json.dump(dict(frame=frame, prompt=prompt, at=_now()), f, indent=1)
+
+
+def suggestion(pd):
+    try:
+        with open(_suggest_path(pd)) as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return None
 
 
 def _run_grok(pd, tid, rel, text, seconds, aspect, resolution, start, ping):
@@ -145,8 +264,8 @@ def _subscriptions():
 
 def use(pd, tid, asset_id):
     """Record a finished take as the sample of a generated video asset; the asset itself (and its state) is untouched."""
-    take = next((t for t in load(pd) if t["id"] == tid), None)
-    if not take or take["status"] != "done":
+    t = next((t for t in load(pd) if t["id"] == tid), None)
+    if not t or t["status"] != "done":
         raise StudioError(f"take {tid} is not a finished take")
     flow_dir = os.path.join(pd, "flow")
     a = next((x for x in AP.load(flow_dir) if x["id"] == asset_id), None)
@@ -155,12 +274,12 @@ def use(pd, tid, asset_id):
     if a["kind"] != "video" or a["source"] != "generated":
         raise StudioError(f"asset {asset_id} is a {a['source']} {a['kind']}; a Studio take can only stand in for a generated video plate")
     samples = PV.load_samples(flow_dir)
-    cost = f"${take['cost']:.2f}" if take.get("cost") is not None else "cost not reported"
-    samples[asset_id] = dict(path=take["file"], at=_now(), take=tid,
-                             note=f"Studio take {tid} ({take['model'].split('/')[-1]}, {take['resolution']}, {take['seconds']} s, {cost})")
+    cost = f"${t['cost']:.2f}" if t.get("cost") is not None else "cost not reported"
+    samples[asset_id] = dict(path=t["file"], at=_now(), take=tid,
+                             note=f"Studio take {tid} ({t['model'].split('/')[-1]}, {t['resolution'] or 'source size'}, {t['seconds']} s, {cost})")
     with open(PV.samples_path(flow_dir), "w") as f:
         json.dump(samples, f, indent=2)
-    _update(pd, tid, used_for=sorted(set(take["used_for"]) | {asset_id}))
+    _update(pd, tid, used_for=sorted(set(t["used_for"]) | {asset_id}))
     return samples[asset_id]
 
 
@@ -184,9 +303,11 @@ def view(pd, media, frames, now=None):
         cat, models_error = OR.models(max_age=None), None           # prices barely move; publishing must not wait on the network
     except OR.OpenRouterError as e:
         cat, models_error = [], str(e)
-    per_s = {m["id"]: _per_second(m) for m in cat}
+    per_s = {m["id"]: _per_second(m) for m in cat if not OR.is_edit(m)}
     subs = _subscriptions()
     models = subs + [dict(r, per_second=per_s[r["id"]]) for r in OR.price_table(cat)]
+    edit = next((dict(id=m["id"], name=m["name"].split(": ", 1)[-1], per_second=OR.estimate(m, 1000, None, None) / 1000,
+                      minimum=float(m["pricing_skus"].get("minimum_cents_per_generation", 0)) / 100) for m in cat if OR.is_edit(m)), None)
     labels = {f["id"]: f["label"] for f in frames}
     takes = []
     for t in reversed(load(pd)):
@@ -196,9 +317,11 @@ def view(pd, media, frames, now=None):
             t["status"], t["error"] = "stopped", "The run that made this take stopped before the clip came back."
         t["video"] = media(os.path.join(pd, t["file"])) if t.get("file") else None
         t["start_label"] = labels.get(t["start_ref"], os.path.basename(t["start"])) if t.get("start") else None
+        t["end_label"] = labels.get(t.get("end_ref"), os.path.basename(t["end"])) if t.get("end") else None
+        t["resend"] = bool(t.pop("request", None))      # the request names files on this box; the Stage needs only whether there is one
         takes.append(t)
     plates = [dict(id=a["id"], label=a.get("label") or a["id"]) for a in AP.load(os.path.join(pd, "flow")) if a["kind"] == "video" and a["source"] == "generated"]
     sp = OR.spend()
     return dict(models=models, models_error=models_error, default_model=GROK if subs else OR.DEFAULT_MODEL, guard=GV.NEG, presets=[dict(id=k, label=lb, sentence=s) for k, lb, s in PRESETS],
                 max_usd=OR.DEFAULT_MAX_USD, account="ready" if "video" in next(p for p in GV.detect() if p["id"] == "openrouter")["verified"] else "unchecked",
-                spend=dict(today=sp["today"], total=sp["total"], cap=OR.daily_cap()), takes=takes, frames=frames, plates=plates)
+                spend=dict(today=sp["today"], total=sp["total"], cap=OR.daily_cap()), takes=takes, frames=frames, plates=plates, edit=edit, suggestion=suggestion(pd))

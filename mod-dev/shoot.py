@@ -568,6 +568,45 @@ UICHECK = r"""(async () => {
     ok('Render sends the lyric, take and look edits', await until(() => /action edit -> .*lyric 2 sync ; lyric 1 at=[\d.]+ end=[\d.]+ ; plate 02 take=k02-t2 ; look 02 particles=bubbles/.test(log())), log().split('\n').find((l) => /action edit/.test(l)) || 'no edit action');
     ok('the editor does not overflow the pane', Q('.ed').scrollWidth <= Q('.ed').clientWidth + 1, Q('.ed').scrollWidth + ' > ' + Q('.ed').clientWidth);
   }
+  if (step === 'studio-ready') {
+    await click('#tab-studio');
+    const go = () => Q('[data-k=st-go]');
+    ok('the composer offers an end frame for a model that takes one', await until(() => !!Q('[data-k="st-end-A/01/end"]')), QA('.st-field .st-lbl').map((x) => x.textContent).join());
+    const p = Q('[data-k=st-prompt]'); p.value = 'Dusk over wet rooftops'; p.dispatchEvent(new Event('input', { bubbles: true })); await wait(100);
+    ok('with no frame picked, Generate is ready and priced', !go().disabled && /Generate · ~\$/.test(go().textContent), go().textContent);
+    await click('[data-k="st-start-A/01/start"]');
+    ok('a picked frame shows large, waiting for a look', !!Q('.st-review .st-rslot') && go().disabled && /tick the box/.test(Q('.st-why').textContent), Q('.st-why').textContent);
+    ok('the agent\'s description of that frame is offered', /dawn light raking/.test((Q('[data-k=st-sug]') || {}).textContent || ''));
+    await click('[data-k=st-sug-use]');
+    ok('Use as the prompt puts it in the prompt box', /dawn light raking/.test(Q('[data-k=st-prompt]').value), Q('[data-k=st-prompt]').value);
+    await click('[data-k=st-checked]');
+    ok('ticking the box turns Generate on', !go().disabled, Q('.st-why').textContent);
+    await click('[data-k="st-end-A/01/end"]');
+    ok('picking another frame asks for a new look', go().disabled && /frames above/.test(Q('.st-why').textContent), Q('.st-why').textContent);
+    await click('[data-k=st-checked]');
+    await click('[data-k=st-describe-start]');
+    ok('Describe this frame asks the agent, naming the frame', await until(() => /action studio_describe -> .*A\/01\/start/.test(log())), log().split('\n').find((l) => /studio_describe/.test(l)) || 'no studio_describe action');
+    window.harness.H.pending = null; window.harness.H.version++; await window.harness.sendState(); await wait(400);
+    await click('[data-k=st-go]');
+    ok('Generate sends the start and end frames', await until(() => /action studio -> .*from .*scene 01 start, ending on .*scene 01 end/.test(log())), log().split('\n').find((l) => /action studio ->/.test(l)) || 'no studio action');
+    window.harness.H.pending = null; window.harness.H.version++; await window.harness.sendState(); await wait(400);
+    await click('[data-k=st-final-t2]');
+    ok('Final at 720p asks first, with the price and what is left today', !!Q('[data-k=st-confirm-t2]') && /same request/.test(Q('[data-k=st-confirm-t2]').textContent) && /left after this/.test(Q('[data-k=st-confirm-t2]').textContent), (Q('[data-k=st-confirm-t2]') || {}).textContent);
+    ok('nothing is sent before the confirm', !/studio_rerun/.test(log()));
+    await click('[data-k=st-confirm-no]');
+    ok('Cancel closes it without sending', !Q('[data-k=st-confirm-t2]') && !/studio_rerun/.test(log()));
+    await click('[data-k=st-final-t2]'); await click('[data-k=st-confirm-go]');
+    ok('Spend sends the rerun of that take at 720p', await until(() => /action studio_rerun -> .*promo flow studio rerun --take t2 --res 720p/.test(log())), log().split('\n').find((l) => /studio_rerun/.test(l)) || 'no studio_rerun action');
+    window.harness.H.pending = null; window.harness.H.version++; await window.harness.sendState(); await wait(400);
+    await click('[data-k=st-restyle-t2]');
+    const rgo = () => Q('[data-k=st-restyle-go]');
+    ok('Restyle opens a prompt, priced per second of the take', !!rgo() && rgo().disabled && /Restyle · ~\$0\.12/.test(rgo().textContent), (rgo() || {}).textContent);
+    const rp = Q('[data-k=st-restyle-prompt]'); rp.value = 'make it blue hour'; rp.dispatchEvent(new Event('input', { bubbles: true })); await wait(100);
+    ok('with a prompt it can be sent, and says what is left today', !rgo().disabled && /left after this/.test(Q('.st-confirm .hint').textContent), Q('.st-confirm .hint').textContent);
+    await click('[data-k=st-restyle-go]');
+    ok('Restyle sends the take and their words', await until(() => /action studio_restyle -> .*promo flow studio restyle --take t2/.test(log()) && /make it blue hour/.test(log())), log().split('\n').find((l) => /studio_restyle/.test(l)) || 'no studio_restyle action');
+    ok('the Studio does not overflow the pane', Q('#scroller').scrollWidth <= Q('#scroller').clientWidth + 1, Q('#scroller').scrollWidth + ' > ' + Q('#scroller').clientWidth);
+  }
   if (step === 'mv-discover') {
     const labels = QA('.choice.style b').map((b) => b.textContent);
     ok('a music-video request puts the anime music video first, suggested', labels[0] === 'Anime music video' && !!Q('.choice.style .chip.accent') && /music video/.test(Q('.choice.style .chip.accent').title), labels.join(' | '));
@@ -610,7 +649,7 @@ def uicheck(sh, only=()):
     for r in ([] if only else sh.js(WIDE, sh.open("widgets", 900, 1000, False)) or []):
         bad += not r["pass"]
         print(("ok   " if r["pass"] else "FAIL ") + f"widgets-wide: {r['name']}" + (f"  [{r['info']}]" if r["info"] and not r["pass"] else ""))
-    for st in ["starting", "plan", "widgets", "dense", "pick", "review", "autopilot", "storyboard", "foryou-many", "edit", "mv-edit", "mv-discover", "podcast-discover", "podcast"]:
+    for st in ["starting", "plan", "widgets", "dense", "pick", "review", "autopilot", "storyboard", "foryou-many", "edit", "mv-edit", "mv-discover", "podcast-discover", "podcast", "studio-ready"]:
         if only and st not in only:
             continue
         mod = sh.open(st, 520, 1000, False)

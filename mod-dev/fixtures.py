@@ -35,6 +35,8 @@ from promo import home  # noqa: E402
 from promo import previews as PV  # noqa: E402
 from promo import scout as SC  # noqa: E402
 from promo import share as SH  # noqa: E402
+from promo import openrouter as OR  # noqa: E402
+from promo import studio as ST  # noqa: E402
 
 INTENT = "Make a 60 second promo for Acme Tasks: tell it what you want at night, wake up to merged pull requests. Calm, real product footage, no hype."
 FONTS = ["/System/Library/Fonts/HelveticaNeue.ttc", "/System/Library/Fonts/Helvetica.ttc", "/Library/Fonts/Arial.ttf"]
@@ -769,8 +771,31 @@ def build(keep=None):
                 os.environ[k] = v
 
 
+# a fixed slice of OpenRouter's video catalogue (fields as /videos/models lists them), so the Studio fixture does not depend on this box's cache
+STUDIO_CATALOGUE = [
+    dict(id="bytedance/seedance-1-5-pro", name="ByteDance: Seedance 1.5 Pro", supported_resolutions=["480p", "720p", "1080p"], supported_aspect_ratios=["16:9", "9:16", "1:1"],
+         supported_sizes=["854x480", "480x854", "480x480", "1280x720", "720x1280", "720x720", "1920x1080", "1080x1920", "1080x1080"], supported_durations=list(range(4, 13)),
+         supported_frame_images=["first_frame"], generate_audio=True, seed=True, pricing_skus={"video_tokens": "0.0000024", "video_tokens_without_audio": "0.0000012"}),
+    dict(id="bytedance/seedance-2.5", name="ByteDance: Seedance 2.5", supported_resolutions=["480p", "720p"], supported_aspect_ratios=["16:9", "9:16"],
+         supported_sizes=["854x480", "480x854", "1280x720", "720x1280"], supported_durations=list(range(4, 31)), supported_frame_images=["first_frame", "last_frame"],
+         generate_audio=True, seed=True, pricing_skus={"video_tokens": "0.0000107", "video_tokens_without_audio": "0.0000107"}),
+    dict(id="black-forest-labs/flux-video-edit", name="Black Forest Labs: FLUX Video Edit", supported_resolutions=None, supported_aspect_ratios=None, supported_sizes=None,
+         supported_durations=None, supported_frame_images=None, generate_audio=False, seed=False, pricing_skus={"cents_per_second_output": "3"})]
+
+
+def studio_snapshot(pd):
+    """F.snapshot with the fixed catalogue and no subscription model, whatever this box has cached or is logged in to."""
+    saved = OR.models, ST._subscriptions
+    OR.models, ST._subscriptions = (lambda max_age=None: STUDIO_CATALOGUE), (lambda: [])
+    try:
+        return F.snapshot(pd)
+    finally:
+        OR.models, ST._subscriptions = saved
+
+
 def studio_takes(pd):
-    """The Studio with one take of each kind: a finished one (a real mp4, used as a plate's sample), one being made from a storyboard frame, one refused."""
+    """The Studio with one take of each kind: a finished one (a real mp4, used as a plate's sample), one being made from a storyboard frame, one refused,
+    and the agent's description of a frame waiting in the composer."""
     now = datetime.datetime.now().astimezone()
     at = lambda s: (now - datetime.timedelta(seconds=s)).isoformat(timespec="seconds")  # noqa: E731
     mp4(os.path.join(pd, "flow", "studio", "t2.mp4"), "testsrc2", 4, "854x480")
@@ -782,6 +807,7 @@ def studio_takes(pd):
              dict(base, id="t3", prompt="The quiet desk at night, the lamp slowly warming up", preset="orbit", model="bytedance/seedance-2.0-mini", seconds=5, status="generating",
                   estimate=0.1681, cost=None, start="flow/boards/A/frames/01-start.png", start_ref="A/01/start", job_id="job-fixture-3", at=at(42), updated=at(30))]
     write(os.path.join(pd, "flow", "studio", "takes.json"), json.dumps(takes, indent=1))
+    ST.suggest(pd, "A/01/start", "Low dawn light raking across a quiet room, dust hanging in the air, 35 mm at eye height, warm and still")
 
 
 def _build(tmp):
@@ -856,8 +882,11 @@ def _build(tmp):
     gen_assets(pd, "plan")
     snap("assets")
     studio_takes(pd)
-    snap("studio")
-    os.remove(os.path.join(pd, "flow", "studio", "takes.json"))       # later states have no takes; t2.mp4 stays on disk for the snapshot above
+    out["studio"] = studio_snapshot(pd)
+    out["studio-ready"] = copy.deepcopy(out["studio"])               # nothing being made: Final, Restyle and Generate can be tried
+    out["studio-ready"]["studio"]["takes"] = [t for t in out["studio"]["studio"]["takes"] if t["status"] != "generating"]
+    for f in ("takes.json", "suggest.json"):                         # later states have no takes; t2.mp4 stays on disk for the snapshot above
+        os.remove(os.path.join(pd, "flow", "studio", f))
     F.approve(pd, "assets-approved", "Sam")
     bp = os.path.join(pd, "flow", "boards", "A", "board.json")
     original = open(bp).read()
@@ -980,7 +1009,7 @@ def _build(tmp):
     uploaded(pd, "final", 1, "artifacts")
     snap("final")
     order = ["discover", "scripts", "pick", "storyboard", "storyboard-notes", "assets", "keyframes", "confirm", "drafts", "review", "autopilot", "final",
-             "generating", "generating-stopped", "building", "storyboard-partial", "plan", "widgets", "dense", "studio", "assets-error", "stale-approval", "long-content", "foryou-many", "review-maxed"]
+             "generating", "generating-stopped", "building", "storyboard-partial", "plan", "widgets", "dense", "studio", "studio-ready", "assets-error", "stale-approval", "long-content", "foryou-many", "review-maxed"]
     res = {k: out[k] for k in order}
     res["starting"] = {}
     res.update(picker_states(tmp, pd))

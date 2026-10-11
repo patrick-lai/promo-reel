@@ -4,6 +4,9 @@
     promo gen video "prompt" --out F --provider openrouter [--model M --res 480p --seconds 4 --first-frame IMG --audio --max-usd 0.50 --dry-run]
     promo gen spend [--json]                          today's and all-time spend from the ledger
 
+Edit models (FLUX Video Edit) take a source clip instead of a first frame (`input_references` of type `video_url`), for restyling a
+generated take; promo/studio.py refuses anything that is not a generated plate (rules 1 and 2).
+
 The key comes only from OPENROUTER_API_KEY; run under `commissionctl secret exec OPENROUTER_API_KEY -- promo ...` so it is never seen, logged or
 written. Every job is priced from the catalogue first and refused when it costs more than `max_usd` or would take today's spend over the daily
 cap (PROMO_GEN_DAILY_USD, default $2). The ledger (~/.promo-tools/openrouter-spend.jsonl) keeps the estimate and OpenRouter's real
@@ -22,7 +25,8 @@ import urllib.request
 from pathlib import Path
 
 API = "https://openrouter.ai/api/v1"
-FAMILIES = ("bytedance/seedance", "x-ai/grok-imagine-video")
+FAMILIES = ("bytedance/seedance", "x-ai/grok-imagine-video", "black-forest-labs/flux-video-edit")
+EDIT_MODELS = ("black-forest-labs/flux-video-edit",)   # video in, video out: restyle a take; priced per output second
 DEFAULT_MODEL = "bytedance/seedance-2.5"         # the newest Seedance (~$0.41 for 4 s at 480p); 1.5 Pro (~$0.05) stays in the list for cheap drafts
 TEST_MODEL = "x-ai/grok-imagine-video-1.5-lite"  # 2 cents a second at 480p from 1 s: the cheapest way to prove the pipeline end to end
 DEFAULT_RES = "480p"
@@ -32,6 +36,7 @@ DEFAULT_DAILY_USD = 2.0
 FPS = 24                       # Seedance renders 24 fps; OpenRouter bills it in video tokens of w*h*fps*s/1024
 POLL_S = 5
 TIMEOUT_S = 900
+EDIT_MAX_MB = 20               # a source clip travels as a data URL inside the JSON body; a 4-10 s Studio take is 1-10 MB
 CACHE_S = 24 * 3600
 HOME = Path.home()
 
@@ -94,7 +99,11 @@ def model(mid, catalogue=None):
     for m in catalogue if catalogue is not None else models():
         if m["id"] == mid:
             return m
-    raise OpenRouterError(f"{mid} is not one of the video models promo-reel prices (Seedance, Grok Imagine); see `promo gen models`")
+    raise OpenRouterError(f"{mid} is not one of the video models promo-reel prices (Seedance, Grok Imagine, FLUX Video Edit); see `promo gen models`")
+
+
+def is_edit(m):
+    return m["id"] in EDIT_MODELS
 
 
 def size_for(m, resolution, aspect):
@@ -108,12 +117,16 @@ def size_for(m, resolution, aspect):
 
 
 def estimate(m, seconds, resolution, aspect, audio=False, first_frame=False):
-    """USD before the job, from the catalogue: Grok Imagine bills cents per output second (plus a fee for an input image), Seedance per
-    video token. OpenRouter bills the real figure; the ledger keeps both."""
+    """USD before the job, from the catalogue: Grok Imagine bills cents per output second (plus a fee per input image; `first_frame` is
+    a flag or the number of frame images), FLUX Video Edit cents per output second whatever the size, Seedance per video token.
+    OpenRouter bills the real figure; the ledger keeps both."""
     sku = m["pricing_skus"]
+    flat = sku.get("cents_per_second_output")
+    if flat is not None:
+        return round(max(float(flat) * seconds, float(sku.get("minimum_cents_per_generation", 0))) / 100, 4)
     per_s = sku.get(f"cents_per_video_output_second_{resolution}")
     if per_s is not None:
-        return round((float(per_s) * seconds + (float(sku.get("cents_per_image_input", 0)) if first_frame else 0)) / 100, 4)
+        return round((float(per_s) * seconds + float(sku.get("cents_per_image_input", 0)) * int(first_frame)) / 100, 4)
     price = sku.get({"1080p": "video_tokens_1080p", "4K": "video_tokens_4k"}.get(resolution, ""))
     if price is None:
         price = sku.get("video_tokens") if audio else sku.get("video_tokens_without_audio", sku.get("video_tokens"))
@@ -173,30 +186,87 @@ def _data_url(path):
     return f"data:{mime};base64," + base64.b64encode(Path(path).read_bytes()).decode()
 
 
-def body_for(m, prompt, seconds, resolution, aspect, first_frame=None, audio=False, seed=None):
-    """The job request; sound and seed are sent only to models that take them (Grok Imagine takes neither)."""
+FILE = "file://"               # a stored request names its pictures and clips by path; the bytes are read again when it is resent
+
+
+def body_for(m, prompt, seconds, resolution, aspect, first_frame=None, audio=False, seed=None, last_frame=None):
+    """The job request as it is kept (pictures named by `file://` path; `wire()` reads them in when it is sent). Sound and seed go only to
+    models that take them (Grok Imagine takes neither), a last frame only to models that list one."""
     body = dict(model=m["id"], prompt=prompt, duration=int(seconds), resolution=resolution, aspect_ratio=aspect)
     if m.get("generate_audio"):
         body["generate_audio"] = bool(audio)
     if seed is not None and m.get("seed"):
         body["seed"] = int(seed)
-    if first_frame:
-        body["frame_images"] = [dict(type="image_url", image_url=dict(url=_data_url(first_frame)), frame_type="first_frame")]
+    frames = [(first_frame, "first_frame"), (last_frame, "last_frame")]
+    for path, kind in frames:
+        if path and kind not in (m.get("supported_frame_images") or []):
+            raise OpenRouterError(f"{m['id']} takes no {kind.replace('_', ' ')}")
+    if first_frame or last_frame:
+        body["frame_images"] = [dict(type="image_url", image_url=dict(url=FILE + str(Path(p).resolve())), frame_type=k) for p, k in frames if p]
     return body
 
 
+def edit_body(m, prompt, source, seed=None):
+    """An edit job: the prompt says what changes, the source clip is the picture (FLUX Video Edit: model, prompt, input_references)."""
+    mb = Path(source).stat().st_size / 1e6
+    if mb > EDIT_MAX_MB:
+        raise OpenRouterError(f"the source clip is {mb:.0f} MB; edit sources go up to {EDIT_MAX_MB} MB (trim or use a smaller take)")
+    body = dict(model=m["id"], prompt=prompt, input_references=[dict(type="video_url", video_url=dict(url=FILE + str(Path(source).resolve())))])
+    if seed is not None and m.get("seed"):
+        body["seed"] = int(seed)
+    return body
+
+
+def wire(body):
+    """The body as sent: every `file://` reference becomes a data URL of that file."""
+    out = dict(body)
+    for key in ("frame_images", "input_references"):
+        if key in out:
+            out[key] = [_wired(e) for e in out[key]]
+    return out
+
+
+def _wired(entry):
+    kind = entry["type"]                    # image_url | video_url
+    url = entry[kind]["url"]
+    if not url.startswith(FILE):
+        return entry
+    path = url[len(FILE):]
+    if not os.path.isfile(path):
+        raise OpenRouterError(f"the request names {path}, which is gone; pick the frame or take again")
+    return dict(entry, **{kind: dict(entry[kind], url=_data_url(path))})
+
+
+def price_of(m, body, seconds=None):
+    """USD for a stored request; `seconds` is the source clip's length for an edit job (it has no duration of its own)."""
+    if is_edit(m):
+        return estimate(m, seconds, None, None)
+    return estimate(m, body["duration"], body["resolution"], body["aspect_ratio"], body.get("generate_audio", False), len(body.get("frame_images") or []))
+
+
 def run(mid, prompt, out, seconds=DEFAULT_SECONDS, resolution=DEFAULT_RES, aspect="16:9", first_frame=None, audio=False, seed=None,
-        max_usd=DEFAULT_MAX_USD, on_status=None, timeout=TIMEOUT_S):
-    """Price, guard, submit, poll, download to `out`. Returns {job_id, model, cost, estimate, ...}. `on_status(status, job_id)` is told
-    'queued' once submitted and each new status after."""
+        max_usd=DEFAULT_MAX_USD, on_status=None, timeout=TIMEOUT_S, last_frame=None):
+    """Price, guard, submit, poll, download to `out`. Returns {job_id, model, cost, estimate, request, ...}: `request` is the body exactly
+    as sent with its pictures named by path, so `send(request)` makes the same job again. `on_status(status, job_id)` is told 'queued'
+    once submitted and each new status after."""
     m = model(mid)
+    if is_edit(m):
+        raise OpenRouterError(f"{m['name']} edits a clip; restyle a take instead (promo flow studio restyle)")
     check_params(m, seconds, resolution, aspect)
-    price = estimate(m, seconds, resolution, aspect, audio, bool(first_frame))
+    return send(body_for(m, prompt, seconds, resolution, aspect, first_frame, audio, seed, last_frame), out, max_usd, on_status, timeout)
+
+
+def send(body, out, max_usd=DEFAULT_MAX_USD, on_status=None, timeout=TIMEOUT_S, seconds=None):
+    """Price, guard, submit and follow one stored request (from `body_for`, `edit_body` or an earlier take's `request`)."""
+    m = model(body["model"])
+    price = price_of(m, body, seconds)
     guard(price, max_usd)
-    job = _request("POST", "/videos", body_for(m, prompt, seconds, resolution, aspect, first_frame, audio, seed))
+    job = _request("POST", "/videos", wire(body))
     jid = job["id"]
-    row = dict(at=datetime.datetime.now().astimezone().isoformat(timespec="seconds"), job_id=jid, model=mid, resolution=resolution, seconds=seconds,
-               aspect=aspect, audio=bool(audio), first_frame=bool(first_frame), estimate=price, cost=None, status="queued", out=str(out))
+    mid = m["id"]
+    row = dict(at=datetime.datetime.now().astimezone().isoformat(timespec="seconds"), job_id=jid, model=mid, resolution=body.get("resolution"),
+               seconds=body.get("duration", seconds), aspect=body.get("aspect_ratio"), audio=bool(body.get("generate_audio")),
+               first_frame=bool(body.get("frame_images")), estimate=price, cost=None, status="queued", out=str(out))
     _log(row)
     if on_status:
         on_status("queued", jid)
@@ -221,7 +291,7 @@ def run(mid, prompt, out, seconds=DEFAULT_SECONDS, resolution=DEFAULT_RES, aspec
     Path(out).write_bytes(_request("GET", f"/videos/{jid}/content?index=0", raw=True, timeout=300))
     done = dict(row, status="completed", cost=cost)
     _log(done)
-    return done
+    return dict(done, request=body)
 
 
 def price_table(catalogue=None):
@@ -229,6 +299,8 @@ def price_table(catalogue=None):
     cheapest first."""
     rows = []
     for m in catalogue if catalogue is not None else models():
+        if is_edit(m):
+            continue
         prices = {}
         for r in m["supported_resolutions"]:
             try:
@@ -236,7 +308,8 @@ def price_table(catalogue=None):
             except OpenRouterError:
                 continue
         rows.append(dict(id=m["id"], name=m["name"].split(": ", 1)[-1], seconds=[min(m["supported_durations"]), max(m["supported_durations"])],
-                         resolutions=m["supported_resolutions"], aspects=m["supported_aspect_ratios"], first_frame="first_frame" in m.get("supported_frame_images", []),
+                         resolutions=m["supported_resolutions"], aspects=m["supported_aspect_ratios"], first_frame="first_frame" in (m.get("supported_frame_images") or []),
+                         last_frame="last_frame" in (m.get("supported_frame_images") or []),
                          audio=bool(m.get("generate_audio")), price_4s=prices,
                          image_input=float(m["pricing_skus"].get("cents_per_image_input", 0)) / 100))
     return sorted(rows, key=lambda r: r["price_4s"].get(DEFAULT_RES, 9e9))

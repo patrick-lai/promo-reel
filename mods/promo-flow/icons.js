@@ -25,6 +25,7 @@
     plus: '<path d="M10 4v12M4 10h12"/>',
     download: '<path d="M10 3.5v9M6 9l4 4 4-4M4 16h12"/>',
     refresh: '<path d="M16 9a6 6 0 1 0-1.4 4.6M16 4v5h-5"/>',
+    brush: '<path d="M12.5 3.5l4 4-6.5 6.5-4-4z"/><path d="M6 10.5c-2 0-3 1.4-3 3.3V17h3.2c2 0 3.3-1.2 3.3-3"/>',
     spark: '<path d="M10 3l1.6 4.4L16 9l-4.4 1.6L10 15l-1.6-4.4L4 9l4.4-1.6z"/>',
     scene: '<rect x="3" y="5" width="14" height="10" rx="2"/><path d="M3 8h14"/>',
     doc: '<path d="M5.5 3h6l3.5 3.5V16a1 1 0 0 1-1 1h-8.5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M11.5 3v3.5H15M7.5 10h5M7.5 13h5"/>',

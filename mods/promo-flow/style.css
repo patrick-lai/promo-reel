@@ -2171,6 +2171,19 @@ h1 { font-size: 16px; }
 .st-tacts { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .st-tacts .btn { display: inline-flex; align-items: center; gap: 6px; }
 .st-tacts .btn .ic { width: 14px; height: 14px; }
+.st-review { display: grid; gap: 10px; padding: 10px; border: 1px solid var(--c-line); border-radius: var(--r-md); background: var(--c-well); }
+.st-review-frames { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+.st-rframe { margin: 0; display: grid; gap: 6px; }
+.st-rslot { position: relative; display: block; aspect-ratio: 16/9; border-radius: var(--r-sm); overflow: hidden; background: #000; }
+.st-rslot img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.st-rframe figcaption { display: grid; gap: 4px; font-size: 12px; color: var(--c-dim); }
+.st-rframe .btn, .st-sug .btn { display: inline-flex; align-items: center; gap: 6px; justify-self: start; }
+.st-rframe .btn .ic, .st-sug .btn .ic { width: 14px; height: 14px; }
+.st-sug { display: grid; gap: 6px; font-size: 13px; border-top: 1px solid var(--c-line); padding-top: 8px; }
+.st-confirm { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--c-line); border-radius: var(--r-md); background: var(--c-well); font-size: 13px; }
+.st-confirm .st-prompt { min-height: 56px; }
+.st-confirm .st-act { display: flex; gap: 6px; }
+.st-confirm .st-act .btn { width: auto; flex: 1; }
 .st-use { min-height: 36px; border: 1px solid var(--c-line); border-radius: var(--r-md); background: var(--c-raised); color: inherit; padding: 0 8px; font: inherit; font-size: 13px; max-width: 100%; }
 @media (prefers-reduced-motion: reduce) { .st-state .spin { animation-duration: 3s; } }
 
