@@ -1,6 +1,6 @@
-"""Seedance video through OpenRouter, for NON-UI plates (AGENTS.md rule 1 carve-out): the catalogue, a price before every job, the job, a spend ledger.
+"""Seedance and Grok Imagine video through OpenRouter, for NON-UI plates (AGENTS.md rule 1 carve-out): the catalogue, a price before every job, the job, a spend ledger.
 
-    promo gen models [--json]                        Seedance models with what 4 s at 480p / 720p costs (catalogue is public, no key needed)
+    promo gen models [--json]                        the video models with what 4 s at 480p / 720p costs (catalogue is public, no key needed)
     promo gen video "prompt" --out F --provider openrouter [--model M --res 480p --seconds 4 --first-frame IMG --audio --max-usd 0.40 --dry-run]
     promo gen spend [--json]                          today's and all-time spend from the ledger
 
@@ -22,8 +22,9 @@ import urllib.request
 from pathlib import Path
 
 API = "https://openrouter.ai/api/v1"
-FAMILY = "bytedance/seedance"
-DEFAULT_MODEL = "bytedance/seedance-1-5-pro"     # the cheapest Seedance on OpenRouter: drafts first, a dearer model once the idea works
+FAMILIES = ("bytedance/seedance", "x-ai/grok-imagine-video")
+DEFAULT_MODEL = "bytedance/seedance-1-5-pro"     # the cheapest 4 s clip on OpenRouter: drafts first, a dearer model once the idea works
+TEST_MODEL = "x-ai/grok-imagine-video-1.5-lite"  # 2 cents a second at 480p from 1 s: the cheapest way to prove the pipeline end to end
 DEFAULT_RES = "480p"
 DEFAULT_SECONDS = 4
 DEFAULT_MAX_USD = 0.40
@@ -78,7 +79,7 @@ def _message(body):
 
 
 def models(max_age=CACHE_S):
-    """Seedance rows of OpenRouter's public video catalogue, fetched again when the cached copy is older than `max_age` seconds (None: any age)."""
+    """Seedance and Grok Imagine rows of OpenRouter's public video catalogue, fetched again when the cached copy is older than `max_age` seconds (None: any age)."""
     cache = _tools_dir() / "openrouter-models.json"
     if cache.exists() and (max_age is None or time.time() - cache.stat().st_mtime < max_age):
         rows = json.loads(cache.read_text())
@@ -86,14 +87,14 @@ def models(max_age=CACHE_S):
         rows = _request("GET", "/videos/models", auth=False)["data"]
         cache.parent.mkdir(parents=True, exist_ok=True)
         cache.write_text(json.dumps(rows))
-    return [m for m in rows if m["id"].startswith(FAMILY)]
+    return [m for m in rows if m["id"].startswith(FAMILIES)]
 
 
 def model(mid, catalogue=None):
     for m in catalogue if catalogue is not None else models():
         if m["id"] == mid:
             return m
-    raise OpenRouterError(f"{mid} is not a Seedance model on OpenRouter; see `promo gen models`")
+    raise OpenRouterError(f"{mid} is not one of the video models promo-reel prices (Seedance, Grok Imagine); see `promo gen models`")
 
 
 def size_for(m, resolution, aspect):
@@ -106,9 +107,13 @@ def size_for(m, resolution, aspect):
     return shape[m["supported_resolutions"].index(resolution)]
 
 
-def estimate(m, seconds, resolution, aspect, audio=False):
-    """USD before the job, from the catalogue's per-token price (OpenRouter bills the real figure; the ledger keeps both)."""
+def estimate(m, seconds, resolution, aspect, audio=False, first_frame=False):
+    """USD before the job, from the catalogue: Grok Imagine bills cents per output second (plus a fee for an input image), Seedance per
+    video token. OpenRouter bills the real figure; the ledger keeps both."""
     sku = m["pricing_skus"]
+    per_s = sku.get(f"cents_per_video_output_second_{resolution}")
+    if per_s is not None:
+        return round((float(per_s) * seconds + (float(sku.get("cents_per_image_input", 0)) if first_frame else 0)) / 100, 4)
     price = sku.get({"1080p": "video_tokens_1080p", "4K": "video_tokens_4k"}.get(resolution, ""))
     if price is None:
         price = sku.get("video_tokens") if audio else sku.get("video_tokens_without_audio", sku.get("video_tokens"))
@@ -123,7 +128,8 @@ def check_params(m, seconds, resolution, aspect):
         raise OpenRouterError(f"{m['id']} makes {min(m['supported_durations'])}-{max(m['supported_durations'])} s clips, not {seconds:g} s")
     if aspect not in m["supported_aspect_ratios"]:
         raise OpenRouterError(f"{m['id']} has no {aspect} aspect")
-    size_for(m, resolution, aspect)
+    if resolution not in m["supported_resolutions"]:
+        raise OpenRouterError(f"{m['id']} has no {resolution}")
 
 
 def _ledger():
@@ -167,9 +173,12 @@ def _data_url(path):
     return f"data:{mime};base64," + base64.b64encode(Path(path).read_bytes()).decode()
 
 
-def body_for(mid, prompt, seconds, resolution, aspect, first_frame=None, audio=False, seed=None):
-    body = dict(model=mid, prompt=prompt, duration=int(seconds), resolution=resolution, aspect_ratio=aspect, generate_audio=bool(audio))
-    if seed is not None:
+def body_for(m, prompt, seconds, resolution, aspect, first_frame=None, audio=False, seed=None):
+    """The job request; sound and seed are sent only to models that take them (Grok Imagine takes neither)."""
+    body = dict(model=m["id"], prompt=prompt, duration=int(seconds), resolution=resolution, aspect_ratio=aspect)
+    if m.get("generate_audio"):
+        body["generate_audio"] = bool(audio)
+    if seed is not None and m.get("seed"):
         body["seed"] = int(seed)
     if first_frame:
         body["frame_images"] = [dict(type="image_url", image_url=dict(url=_data_url(first_frame)), frame_type="first_frame")]
@@ -182,9 +191,9 @@ def run(mid, prompt, out, seconds=DEFAULT_SECONDS, resolution=DEFAULT_RES, aspec
     'queued' once submitted and each new status after."""
     m = model(mid)
     check_params(m, seconds, resolution, aspect)
-    price = estimate(m, seconds, resolution, aspect, audio)
+    price = estimate(m, seconds, resolution, aspect, audio, bool(first_frame))
     guard(price, max_usd)
-    job = _request("POST", "/videos", body_for(mid, prompt, seconds, resolution, aspect, first_frame, audio, seed))
+    job = _request("POST", "/videos", body_for(m, prompt, seconds, resolution, aspect, first_frame, audio, seed))
     jid = job["id"]
     row = dict(at=datetime.datetime.now().astimezone().isoformat(timespec="seconds"), job_id=jid, model=mid, resolution=resolution, seconds=seconds,
                aspect=aspect, audio=bool(audio), first_frame=bool(first_frame), estimate=price, cost=None, status="queued", out=str(out))
@@ -207,7 +216,7 @@ def run(mid, prompt, out, seconds=DEFAULT_SECONDS, resolution=DEFAULT_RES, aspec
     cost = (job.get("usage") or {}).get("cost")
     if status != "completed":
         _log(dict(row, status="failed", cost=cost))
-        raise OpenRouterError(f"Seedance job {status}: {job.get('error') or 'no reason given'}")
+        raise OpenRouterError(f"{m['name']} job {status}: {job.get('error') or 'no reason given'}")
     Path(out).parent.mkdir(parents=True, exist_ok=True)
     Path(out).write_bytes(_request("GET", f"/videos/{jid}/content?index=0", raw=True, timeout=300))
     done = dict(row, status="completed", cost=cost)
@@ -216,7 +225,8 @@ def run(mid, prompt, out, seconds=DEFAULT_SECONDS, resolution=DEFAULT_RES, aspec
 
 
 def price_table(catalogue=None):
-    """One row per Seedance model: durations, resolutions and what 4 s costs at each resolution (16:9, no audio), cheapest first."""
+    """One row per video model: durations, resolutions, what 4 s costs at each resolution (16:9, no audio) and the fee for a start image,
+    cheapest first."""
     rows = []
     for m in catalogue if catalogue is not None else models():
         prices = {}
@@ -225,7 +235,8 @@ def price_table(catalogue=None):
                 prices[r] = estimate(m, DEFAULT_SECONDS, r, "16:9")
             except OpenRouterError:
                 continue
-        rows.append(dict(id=m["id"], name=m["name"].replace("ByteDance: ", ""), seconds=[min(m["supported_durations"]), max(m["supported_durations"])],
+        rows.append(dict(id=m["id"], name=m["name"].split(": ", 1)[-1], seconds=[min(m["supported_durations"]), max(m["supported_durations"])],
                          resolutions=m["supported_resolutions"], aspects=m["supported_aspect_ratios"], first_frame="first_frame" in m.get("supported_frame_images", []),
-                         audio=bool(m.get("generate_audio")), price_4s=prices))
+                         audio=bool(m.get("generate_audio")), price_4s=prices,
+                         image_input=float(m["pricing_skus"].get("cents_per_image_input", 0)) / 100))
     return sorted(rows, key=lambda r: r["price_4s"].get(DEFAULT_RES, 9e9))

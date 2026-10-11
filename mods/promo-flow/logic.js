@@ -1040,7 +1040,7 @@
   const importMessage = (name, kind, licence, source) => "[mod:promo-flow] The person imported a " + kind + " file in the Stage's editor (attached): " + name + ". Licence: " + licence + ". Source: " + source + ". Run: promo flow edit import .commission/attachments/" + name + " --kind " + kind
     + " --licence " + shq(licence) + " --source " + shq(source) + " --by \"<their name>\" (rule 4: it is refused without both), then publish. It shows up in the editor's bin. Do not approve anything.";
 
-  /* ---- Studio: Seedance takes through OpenRouter (state `studio`, promo/studio.py) ---- */
+  /* ---- Studio: Seedance and Grok Imagine takes through OpenRouter (state `studio`, promo/studio.py) ---- */
   const STUDIO_TAB = "studio";
   const STUDIO_MAX_S = 10;                // short takes keep a try cheap; longer clips are a `promo gen` job for the agent
   const usd = (x) => "$" + (x > 0 && x < 0.01 ? x.toFixed(3) : x.toFixed(2));
@@ -1060,15 +1060,15 @@
   }
   function studioPrice(ch) {
     const p = ch && (ch.m.per_second || {})[ch.res + "|" + ch.aspect + "|" + (ch.audio ? 1 : 0)];
-    return p == null ? null : Math.round(p * ch.seconds * 10000) / 10000;
+    return p == null ? null : Math.round((p * ch.seconds + (ch.start ? ch.m.image_input || 0 : 0)) * 10000) / 10000;
   }
-  /* The words Seedance gets: the plate guard (no UI, no text, no logos), the person's prompt, then the camera move's sentence. */
+  /* The words the model gets: the plate guard (no UI, no text, no logos), the person's prompt, then the camera move's sentence. */
   function studioPrompt(st, ch) {
     const pre = arr(st && st.presets).find((p) => p.id === ch.preset);
     return [st && st.guard, ch.prompt.trim(), pre ? pre.sentence : ""].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
   }
   function studioGo(st, ch, blocked) {
-    if (!ch) return { ok: false, label: "Generate", why: st && st.models_error ? "The Seedance price list did not load: " + st.models_error : "No Seedance models listed yet." };
+    if (!ch) return { ok: false, label: "Generate", why: st && st.models_error ? "The price list did not load: " + st.models_error : "No video models listed yet." };
     const price = studioPrice(ch);
     const label = "Generate" + (price == null ? "" : " · ~" + usd(price));
     const no = (why) => ({ ok: false, label, why, price });

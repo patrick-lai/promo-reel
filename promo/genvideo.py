@@ -8,11 +8,11 @@ Architecture: the CALLING AGENT generates, promo-reel specifies, ingests and gat
                                                ingest a supplied file: probe, optional corner-watermark crop + 1080p upscale (raw kept),
                                                sidecar `.gen.json`, footage-manifest entry with `generated:`; prints the next steps.
     promo gen detect [--json]                  which built-in runners this box has (grok / codex CLI logins, API keys), as a hint to agents.
-    promo gen models | spend [--json]          Seedance on OpenRouter: models with prices, and the spend ledger (promo/openrouter.py)
+    promo gen models | spend [--json]          OpenRouter video (Seedance, Grok Imagine): models with prices, and the spend ledger (promo/openrouter.py)
   Optional built-in runner (fallback when the agent has no generation tool of its own; headless one-shot, no auto-approve flags):
     promo gen image|video "prompt" --out F [--provider auto] [--register promo.yaml --id ID]     promo gen plan --run
     promo gen video "prompt" --out F --provider openrouter [--model M --res 480p --seconds 4 --first-frame IMG --dry-run]
-                                               Seedance through OpenRouter (pay per job): priced first, refused over --max-usd or the daily cap.
+                                               Seedance or Grok Imagine through OpenRouter (pay per job): priced first, refused over --max-usd or the daily cap.
                                                Never picked by `auto`; run under `commissionctl secret exec OPENROUTER_API_KEY -- ...`.
 
 Rules (AGENTS.md rule 1, generated-plate carve-out):
@@ -64,7 +64,7 @@ def detect() -> list[dict]:
     out.append(dict(id="xai-api", kind=["image", "video"], tool="api" if os.environ.get("XAI_API_KEY") else None,
                     login=bool(os.environ.get("XAI_API_KEY")), how="XAI_API_KEY"))
     out.append(dict(id="openrouter", kind=["video"], tool="openrouter" if OR.has_key() else None, login=OR.has_key(),
-                    how=f"OPENROUTER_API_KEY: Seedance, pay per job (default {OR.DEFAULT_MODEL} {OR.DEFAULT_RES} {OR.DEFAULT_SECONDS} s); `promo gen models` for prices"))
+                    how=f"OPENROUTER_API_KEY: Seedance / Grok Imagine, pay per job (default {OR.DEFAULT_MODEL} {OR.DEFAULT_RES} {OR.DEFAULT_SECONDS} s); `promo gen models` for prices"))
     for p in out:
         p["available"] = bool(p["tool"] and p["login"]) and p["tool"] != "api"      # openai/xai adapters are not wired yet (key seen, not usable)
         p["verified"] = sorted(state.get(p["id"], {}).get("ok", []))
@@ -227,7 +227,7 @@ def _run_provider(p: dict, text: str, out_p: Path, timeout: int) -> str:
 def generate_openrouter(prompt: str, out: str, seconds: float = OR.DEFAULT_SECONDS, aspect: str = "16:9", people: bool = False,
                         model: str = OR.DEFAULT_MODEL, resolution: str = OR.DEFAULT_RES, first_frame=None, audio: bool = False,
                         max_usd: float = OR.DEFAULT_MAX_USD, on_status=None, seed: int | None = None) -> dict:
-    """A Seedance plate through OpenRouter: the plate guard leads the prompt; the sidecar keeps the model, the job id and the real cost."""
+    """A video plate through OpenRouter (Seedance, Grok Imagine): the plate guard leads the prompt; the sidecar keeps the model, the job id and the real cost."""
     out_p = Path(out).expanduser().resolve()
     job = OR.run(model, (NEG_PEOPLE if people else NEG) + prompt.strip(), out_p, int(seconds), resolution, aspect, first_frame, audio,
                  seed=seed, max_usd=max_usd, on_status=on_status)
@@ -343,10 +343,10 @@ def main(argv):
         q.add_argument("--shots", nargs="*", default=[], help="shot ids that will use it")
         if k == "video":
             q.add_argument("--seconds", type=float, default=4.0)
-            q.add_argument("--model", default=OR.DEFAULT_MODEL, help="openrouter: Seedance model id (`promo gen models`)")
+            q.add_argument("--model", default=OR.DEFAULT_MODEL, help="openrouter: model id (`promo gen models`)")
             q.add_argument("--res", default=OR.DEFAULT_RES, help="openrouter: 480p | 720p | 1080p | 4K, as the model allows")
             q.add_argument("--first-frame", help="openrouter: image the clip starts from (animate a still)")
-            q.add_argument("--audio", action="store_true", help="openrouter: let Seedance make sound too (dearer on some models)")
+            q.add_argument("--audio", action="store_true", help="openrouter: let the model make sound too (Seedance only; dearer on some models)")
             q.add_argument("--max-usd", type=float, default=OR.DEFAULT_MAX_USD, help="openrouter: refuse a job priced above this")
             q.add_argument("--dry-run", action="store_true", help="openrouter: print the request and its price, submit nothing")
     pl = sub.add_parser("plan")
@@ -388,8 +388,8 @@ def main(argv):
             if a.dry_run:
                 m = OR.model(a.model)
                 OR.check_params(m, int(a.seconds), a.res, a.aspect)
-                body = OR.body_for(a.model, NEG + a.prompt, a.seconds, a.res, a.aspect, None, a.audio)
-                print(json.dumps(dict(request=body, first_frame=a.first_frame, estimate_usd=OR.estimate(m, int(a.seconds), a.res, a.aspect, a.audio)), indent=1))
+                body = OR.body_for(m, NEG + a.prompt, a.seconds, a.res, a.aspect, None, a.audio)
+                print(json.dumps(dict(request=body, first_frame=a.first_frame, estimate_usd=OR.estimate(m, int(a.seconds), a.res, a.aspect, a.audio, bool(a.first_frame))), indent=1))
                 return 0
             meta = generate_openrouter(a.prompt, a.out, int(a.seconds), a.aspect, a.people, a.model, a.res, a.first_frame, a.audio, a.max_usd,
                                        on_status=lambda s, j: print(f"  {s} ({j})", file=sys.stderr))

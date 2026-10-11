@@ -284,7 +284,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     if (arr(d.assets).length && !prod) { const m = model(); t.push({ id: "assets", label: "Assets", n: m.total, title: "Assets: " + m.total + " rows for this story (" + m.n.ready + " ready, " + m.n.mock + " mock, " + m.n.todo + " to make" + (m.n.missing ? ", " + m.n.missing + " missing" : "") + ")" }); }
     if (arr(d.docs).length || (arr(d.scripts).length && stageIdx() >= STAGE_IDS.indexOf("scripts"))) t.push({ id: "plan", label: "Plan", n: readables().length || null, title: "Plan: full scripts and production documents. Ask the agent to add more." });
     if (t.length) t.push({ id: PF.FILES_TAB, label: "Add files", n: S.files.length || null, title: "Add files: drop your own footage or pictures here for the agent" });
-    if (d.studio && t.length) t.push({ id: PF.STUDIO_TAB, label: "Studio", n: arr(d.studio.takes).length || null, title: "Studio: make Seedance clips for backgrounds, transitions and scenery" + (PF.studioBusy(d.studio) ? " (a take is being made)" : "") });
+    if (d.studio && t.length) t.push({ id: PF.STUDIO_TAB, label: "Studio", n: arr(d.studio.takes).length || null, title: "Studio: make video clips (Seedance, Grok Imagine) for backgrounds, transitions and scenery" + (PF.studioBusy(d.studio) ? " (a take is being made)" : "") });
     const wn = PF.widgetsFor(d, "workbench").length;
     if (wn) t.push({ id: PF.WIDGET_TAB, label: "Workbench", n: wn, title: "Workbench: panels the agent built for this job" });
     if (arr(d.drafts).length || arr(d.finals).length || arr(d.rounds).length || stageIdx() >= STAGE_IDS.indexOf("drafts")) t.push({ id: "draft", label: "Drafts", n: arr(d.drafts).length + arr(d.finals).length || null });
@@ -1330,10 +1330,10 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     return box;
   }
 
-  /* ---------------- Studio: Seedance takes (state `studio`, promo/studio.py) ----------------
+  /* ---------------- Studio: Seedance and Grok Imagine takes (state `studio`, promo/studio.py) ----------------
      Higgsfield's layout on the person's own OpenRouter account: the composer prices every take before the click, one take runs at a time,
      and the takes gallery keeps every try with what it really cost. Takes are planning samples of non-UI plates, never the product. */
-  const TAKE_WORD = { queued: "Queued at OpenRouter", generating: "Seedance is making it", completed: "Downloading", done: "Done", failed: "Failed", stopped: "Stopped" };
+  const TAKE_WORD = { queued: "Queued at OpenRouter", generating: "Being made", completed: "Downloading", done: "Done", failed: "Failed", stopped: "Stopped" };
   const studio = () => S.doc.studio || {};
   const stChoice = () => PF.studioChoice(studio(), S.st);
   /* A Studio frame id is story/scene/start|end: its picture is that frame of the storyboard, already in the state once. */
@@ -1375,7 +1375,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       onfocus: (e) => { if (S.stCaret != null) e.target.setSelectionRange(S.stCaret, S.stCaret); },
       onkeydown: (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); btn.click(); } } });
     const box = h("section", { class: "card st-compose", "aria-label": "New take" },
-      h("header", { class: "st-h" }, h("b", { text: "New take" }), h("span", { class: "sub", text: "Seedance on your OpenRouter account. Backgrounds, transitions and scenery only: never the app itself." })),
+      h("header", { class: "st-h" }, h("b", { text: "New take" }), h("span", { class: "sub", text: "Seedance or Grok Imagine on your OpenRouter account. Backgrounds, transitions and scenery only: never the app itself." })),
       h("label", { class: "st-lbl", for: "st-prompt-in", text: "What the clip shows" }), prompt);
     prompt.id = "st-prompt-in";
     box.append(stSeg("Camera", [["", "None"], ...arr(st.presets).map((p) => [p.id, p.label])], S.st.preset || "", (id) => set("preset", id || null), "st-cam"));
@@ -1405,9 +1405,9 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       const out = h("output", { for: "st-len", class: "st-out", text: ch.seconds + " s" });
       box.append(h("div", { class: "st-field st-len" }, h("label", { class: "st-lbl", for: "st-len", text: "Length" }), len, out));
       if (ch.m.audio) box.append(h("label", { class: "st-check" }, h("input", { type: "checkbox", checked: ch.audio, "data-k": "st-audio", disabled: S.readonly, onchange: (e) => set("audio", e.target.checked) }),
-        h("span", { text: "Sound: Seedance makes audio too" + (ch.m.per_second[ch.res + "|" + ch.aspect + "|1"] > ch.m.per_second[ch.res + "|" + ch.aspect + "|0"] ? " (costs more)" : "") })));
+        h("span", { text: "Sound: the model makes audio too" + (ch.m.per_second[ch.res + "|" + ch.aspect + "|1"] > ch.m.per_second[ch.res + "|" + ch.aspect + "|0"] ? " (costs more)" : "") })));
       sent.textContent = PF.studioPrompt(st, ch);
-      box.append(h("details", { class: "st-sent-box" }, h("summary", { text: "What Seedance gets" }), sent));
+      box.append(h("details", { class: "st-sent-box" }, h("summary", { text: "What the model gets" }), sent));
     }
     box.append(h("div", { class: "st-act" }, btn), why);
     const sp = st.spend || {};
@@ -1466,7 +1466,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     const takes = arr(st.takes);
     const gallery = h("section", { class: "st-gallery", "aria-label": "Takes" }, secH("Takes", takes.length || null),
       takes.length ? h("div", { class: "st-grid" }, takes.map((t) => takeCard(st, t)))
-        : h("div", { class: "empty card" }, h("div", { class: "ring" }, ic("film")), h("h2", { text: "No takes yet" }), h("p", { text: "Write what the clip shows and press Generate. The take shows up here while Seedance makes it, usually in one to three minutes." })));
+        : h("div", { class: "empty card" }, h("div", { class: "ring" }, ic("film")), h("h2", { text: "No takes yet" }), h("p", { text: "Write what the clip shows and press Generate. The take shows up here while it is made, usually in one to three minutes." })));
     const view = h("div", { class: "pane st-pane" }, h("div", { class: "st-wrap" }, studioComposer(st, ch), gallery));
     S.scrollHook = studioTick;
     return view;

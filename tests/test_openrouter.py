@@ -19,11 +19,14 @@ REAL_REQUEST = OR._request
 KEY = "sk-or-v1-test-secret"
 PRO = dict(id="bytedance/seedance-1-5-pro", name="ByteDance: Seedance 1.5 Pro", supported_resolutions=["480p", "720p", "1080p"],
            supported_aspect_ratios=["1:1", "16:9", "9:16"], supported_sizes=["480x480", "854x480", "480x854", "720x720", "1280x720", "720x1280", "1920x1080"],
-           supported_durations=[4, 5, 6, 7, 8, 9, 10, 11, 12], supported_frame_images=["first_frame", "last_frame"], generate_audio=True,
+           supported_durations=[4, 5, 6, 7, 8, 9, 10, 11, 12], supported_frame_images=["first_frame", "last_frame"], generate_audio=True, seed=True,
            pricing_skus={"video_tokens": "0.0000024", "video_tokens_without_audio": "0.0000012"})
 V25 = dict(id="bytedance/seedance-2.5", name="ByteDance: Seedance 2.5", supported_resolutions=["480p", "720p"], supported_aspect_ratios=["16:9", "4:3"],
            supported_sizes=["854x480", "752x560", "1280x720", "1112x834"], supported_durations=list(range(4, 31)), supported_frame_images=["first_frame"],
            generate_audio=True, pricing_skus={"video_tokens": "0.0000107", "video_tokens_without_audio": "0.0000107"})
+GROK = dict(id="x-ai/grok-imagine-video-1.5-lite", name="SpaceXAI: Grok Imagine Video 1.5 Lite", supported_resolutions=["480p", "720p"],
+            supported_aspect_ratios=["16:9"], supported_sizes=None, supported_durations=list(range(1, 16)), supported_frame_images=["first_frame"],
+            generate_audio=None, seed=None, pricing_skus={"cents_per_image_input": "1", "cents_per_video_output_second_480p": "2", "cents_per_video_output_second_720p": "3"})
 VEO = dict(id="google/veo-3.1", name="Veo", supported_resolutions=["720p"], supported_aspect_ratios=["16:9"], supported_sizes=["1280x720"],
            supported_durations=[4], pricing_skus={"duration_seconds_without_audio": "0.20"})
 
@@ -37,7 +40,7 @@ class FakeOpenRouter:
     def __call__(self, method, path, body=None, auth=True, raw=False, timeout=60):
         assert not auth or os.environ.get("OPENROUTER_API_KEY") == KEY
         if path == "/videos/models":
-            return {"data": [PRO, V25, VEO]}
+            return {"data": [PRO, V25, GROK, VEO]}
         if method == "POST":
             self.sent.append(body)
             return {"id": "job1", "status": "pending", "polling_url": "x"}
@@ -86,6 +89,14 @@ def test_a_job_runs_to_a_file_and_the_ledger_keeps_estimate_and_real_cost(api, t
     assert KEY not in OR.ledger_path().read_text()
 
 
+def test_grok_imagine_is_priced_per_second_and_gets_no_seed_or_sound(api, tmp_path):
+    assert OR.estimate(GROK, 2, "480p", "16:9") == 0.04
+    assert OR.estimate(GROK, 2, "480p", "16:9", first_frame=True) == 0.05
+    OR.run(GROK["id"], "ink", tmp_path / "g.mp4", seconds=1, seed=5, audio=True)
+    assert api.sent[0]["duration"] == 1 and "seed" not in api.sent[0] and "generate_audio" not in api.sent[0]
+    assert OR.price_table([PRO, GROK])[1]["image_input"] == 0.01
+
+
 def test_jobs_over_the_job_limit_or_the_daily_cap_are_refused_before_submitting(api, tmp_path, monkeypatch):
     with pytest.raises(OR.OpenRouterError, match="over the \\$0.01 limit"):
         OR.run(PRO["id"], "x", tmp_path / "a.mp4", max_usd=0.01)
@@ -94,7 +105,7 @@ def test_jobs_over_the_job_limit_or_the_daily_cap_are_refused_before_submitting(
         OR.run(PRO["id"], "x", tmp_path / "a.mp4")
     with pytest.raises(OR.OpenRouterError, match="4-12 s"):
         OR.run(PRO["id"], "x", tmp_path / "a.mp4", seconds=20)
-    with pytest.raises(OR.OpenRouterError, match="not a Seedance model"):
+    with pytest.raises(OR.OpenRouterError, match="not one of the video models"):
         OR.run(VEO["id"], "x", tmp_path / "a.mp4")
     assert api.sent == []
 

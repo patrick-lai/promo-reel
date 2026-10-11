@@ -1,4 +1,4 @@
-"""The Stage's Studio tab: Seedance takes through OpenRouter, laid out like Higgsfield (prompt, model, length, resolution, aspect, a camera move,
+"""The Stage's Studio tab: Seedance and Grok Imagine takes through OpenRouter, laid out like Higgsfield (prompt, model, length, resolution, aspect, a camera move,
 an optional storyboard frame to animate, the price on the button, a gallery of takes).
 
     promo flow studio run --prompt "..." [--model M --res 480p --seconds 4 --aspect 16:9 --audio --preset push --start STORY/SCENE/start|FILE]
@@ -127,11 +127,11 @@ def use(pd, tid, asset_id):
     if not a:
         raise StudioError(f"no asset {asset_id} in the plan")
     if a["kind"] != "video" or a["source"] != "generated":
-        raise StudioError(f"asset {asset_id} is a {a['source']} {a['kind']}; a Seedance take can only stand in for a generated video plate")
+        raise StudioError(f"asset {asset_id} is a {a['source']} {a['kind']}; a Studio take can only stand in for a generated video plate")
     samples = PV.load_samples(flow_dir)
     cost = f"${take['cost']:.2f}" if take.get("cost") is not None else "cost not reported"
     samples[asset_id] = dict(path=take["file"], at=_now(), take=tid,
-                             note=f"Seedance take {tid} ({take['model'].split('/')[-1]}, {take['resolution']}, {take['seconds']} s, {cost})")
+                             note=f"Studio take {tid} ({take['model'].split('/')[-1]}, {take['resolution']}, {take['seconds']} s, {cost})")
     with open(PV.samples_path(flow_dir), "w") as f:
         json.dump(samples, f, indent=2)
     _update(pd, tid, used_for=sorted(set(take["used_for"]) | {asset_id}))
