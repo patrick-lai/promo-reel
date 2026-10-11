@@ -210,7 +210,7 @@ def qa_findings(spec, mag_limit=1.5):
             continue
         for cid in {c for c, ss in referenced(spec, {s.id}).items()}:
             c = man.get(cid)
-            if c and (c.get("dpr") or 0) < 2 and str(c.get("dpr")) != "unknown":
+            if c and str(c.get("dpr")) != "unknown" and (c.get("dpr") or 0) < 2:
                 dpr.append(f"shot {s.id}: {mag:.1f}x push-in on {cid} (dpr {c.get('dpr')}, {c.get('resolution')}): soft upscale at {spec.OW}x{spec.OH}")
     return dpr, sorted(demo)
 

@@ -1,4 +1,4 @@
-"""Overlay layers usable by any shot type: caption, pill, text, scrim.
+"""Overlay layers usable by any shot type: caption, pill, text, scrim, avatar.
 
 Spec form (all optional keys have defaults):
     {type: caption, text: "...", style: dark|light, size: 32, cx/cy: (defaults to style.caption), t: [t0, t1],
@@ -6,10 +6,13 @@ Spec form (all optional keys have defaults):
     {type: pill,    text: "macOS alpha", style: light, cy: 690, size: 32, ...}       # free pill, not zone-checked
     {type: text,    text: "Product name", cy: 500, size: 132, weight: Bold, color: [255,255,255], shadow: true, ...}
     {type: scrim,   ellipse: [0.18, 0.22, 0.82, 0.70], fill: 120, blur: 120, color: [8, 10, 16]}  # always on unless `t` given
+    {type: avatar,  source: <clip id>, t_in: 0.0, anchor: bottom-right, h: 0.26, margin: 0.03, radius: 0.16, label: "AI voice + face"}
 `t` is shot-local output seconds (default [0, 99]); fades are `alpha_at` params. Role "caption" overlays are QA-checked
 (safe zone + minimum hold); other roles are not.
 """
 from __future__ import annotations
+
+import weakref
 
 from PIL import Image, ImageDraw, ImageFilter
 
@@ -117,7 +120,57 @@ class Scrim(Overlay):
         return super().apply(out, t)
 
 
-TYPES = {"caption": Caption, "pill": Pill, "text": Text, "scrim": Scrim}
+class Avatar(Overlay):
+    """A generated talking head of the person themself in a rounded corner card (team rule 1, own-likeness carve-out).
+    The clip plays from its `t_in` at shot time 0, so consecutive shots pass on the same take by advancing t_in.
+    `promo check` (genvideo.plate_gate) only lets a clip registered with `generated.likeness: own` and a consent note in here."""
+    role = "avatar"
+
+    def build(self):
+        c, ctx = self.cfg, self.ctx
+        side = int(round(ctx.OH * c.get("h", 0.26)))
+        margin = int(round(ctx.OH * c.get("margin", 0.03)))
+        vert, horiz = c.get("anchor", "bottom-right").split("-")
+        self.pos = (ctx.OW - margin - side if horiz == "right" else margin, ctx.OH - margin - side if vert == "bottom" else margin)
+        self.side, self.src = side, None
+        self.mask = R.rounded_mask(side, side, int(side * c.get("radius", 0.16)))
+        card = Image.new("RGBA", (side, side), (0, 0, 0, 255))
+        card.putalpha(self.mask)
+        self.shadow, self.pad = R.soft_shadow_layer(ctx, card, blur=18, alpha=150, pad=40)
+        self.rim = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+        ImageDraw.Draw(self.rim).rounded_rectangle([0, 0, side - 1, side - 1], int(side * c.get("radius", 0.16)),
+                                                   outline=(255, 255, 255, 70), width=max(1, int(1.5 * ctx.K)))
+        self.label = R.label_img(ctx, c["label"], size=c.get("label_size", 15))[0] if c.get("label") else None
+        return None
+
+    def _frame(self, t):
+        c, t_in = self.cfg, float(self.cfg.get("t_in", 0.0))
+        if self.src is None:
+            self.src = R.Source(self.ctx.spec.footage_path(c["source"]), t_in, t_in + self.t1, prescale=(self.side, self.side))
+            # an overlay has no close hook: stop the ffmpeg reader when the shot drops its overlays
+            weakref.finalize(self, self.src.close)
+        im = self.src.frame(t_in + t)
+        if im is None:
+            raise ValueError(f"avatar overlay: no frames in {c['source']} from {t_in:.2f} s")
+        return im
+
+    def apply(self, out, t):
+        a = self.alpha(t)
+        if a <= 0:
+            return out
+        side = self.side
+        frame = self._frame(t).convert("RGBA")
+        frame.putalpha(self.mask)
+        frame.alpha_composite(self.rim)
+        if self.label is not None:
+            frame.alpha_composite(self.label, (int(side * 0.06), side - self.label.height - int(side * 0.05)))
+        layer = R.canvas(self.ctx)
+        layer.alpha_composite(self.shadow, (self.pos[0] - self.pad, self.pos[1] - self.pad))
+        layer.alpha_composite(frame, self.pos)
+        return R.over(out, layer, a)
+
+
+TYPES = {"caption": Caption, "pill": Pill, "text": Text, "scrim": Scrim, "avatar": Avatar}
 
 
 def build_overlays(ctx, cfgs, motion=None):

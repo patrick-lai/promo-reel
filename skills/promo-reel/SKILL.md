@@ -187,6 +187,18 @@ own|commissioned|original --licence TEXT --source URL [--credit T]` registers it
 framing anchors from renders and maps moods by expression names; check it with `promo live2d stills --model ID --moods --out sheet.png`.
 Collaboration and third-party characters are refused. Sample models need the `live2d_credits` end card (gated); so does any credited model.
 
+## The person as a corner avatar (own voice + own face)
+For "my voice and my face in a small box over the screen" (AGENTS.md rule 1 own-likeness carve-out; consent first, as a `brief conflict`).
+Worked example and tools: `projects/me-avatar-poc` (`tools/narration.py`, `tools/avatar.sh`, NOTES.md) and `~/work/avatar-poc` (venvs, patched Ditto).
+1. Voice: clone from a 5-8 s cut of whole sentences of their recording. Chatterbox (MIT, PyTorch MPS; `exaggeration`, Turbo `[chuckle]`
+   tags) or Qwen3-TTS 1.7B Base (Apache-2.0, MLX, fastest). Make several takes per line, keep those that read back word for word, pick by ear.
+   The takes go in through `vo: {engine: files}`.
+2. Face: one sharp frontal selfie (`osxphotos export --selfie --download-missing --use-photokit`, rank by face size, sharpness and yaw).
+   Ditto (Apache-2.0) on MPS with `DITTO_FACE_INIT=mediapipe` (its InsightFace finder is non-commercial), driven by the whole narration
+   laid on the show timeline, ~3.7x real time at 768². Register it with `generated: {likeness: own, consent: "<who, when>"}`.
+3. Put it on any shot as `{type: avatar, source: <id>, t_in: <show time at the shot's start>, label: "AI voice + face"}`; `promo check`
+   `generated-plates` FAILs a likeness anywhere else or without consent. Re-render the avatar whenever VO timing changes.
+
 ## Anime music videos (style `anime-mv`)
 If the request is a **music video, MV, PV, lyric video or a song told in pictures** (in THE FLOW the "Anime music video" card is marked
 suggested), it is `anime-mv`. Measured on Eve 「心海」: a 2.35:1 picture band on a cream page (y 131-949 of 1080), ONE small tracked Mincho

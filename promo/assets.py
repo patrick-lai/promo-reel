@@ -1,6 +1,6 @@
 """Assets manifest (assets.yaml): validation (licence gate) + fetch.
 
-Each asset: id, kind (music|vo_model|vo|sfx|footage|font|still|live2d_model|live2d_runtime), path (relative to the spec dir, env expansion ok), licence,
+Each asset: id, kind (music|vo_model|vo|sfx|footage|font|still|live2d_model|live2d_runtime|avatar_model), path (relative to the spec dir, env expansion ok), licence,
 source_url, optional fetch_url / sha256 / redistributable / attribution / notes / status (`draft` = licence terms
 still being confirmed: `promo check` WARNs on it, `promo publish` must not go out until it is cleared).
 Hard gate: every manifest entry needs a non-empty licence; music/vo_model/sfx also need source_url; every asset id
@@ -16,8 +16,8 @@ import yaml
 
 from .spec import SpecError, expand_env
 
-KINDS = {"music", "vo_model", "vo", "sfx", "footage", "font", "still", "live2d_model", "live2d_runtime"}
-GATED = {"music", "vo_model", "vo", "sfx", "live2d_model", "live2d_runtime"}            # vo = pre-rendered voice-over files (a directory)          # these also need source_url
+KINDS = {"music", "vo_model", "vo", "sfx", "footage", "font", "still", "live2d_model", "live2d_runtime", "avatar_model"}
+GATED = {"music", "vo_model", "vo", "sfx", "live2d_model", "live2d_runtime", "avatar_model"}            # vo = pre-rendered voice-over files (a directory); avatar_model = a talking-head model (e.g. Ditto); these also need source_url
 GENERATED = {"sfx"}                           # produced by `promo sfx`, never fetched
 
 

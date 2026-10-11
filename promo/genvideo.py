@@ -352,7 +352,8 @@ def plan(spec, run=False):
 
 
 def plate_gate(spec) -> list[tuple[str, str, str]]:
-    """promo check: generated clips may only feed UI-free shots."""
+    """promo check: generated clips may only feed UI-free shots, except the person's own likeness (generated.likeness: own,
+    with a consent note), which may only appear in an `avatar` overlay (team rule 1 carve-out)."""
     from . import footage as FT
     try:
         man = FT.load(spec)
@@ -364,13 +365,21 @@ def plate_gate(spec) -> list[tuple[str, str, str]]:
     refs = FT.referenced(spec)
     bad, used = [], []
     shots = {s.id: s for s in spec.shots}
+    avatars = {(s.id, o.get("source")) for s in spec.shots for o in (s.get("overlays") or []) if o.get("type") == "avatar"}
     for cid in gen:
+        own = gen[cid]["generated"].get("likeness") == "own"
+        if own and not str(gen[cid]["generated"].get("consent") or "").strip():
+            bad.append(f"generated likeness {cid} has no consent note (who agreed, when)")
         for sid in refs.get(cid, []):
             used.append(f"{cid}->{sid}")
             s = shots.get(sid)
             # a generated clip used only as the blurred BACKDROP plate behind a UI panel is scenery, not the picture: allowed
             shows = s is not None and cid in {s.get(k) for k in ("source", "still", "board", "node")}
-            if s is not None and not shows:
+            if (sid, cid) in avatars and not own:
+                bad.append(f"generated clip {cid} in an avatar overlay of shot {sid} (only a clip with generated.likeness: own)")
+            if own and (shows or (sid, cid) not in avatars):
+                bad.append(f"generated likeness {cid} used by {sid} outside an avatar overlay")
+            if own or s is not None and not shows:
                 continue
             if s is not None and (s.get("ui") is True or s.get("ui") is None and s.type in ("clip",)):
                 bad.append(f"generated clip {cid} used by UI shot {sid} (set ui: false only if the plate shows no app UI)")

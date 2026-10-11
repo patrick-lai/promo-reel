@@ -117,3 +117,26 @@ def test_plate_backdrop_behind_ui_panel_is_allowed(tmp_path, monkeypatch):
     spec2 = SimpleNamespace(shots=[shot_plate_on_ui])
     monkeypatch.setattr(FT, "referenced", lambda sp: {"scene": ["02"]})
     assert GV.plate_gate(spec2)[0][1] == "FAIL"
+
+
+def test_own_likeness_only_in_avatar_overlay_with_consent(monkeypatch):
+    from types import SimpleNamespace
+    from promo import genvideo as GV, footage as FT
+
+    def shot(sid, cfg):
+        return SimpleNamespace(id=sid, type="clip", cfg=cfg, get=cfg.get)
+
+    def gate(clips, *shots):
+        monkeypatch.setattr(FT, "load", lambda sp: clips)
+        return {g: st for g, st, _ in GV.plate_gate(SimpleNamespace(shots=list(shots), raw={}))}
+
+    avatar = shot("01", {"source": "real", "overlays": [{"type": "avatar", "source": "me"}]})
+    me = {"generated": {"provider": "ditto", "likeness": "own", "consent": "Pat, chat 11 Oct 2026"}, "path": "x"}
+    real = {"path": "y"}
+    assert gate({"me": me, "real": real}, avatar) == {"generated-plates": "PASS", "generated-review": "WARN"}
+    no_consent = {**me, "generated": {"provider": "ditto", "likeness": "own"}}
+    assert gate({"me": no_consent, "real": real}, avatar)["generated-plates"] == "FAIL"
+    plate = {"generated": {"provider": "grok"}, "path": "x"}
+    assert gate({"me": plate, "real": real}, avatar)["generated-plates"] == "FAIL"
+    as_picture = shot("02", {"source": "me", "ui": False})
+    assert gate({"me": me}, as_picture)["generated-plates"] == "FAIL"
