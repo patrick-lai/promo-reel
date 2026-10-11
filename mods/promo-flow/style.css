@@ -723,6 +723,38 @@ button.fr:hover { border-color: var(--c-accent); }
 .sty-kinetic .ray{inset:-20px;background:repeating-conic-gradient(from 0deg at 50% 50%,#e5532d 0 6deg,#14110f 6deg 14deg);opacity:.75}
 .sty-kinetic em{font:900 18px/1 var(--b-font);letter-spacing:.04em;color:#fff;text-shadow:0 0 6px #000,2px 2px 0 #e5532d}
 .sty-own{background:var(--c-well);color:var(--c-dim)}.sty-own svg{width:22px;height:22px}
+.sty-podcast{background:#151826}
+.sty-podcast .scr{inset:6px 6px 0;border-radius:3px 3px 0 0;background:linear-gradient(#262b3d,#1d2130)}
+.sty-podcast .row{left:24px;right:24px;height:4px;border-radius:2px;background:rgba(255,255,255,.28)}.sty-podcast .r1{top:14px}.sty-podcast .r2{top:22px;right:38px}
+.sty-podcast .av{bottom:-6px;width:26px;height:34px;border-radius:50% 50% 8px 8px / 42% 42% 8px 8px}
+.sty-podcast .av.a{left:4px;background:radial-gradient(circle at 50% 30%,#ffd7b0 0 7px,transparent 7.5px),linear-gradient(#f39a52 0 45%,#3a3f8a 45%)}
+.sty-podcast .av.b{right:4px;background:radial-gradient(circle at 50% 30%,#ffe2c8 0 7px,transparent 7.5px),linear-gradient(#8a6a52 0 45%,#e8d3a0 45%)}
+.sty-podcast .sub{left:36px;right:36px;bottom:5px;height:6px;border-radius:3px;background:rgba(0,0,0,.6);box-shadow:inset 3px 0 0 #7fd1ff}
+
+/* podcast cast card */
+.cast{display:grid;gap:12px}
+.cast-host{display:grid;grid-template-columns:84px minmax(0,1fr);gap:12px;align-items:start}
+.cast-por{width:84px;height:98px;border-radius:var(--r-sm);overflow:hidden;background:var(--c-well);border:2px solid var(--c-line)}
+.cast-por img{width:100%;height:100%;object-fit:cover;object-position:50% 20%}
+.cast-por .mid{display:grid;place-items:center;height:100%;font-size:11px;color:var(--c-dim);text-align:center;padding:4px}
+.cast-body{display:grid;gap:6px;min-width:0}.cast-body .t{display:flex;align-items:center;gap:8px;min-width:0}.cast-body .t .sub{font-size:12px}
+.cast .dot{width:10px;height:10px;border-radius:50%;flex:none}
+.cast-voice audio{width:100%;height:32px}
+.cast-ctl{display:flex;align-items:center;gap:8px;min-width:0;flex-wrap:wrap}.cast .lbl{font-size:12px;color:var(--c-dim);min-width:40px}
+.cast-seg button{min-height:32px;padding:0 10px}
+.cast-fold summary{cursor:pointer;font-size:13px;color:var(--c-dim)}.cast-moods{margin-top:6px;border-radius:var(--r-sm);overflow:hidden;background:var(--c-well);min-height:60px}.cast-moods img{width:100%;display:block}
+.cast-sec{display:grid;gap:6px}
+.cast-lays{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+@container (min-width: 640px){.cast-lays{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.cast-lay{position:relative;display:grid;gap:2px;padding:6px;border:1px solid var(--c-line);border-radius:var(--r-md);background:var(--c-raised);cursor:pointer;min-width:0}
+.cast-lay input{position:absolute;opacity:0;pointer-events:none}
+.cast-lay .thumb{width:100%;height:auto;aspect-ratio:16/9;border-radius:var(--r-sm);overflow:hidden;background:var(--c-well)}.cast-lay .thumb img{width:100%;height:100%;object-fit:cover}
+.cast-lay .thumb .mid{display:grid;place-items:center;height:100%;font-size:11px}
+.cast-lay b{font-size:13px}.cast-lay .sub{font-size:11.5px;line-height:1.3}
+.cast-lay.on{border-color:var(--c-accent);box-shadow:0 0 0 1px var(--c-accent);background:var(--c-tint)}
+.cast-lay:has(input:focus-visible){outline:2px solid var(--c-accent);outline-offset:2px}
+.cast-actions{display:flex;gap:8px;flex-wrap:wrap}
+.cast-wrap>summary{cursor:pointer;font-weight:600;padding:6px 0}
 .choice .box{width:22px;height:22px;border-color:var(--c-dim)}
 .choice:not(.static):hover{border-color:color-mix(in srgb,var(--c-accent) 55%,var(--c-line))}
 .choice:has(input:checked)::after{content:"Selected";position:absolute;top:8px;right:10px;font-size:11px;font-weight:650;color:var(--c-accent)}
@@ -2078,3 +2110,9 @@ h1 { font-size: 16px; }
   .ed-head { flex-wrap: wrap; align-content: center; row-gap: 1px; } .ed-hl { flex-basis: 100%; font-size: 10px; } }
 .ed-pv { display: grid; gap: 4px; font-size: 12px; }
 .ed-pv video { width: 100%; border-radius: var(--r-sm); background: #000; }
+
+/* podcast: a voice line takes its speaker's colour on the Voice lane and in the inspector */
+.ed-vob.spk{box-shadow:inset 3px 0 0 var(--spk);background:color-mix(in srgb,var(--spk) 34%,var(--ed-clip))}
+.ed-vob.spk.changed{box-shadow:inset 3px 0 0 var(--spk),inset 0 0 0 1.5px var(--ed-stale)}
+.ed-vob.spk.sel{box-shadow:inset 3px 0 0 var(--spk),inset 0 0 0 2px #fff}
+.ed-spk{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:middle}

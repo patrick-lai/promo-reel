@@ -103,7 +103,29 @@ MIN_SCRIPTS = 3
 MAX_WHY = 240
 URL_RE = re.compile(r"https?://[^\s)>\]\"']+")
 STYLES = [("Calm product hero", "A steady voice-over walks through the real app. Simple captions, cuts that land on the beat."), ("Dialogue film", "People talking, with the app on their screens. Real speech carries the story."),
-          ("Horizon film", "Fast cuts of the real app building to one proof moment, ending on a calm dawn card."), ("Kinetic anime opening", "Bold title cards and quick, punchy cuts timed to the music.")]
+          ("Horizon film", "Fast cuts of the real app building to one proof moment, ending on a calm dawn card."), ("Kinetic anime opening", "Bold title cards and quick, punchy cuts timed to the music."),
+          ("Podcast with animated hosts", "Two animated hosts talk over the real app, right on the picture (no box). Their own voices, moods and subtitles.")]
+# the style preset behind each choice (`promo new <name> --style <preset>`); Dialogue film has none yet
+STYLE_PRESET = {"Calm product hero": "hero", "Dialogue film": None, "Horizon film": "horizon", "Kinetic anime opening": "anime-opening",
+                "Podcast with animated hosts": "podcast"}
+PODCAST_RE = re.compile(r"\b(podcast|vtuber|v-tuber|live2d|avatars?|hosts?|talk[- ]?show|co-?hosts?|anime (girls?|characters?)|animated characters?)\b", re.I)
+
+
+def style_preset(label):
+    """The preset of a recorded style (a label of STYLES, or the person's own words naming one), or None."""
+    if label in STYLE_PRESET:
+        return STYLE_PRESET[label]
+    return "podcast" if label and PODCAST_RE.search(label) else None
+
+
+def style_options(st, limit=None):
+    """The style choices, the one the request points at first and marked recommended (the request mentions a podcast,
+    VTubers, Live2D, avatars, hosts or a talk show -> the podcast style)."""
+    rec = "Podcast with animated hosts" if PODCAST_RE.search(st.get("intent") or "") else None
+    order = ([x for x in STYLES if x[0] == rec] + [x for x in STYLES if x[0] != rec]) if rec else [x for x in STYLES if x[0] != "Podcast with animated hosts"] + [
+        x for x in STYLES if x[0] == "Podcast with animated hosts"]
+    out = [dict(label=a, description=b, recommended=a == rec, preset=STYLE_PRESET.get(a)) for a, b in order]
+    return out[:limit] if limit else out
 
 
 class FlowError(Exception):
@@ -859,7 +881,8 @@ def ask(pd, st):
         # A style recorded without a word about references leaves the stage with nothing to ask and nothing to do: ask again, naming the style.
         style = (st.get("discover") or {}).get("style")
         q = f"Style is set to {style}. Add a reference link, or continue without one?" if style else "What style of content do you want?"
-        return dict(header="Style", multiSelect=False, question=q, options=[dict(label=a, description=b) for a, b in STYLES[:4]])
+        return dict(header="Style", multiSelect=False, question=q, options=[dict(label=o["label"] + (" (Recommended)" if o["recommended"] else ""), description=o["description"])
+                                                                          for o in style_options(st, 4)])
     if stage == "scripts" and ok:
         return dict(header="Scripts", multiSelect=True, question="Which script(s) should go to storyboards?",
                     options=_script_options(st))
@@ -940,7 +963,7 @@ def _gate(pd, st):
         return None
     labels = dict(style=("Use this style", "Describe another"), approve=("Approve the plan", "Add changes"), draft=("Approve", "Feedback and iterate"))
     g, k = kinds[stage]
-    out = dict(gate=g, kind=k, question=a["question"], approve_label=labels[k][0], changes_label=labels[k][1], options=a["options"] if k == "style" else [], stage=stage)
+    out = dict(gate=g, kind=k, question=a["question"], approve_label=labels[k][0], changes_label=labels[k][1], options=style_options(st) if k == "style" else [], stage=stage)
     if any(x["id"] == stage for x in stale):
         out["stale"] = True
         if k in ("approve", "confirm"):
@@ -1350,8 +1373,9 @@ def snapshot(pd):
     return _fit_files(_fit_bodies(dict(edit=edit, bin=bin_, summary=_summary(pd, st, gate, pc, used, job), title=_clip((st["intent"].split(".")[0] or "Production"), 80), intent=st["intent"],
                 stage=st["stage"], stage_label=LABEL[st["stage"]], stage_since=since, cycle=st["cycle"], rounds_used=used, rounds_max=MAX_ROUNDS, steps=steps,
                 stale_steps=stale,
-                style=(st.get("discover") or {}) and dict(style=st["discover"].get("style"), refs=st["discover"].get("refs", []), no_refs=st["discover"].get("no_refs", False)) or None,
-                scripts=scripts, docs=docs, widgets=_widgets(pd, st), councils=councils, boards=bl, assets=assets, to_make=to_make, drafts=drafts, finals=finals, rounds=rounds,
+                style=(st.get("discover") or {}) and dict(style=st["discover"].get("style"), preset=style_preset(st["discover"].get("style")), refs=st["discover"].get("refs", []),
+                                                          no_refs=st["discover"].get("no_refs", False)) or None,
+                podcast=_podcast(pd), scripts=scripts, docs=docs, widgets=_widgets(pd, st), councils=councils, boards=bl, assets=assets, to_make=to_make, drafts=drafts, finals=finals, rounds=rounds,
                 share=dict(destinations=[dict(id=d, label=SH.LABEL[d], note=SH.NOTE[d], in_place=d == "artifacts") for d in SH.available(st)]),
                 checks=[dict(ok=o, text=t) for o, t in pc], gate=gate, activity=_activity(st), job=job,
                 settings=dict(output=home.output_info(place["project"], place["repo"]), saved_in=os.path.abspath(pd)),
@@ -1359,6 +1383,23 @@ def snapshot(pd):
                 pairs=[AB.person_view(pd, p) for p in st.get("pairs") or [] if p["kind"] == "person"], autopilot=AU.view(st),
                 assumptions=[dict(id=a["id"], text=a["text"], scene=a.get("scene"), overturned=a.get("overturned")) for a in st.get("assumptions") or []],
                 scout=SC.summary(SC.listing(pd)), lessons=[dict(id=x["id"], line=x["line"], videos=x["videos"]) for x in LS.top(st.get("person"))])))
+
+
+def _podcast(pd):
+    """The podcast show for the Stage's Cast card (promo.podcast_cli.status) with its real previews as files, or None."""
+    from . import podcast_cli as PCL
+    try:
+        v = PCL.status(pd)
+    except Exception:  # noqa: BLE001  (a promo.yaml mid-edit must not break the whole snapshot)
+        return None
+    if not v:
+        return None
+    for h in v["hosts"]:
+        pv = h.pop("preview", {}) or {}
+        h.update(portrait=_media(pv.get("portrait")), moods=_media(pv.get("moods")), voice_sample=_media(pv.get("voice")), voice_label=pv.get("voice_label"),
+                 sample_text=pv.get("sample"))
+    v["layouts"] = {k: _media(p) for k, p in (v.get("layouts") or {}).items() if _media(p)}
+    return v
 
 
 def _editor_state(pd, st):

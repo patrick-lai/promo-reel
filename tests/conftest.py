@@ -46,3 +46,7 @@ def pytest_runtest_makereport(item, call):
     if rep.failed and call.excinfo is not None and _mentions_missing(call.excinfo.value):
         rep.outcome = "skipped"
         rep.longrepr = (str(item.fspath), item.location[1] or 0, "Skipped: needs a local example project (see tests/localproj.py)")
+
+
+def pytest_configure(config):
+    config.addinivalue_line("markers", "renders: the test renders Live2D for real (skipped without `promo live2d fetch` + node)")

@@ -40,4 +40,4 @@ class ShotType:
         return caption_boxes(ctx, shot)
 
 
-from . import anime, card, cinema, clip, horizon, livestream, screen  # noqa: E402,F401  (register built-in types)
+from . import anime, card, cinema, clip, horizon, livestream, podcast, screen  # noqa: E402,F401  (register built-in types)

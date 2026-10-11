@@ -544,12 +544,21 @@
   }
 
   /* ---- the editor: the same edit language and the same edits as promo/editor.py, so the preview is what the render makes (tests/edit-cases.json runs both) ---- */
-  const EDIT_OPS = ["swap", "trim", "move", "split", "delete", "caption", "music", "bus", "vo", "sfx", "grade", "fade", "speed", "fx", "gain", "import"];
+  const EDIT_OPS = ["swap", "trim", "move", "split", "delete", "caption", "music", "bus", "vo", "sfx", "grade", "fade", "speed", "fx", "gain", "layout", "host", "mood", "gesture", "say", "import"];
   const GRADE_KEYS = ["brightness", "contrast", "saturation", "gamma", "temperature", "vignette"];
   const GRADE_RANGE = { brightness: [-0.5, 0.5], contrast: [0.5, 2], saturation: [0, 2.5], gamma: [0.5, 2], temperature: [2500, 10000], vignette: [0, 1] };
   const FX_PRESETS = ["radio", "tape", "vintage", "telephone", "vinyl", "crackle", "none"];
   const BUSES = ["music", "sfx", "vo", "amb"];
   const IMPORT_KINDS = ["music", "sfx", "voice", "video"];
+  /* The podcast show's names (promo/podcast.py LAYOUTS, SIZES, ANCHOR_X, FRAMES, EDGES; promo/perform.py MOODS, GESTURES); tests/test_editor.py keeps them equal. */
+  const LAYOUTS = ["overlay", "boxed", "two-shot", "speaker"];
+  const SIZES = ["s", "m", "l", "xl"];
+  const ANCHORS = ["bottom-left", "bottom-right", "bottom-center"];
+  const FRAMES = ["none", "card", "circle", "soft"];
+  const EDGES = ["shadow", "glow", "rim", "none"];
+  const MOODS = ["neutral", "happy", "laugh", "excited", "thinking", "surprised", "smug", "sad", "serious"];
+  const GESTURES = ["nod", "shake", "tilt", "lean_in", "laugh_bounce", "shrug", "look_away"];
+  const HOST_EDITS = ["place", "anchor", "size", "x", "y", "frame", "edge", "name", "color", "voice"];
   class EditError extends Error {}
   const eerr = (n, m) => { throw new EditError("line " + n + ": " + m); };
   const n6 = (x) => Math.round(+x * 1e6) / 1e6;
@@ -690,6 +699,34 @@
             for (const k of ["from", "to", "db", "ramp"]) if (k in kv) o[k] = numOf(kv[k], k, n);
             if (o.to <= o.from) eerr(n, "gain to= must be after from=");
           }
+        } else if (op === "layout") {
+          const sid = need(0, "a shot id");
+          if (a.length !== 2) eerr(n, "layout takes a podcast shot id and a layout, e.g. layout 05 speaker");
+          if (!LAYOUTS.includes(a[1])) eerr(n, "layout is one of " + LAYOUTS.join(", ") + ", not '" + a[1] + "'");
+          o = { op, shot: sid, layout: a[1] };
+        } else if (op === "host") {
+          const hid = need(0, "a host (its id or name)"), { kv } = kvOf(a.slice(1), n, HOST_EDITS);
+          if (!Object.keys(kv).length) eerr(n, "host " + hid + " needs one of " + HOST_EDITS.map((k) => k + "=").join(", "));
+          o = { op, host: hid };
+          for (const [k, v] of Object.entries(kv)) o[k] = k === "x" || k === "y" || (k === "size" && /^-?(\d+\.?\d*|\.\d+)$/.test(v)) ? numOf(v, k, n) : v;
+        } else if (op === "mood") {
+          const lid = need(0, "a voice line id");
+          if (a.length !== 2) eerr(n, "mood takes a voice line id and a mood, e.g. mood a3 happy (or happy:0.6)");
+          const i = a[1].indexOf(":"), name = i < 0 ? a[1] : a[1].slice(0, i);
+          if (!MOODS.includes(name)) eerr(n, "mood is one of " + MOODS.join(", ") + ", not '" + name + "'");
+          o = { op, line: lid, mood: name };
+          if (i >= 0) { o.amount = numOf(a[1].slice(i + 1), "the mood amount", n); if (o.amount < 0 || o.amount > 1) eerr(n, "a mood amount is between 0 and 1"); }
+        } else if (op === "gesture") {
+          const lid = need(0, "a voice line id");
+          if (a.length !== 2) eerr(n, "gesture takes a voice line id and a gesture, e.g. gesture a3 nod");
+          const g = a[1];
+          if (!(GESTURES.includes(g) || g === "none" || (g.startsWith("motion:") && g.slice(7).trim()))) eerr(n, "gesture is one of " + GESTURES.join(", ") + ", motion:NAME or none, not '" + g + "'");
+          o = { op, line: lid, gesture: g };
+        } else if (op === "say") {
+          const lid = need(0, "a voice line id");
+          if (a.length !== 2) eerr(n, 'say takes a voice line id and the new words in quotes, e.g. say a3 "Ship it tonight."');
+          o = { op, line: lid, text: a[1].split(/\s+/).filter(Boolean).join(" ") };
+          if (!o.text) eerr(n, "say needs the new words (a voice line cannot be empty; vo " + lid + " mute silences it)");
         } else if (op === "import") {
           const path = need(0, "a file path"), { kv } = kvOf(a.slice(1), n, ["kind", "licence", "source", "id"]);
           if (!IMPORT_KINDS.includes(kv.kind)) eerr(n, "import needs kind= one of " + IMPORT_KINDS.join(", "));
@@ -724,6 +761,11 @@
       if (x === "speed") return "speed " + o.shot + " " + fnum(o.speed);
       if (x === "fx") return "fx " + o.target + " " + o.preset + ("amount" in o ? " amount=" + fnum(o.amount) : "");
       if (x === "gain") return o.clear ? "gain music clear" : "gain music " + ["from", "to", "db", "ramp"].filter((k) => k in o).map((k) => k + "=" + fnum(o[k])).join(" ");
+      if (x === "layout") return "layout " + o.shot + " " + o.layout;
+      if (x === "host") return "host " + qtok(o.host) + " " + HOST_EDITS.filter((k) => k in o).map((k) => k + "=" + (typeof o[k] === "number" ? fnum(o[k]) : qtok(o[k]))).join(" ");
+      if (x === "mood") return "mood " + o.line + " " + o.mood + ("amount" in o ? ":" + fnum(o.amount) : "");
+      if (x === "gesture") return "gesture " + o.line + " " + qtok(o.gesture);
+      if (x === "say") return "say " + o.line + ' "' + String(o.text).replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
       if (x === "import") return "import " + qtok(o.path) + " kind=" + o.kind + " licence=" + qtok(o.licence) + " source=" + qtok(o.source) + (o.id ? " id=" + qtok(o.id) : "");
       return "";
     }).join("\n");
@@ -740,6 +782,34 @@
     const ln = lines.find((x) => lineId(x) === String(lid));
     if (!ln) eerr(n, "there is no voice line " + lid + (lines.length ? " (lines: " + lines.map(lineId).join(", ") + ")" : " (this video has no voice-over)"));
     return ln;
+  }
+  /* podcast.script's line with this id (what `promo podcast plan --force` plans from again), or null. */
+  const scriptLine = (raw, lid) => arr((raw.podcast || {}).script).find((x) => x && typeof x === "object" && String(x.id) === String(lid)) || null;
+  const needHosts = (raw, n) => { if (!arr((raw.podcast || {}).hosts).length) eerr(n, "this video has no podcast hosts"); };
+  /* promo/podcast.py's _val, find_host, set_host and set_show(layout, shot=...), with their words: a value that reads as a number is one. */
+  const pyVal = (v) => (/^-?\d+$/.test(v) ? parseInt(v, 10) : /^(-?\d*\.\d+|-?\d+\.\d*)$/.test(v) ? parseFloat(v) : v);
+  const pyRepr = (v) => (typeof v === "string" ? "'" + v + "'" : String(v));
+  function setHost(raw, hid, kv, n) {
+    if (!("podcast" in raw)) raw.podcast = {};
+    const c = raw.podcast, hs = arr(c.hosts);
+    const h = hs.find((x) => ["id", "name"].some((k) => String(x[k] == null ? "" : x[k]).toLowerCase() === String(hid).toLowerCase()));
+    if (!h) eerr(n, "no host " + pyRepr(String(hid)) + " (have " + hs.map((x) => String(x.id)).join(", ") + ")");
+    const pid = String(h.id);
+    const place = () => { c.place = c.place || {}; return (c.place[pid] = c.place[pid] || {}); };
+    for (const [k, v0] of Object.entries(kv)) {
+      const v = pyVal(String(v0));
+      if (k === "place" || k === "anchor") { if (!ANCHORS.includes(v)) eerr(n, "place " + pyRepr(v) + ": use " + ANCHORS.join(" | ")); place().anchor = v; }
+      else if (k === "size") {
+        if (!(SIZES.includes(v) || (typeof v === "number" && v >= 0.2 && v <= 1.3))) eerr(n, "size " + pyRepr(v) + ": use s | m | l | xl or a height fraction 0.2-1.3");
+        place().size = v;
+      } else if (k === "x" || k === "y") place()[k] = Number(v);
+      else if (k === "frame" || k === "edge") {
+        const allowed = k === "frame" ? FRAMES : EDGES;
+        if (!allowed.includes(String(v))) eerr(n, k + " " + pyRepr(String(v)) + ": use " + allowed.join(" | "));
+        c[k] = String(v);
+      } else if (k === "name" || k === "color") h[k] = v;
+      else if (k === "voice") { const vv = h.voice && typeof h.voice === "object" ? h.voice : h.voice ? { voice: h.voice } : {}; vv.voice = v; h.voice = vv; }
+    }
   }
   function retimeOk(s, b0, b1, bpb, n) {
     if (arr(s.segs).length && s.segs.some((g) => "dur" in g)) eerr(n, "shot " + s.id + " has explicit segs durations, so its length cannot change here: ask the agent to re-time it");
@@ -881,6 +951,28 @@
         if (!m.edit || typeof m.edit !== "object") eerr(n, "this video has no music edit to change the level of");
         if (o.clear) m.edit.gains = [];
         else { const g = { beats: [o.from, o.to], db: o.db }; if ("ramp" in o) g.ramp = o.ramp; m.edit.gains = [...arr(m.edit.gains), g]; }
+      } else if (x === "layout") {
+        const s = shots[findShot(shots, o.shot, n)];
+        if (!("podcast" in raw)) raw.podcast = {};
+        if (!LAYOUTS.includes(o.layout)) eerr(n, "layout " + pyRepr(o.layout) + ": use " + LAYOUTS.join(" | "));
+        if (s.type !== "podcast") eerr(n, "shot " + o.shot + " is a " + (s.type == null ? "None" : s.type) + " shot, not a podcast shot");
+        s.layout = o.layout;
+        if (o.layout === "speaker") { if (!("focus" in s)) s.focus = "auto"; } else delete s.focus;
+      } else if (x === "host") {
+        needHosts(raw, n);
+        const kv = {};
+        for (const k of Object.keys(o)) if (HOST_EDITS.includes(k)) kv[k] = typeof o[k] === "number" ? fnum(o[k]) : String(o[k]);
+        setHost(raw, o.host, kv, n);
+      } else if (x === "mood" || x === "gesture" || x === "say") {
+        if (x !== "say") needHosts(raw, n);
+        for (const ln of [voLine(raw, o.line, n), scriptLine(raw, o.line)]) {      // the script line too, so a re-plan keeps the edit
+          if (!ln) continue;
+          if (x === "mood" && o.mood === "neutral") delete ln.mood;
+          else if (x === "mood") ln.mood = o.mood + ("amount" in o ? ":" + fnum(o.amount) : "");
+          else if (x === "gesture" && o.gesture === "none") { delete ln.gesture; delete ln.gesture_at; }
+          else if (x === "gesture") ln.gesture = o.gesture;
+          else { ln.text = o.text; delete ln.tts; }   // tts spelled the old words; takes are cached by text + voice, so only this line is voiced again
+        }
       } else if (x === "sfx") {
         const s = shots[findShot(shots, o.shot, n)];
         let lst = arr(s.sfx);
@@ -924,6 +1016,12 @@
       else if (o.op === "vo") { steps.add("events"); if ("take" in o) steps.add("vo"); }
       else if (o.op === "sfx") steps.add("events");
       else if (o.op === "import") steps.add("import");
+      else if (o.op === "layout") shots.add(String(o.shot));
+      else if (["host", "mood", "gesture", "say"].includes(o.op)) {
+        /* each host is performed once for the show and every podcast shot draws it, so they all render again; new words or a voice re-voice */
+        for (const s of arr(edit.shots)) if (s.type === "podcast") shots.add(String(s.id));
+        if (o.op === "say" || "voice" in o) steps.add("vo");
+      }
       if (!["import", "grade", "fade"].includes(o.op)) steps.add("mix");
     }
     if (shots.size) steps.add("events");
@@ -942,7 +1040,8 @@
   const importMessage = (name, kind, licence, source) => "[mod:promo-flow] The person imported a " + kind + " file in the Stage's editor (attached): " + name + ". Licence: " + licence + ". Source: " + source + ". Run: promo flow edit import .commission/attachments/" + name + " --kind " + kind
     + " --licence " + shq(licence) + " --source " + shq(source) + " --by \"<their name>\" (rule 4: it is refused without both), then publish. It shows up in the editor's bin. Do not approve anything.";
 
-  const api = { EDIT_INLINE_MAX, editInline, editFilesMessage, importMessage, EditError, editParse, editText, editApply, editPush, editUndo, editRedo, editSummary, localId, takeFile, spaceVideo, spaceFree, FILES_TAB, FILES_MAX, fileProblem, addFiles, filesMessage, isVideoFile, WIDGET_TAB, WIDGET_PX, widgetsFor, widgetHeight, widgetDoc, themeCss, widgetMessage, settleWait, SETTLE_GAP_MS, PREVIEW_POLL_MS, commentCount, forYou, canAutopilot, jobView, clockS, aboutS, arr, mref, fileBad, missingFile, missingAll, hasPreview, noFrame, sceneStatus, model, finalState, missingRule, previewRule, bodyOf, downloadName, textFileName, wordsOf, parseBlocks, inline, plain, paginate, outline, findPages, markSplit, readMinutes, frameTimeline, DENSITY_CHOICES, clockT, noteChange, notesView, notesUnsettled, notesMessage, shareRows, outputProblem, previewOutput, outputDirty };
+  const PODCAST = { LAYOUTS, MOODS, GESTURES };
+  const api = { PODCAST, EDIT_INLINE_MAX, editInline, editFilesMessage, importMessage, EditError, editParse, editText, editApply, editPush, editUndo, editRedo, editSummary, localId, takeFile, spaceVideo, spaceFree, FILES_TAB, FILES_MAX, fileProblem, addFiles, filesMessage, isVideoFile, WIDGET_TAB, WIDGET_PX, widgetsFor, widgetHeight, widgetDoc, themeCss, widgetMessage, settleWait, SETTLE_GAP_MS, PREVIEW_POLL_MS, commentCount, forYou, canAutopilot, jobView, clockS, aboutS, arr, mref, fileBad, missingFile, missingAll, hasPreview, noFrame, sceneStatus, model, finalState, missingRule, previewRule, bodyOf, downloadName, textFileName, wordsOf, parseBlocks, inline, plain, paginate, outline, findPages, markSplit, readMinutes, frameTimeline, DENSITY_CHOICES, clockT, noteChange, notesView, notesUnsettled, notesMessage, shareRows, outputProblem, previewOutput, outputDirty };
   root.PF = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof window !== "undefined" ? window : globalThis);

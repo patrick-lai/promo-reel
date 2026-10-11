@@ -25,7 +25,7 @@ sys.path.insert(0, HERE)
 import serve  # noqa: E402
 
 CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-STAGES = ["discover", "scripts", "pick", "storyboard", "assets", "keyframes", "confirm", "drafts", "review", "autopilot", "final", "edit"]
+STAGES = ["discover", "scripts", "pick", "storyboard", "assets", "keyframes", "confirm", "drafts", "review", "autopilot", "final", "edit", "podcast"]
 WIDTHS = [(380, 780), (520, 900), (900, 900), (1100, 900)]
 
 
@@ -454,6 +454,26 @@ UICHECK = r"""(async () => {
     await wait(450);
     ok('and is gone afterwards', !Q('#content .pf-out'));
   }
+  if (step === 'podcast-discover') {
+    const labels = QA('.choice.style b').map((b) => b.textContent);
+    ok('the request mentions VTuber hosts: the podcast style comes first, marked suggested', labels[0] === 'Podcast with animated hosts' && !!Q('.choice.style .chip.accent'), labels.join(' | '));
+    ok('its sample is the two-avatars sketch', !!Q('.choice.style .sty-podcast .av.a') && !!Q('.choice.style .sty-podcast .av.b'));
+  }
+  if (step === 'podcast') {
+    ok('the Cast card is on the overview', await until(() => QA('.cast-host').length === 2), QA('.cast-host').length);
+    ok('each host has a real portrait and a voice sample', await until(() => QA('.cast-por img').length === 2 && QA('.cast-voice audio').length === 2), QA('.cast-por img').length + ' ' + QA('.cast-voice audio').length);
+    ok('the four layouts show stills', await until(() => QA('.cast-lay img').length === 4), QA('.cast-lay img').length);
+    ok('the current layout is marked', QA('.cast-lay.on').length === 1 && /On the picture/.test(Q('.cast-lay.on').textContent), (Q('.cast-lay.on') || {}).textContent);
+    ok('the show starts with no box', Q('[data-k="frame:none"]').getAttribute('aria-pressed') === 'true');
+    await click('[data-k="host:a:size:xl"]');
+    ok('a size chip queues a change, not a message', /Send 1 change/.test(Q('[data-k=cast-send]').textContent) && Q('[data-k="host:a:size:xl"]').getAttribute('aria-pressed') === 'true', (Q('[data-k=cast-send]') || {}).textContent);
+    const lay = QA('.cast-lay input').find((i) => i.value === 'two-shot'); lay.click(); await wait(350);
+    ok('picking a layout queues a second change', /Send 2 changes/.test(Q('[data-k=cast-send]').textContent));
+    await click('[data-k=cast-send]');
+    ok('Send runs promo podcast set for each change, then new previews', await until(() => /action podcast -> .*promo podcast set host a size=xl ; promo podcast set layout two-shot ; promo podcast preview --layouts/.test(log())),
+      log().split('\n').find((l) => /action podcast/.test(l)) || 'no podcast action');
+    ok('the Cast card does not overflow the pane', Q('.cast').scrollWidth <= Q('.cast').clientWidth + 1, Q('.cast').scrollWidth + ' > ' + Q('.cast').clientWidth);
+  }
   if (step === 'edit') {
     ok('the Edit tab opens by itself at the drafts stage', Q('#tab-edit') && Q('#tab-edit').getAttribute('aria-selected') === 'true', (Q('.tab[aria-selected=true]') || {}).id);
     ok('the editor is there', await until(() => QA('.ed-clip').length === 4), QA('.ed-clip').length);
@@ -548,7 +568,7 @@ def uicheck(sh, only=()):
     for r in ([] if only else sh.js(WIDE, sh.open("widgets", 900, 1000, False)) or []):
         bad += not r["pass"]
         print(("ok   " if r["pass"] else "FAIL ") + f"widgets-wide: {r['name']}" + (f"  [{r['info']}]" if r["info"] and not r["pass"] else ""))
-    for st in ["starting", "plan", "widgets", "dense", "pick", "review", "autopilot", "storyboard", "foryou-many", "edit"]:
+    for st in ["starting", "plan", "widgets", "dense", "pick", "review", "autopilot", "storyboard", "foryou-many", "edit", "podcast-discover", "podcast"]:
         if only and st not in only:
             continue
         mod = sh.open(st, 520, 1000, False)

@@ -62,7 +62,35 @@ def referenced_ids(spec):
     for name, e in (spec.raw.get("sfx", {}).get("library") or {}).items():
         if e.get("asset"):
             ids.append(e["asset"])
+    for _, v in voice_list(spec):                 # a dialogue's per-host / per-line voices (say, voicestudio) name their licence entry
+        if v.get("asset") and v["asset"] not in ids:
+            ids.append(v["asset"])
     return ids
+
+
+def voice_list(spec):
+    from .vo import voices_used
+    try:
+        return voices_used(spec)
+    except RuntimeError:
+        return []
+
+
+def voice_problems(spec, manifest):
+    """Rule 4 for synthesised voices: a say / voicestudio voice needs an `asset:` naming the licence entry of that voice
+    (kokoro's licence entries are vo.model_asset / vo.voices_asset)."""
+    out, seen = [], set()
+    for lid, v in voice_list(spec):
+        eng = v["engine"]
+        key = (eng, v.get("asset"))
+        if key in seen:
+            continue
+        seen.add(key)
+        if eng == "kokoro":
+            continue                               # vo.model_asset / voices_asset: referenced_ids checks them, `promo vo` needs them
+        if not v.get("asset"):
+            out.append(f"vo line {lid}: engine {eng} needs `asset:` in its voice (an assets.yaml entry of kind vo_model with the licence of that voice)")
+    return out
 
 
 def validate(spec, manifest=None):
@@ -85,6 +113,7 @@ def validate(spec, manifest=None):
     for rid in referenced_ids(spec):
         if rid not in manifest:
             problems.append(f"{rid}: referenced by the spec but not in the assets manifest")
+    problems += voice_problems(spec, manifest)
     return problems
 
 

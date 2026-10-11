@@ -945,3 +945,47 @@ if __name__ == "__main__":
         if name.startswith("test_") and callable(fn):
             fn()
             print("ok", name)
+
+
+def test_layer_modes_match_the_renderer():
+    """page.html applies set -> blend -> add -> mul from the parameter's default each frame (no pile-up across frames), clamped like
+    Cubism; promo.perform.apply_layers is the same maths. Read back what the renderer really set."""
+    if not _render_ready():
+        print("skip test_layer_modes_match_the_renderer (needs `promo live2d fetch` + node)")
+        return
+    from promo import perform as PF
+    n = 6
+    layers = {"ParamAngleX": {"set": np.array([0.0, 10, 20, 25, 25, 25]), "add": np.full(n, 5.0), "mul": np.array([1, 1, 1, 1, 2, 2.0])},
+              "ParamCheek": {"add": np.full(n, 0.25)},                                           # add only: must not grow frame after frame
+              "ParamMouthForm": {"set": np.full(n, -1.0), "blend": [(np.full(n, 1.0), np.linspace(0, 1, n))]}}
+    _, info = L2.render_stills("hiyori", 64, 64, layers, warmup=3, readback=list(layers), describe=True)
+    rng = {r[0]: r[1:] for r in info["ranges"]}
+    for pid, d in layers.items():
+        lo, hi, dflt = rng[pid]
+        want = PF.apply_layers(d, n, default=dflt, lo=lo, hi=hi)
+        got = np.array([fr[pid] for fr in info["readback"]])
+        assert np.allclose(got, want, atol=1e-4), (pid, got, want)
+
+
+def test_render_deterministic_supersampled():
+    if not _render_ready():
+        print("skip test_render_deterministic_supersampled (needs `promo live2d fetch` + node)")
+        return
+    y, sr = _speechy(dur=1.0, seed=5)
+    d = tempfile.mkdtemp()
+    import soundfile as sf
+    wav = os.path.join(d, "v.wav")
+    sf.write(wav, y, sr)
+    lines = [dict(id="a1", t0=0.0, t1=0.5, mood="happy", gesture="nod")]
+    hashes = []
+    for k in range(2):
+        out = os.path.join(d, f"s{k}.mov")
+        rep = L2.render_host("mao", out, wav=wav, duration=0.5, width=96, height=120, seed=4, warmup=5, supersample=2, lines=lines, log=lambda *a: None)
+        assert rep["supersample"] == 2 and rep["frames"] == 15 and rep["missing_params"] == []
+        raw = subprocess.check_output(["ffmpeg", "-v", "error", "-i", out, "-f", "rawvideo", "-pix_fmt", "rgba", "-"])
+        assert len(raw) == 15 * 96 * 120 * 4
+        hashes.append(hashlib.sha256(raw).hexdigest())
+    assert hashes[0] == hashes[1], hashes
+    a = np.frombuffer(raw, np.uint8).reshape(15, 120, 96, 4)[..., 3]
+    assert a.max() == 255 and (a == 0).any()                              # alpha kept through the downsample
+    shutil.rmtree(d)

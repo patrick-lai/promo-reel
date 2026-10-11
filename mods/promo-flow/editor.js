@@ -40,6 +40,7 @@
       const ops = [...stack.done, ...(extra || [])];
       return PF.editApply(edit.spec || {}, ops, B(), edit.beats_per_bar || 4);
     }
+    const LAYOUT_LABEL = { overlay: "On the picture (no box)", boxed: "Boxed (app window + panels)", "two-shot": "Two-shot", speaker: "Speaker cam" };
     let D = null;
     function rebuild() {
       let r;
@@ -58,6 +59,7 @@
         const lid = String(ln.id != null ? ln.id : ln.shot), v = arr((edit.vo || {}).lines).find((x) => x.id === lid) || {}, sh = startOf.get(String(ln.shot));
         const file = ln.file && v.file && specLine(lid) && specLine(lid).file !== ln.file ? takeMedia(ln.file) : v.file;
         return { id: lid, shot: String(ln.shot), at: +ln.at || 0, t: sh ? sh.t0 + (+ln.at || 0) : null, dur: v.dur || 1.5, text: ln.text, muted: !!ln.mute, db: +ln.db || 0,
+          host: ln.host != null ? String(ln.host) : null, mood: ln.mood ? String(ln.mood).split(":")[0] : "neutral", gesture: ln.gesture || "",
           gain: (v.gain_db != null ? v.gain_db - (v.db || 0) : 0) + (+ln.db || 0), file, changed: !v.id || v.muted !== !!ln.mute || v.at !== ln.at || String(v.shot) !== String(ln.shot) || (v.db || 0) !== (+ln.db || 0) };
       });
       const sfx = [];
@@ -71,6 +73,13 @@
       const dur = shots.length ? shots[shots.length - 1].t1 : edit.duration || 0;
       D = { raw, shots, vo, sfx, music, buses, dur, origin };
       if (playhead > dur) playhead = dur;
+    }
+    /* A podcast show's speaker colour for a voice line (promo/podcast.py COLORS when the host has none). */
+    const PCOL = ["#7FD1FF", "#FFB86B", "#B9F18C", "#F49AC2"];
+    function hostOf(l) {
+      const hs = arr(((D && D.raw) || {}).podcast && D.raw.podcast.hosts), who = String(l.host || "").toLowerCase();
+      const i = who ? hs.findIndex((h) => [h.id, h.name, h.model].some((x) => x != null && String(x).toLowerCase() === who)) : -1;
+      return i < 0 ? null : { i, id: String(hs[i].id), name: hs[i].name || hs[i].model, color: hs[i].color || PCOL[i % PCOL.length] };
     }
     const specLine = (lid) => arr(((edit.spec || {}).vo || {}).lines).find((x) => String(x.id != null ? x.id : x.shot) === lid);
     function binItem(key) {
@@ -398,6 +407,11 @@
         parts.push(h("h3", { class: "ed-ih" }, "Shot " + s.id, h("small", { text: (s.cfg.type || "clip") + " · " + clock(s.t0) + "–" + clock(s.t1) + " · beats " + s.b0 + "–" + s.b1 })),
           s.media.rendered ? h("p", { class: "ed-ok" }, ic("check"), "Rendered") : h("p", { class: "ed-warn" }, ic("clock"), "Not rendered yet: the viewer shows the source footage"),
           field("Footage", srcSel), field("Starts at (s into the footage)", tin), field("Caption", capIn),
+          s.cfg.type === "podcast" ? field("Layout", (() => {
+            const ls = h("select", { "data-k": "ins-layout", disabled: dis }, PF.PODCAST.LAYOUTS.map((x) => h("option", { value: x, selected: x === (s.cfg.layout || ((D.raw.podcast || {}).layout) || "overlay") }, LAYOUT_LABEL[x] || x)));
+            ls.addEventListener("change", () => push({ op: "layout", shot: s.id, layout: ls.value }));
+            return ls;
+          })()) : null,
           s.cfg.ui === false ? h("p", { class: "sub", text: "A generated non-UI plate. It never stands for the product." }) : null,
           h("div", { class: "ed-acts" },
             h("button", { type: "button", class: "btn ghost sm", "data-k": "ins-split", disabled: dis || !(playhead > s.t0 + B() / 2 && playhead < s.t1 - B() / 2), onclick: () => split(s) }, ic("cut"), "Split at playhead"),
@@ -410,7 +424,22 @@
         const dbv = h("output", { text: (l.db > 0 ? "+" : "") + l.db + " dB" });
         db.addEventListener("input", () => { dbv.textContent = (+db.value > 0 ? "+" : "") + db.value + " dB"; });
         db.addEventListener("change", () => push({ op: "vo", line: l.id, db: +db.value }));
-        parts.push(h("h3", { class: "ed-ih" }, "Voice " + l.id, h("small", { text: "shot " + l.shot + " · " + clock(l.t) })), h("blockquote", { class: "ed-quote", text: l.text || "" }),
+        const ho = hostOf(l);
+        let perf = null;
+        if (ho) {
+          const md = h("select", { "data-k": "ins-vo-mood", disabled: dis }, PF.PODCAST.MOODS.map((x) => h("option", { value: x, selected: x === l.mood }, x)));
+          md.addEventListener("change", () => push({ op: "mood", line: l.id, mood: md.value }));
+          const gs = h("select", { "data-k": "ins-vo-gesture", disabled: dis }, h("option", { value: "none", selected: !l.gesture }, "none"),
+            PF.PODCAST.GESTURES.map((x) => h("option", { value: x, selected: x === l.gesture }, x.replace("_", " "))),
+            l.gesture && !PF.PODCAST.GESTURES.includes(l.gesture) ? h("option", { value: l.gesture, selected: true }, l.gesture) : null);
+          gs.addEventListener("change", () => push({ op: "gesture", line: l.id, gesture: gs.value }));
+          const words = h("textarea", { rows: "2", maxlength: "300", "data-k": "ins-vo-say", disabled: dis, "aria-label": "Words of this line" });
+          words.value = l.text || "";
+          words.addEventListener("change", () => { const t = words.value.split(/\s+/).filter(Boolean).join(" "); if (t && t !== l.text) push({ op: "say", line: l.id, text: t }); });
+          perf = [field("Mood", md), field("Gesture", gs), field("Words (re-voices this line)", words)];
+        }
+        parts.push(h("h3", { class: "ed-ih" }, ho ? h("span", { class: "ed-spk", style: "background:" + ho.color }) : null, (ho ? ho.name + " · " : "Voice ") + l.id, h("small", { text: "shot " + l.shot + " · " + clock(l.t) })),
+          ho ? null : h("blockquote", { class: "ed-quote", text: l.text || "" }), ...(perf || []),
           field("Starts (s into shot " + l.shot + ")", at), field("Level", h("span", { class: "ed-row" }, db, dbv)),
           h("div", { class: "ed-acts" }, h("button", { type: "button", class: "btn ghost sm", "data-k": "ins-vo-mute", "aria-pressed": String(l.muted), disabled: dis, onclick: () => push({ op: "vo", line: l.id, mute: !l.muted }) }, ic(l.muted ? "vol" : "mute"), l.muted ? "Unmute" : "Mute")),
           askBox("voice line " + l.id + " (“" + (l.text || "") + "”) at " + clock(l.t)));
@@ -510,8 +539,12 @@
         }
       }
       paintStrips(lv);
-      for (const l of D.vo) if (l.t != null) lo.append(h("div", { class: "ed-vob" + (l.muted ? " muted" : "") + (l.changed ? " changed" : "") + (sel && sel.kind === "vo" && sel.id === l.id ? " sel" : ""), "data-vo": l.id, tabindex: "-1", role: "button",
-        "aria-label": "Voice " + l.id + " at " + clock(l.t) + (l.muted ? ", muted" : ""), title: l.text, style: "left:" + l.t * pps + "px;width:" + Math.max(6, l.dur * pps) + "px" }, h("span", { text: l.text || l.id })));
+      for (const l of D.vo) if (l.t != null) {
+        const ho = hostOf(l);
+        lo.append(h("div", { class: "ed-vob" + (l.muted ? " muted" : "") + (l.changed ? " changed" : "") + (ho ? " spk" : "") + (sel && sel.kind === "vo" && sel.id === l.id ? " sel" : ""), "data-vo": l.id, "data-host": ho ? ho.id : null, tabindex: "-1", role: "button",
+          "aria-label": (ho ? ho.name + ", line " : "Voice ") + l.id + " at " + clock(l.t) + (l.muted ? ", muted" : ""), title: (ho ? ho.name + ": " : "") + l.text,
+          style: "left:" + l.t * pps + "px;width:" + Math.max(6, l.dur * pps) + "px" + (ho ? ";--spk:" + ho.color : "") }, h("span", { text: l.text || l.id })));
+      }
       if (D.music) {
         const mb = h("div", { class: "ed-mus" + (sel && sel.kind === "music" ? " sel" : "") + (D.music.edited ? " changed" : ""), "data-music": "1", tabindex: "-1", role: "button", "aria-label": "Music: " + D.music.asset, style: "width:" + D.dur * pps + "px" });
         const cv = h("canvas", { height: "36", width: String(Math.min(4000, Math.ceil(D.dur * pps))) });

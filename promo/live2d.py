@@ -47,9 +47,34 @@ class Live2DError(RuntimeError):
 
 
 # ---------------------------------------------------------------- registry / fetch
-def registry(path=REGISTRY):
+SAMPLE_TYPES = ("original",)                     # Live2D Original Characters (the free sample models)
+BYO_TYPES = ("own", "commissioned", "original")  # bring-your-own models: drawn / commissioned / bought for this use
+REFUSED_TYPES = ("collaboration", "external")
+
+
+def user_registry_path():
+    """Bring-your-own models (`promo live2d add`): <config dir>/live2d-models.yaml, next to the promo config."""
+    from .home import config_path
+    return os.environ.get("PROMO_LIVE2D_MODELS") or os.path.join(os.path.dirname(config_path()), "live2d-models.yaml")
+
+
+def user_models(path=None):
+    p = path or user_registry_path()
+    if not os.path.exists(p):
+        return {}
+    with open(p) as f:
+        return ((yaml.safe_load(f) or {}).get("models")) or {}
+
+
+def registry(path=REGISTRY, user=True):
+    """live2d/assets.yaml merged with the user's own models (theirs are marked `user: true`; a sample id cannot be replaced)."""
     with open(path) as f:
-        return yaml.safe_load(f)
+        reg = yaml.safe_load(f)
+    if user:
+        for k, m in user_models().items():
+            if k not in reg["models"]:
+                reg["models"][k] = dict(m, user=True)
+    return reg
 
 
 def model_entry(name, reg=None):
@@ -57,8 +82,18 @@ def model_entry(name, reg=None):
     m = (reg.get("models") or {}).get(name)
     if not m:
         raise Live2DError(f"unknown Live2D model {name!r}; known: {sorted(reg.get('models') or {})}")
-    if m.get("character_type") != "original":
-        raise Live2DError(f"{name}: character_type={m.get('character_type')!r}. Only Live2D Original Characters may be used in a "
+    ct = m.get("character_type")
+    if m.get("user"):
+        if ct not in BYO_TYPES:
+            raise Live2DError(f"{name}: character_type={ct!r}. A model of your own must be own | commissioned | original (a collaboration or "
+                              f"third-party character is refused: its terms do not cover a promo)")
+        miss = [k for k in ("licence", "source_url") if not m.get(k)]
+        if miss:
+            raise Live2DError(f"{name}: your model needs {' and '.join(miss)} (what lets you use it, and where it came from): "
+                              f"`promo live2d add ... --licence TEXT --source URL`")
+        return m
+    if ct not in SAMPLE_TYPES:
+        raise Live2DError(f"{name}: character_type={ct!r}. Only Live2D Original Characters may be used in a "
                           f"promo (Collaboration Characters are non-commercial only; external characters have third-party terms). {m.get('licence', '')}")
     return m
 
@@ -96,7 +131,7 @@ def model_dir(name):
 
 def fetch(names=None, force=False, log=print):
     """Download Cubism Core + the listed (default: all original-character) models, verify sha256, unpack."""
-    reg = registry()
+    reg = registry(user=False)
     rt = reg["runtime"]
     core = _abs(rt["path"])
     if force or not os.path.exists(core) or sha256_file(core) != rt["sha256"]:
@@ -134,17 +169,44 @@ def fetch(names=None, force=False, log=print):
 def resolve_model(name):
     reg = registry()
     m = model_entry(name, reg)
-    d = model_dir(name)
-    p = os.path.join(d, m["model3"])
     core = _abs(reg["runtime"]["path"])
-    if not os.path.exists(p) or not os.path.exists(core):
+    if m.get("user"):
+        p = os.path.expanduser(m["model3"])
+        d = os.path.dirname(p)
+        if not os.path.exists(p):
+            raise Live2DError(f"{name}: model file {p} is missing (registered with `promo live2d add`; the files stay where they were)")
+    else:
+        d = model_dir(name)
+        p = os.path.join(d, m["model3"])
+        if not os.path.exists(p):
+            raise Live2DError(f"{name}: model or Cubism Core not fetched; run `promo live2d fetch`")
+    if not os.path.exists(core):
         raise Live2DError(f"{name}: model or Cubism Core not fetched; run `promo live2d fetch`")
     if sha256_file(core) != reg["runtime"]["sha256"]:
         raise Live2DError("Cubism Core sha256 differs from live2d/assets.yaml; run `promo live2d fetch --force`")
+    return dict(m, id=name, dir=os.path.dirname(p), model3_path=p, core=core, notice=reg["notice"], **model3_info(p))
+
+
+def model3_info(p):
+    """What a model3.json offers: groups, expressions {name: path}, motions {name: path} (file stem and Group:i),
+    param_ids (from the .cdi3 display info, or the motions / expressions when there is none; empty = unknown)."""
     with open(p) as f:
         m3 = json.load(f)
+    d = os.path.dirname(p)
+    fr = m3.get("FileReferences") or {}
     groups = {g["Name"]: g["Ids"] for g in m3.get("Groups", [])}
-    return dict(m, id=name, dir=d, model3_path=p, core=core, groups=groups, notice=reg["notice"])
+    exps = {e["Name"]: os.path.join(d, e["File"]) for e in fr.get("Expressions") or []}
+    mots = {}
+    for g, lst in (fr.get("Motions") or {}).items():
+        for i, mo in enumerate(lst):
+            path = os.path.join(d, mo["File"])
+            mots[os.path.splitext(os.path.splitext(os.path.basename(mo["File"]))[0])[0]] = path
+            mots[f"{g or 'Default'}:{i}"] = path
+    ids = []
+    if fr.get("DisplayInfo") and os.path.exists(os.path.join(d, fr["DisplayInfo"])):
+        with open(os.path.join(d, fr["DisplayInfo"])) as f:
+            ids = [x["Id"] for x in json.load(f).get("Parameters", [])]
+    return dict(groups=groups, expressions=exps, motions=mots, param_ids=ids)
 
 
 # ---------------------------------------------------------------- audio -> lip track
@@ -353,28 +415,31 @@ def idle_tracks(n, fps, seed, mouth=None, partner_mouth=None, gaze=0.0, eyes=("P
     return tr
 
 
-def host_tracks(model, n, fps, seed, wav=None, partner_wav=None, gaze=0.0, sr=None):
-    """All per-frame parameter tracks for one host. Returns (tracks {ParamId: np.array}, info)."""
-    mouth = partner = None
+def host_tracks(model, n, fps, seed, wav=None, partner_wav=None, gaze=0.0, sr=None, lines=None, partner_lines=None, screen_dir=(0.5, 0.35),
+                energy=1.0):
+    """All per-frame parameter LAYERS for one host (promo.perform): blink / breath / sway from `idle_tracks`, then
+    visemes, moods, gestures, gaze, prosody beats and listening nods. `gaze` = the side a listening host turns to (the
+    partner or, in the livestream column, the app screen): -1 left, +1 right, a scalar or a per-frame array. `lines` /
+    `partner_lines` = script lines in global seconds ({t0, t1, mood, gesture, look, react}). Returns (layers, info, mouth)."""
+    from . import perform as PF
+    mouth = partner = y = r = y2 = r2 = None
     info = {}
     if wav:
         y, r = load_wav(wav)
-        lt = lip_track(y, r, fps, n, form=bool(model["mouth"].get("form")))
+        lt = lip_track(y, r, fps, n, form=False)
         mouth = lt["open"]
         info.update(lead_s=lt["lead_s"], lag=lip_lag(mouth, y, r, fps))
     if partner_wav:
         y2, r2 = load_wav(partner_wav)
         partner = lip_track(y2, r2, fps, n, form=False)["open"]
     eyes = tuple(model["groups"].get("EyeBlink") or ("ParamEyeLOpen", "ParamEyeROpen"))
-    tr = idle_tracks(n, fps, seed, mouth, partner, gaze, eyes)
-    open_ids = list(dict.fromkeys(list(model["groups"].get("LipSync") or []) + list(model["mouth"].get("open") or [])))
+    base = idle_tracks(n, fps, seed, None, None, 0.0, eyes)
+    g = np.broadcast_to(np.asarray(gaze, float), (n,)) if np.ndim(gaze) == 0 else np.asarray(gaze, float)[:n]
+    layers, pinfo = PF.perform(model, n, fps, seed, base, mouth=mouth, y=y, sr=r, lines=lines or [], partner_lines=partner_lines or [],
+                               partner_mouth=partner, partner_y=y2, partner_sr=r2, partner_dir=g, screen_dir=screen_dir, energy=energy)
+    info.update(pinfo)
     m = mouth if mouth is not None else np.zeros(n)
-    for pid in open_ids:
-        tr[pid] = m
-    if model["mouth"].get("form") and mouth is not None:
-        tr[model["mouth"]["form"]] = lt["form"]
-    info["mouth_ids"] = open_ids
-    return tr, info, m
+    return layers, info, m
 
 
 # ---------------------------------------------------------------- render
@@ -384,16 +449,21 @@ def render_lock(log=print):
     return heavy_lock("live2d host render", log=lambda *a: log(*a))
 
 
-def ffmpeg_out(out, W, H, fps, fmt=None, bg=None):
-    """Encoder args for an RGBA rawvideo pipe -> transparent layer (or green screen with bg='green')."""
+def ffmpeg_out(out, W, H, fps, fmt=None, bg=None, src=None):
+    """Encoder args for an RGBA rawvideo pipe -> transparent layer (or green screen with bg='green'). `src` = (w, h) of
+    a supersampled, PREMULTIPLIED input: scaled down to W x H with lanczos, then un-premultiplied (no dark fringes)."""
     fmt = fmt or {".mov": "prores4444", ".webm": "vp9", ".png": "png"}.get(os.path.splitext(out)[1].lower(), "prores4444")
-    cmd = ["nice", "-n", "10", "ffmpeg", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgba", "-s", f"{W}x{H}", "-r", str(fps), "-i", "-", "-threads", "2"]
+    iw, ih = src or (W, H)
+    cmd = ["nice", "-n", "10", "ffmpeg", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgba", "-s", f"{iw}x{ih}", "-r", str(fps), "-i", "-", "-threads", "2"]
+    down = f"format=gbrap,scale={W}:{H}:flags=lanczos,unpremultiply=inplace=1" if src else None
     if bg:
         col = {"green": "0x00b140"}.get(bg, bg)
         cmd = ["nice", "-n", "10", "ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", f"color=c={col}:s={W}x{H}:r={fps}",
-               "-f", "rawvideo", "-pix_fmt", "rgba", "-s", f"{W}x{H}", "-r", str(fps), "-i", "-", "-threads", "2",
-               "-filter_complex", "[0][1]overlay=shortest=1:format=auto"]
+               "-f", "rawvideo", "-pix_fmt", "rgba", "-s", f"{iw}x{ih}", "-r", str(fps), "-i", "-", "-threads", "2",
+               "-filter_complex", (f"[1]{down}[fg];[0][fg]" if down else "[0][1]") + "overlay=shortest=1:format=auto"]
         return cmd + ["-c:v", "libx264", "-crf", "14", "-pix_fmt", "yuv420p", out]
+    if down:
+        cmd += ["-vf", down]
     if fmt == "prores4444":
         return cmd + ["-c:v", "prores_ks", "-profile:v", "4444", "-pix_fmt", "yuva444p10le", "-alpha_bits", "16", "-vendor", "apl0", out]
     if fmt == "vp9":
@@ -405,9 +475,18 @@ def ffmpeg_out(out, W, H, fps, fmt=None, bg=None):
     raise Live2DError(f"unknown format {fmt}")
 
 
+def _scaled_frame(model, frame, H, k):
+    """Framing override for a render k times larger (px keys scale; fractions do not)."""
+    if not frame or k == 1:
+        return frame
+    return {key: (v * k if key == "pad_top" else v) for key, v in frame.items()}
+
+
 def render_host(model_name, out, *, wav=None, partner_wav=None, duration=None, fps=30, width=640, height=720, seed=1,
-                gaze=0.0, fmt=None, bg=None, frame=None, log=print, warmup=45):
-    """Render one host layer. Returns a report dict (frames, secs, s per output second, lip lag, files)."""
+                gaze=0.0, fmt=None, bg=None, frame=None, log=print, warmup=45, lines=None, partner_lines=None, screen_dir=(0.5, 0.35),
+                supersample=1, energy=1.0):
+    """Render one host layer. `supersample` = 2 renders at 2x and scales down (lanczos, premultiplied) for crisp line
+    art; 1 = draft. Returns a report dict (frames, secs, s per output second, lip lag, performance info, files)."""
     model = resolve_model(model_name)
     if duration is None:
         if not wav:
@@ -415,13 +494,15 @@ def render_host(model_name, out, *, wav=None, partner_wav=None, duration=None, f
         import soundfile as sf
         duration = sf.info(wav).duration
     n = int(round(duration * fps))
-    tracks, info, mouth = host_tracks(model, n, fps, seed, wav, partner_wav, gaze)
+    tracks, info, mouth = host_tracks(model, n, fps, seed, wav, partner_wav, gaze, lines=lines, partner_lines=partner_lines,
+                                      screen_dir=screen_dir, energy=energy)
+    from .perform import job_tracks
+    k = max(1, int(supersample))
     os.makedirs(os.path.dirname(os.path.abspath(out)) or ".", exist_ok=True)
     side = os.path.splitext(out)[0]
-    job = dict(modelDir=model["dir"], model3=os.path.relpath(model["model3_path"], model["dir"]), core=model["core"], width=width, height=height,
-               fps=fps, frames=n, seed=seed, warmup=warmup, frame=frame_job(model, frame, height),
-               tracks={k: dict(v=[round(float(x), 4) for x in v], mode="set") for k, v in tracks.items()},
-               readback=info["mouth_ids"][:1], readbackPath=side + ".readback.json",
+    job = dict(modelDir=model["dir"], model3=os.path.relpath(model["model3_path"], model["dir"]), core=model["core"], width=width * k, height=height * k,
+               fps=fps, frames=n, seed=seed, warmup=warmup, frame=frame_job(model, _scaled_frame(model, frame, height, k), height * k),
+               tracks=job_tracks(tracks), readback=info["mouth_ids"][:1], readbackPath=side + ".readback.json", premultiplied=k > 1,
                chromium=os.environ.get("PROMO_CHROMIUM") or _default_chromium())
     with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
         json.dump(job, f)
@@ -429,9 +510,9 @@ def render_host(model_name, out, *, wav=None, partner_wav=None, duration=None, f
     node = os.environ.get("PROMO_NODE", "node")
     t0 = time.time()
     with render_lock(log):
-        log(f"live2d render {model_name}: {n} frames {width}x{height} @ {fps} fps -> {out}")
+        log(f"live2d render {model_name}: {n} frames {width}x{height}" + (f" (x{k} supersampled)" if k > 1 else "") + f" @ {fps} fps -> {out}")
         p1 = subprocess.Popen(["nice", "-n", "10", node, os.path.join(L2D_DIR, "render.mjs"), jpath], stdout=subprocess.PIPE, cwd=L2D_DIR)
-        p2 = subprocess.Popen(ffmpeg_out(out, width, height, fps, fmt, bg), stdin=p1.stdout)
+        p2 = subprocess.Popen(ffmpeg_out(out, width, height, fps, fmt, bg, src=(width * k, height * k) if k > 1 else None), stdin=p1.stdout)
         p1.stdout.close()
         rc2 = p2.wait()
         rc1 = p1.wait()
@@ -441,9 +522,10 @@ def render_host(model_name, out, *, wav=None, partner_wav=None, duration=None, f
     secs = time.time() - t0
     rb = json.load(open(job["readbackPath"]))
     applied = np.array([fr.get(job["readback"][0], 0.0) for fr in rb["frames"]]) if job["readback"] else mouth
-    rep = dict(model=model_name, out=os.path.abspath(out), frames=n, fps=fps, size=[width, height], seed=seed, secs=round(secs, 1),
+    rep = dict(model=model_name, out=os.path.abspath(out), frames=n, fps=fps, size=[width, height], supersample=k, seed=seed, secs=round(secs, 1),
                s_per_output_s=round(secs / (n / fps), 2), lead_s=info.get("lead_s"), lip_lag_track=info.get("lag"),
-               notice=model["notice"]["short"], credit=model.get("credit"))
+               notice=model["notice"]["short"], credit=model.get("credit"), missing_params=(rb.get("info") or {}).get("missing"),
+               perform={k_: info.get(k_) for k_ in ("moods", "gestures", "peaks", "nods", "vowels")})
     if wav:
         y, r = load_wav(wav)
         rep["lip_lag_applied"] = lip_lag(applied, y, r, fps)     # what the renderer actually set, frame by frame
@@ -453,7 +535,7 @@ def render_host(model_name, out, *, wav=None, partner_wav=None, duration=None, f
     aspect = (inf.get("width") or 1) / (inf.get("height") or 1)
     at = mouth_probe_at(model, width, height, aspect, frame)
     fr_px = framing(model, height, frame)
-    rep["framing"] = {k: (round(v, 3) if isinstance(v, float) else v) for k, v in fr_px.items()}
+    rep["framing"] = {k_: (round(v, 3) if isinstance(v, float) else v) for k_, v in fr_px.items()}
     if wav and at and fmt in (None, "prores4444") and out.endswith(".mov") and not bg:
         pix = pixel_mouth(out, width, height, at)
         rep["lip_lag_pixels"] = lip_lag(pix, y, r, fps)
@@ -513,24 +595,43 @@ def mouth_probe_at(model, W, H, aspect, override=None):
     return [x, y]
 
 
-def render_stills(model_name, width, height, tracks, *, frame=None, warmup=60, seed=1, fps=30):
-    """Render len(track) still frames with constant/stepped parameter tracks (no audio). Returns (frames uint8
-    [n, H, W, 4], info {width, height: model units, ...}). Used by `probe_face` and the framing tests."""
+def _track_len(v):
+    if isinstance(v, dict):
+        return max([len(v[k]) for k in ("set", "add", "mul") if v.get(k) is not None] + [len(b[0]) for b in v.get("blend") or []] + [1])
+    return len(v)
+
+
+def render_stills(model_name, width, height, tracks, *, frame=None, warmup=60, seed=1, fps=30, supersample=1, describe=False, readback=()):
+    """Render one still per track frame with constant / stepped parameter tracks (no audio). `tracks` = {id: values}
+    or performance layers ({id: {set, blend, add, mul}}). Returns (frames uint8 [n, H, W, 4] straight alpha, info
+    {width, height: model units, missing, ranges (describe=True): [[id, min, max, default], ...]}). `supersample` = k
+    renders k times larger and box-filters the premultiplied pixels down. `readback` = parameter ids whose applied value per frame
+    goes into info["readback"] (what the renderer really set). Used by `probe_face`, portraits and tests."""
+    from .perform import job_tracks
     model = resolve_model(model_name)
-    n = max(len(v) for v in tracks.values())
+    n = max(_track_len(v) for v in tracks.values())
+    k = max(1, int(supersample))
     d = tempfile.mkdtemp(prefix="l2d-still-")
-    job = dict(modelDir=model["dir"], model3=os.path.relpath(model["model3_path"], model["dir"]), core=model["core"], width=width,
-               height=height, fps=fps, frames=n, seed=seed, warmup=warmup, frame=frame_job(model, frame, height),
-               tracks={k: dict(v=[float(x) for x in v], mode="set") for k, v in tracks.items()}, readback=[],
-               readbackPath=os.path.join(d, "rb.json"), chromium=os.environ.get("PROMO_CHROMIUM") or _default_chromium())
+    job = dict(modelDir=model["dir"], model3=os.path.relpath(model["model3_path"], model["dir"]), core=model["core"], width=width * k,
+               height=height * k, fps=fps, frames=n, seed=seed, warmup=warmup, frame=frame_job(model, _scaled_frame(model, frame, height, k), height * k),
+               tracks=job_tracks({key: (v if isinstance(v, dict) else {"set": np.asarray(v, float)}) for key, v in tracks.items()}), readback=list(readback),
+               readbackPath=os.path.join(d, "rb.json"), premultiplied=k > 1, describe=describe,
+               chromium=os.environ.get("PROMO_CHROMIUM") or _default_chromium())
     jpath = os.path.join(d, "job.json")
     json.dump(job, open(jpath, "w"))
     with render_lock(lambda *a: None):
         raw = subprocess.run(["nice", "-n", "10", os.environ.get("PROMO_NODE", "node"), os.path.join(L2D_DIR, "render.mjs"), jpath],
                              stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, cwd=L2D_DIR, check=True).stdout
-    info = json.load(open(job["readbackPath"])).get("info", {})
+    rbj = json.load(open(job["readbackPath"]))
+    info = dict(rbj.get("info", {}), readback=rbj.get("frames"))
     shutil.rmtree(d, ignore_errors=True)
-    return np.frombuffer(raw, np.uint8).reshape(n, height, width, 4), info
+    fr = np.frombuffer(raw, np.uint8).reshape(n, height * k, width * k, 4)
+    if k > 1:
+        f = fr.reshape(n, height, k, width, k, 4).astype(np.float32).mean((2, 4))     # premultiplied box filter
+        a = f[..., 3:4]
+        rgb = np.where(a > 0, f[..., :3] * 255.0 / np.maximum(a, 1e-6), 0)
+        fr = np.concatenate([np.clip(rgb, 0, 255), a], -1).round().astype(np.uint8)
+    return fr, info
 
 
 def _diff_centroid(a, b, thr=24):
@@ -601,15 +702,220 @@ def pixel_mouth(layer, W, H, at, half=(22, 12)):
     return v - v.min()
 
 
+# ---------------------------------------------------------------- portraits / mood sheet
+SHEET_FONTS = ["/usr/share/fonts/truetype/sand-box/google/Inter/Inter-VariableFont_opsz,wght.ttf", "/System/Library/Fonts/SFNS.ttf",
+               "/System/Library/Fonts/Helvetica.ttc", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"]
+
+
+def sheet_font(size):
+    from PIL import ImageFont
+    for p in SHEET_FONTS:
+        if os.path.exists(p):
+            return ImageFont.truetype(p, int(size))
+    return ImageFont.load_default()
+
+
+PORTRAIT = dict(head_frac=0.42, head_top_at=0.16)       # bust portrait framing (head = 42 % of the tile)
+
+
+def portrait_frame(model, H, base=PORTRAIT, margin=6):
+    """Portrait framing with room above the head for a hat / ahoge (the silhouette top never touches the tile edge)."""
+    if not model.get("anchors"):
+        return None
+    f = framing(model, H, base)
+    if f["top_px"] is not None and f["top_px"] < margin:
+        pad = margin - f["top_px"]
+        return dict(base, pad_top=pad)
+    return dict(base)
+
+
+def mood_stills(model_name, moods=None, size=(360, 420), supersample=2, talk=0.0):
+    """One bust still per mood (neutral first), the mood held at full weight. Returns [(mood, RGBA image)]."""
+    from PIL import Image
+    from . import perform as PF
+    model = resolve_model(model_name)
+    moods = list(moods or PF.MOODS)
+    if "neutral" in moods:
+        moods.remove("neutral")
+    moods = ["neutral"] + moods
+    n = len(moods)
+    eyes = tuple(model["groups"].get("EyeBlink") or ("ParamEyeLOpen", "ParamEyeROpen"))
+    L = {e: {"set": np.ones(n)} for e in eyes}
+    mo = model.get("mouth") or {}
+    if talk:
+        for pid in (list((mo.get("vowels") or {}).values())[:1] or list(mo.get("open") or [])):
+            L[pid] = {"set": np.full(n, float(talk))}
+    smile = mo.get("form") or ("ParamMouthUp" if "ParamMouthUp" in (model.get("param_ids") or []) else None)
+    for i, m in enumerate(moods):
+        w = np.zeros(n)
+        w[i] = 1.0
+        if m != "neutral":
+            targets, _, _ = PF.mood_targets(model, m)
+            ids = set(model.get("param_ids") or [])
+            PF.apply_targets(L, [t for t in targets if not ids or t[0] in ids], w)
+        if smile and not talk:
+            PF.add(L, smile, w * float(model.get("rest_smile", 0.35)) * PF.REST_SMILE.get(m, 1.0))
+    W, H = size
+    fr, _ = render_stills(model_name, W, H, L, frame=portrait_frame(model, H), supersample=supersample, warmup=40)
+    return [(m, Image.fromarray(fr[i], "RGBA")) for i, m in enumerate(moods)]
+
+
+def mood_sheet(model_name, out, moods=None, size=(360, 420), cols=5, bg=(30, 32, 44)):
+    """Portrait sheet PNG: one tile per mood with its name under it (real renders of the model)."""
+    from PIL import Image, ImageDraw
+    tiles = mood_stills(model_name, moods, size)
+    W, H = size
+    lab = 44
+    rows = (len(tiles) + cols - 1) // cols
+    sheet = Image.new("RGB", (cols * W, rows * (H + lab)), bg)
+    d = ImageDraw.Draw(sheet)
+    f = sheet_font(24)
+    for k, (m, im) in enumerate(tiles):
+        x, y = (k % cols) * W, (k // cols) * (H + lab)
+        tile = Image.new("RGBA", (W, H), bg + (255,))
+        tile.alpha_composite(im)
+        sheet.paste(tile.convert("RGB"), (x, y))
+        tw = d.textlength(m, font=f)
+        d.text((x + (W - tw) / 2, y + H + 8), m, font=f, fill=(220, 222, 235))
+    os.makedirs(os.path.dirname(os.path.abspath(out)) or ".", exist_ok=True)
+    sheet.save(out)
+    return out
+
+
+# ---------------------------------------------------------------- bring your own model
+def find_model3(path):
+    path = os.path.abspath(os.path.expanduser(path))
+    if os.path.isfile(path):
+        if not path.endswith(".model3.json"):
+            raise Live2DError(f"{path}: expected a .model3.json (Cubism 3+ model) or the folder holding one")
+        return path
+    if not os.path.isdir(path):
+        raise Live2DError(f"{path}: no such file or folder")
+    found = []
+    for root, _, files in os.walk(path):
+        found += [os.path.join(root, f) for f in files if f.endswith(".model3.json")]
+    if not found:
+        raise Live2DError(f"{path}: no .model3.json inside (Cubism 2 .model.json models are not supported)")
+    return sorted(found, key=lambda p: (p.count(os.sep), p))[0]
+
+
+# eye / mouth lines -> head top, chin, chest, from the two sample rigs' measured anchors (anime proportions):
+# head_top = eyes - HT * (mouth - eyes); chin = mouth + CH * (mouth - eyes); chest = chin + CS * (chin - head_top)
+ANCHOR_RULE = dict(HT=2.4, CH=0.25, CS=0.7)
+
+
+def measure_anchors(model_name, H=1400):
+    """Framing anchors of a model from real renders: alpha bounding box of a full-body still (silhouette top, face
+    centre), eye and mouth lines from `probe_face` (eyes open vs shut, mouth shut vs open); head top, chin and chest
+    follow from those by ANCHOR_RULE. Returns (anchors in model units, report)."""
+    full = {"zoom": 1.0, "cy": 0.5}
+    W = H
+    r = probe_face(model_name, W, H, frame=full)
+    info = r["info"]
+    mw = info["width"] / info["height"] * H                     # model width in px at zoom 1
+    x0 = W / 2 - mw / 2
+    a = r["frame0"][..., 3]
+    rows = np.nonzero(a.max(1) > 8)[0]
+    if not len(rows) or not r["eyes"] or not r["mouth"]:
+        raise Live2DError(f"{model_name}: could not find the eyes / mouth by blinking and opening the mouth (no EyeBlink / LipSync "
+                          f"parameters?); write the anchors by hand in {user_registry_path()}")
+    e, mo = r["eyes"]["y"] / H, r["mouth"]["y"] / H
+    d = max(mo - e, 0.01)
+    k = ANCHOR_RULE
+    head_top = e - k["HT"] * d
+    chin = mo + k["CH"] * d
+    chest = chin + k["CS"] * (chin - head_top)
+    top = max(0.0, rows[0] / H - 0.003)
+    ex = (r["eyes"]["box"][0] + r["eyes"]["box"][2]) / 2       # midpoint of the two eyes (the blink pixels' median leans to the busier eye)
+    cx = (ex - x0) / mw
+    # widest point of the bust (down to ~2.6 heads under the head top: the deepest podcast crop), from the face centre
+    bust = a[int(top * H): int(min(1.0, head_top + 2.6 * (chin - head_top)) * H)]
+    xs = np.nonzero(bust.max(0) > 8)[0]
+    half_w = max(ex - xs.min(), xs.max() - ex) / H if len(xs) else 0.2
+    an = dict(top=round(min(top, head_top), 3), head_top=round(head_top, 3), chin=round(chin, 3), chest=round(chest, 3), cx=round(cx, 3),
+              mouth=[round((r["mouth"]["x"] - x0) / mw, 3), round(mo, 3)], half_w=round(half_w + 0.004, 3))
+    return an, dict(eyes_y=round(e, 4), mouth_y=round(mo, 4), silhouette_top=round(rows[0] / H, 4), size=[W, H])
+
+
+def add_model(path, mid, name, licence, source_url, ctype, credit=None, force=False, measure=True, log=print):
+    """Register a model the person owns / commissioned / bought (`promo live2d add`). The files stay where they are
+    (never copied, never committed). Licence gate: own | commissioned | original only, with a licence and a source."""
+    from . import perform as PF
+    if ctype in REFUSED_TYPES:
+        raise Live2DError(f"character type {ctype!r} is refused: a collaboration or third-party character's terms do not cover a promo")
+    if ctype not in BYO_TYPES:
+        raise Live2DError(f"--type must be one of {', '.join(BYO_TYPES)}")
+    if not licence or not source_url:
+        raise Live2DError("a model of your own needs --licence (what lets you use it) and --source (where it came from: the artist, the store page)")
+    if not mid or not mid.replace("-", "").replace("_", "").isalnum():
+        raise Live2DError("--id must be letters, digits, - or _")
+    if mid in registry(user=False)["models"]:
+        raise Live2DError(f"{mid!r} is a sample model id; pick another")
+    reg_p = user_registry_path()
+    have = user_models(reg_p)
+    if mid in have and not force:
+        raise Live2DError(f"{mid!r} is already registered ({have[mid].get('model3')}); --force replaces it")
+    p3 = find_model3(path)
+    inf = model3_info(p3)
+    ids = set(inf["param_ids"])
+    vow = {v: f"Param{v}" for v in PF.VOWELS} if all(f"Param{v}" in ids for v in PF.VOWELS) else None
+    lip = inf["groups"].get("LipSync") or ([x for x in ("ParamMouthOpenY", "ParamA") if x in ids][:1] if ids else ["ParamMouthOpenY"])
+    mouth = dict(open=list(lip)[:1], form="ParamMouthForm" if (not ids or "ParamMouthForm" in ids) else None)
+    if vow:
+        mouth["vowels"] = vow
+    entry = dict(name=name or mid, character_type=ctype, model3=p3, licence=licence, source_url=source_url, credit=credit or "",
+                 mouth=mouth, moods=PF.auto_moods(list(inf["expressions"])), rest_smile=0.35,
+                 expressions=sorted(inf["expressions"]), motions=sorted(k for k in inf["motions"] if ":" not in k),
+                 added=time.strftime("%Y-%m-%d"))
+    _write_user(reg_p, mid, entry)
+    if measure:
+        try:
+            an, rep = measure_anchors(mid)
+            entry["anchors"] = an
+            entry["measured"] = rep
+            _write_user(reg_p, mid, entry)
+        except (Live2DError, subprocess.CalledProcessError) as e:
+            log(f"anchors not measured ({e}); framing falls back to a whole-model view until you add `anchors:`")
+    return dict(id=mid, registry=reg_p, **json.loads(json.dumps(entry, default=float)))
+
+
+def _write_user(path, mid, entry):
+    data = {"models": user_models(path)}
+    data["models"][mid] = json.loads(json.dumps(entry, default=float))     # measured anchors are numpy floats: plain numbers in the YAML
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        f.write("# Your own Live2D models (`promo live2d add`). The files stay where they are and are never committed.\n")
+        yaml.safe_dump(data, f, sort_keys=False, allow_unicode=True)
+    os.replace(tmp, path)
+
+
 def main(argv=None):
-    """`promo live2d fetch|render|models|lag` (no promo.yaml needed)."""
+    """`promo live2d fetch|models|add|stills|render|lag` (no promo.yaml needed)."""
     import argparse
     ap = argparse.ArgumentParser(prog="promo live2d", description="offline Live2D host renderer")
     sub = ap.add_subparsers(dest="cmd", required=True)
     f = sub.add_parser("fetch", help="download Cubism Core + sample models from live2d.com (sha256-verified)")
     f.add_argument("models", nargs="*")
     f.add_argument("--force", action="store_true")
-    sub.add_parser("models", help="list models with licence + notices")
+    m = sub.add_parser("models", help="list models (samples + your own) with licence, moods, expressions and motions")
+    m.add_argument("--json", action="store_true")
+    ad = sub.add_parser("add", help="register a model you own / commissioned / bought (files stay where they are)")
+    ad.add_argument("path", help=".model3.json or the folder holding it")
+    ad.add_argument("--id", required=True)
+    ad.add_argument("--name")
+    ad.add_argument("--licence", required=True, help="what lets you use it (e.g. 'commissioned from X, commercial use, contract 2026-09')")
+    ad.add_argument("--source", required=True, help="where it came from (artist page, store page, contract URL)")
+    ad.add_argument("--type", required=True, choices=list(BYO_TYPES) + list(REFUSED_TYPES), dest="ctype")
+    ad.add_argument("--credit", help="credit line for the end card (e.g. 'Illustration: X; Rigging: Y')")
+    ad.add_argument("--force", action="store_true")
+    ad.add_argument("--no-measure", action="store_true", help="skip the anchor measurement renders")
+    ad.add_argument("--json", action="store_true")
+    sl = sub.add_parser("stills", help="real portrait renders: one still, or a mood sheet (--moods)")
+    sl.add_argument("--model", required=True)
+    sl.add_argument("--moods", nargs="?", const="all", help="all, or a comma list (happy,laugh,...)")
+    sl.add_argument("--out", required=True, help="PNG")
+    sl.add_argument("--size", default="360x420")
     r = sub.add_parser("render", help="render one host layer")
     r.add_argument("--model", required=True)
     r.add_argument("--wav")
@@ -620,6 +926,8 @@ def main(argv=None):
     r.add_argument("--size", default="640x720")
     r.add_argument("--seed", type=int, default=1)
     r.add_argument("--gaze", type=float, default=0.0, help="listening host turns: -1 = left, +1 = right (e.g. toward the app screen)")
+    r.add_argument("--lines", help="JSON/YAML file of script lines in seconds [{t0, t1, mood, gesture, look}] for this host")
+    r.add_argument("--supersample", type=int, default=2, help="2 = render at 2x and scale down (crisp); 1 = draft")
     r.add_argument("--bg", help="green (or a colour) = opaque green-screen H.264 instead of alpha")
     r.add_argument("--json", action="store_true")
     g = sub.add_parser("lag", help="lip lag of a mouth track (.npy) against a WAV")
@@ -633,19 +941,69 @@ def main(argv=None):
             fetch(a.models or None, a.force)
         elif a.cmd == "models":
             reg = registry()
-            for k, m in reg["models"].items():
-                print(f"{k:<8} {m.get('character_type'):<13} {m.get('name')}  {m.get('source_url')}")
-            print("notice:", reg["notice"]["long"])
+            rows = []
+            for k, mm in reg["models"].items():
+                row = dict(id=k, name=mm.get("name"), type=mm.get("character_type"), own=bool(mm.get("user")), licence=mm.get("licence"),
+                           source_url=mm.get("source_url"), credit=mm.get("credit"))
+                try:
+                    rm = resolve_model(k)
+                    from .perform import MOODS
+                    row.update(ready=True, expressions=sorted(rm["expressions"]), motions=sorted(x for x in rm["motions"] if ":" not in x),
+                               moods={md: ((mm.get("moods") or {}).get(md) or "generic") for md in MOODS if md != "neutral"},
+                               vowels=bool((mm.get("mouth") or {}).get("vowels")))
+                except Live2DError as e:
+                    row.update(ready=False, why=str(e))
+                rows.append(row)
+            if a.json:
+                print(json.dumps(dict(ok=True, models=rows, notice=reg["notice"]["long"]), indent=1))
+            else:
+                for row in rows:
+                    print(f"{row['id']:<10} {row['type'] or '-':<13} {'own ' if row['own'] else ''}{row['name']}  {row['source_url']}")
+                    if row.get("ready"):
+                        print(f"{'':<10} expressions: {', '.join(row['expressions']) or '-'}; motions: {', '.join(row['motions']) or '-'}; "
+                              f"mouth: {'A/I/U/E/O vowels' if row['vowels'] else 'open + form'}")
+                    elif row["type"] == "original" or row["own"]:
+                        print(f"{'':<10} not ready: {row['why']}")
+                print("notice:", reg["notice"]["long"])
+        elif a.cmd == "add":
+            rep = add_model(a.path, a.id, a.name, a.licence, a.source, a.ctype, a.credit, a.force, not a.no_measure, log=log)
+            if a.json:
+                print(json.dumps(dict(ok=True, **rep), indent=1, default=str))
+            else:
+                print(f"registered {rep['id']} ({rep['character_type']}) in {rep['registry']}: {rep['model3']}")
+                print(f"  moods mapped from expressions: {rep['moods'] or 'none (generic moods on the standard parameters)'}")
+                print(f"  anchors: {rep.get('anchors') or 'not measured'}")
+                print(f"  check it: promo live2d stills --model {rep['id']} --moods --out /tmp/{rep['id']}-moods.png")
+        elif a.cmd == "stills":
+            W, H = (int(x) for x in a.size.lower().split("x"))
+            if a.moods:
+                from .perform import MOODS
+                ms = None if a.moods == "all" else [x.strip() for x in a.moods.split(",") if x.strip()]
+                bad = [x for x in ms or [] if x not in MOODS]
+                if bad:
+                    raise Live2DError(f"unknown mood(s) {bad}; have {', '.join(MOODS)}")
+                print(mood_sheet(a.model, a.out, ms, (W, H)))
+            else:
+                (_, im), = mood_stills(a.model, ["neutral"], (W, H))
+                os.makedirs(os.path.dirname(os.path.abspath(a.out)) or ".", exist_ok=True)
+                im.save(a.out)
+                print(a.out)
         elif a.cmd == "render":
             W, H = (int(x) for x in a.size.lower().split("x"))
+            lines = None
+            if a.lines:
+                with open(a.lines) as fh:
+                    lines = yaml.safe_load(fh)
             rep = render_host(a.model, a.out, wav=a.wav, partner_wav=a.partner_wav, duration=a.duration, fps=a.fps, width=W, height=H,
-                              seed=a.seed, gaze=a.gaze, bg=a.bg, log=log)
+                              seed=a.seed, gaze=a.gaze, bg=a.bg, log=log, lines=lines, supersample=a.supersample)
             print(json.dumps(rep, indent=1) if a.json else f"wrote {rep['out']}: {rep['frames']} frames, {rep['s_per_output_s']} s per output second, "
                   f"lip lag {rep.get('lip_lag_applied')}")
         elif a.cmd == "lag":
             y, r = load_wav(a.wav)
             print(json.dumps(lip_lag(np.load(a.mouth), y, r, a.fps)))
     except Live2DError as e:
+        if getattr(a, "json", False):
+            print(json.dumps(dict(ok=False, error=str(e))))
         print(f"promo live2d: error: {e}", file=sys.stderr)
         return 2
     return 0

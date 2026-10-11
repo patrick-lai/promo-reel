@@ -53,25 +53,45 @@ window.L2D = {
     model.x = ax[1] * W - im.originalWidth * s * ax[0];
     model.y = ay[1] * H - im.originalHeight * s * ay[0];
     const core = im.coreModel;
-    const ids = Object.keys(job.tracks);
     const known = new Set(core.getModel().parameters.ids);
-    this.missing = ids.filter((id) => !known.has(id));
-    this.state = { app, model, core, ids: ids.filter((id) => known.has(id)), frame: 0, job };
+    // Tracks: {ParamId: [{mode: set|blend|add|mul, v: [...], w?: [...]}, ...]} (or the old single {v, mode}). Each frame a
+    // driven parameter starts from its `set` value (else its default, so add / mul layers never pile up across frames),
+    // then blend layers (x = x (1 - w) + v w), add, mul, clamped to the parameter's range after every step
+    // (promo/perform.py apply_layers is the same maths).
+    const order = { set: 0, blend: 1, add: 2, mul: 3 };
+    const tracks = [];
+    for (const [id, tr] of Object.entries(job.tracks)) {
+      if (!known.has(id)) continue;
+      const ls = (Array.isArray(tr) ? tr : [tr]).map((l) => ({ ...l, mode: l.mode || "set" })).sort((a, b) => order[a.mode] - order[b.mode]);
+      const idx = core.getParameterIndex(id);
+      tracks.push({ id, idx, ls, lo: core.getParameterMinimumValue(idx), hi: core.getParameterMaximumValue(idx), def: core.getParameterDefaultValue(idx) });
+    }
+    this.missing = Object.keys(job.tracks).filter((id) => !known.has(id));
+    this.state = { app, model, core, tracks, frame: 0, job };
+    const at = (a, f) => a[Math.min(f, a.length - 1)];
     // Tracks go in right after the (disabled) motion step, so physics + pose see the head angles this frame.
     im.on("afterMotionUpdate", () => {
       const st = this.state, f = st.frame;
-      for (const id of st.ids) {
-        const tr = st.job.tracks[id];
-        const v = tr.v[Math.min(f, tr.v.length - 1)];
-        if (tr.mode === "add") core.addParameterValueById(id, v);
-        else core.setParameterValueById(id, v);
+      for (const t of st.tracks) {
+        const clamp = (x) => Math.min(t.hi, Math.max(t.lo, x));
+        let x = t.def;
+        for (const l of t.ls) {
+          const v = at(l.v, f);
+          if (l.mode === "set") x = clamp(v);
+          else if (l.mode === "blend") { const w = at(l.w, f); x = clamp(x * (1 - w) + v * w); }
+          else if (l.mode === "add") x = clamp(x + v);
+          else if (l.mode === "mul") x = clamp(x * v);
+        }
+        core.setParameterValueByIndex(t.idx, x);
       }
     });
     // Warm up physics so frame 0 is settled (same fixed step, frame index held at 0).
     for (let i = 0; i < (job.warmup || 0); i++) { model.update(1000 / job.fps); app.renderer.render(app.stage); }
     window.__clockMs = 0;
-    return { width: im.originalWidth, height: im.originalHeight, missing: this.missing,
-             params: core.getModel().parameters.ids.length, gl: app.renderer.gl.getParameter(app.renderer.gl.VERSION) };
+    const P = core.getModel().parameters;
+    const ranges = job.describe ? P.ids.map((id, i) => [id, core.getParameterMinimumValue(i), core.getParameterMaximumValue(i), core.getParameterDefaultValue(i)]) : undefined;
+    return { width: im.originalWidth, height: im.originalHeight, missing: this.missing, ranges,
+             params: P.ids.length, gl: app.renderer.gl.getParameter(app.renderer.gl.VERSION) };
   },
   // Advance exactly 1/fps of model time, render, read back RGBA (bottom-up, premultiplied) as base64.
   async frame(i) {

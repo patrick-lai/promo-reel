@@ -475,3 +475,17 @@ test("the Render line says what re-renders and about how long, from the build's 
   assert.deepEqual(L.editSummary([{ op: "move", shot: "03", before: "01" }], edit).shots, ["02"]);
   assert.deepEqual(L.editSummary([{ op: "trim", shot: "01", end: 6 }], edit).shots.sort(), ["01", "02"]);
 });
+test("podcast edits: a layout renders its shot, a host / mood / gesture every podcast shot, new words or a voice re-voice", () => {
+  const edit = { estimate: { shot: 20, vo: 4, mix: 5 }, shots: [{ id: "01", type: "podcast" }, { id: "02", type: "clip" }, { id: "03", type: "podcast" }, { id: "04", type: "live2d_credits" }] };
+  assert.deepEqual(L.editSummary([{ op: "layout", shot: "03", layout: "speaker" }], edit).shots, ["03"]);
+  for (const op of [{ op: "host", host: "a", size: "l" }, { op: "mood", line: "a3", mood: "happy" }, { op: "gesture", line: "a3", gesture: "nod" }]) {
+    const s = L.editSummary([op], edit);
+    assert.deepEqual(s.shots, ["01", "03"]);
+    assert.ok(!s.steps.includes("vo"), op.op);
+  }
+  assert.ok(L.editSummary([{ op: "host", host: "a", voice: "af_nicole" }], edit).steps.includes("vo"));
+  assert.match(L.editSummary([{ op: "say", line: "a3", text: "x" }], edit).line, /^2 shots \+ voice \+ mix, /);
+  const bare = { shots: [{ id: "01", beats: [0, 8], type: "clip" }], vo: { lines: [{ id: "a1", shot: "01", text: "One." }] } };
+  for (const ops of ["host a size=l", "mood a1 happy", "gesture a1 nod"]) assert.throws(() => L.editApply(bare, L.editParse(ops), 0.5), /line 1: this video has no podcast hosts/);
+  assert.equal(L.editApply(bare, L.editParse('say a1 "One, again."'), 0.5).raw.vo.lines[0].text, "One, again.");
+});

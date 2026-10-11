@@ -60,7 +60,12 @@
      "shot": "03",
      "at": 0.2,
      "file": "a3.wav",
-     "text": "Three."
+     "text": "Three.",
+     "host": "a",
+     "tts": "Three!",
+     "mood": "happy",
+     "gesture": "tilt",
+     "gesture_at": 0.4
     }
    ]
   },
@@ -155,10 +160,50 @@
      24,
      32
     ],
-    "type": "dawn",
-    "name": "Acme"
+    "type": "podcast",
+    "layout": "overlay"
    }
-  ]
+  ],
+  "podcast": {
+   "hosts": [
+    {
+     "id": "a",
+     "model": "mao",
+     "name": "Mao",
+     "color": "#7FD1FF",
+     "voice": {
+      "engine": "kokoro",
+      "voice": "af_bella"
+     }
+    },
+    {
+     "id": "b",
+     "model": "hiyori",
+     "name": "Hiyori",
+     "voice": "bf_emma"
+    }
+   ],
+   "layout": "overlay",
+   "place": {
+    "a": {
+     "anchor": "bottom-left",
+     "size": "l"
+    }
+   },
+   "frame": "none",
+   "edge": "shadow",
+   "script": [
+    {
+     "id": "a3",
+     "host": "a",
+     "text": "Three.",
+     "tts": "Three!",
+     "mood": "happy",
+     "gesture": "tilt",
+     "gesture_at": 0.4
+    }
+   ]
+  }
  },
  "cases": [
   {
@@ -858,6 +903,395 @@
      }
     }
    }
+  },
+  {
+   "name": "layout speaker: the camera follows whoever talks (focus: auto)",
+   "ops": "layout 04 speaker",
+   "expect": {
+    "shots": [
+     {},
+     {},
+     {},
+     {
+      "id": "04",
+      "layout": "speaker",
+      "focus": "auto"
+     }
+    ]
+   }
+  },
+  {
+   "name": "layout: another layout drops the speaker focus",
+   "ops": "layout 04 speaker\nlayout 04 two-shot",
+   "expect": {
+    "shots": [
+     {},
+     {},
+     {},
+     {
+      "id": "04",
+      "layout": "two-shot"
+     }
+    ]
+   },
+   "absent": [
+    [
+     "shots",
+     3,
+     "focus"
+    ]
+   ]
+  },
+  {
+   "name": "layout of a shot that is not a podcast shot",
+   "ops": "layout 01 boxed",
+   "error": "shot 01 is a clip shot, not a podcast shot"
+  },
+  {
+   "name": "layout of a shot that is not there",
+   "ops": "layout 09 boxed",
+   "error": "line 1: there is no shot 09"
+  },
+  {
+   "name": "host: place, size and offset go to podcast.place, frame and edge are the show's",
+   "ops": "host a place=bottom-right size=xl x=0.05 frame=card edge=glow",
+   "expect": {
+    "podcast": {
+     "place": {
+      "a": {
+       "anchor": "bottom-right",
+       "size": "xl",
+       "x": 0.05
+      }
+     },
+     "frame": "card",
+     "edge": "glow",
+     "layout": "overlay"
+    }
+   }
+  },
+  {
+   "name": "host by name, any case: a new place entry, a size as a height fraction",
+   "ops": "host HIYORI anchor=bottom-center size=0.9 y=-20",
+   "expect": {
+    "podcast": {
+     "place": {
+      "a": {
+       "anchor": "bottom-left",
+       "size": "l"
+      },
+      "b": {
+       "anchor": "bottom-center",
+       "size": 0.9,
+       "y": -20
+      }
+     }
+    }
+   }
+  },
+  {
+   "name": "host name, colour and voice (a voice name becomes a voice dict, its engine kept)",
+   "ops": "host b name=\"Hiyo Chan\" color=\"#FFB86B\" voice=bf_isabella\nhost Mao voice=af_nicole",
+   "expect": {
+    "podcast": {
+     "hosts": [
+      {
+       "id": "a",
+       "voice": {
+        "engine": "kokoro",
+        "voice": "af_nicole"
+       }
+      },
+      {
+       "id": "b",
+       "name": "Hiyo Chan",
+       "color": "#FFB86B",
+       "voice": {
+        "voice": "bf_isabella"
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "host that is not in the show",
+   "ops": "host c size=l",
+   "error": "no host 'c' (have a, b)"
+  },
+  {
+   "name": "host size by an unknown name",
+   "ops": "host a size=huge",
+   "error": "size 'huge': use s | m | l | xl or a height fraction 0.2-1.3"
+  },
+  {
+   "name": "host size out of range",
+   "ops": "host a size=2",
+   "error": "size 2: use s | m | l | xl"
+  },
+  {
+   "name": "host place that is not an anchor",
+   "ops": "host a place=top-left",
+   "error": "place 'top-left': use bottom-left | bottom-right | bottom-center"
+  },
+  {
+   "name": "host frame that is not a frame",
+   "ops": "host a frame=box",
+   "error": "frame 'box': use none | card | circle | soft"
+  },
+  {
+   "name": "mood of a voice line and its script line",
+   "ops": "mood a3 surprised",
+   "expect": {
+    "vo": {
+     "lines": [
+      {},
+      {},
+      {
+       "id": "a3",
+       "mood": "surprised"
+      }
+     ]
+    },
+    "podcast": {
+     "script": [
+      {
+       "id": "a3",
+       "mood": "surprised"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "mood with an amount; a line without a script line",
+   "ops": "mood a3 laugh:0.6\nmood a1 smug",
+   "expect": {
+    "vo": {
+     "lines": [
+      {
+       "id": "a1",
+       "mood": "smug"
+      },
+      {},
+      {
+       "id": "a3",
+       "mood": "laugh:0.6"
+      }
+     ]
+    },
+    "podcast": {
+     "script": [
+      {
+       "mood": "laugh:0.6"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "mood neutral removes it",
+   "ops": "mood a3 neutral",
+   "expect": {
+    "vo": {
+     "lines": [
+      {},
+      {},
+      {
+       "id": "a3",
+       "gesture": "tilt"
+      }
+     ]
+    },
+    "podcast": {
+     "script": [
+      {
+       "id": "a3",
+       "text": "Three."
+      }
+     ]
+    }
+   },
+   "absent": [
+    [
+     "vo",
+     "lines",
+     2,
+     "mood"
+    ],
+    [
+     "podcast",
+     "script",
+     0,
+     "mood"
+    ]
+   ]
+  },
+  {
+   "name": "mood of a voice line that is not there",
+   "ops": "mood a9 happy",
+   "error": "there is no voice line a9"
+  },
+  {
+   "name": "gesture of a voice line and its script line",
+   "ops": "gesture a3 nod",
+   "expect": {
+    "vo": {
+     "lines": [
+      {},
+      {},
+      {
+       "id": "a3",
+       "gesture": "nod",
+       "gesture_at": 0.4
+      }
+     ]
+    },
+    "podcast": {
+     "script": [
+      {
+       "gesture": "nod"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "gesture from the model's own motion",
+   "ops": "gesture a2 motion:TapBody",
+   "expect": {
+    "vo": {
+     "lines": [
+      {},
+      {
+       "id": "a2",
+       "gesture": "motion:TapBody"
+      },
+      {}
+     ]
+    }
+   }
+  },
+  {
+   "name": "gesture none removes it and its timing",
+   "ops": "gesture a3 none",
+   "expect": {
+    "vo": {
+     "lines": [
+      {},
+      {},
+      {
+       "id": "a3",
+       "mood": "happy"
+      }
+     ]
+    },
+    "podcast": {
+     "script": [
+      {
+       "id": "a3",
+       "mood": "happy"
+      }
+     ]
+    }
+   },
+   "absent": [
+    [
+     "vo",
+     "lines",
+     2,
+     "gesture"
+    ],
+    [
+     "vo",
+     "lines",
+     2,
+     "gesture_at"
+    ],
+    [
+     "podcast",
+     "script",
+     0,
+     "gesture"
+    ],
+    [
+     "podcast",
+     "script",
+     0,
+     "gesture_at"
+    ]
+   ]
+  },
+  {
+   "name": "gesture of a voice line that is not there",
+   "ops": "gesture a9 nod",
+   "error": "there is no voice line a9"
+  },
+  {
+   "name": "say: new words for the line and its script line, the stale spelling goes",
+   "ops": "say a3 \"Three,  now.\"",
+   "expect": {
+    "vo": {
+     "lines": [
+      {},
+      {},
+      {
+       "id": "a3",
+       "text": "Three, now.",
+       "mood": "happy"
+      }
+     ]
+    },
+    "podcast": {
+     "script": [
+      {
+       "id": "a3",
+       "text": "Three, now."
+      }
+     ]
+    }
+   },
+   "absent": [
+    [
+     "vo",
+     "lines",
+     2,
+     "tts"
+    ],
+    [
+     "podcast",
+     "script",
+     0,
+     "tts"
+    ]
+   ]
+  },
+  {
+   "name": "say on a line without a script line",
+   "ops": "say a1 \"One, said again.\"",
+   "expect": {
+    "vo": {
+     "lines": [
+      {
+       "id": "a1",
+       "text": "One, said again.",
+       "file": "a1.wav"
+      },
+      {
+       "text": "Two."
+      },
+      {
+       "text": "Three.",
+       "tts": "Three!"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "say to a voice line that is not there",
+   "ops": "say a9 \"x\"",
+   "error": "there is no voice line a9"
   }
  ],
  "parse": [
@@ -951,6 +1385,99 @@
   {
    "text": "fx music lofi",
    "error": "fx preset is one of"
+  },
+  {
+   "text": "layout 04 speaker ; host Mao place=bottom-left size=0.8 x=-0.02 color=\"#7FD1FF\" name=\"Mao Chan\" voice=af_bella\nmood a3 happy:0.6 ; gesture a3 motion:Tap\nsay a3 \"Ship it; \\\"tonight\\\".\"\nhost b size=l frame=none edge=rim ; mood a1 neutral ; gesture a1 none",
+   "ops": [
+    {
+     "op": "layout",
+     "shot": "04",
+     "layout": "speaker"
+    },
+    {
+     "op": "host",
+     "host": "Mao",
+     "place": "bottom-left",
+     "size": 0.8,
+     "x": -0.02,
+     "color": "#7FD1FF",
+     "name": "Mao Chan",
+     "voice": "af_bella"
+    },
+    {
+     "op": "mood",
+     "line": "a3",
+     "mood": "happy",
+     "amount": 0.6
+    },
+    {
+     "op": "gesture",
+     "line": "a3",
+     "gesture": "motion:Tap"
+    },
+    {
+     "op": "say",
+     "line": "a3",
+     "text": "Ship it; \"tonight\"."
+    },
+    {
+     "op": "host",
+     "host": "b",
+     "size": "l",
+     "frame": "none",
+     "edge": "rim"
+    },
+    {
+     "op": "mood",
+     "line": "a1",
+     "mood": "neutral"
+    },
+    {
+     "op": "gesture",
+     "line": "a1",
+     "gesture": "none"
+    }
+   ]
+  },
+  {
+   "text": "layout 04 wide",
+   "error": "layout is one of overlay, boxed, two-shot, speaker, not 'wide'"
+  },
+  {
+   "text": "host a model=mao",
+   "error": "unknown setting model="
+  },
+  {
+   "text": "host a",
+   "error": "host a needs one of place="
+  },
+  {
+   "text": "host a x=left",
+   "error": "x must be a number"
+  },
+  {
+   "text": "mood a3 angry",
+   "error": "mood is one of neutral, happy"
+  },
+  {
+   "text": "mood a3 happy:2",
+   "error": "a mood amount is between 0 and 1"
+  },
+  {
+   "text": "gesture a3 wave",
+   "error": "gesture is one of nod, shake"
+  },
+  {
+   "text": "gesture a3 motion:",
+   "error": "motion:NAME or none, not 'motion:'"
+  },
+  {
+   "text": "say a3 \"  \"",
+   "error": "say needs the new words"
+  },
+  {
+   "text": "say a3",
+   "error": "say takes a voice line id and the new words"
   }
  ]
 }

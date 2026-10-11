@@ -116,6 +116,7 @@ for them. `promo styles` lists them. Scaffold with the one that matches the brie
 - `promo new <name> --style hero`: calm product hero (VO, dark pills in the 9:16-safe zone, cuts on beats). Example projects live in your projects dir.
 - `promo new <name> --style anime-opening`: kinetic anime-opening cards on real footage.
 - `promo new <name> --style livestream`: talk-show/livestream composite (long holds, lower-left chyron, no flashes).
+- `promo new <name> --style podcast`: Live2D hosts talking over the real app, overlaid on the picture with no box (see "Podcast / VTuber videos" below).
 - `promo new <name> --style horizon`: 20-25 s horizon film (rapid cuts of real surfaces, each shot `type: horizon` with `anchor: {src: [x, y], out_y: 0.58}` putting a real edge on the horizon; show-level `horizon_text: [{words, beats}]` is the ONE serif line that persists across cuts; end with `type: dawn`). A burst (half beats ok) must be followed by a hold >= 3 s. Template: `templates/styles/horizon/promo.yaml`.
 
 If the brief says "anime", "opening", "kinetic titles", "J-rock", "speed lines" or "title cards", it is **anime-opening**:
@@ -132,6 +133,40 @@ If the brief says "anime", "opening", "kinetic titles", "J-rock", "speed lines" 
   opening's night-sky brand background so a narrow crop reads as a deliberate panel.
 - A shot that is not captured yet is `placeholder: {id, label, expects}` (a labelled slate). Swapping in the real take = replace it with `source:` + `cam:`.
 Need something the preset can't do? Extend the preset or the `anime` shot type in `promo/` (with a test), not a one-off renderer in the project.
+
+## Podcast / VTuber videos (style `podcast`)
+If the request says **podcast, vtuber, live2d, avatar(s), hosts, co-hosts or talk show**, it is the `podcast` style (in THE FLOW the
+style card "Podcast with animated hosts" is marked suggested for such a request). Recipe:
+1. `promo new <name> --style podcast`, then add real footage (`promo footage add`, or copy an earlier project's manifest entry) and list it
+   under `podcast.screens` in the order the talk needs it. Set the hosts: `podcast.hosts: [{id, model, name, color, voice: {engine, voice}}]`.
+2. Write the dialogue from the prompt as a YAML list and store it: `promo podcast script --file lines.yaml` (or `-` for stdin). One line =
+   `{host, text, mood?, gesture?, look?, react?, pause?, scene?, evidence?, claim?}`.
+   - mood: neutral | happy | laugh | excited | thinking | surprised | smug | sad | serious (`happy:0.6` = lighter). Eased in, held through the line.
+   - gesture: nod | shake | tilt | lean_in | laugh_bounce | shrug | look_away, or `motion:<name>` (the model's own motions: `promo live2d models`).
+   - look: camera | partner | screen | away. `react: happy` = how the OTHER host reacts while this line is spoken.
+   - scene: `{layout: two-shot, next_screen: true}` or `{screen: <clip id>}` starts a new shot at this line.
+   - Rule 3 holds: a line with a number or an absolute claim needs `evidence:` (what on screen proves it, with a time); banter gets `claim: false`.
+3. `promo podcast plan`: voices every line (per-host voices, cached per text), lays them back to back on a half-beat grid, writes vo.lines,
+   the timeline and the shots (the show layout, a new shot per `scene:`, a speaker cam on short laugh / surprised / excited lines, the credits
+   card). It runs once; `--force` re-plans from `podcast.script`. Then promo.yaml is an ordinary spec: line up footage with what is said
+   (`t_in`, `speed`), check where lines fall against what the take shows.
+4. `promo podcast preview --layouts`: REAL previews in flow/podcast/ (Live2D renders over a real frame, a mood sheet and a voice sample per host).
+   Look at them before asking anything. Publish: the Stage's Cast card shows them.
+5. `promo build`, `promo check` (gates `podcast-licence`, `podcast-framing` (no head clipped, no face covered, hosts and subtitles off
+   `keep_clear`, measured on each host's real outline), `podcast-subtitles` (<= 35 chars, >= 2 s), `podcast-lint` (no LIVE, no viewer
+   counts), `podcast-voice-licence`, `podcast-truth`; WARN `draft-voice`, `voice-licence-open`, `podcast-overlap`).
+Layouts: `overlay` (default: hosts stand on the app at the bottom corners, the bust cut by the frame edge, no panel), `boxed` (app window +
+host panels, the livestream look), `two-shot` (both hosts big, app in a window), `speaker` (one host big, cuts to whoever talks at line starts).
+A box is a choice, never the default: `frame: card | circle | soft` (show or shot), `edge: shadow | glow | rim | none` (drawn from the avatar's
+own alpha). Small edits: `promo podcast set host a place=bottom-right size=xl | layout speaker --shot 03 | frame card | backdrop blur | subtitles off`.
+The Stage's Cast card sends exactly those as the `podcast` action; run them, re-run preview, publish.
+Voices: `kokoro` (Apache-2.0, the publishable default), `say` (macOS, drafts only: needs an assets entry, WARNs), `voicestudio` (a local
+profile; the model is CC-BY-NC, an open licence question: WARNs). Every voice has an assets.yaml licence entry (rule 4).
+Characters: the free Live2D samples (Mao: A/I/U/E/O vowel mouth shapes + 8 expressions; Hiyori: standard parameters) look good but are not
+commissioned-VTuber art. For that level the person brings their own model: `promo live2d add <model3.json|dir> --id ID --name N --type
+own|commissioned|original --licence TEXT --source URL [--credit T]` registers it (files stay where they are, never committed), measures its
+framing anchors from renders and maps moods by expression names; check it with `promo live2d stills --model ID --moods --out sheet.png`.
+Collaboration and third-party characters are refused. Sample models need the `live2d_credits` end card (gated); so does any credited model.
 
 ## STEP 0: Lock the brief and study the references (before any shot list or spec)
 A cut that passes every gate can still miss what the person asked for, because it was judged against the agent's OWN summary of the
@@ -181,7 +216,8 @@ reference. Structurally prevent that:
 8. **Deliver**: only after human approval. Re-render at 4K with `--scale 2` if asked. Never publish or upload on your own; the one exception is the person's own click to put a draft or final on their Artifacts or Loom (THE FLOW, Upload).
 
 ## CLI cheat-sheet
-- `promo styles`; `promo new <name> --style hero|anime-opening|livestream`; `promo grid` (bars, beats, markers of `timeline.grid`)
+- `promo styles`; `promo new <name> --style hero|anime-opening|livestream|podcast`; `promo grid` (bars, beats, markers of `timeline.grid`)
+- `promo podcast script|plan|set|preview|status -p <project>`: a podcast / VTuber show from a script (section above)
 - `promo status [--json]` what is up-to-date / stale / missing; `promo timeline`, `promo assets`, `promo footage list|verify|add`
 - `promo build [--shots 05 06] [--force] [--scale 2]`; `promo shot <id...>`; `promo sfx|vo|music|events|mix|assemble|contact`
 - `promo fx list | apply IN OUT --preset P [--amount A] [--set stage.param=V] | audition IN [--out DIR]` (radio / tape / vintage / telephone / vinyl / crackle on any file)
@@ -190,7 +226,8 @@ reference. Structurally prevent that:
 - `promo flow share detect|draft|final [N] --to artifacts|loom --by NAME [--access private|open|shared]` (the person's upload; see THE FLOW)
 - `promo check [--json]`; `promo compare <ref.mp4> [--json]` (per-shot PSNR + audio diff vs a reference)
 - `promo peek <clip-id> <t> [x0 y0 x1 y1]`, `promo segpeek <shot> [t...]`, `promo mpeek out.png clip:t[:box] ...` (output in build/peek/)
-- `promo live2d fetch|render|lag`: offline Live2D hosts for the `livestream` shot type (hosts on one side, screen >= 55 %,
+- `promo live2d models | add | stills --model ID --moods`: models (samples + your own), register your own, a real mood sheet.
+- `promo live2d fetch|render|lag`: offline Live2D hosts for the `livestream` and `podcast` shot types (livestream: hosts on one side, screen >= 55 %,
   chat <= 4 lines of host asides only, neutral EP tag, no LIVE/viewer counts, keep-clear rects, `live2d_credits` end card).
   Only Live2D Original Characters; notice + licence rules in `docs/live2d-licences.md`. Heavy renders hold
   the box-wide heavy lock; `--debug` draws keep-clear outlines.

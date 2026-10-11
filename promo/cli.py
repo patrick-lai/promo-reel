@@ -95,6 +95,15 @@ def shot_digest(spec, shot, legacy=False, raw=False):
         # the show-level horizon_text layer (drawn into every horizon shot, and into project types that declare `draws_horizon_text = True`) + the resolved preset
         code = code + ["shots/horizon", "shots/brand", "pane3d", "styles"]
         extra = [spec.style, spec.raw.get("horizon_text"), spec.timeline.bpm]
+    if shot.type in ("podcast", "live2d_credits") and spec.raw.get("podcast"):
+        # hosts, layout, subtitles and the performance come from the show block, the VO lines and their takes
+        code = code + ["shots/podcast", "podcast", "perform", "vo"]
+        from . import podcast as PC
+        extra = [PC.plain({k: v for k, v in spec.raw["podcast"].items() if k != "script"})]
+        if shot.type == "podcast":
+            vj = os.path.join(spec.vo_dir, "vo.json")
+            takes = {l["file"]: file_sig(os.path.join(spec.vo_dir, l["file"])) for l in json.load(open(vj))["lines"]} if os.path.exists(vj) else {}
+            extra += [(spec.raw.get("vo") or {}).get("lines"), file_sig(vj), takes, spec.duration, [(s.id, s.b0, s.b1, s.type, s.cfg.get("layout")) for s in spec.shots]]
     cfg = {k: v for k, v in shot.cfg.items() if k not in QA_ONLY_KEYS + AUDIO_KEYS + (() if legacy else EVENT_KEYS) + (POST_KEYS if raw else ())}   # QA / audio / cue keys never force a re-render
     if not legacy and local_time(shot):
         cfg = {k: v for k, v in cfg.items() if k not in ("beats", "bars")}
@@ -128,9 +137,10 @@ def plan(spec):
             if cfg.get("engine") == "files":
                 return digest([[vo.line_id(l), l["shot"], l["text"], l.get("sha256"), l.get("db"), file_sig(vo.line_file(spec, l, man))] for l in cfg["lines"]],
                               code_hash("vo"))
-            # only what changes the audio: engine/voice/lang/speed + each line's shot/text/tts (not `at` / `asr_aliases`)
-            cfg = dict({k: v for k, v in cfg.items() if k != "lines"}, lines=[[l["shot"], l["text"], l.get("tts")] for l in cfg["lines"]])
-            models = {k: file_sig(A.asset_path(spec, cfg[k], man)) for k in ("model_asset", "voices_asset")}
+            # only what changes the audio: each line's id/shot/text/tts and its resolved voice (vo block < host < line), not `at` / `asr_aliases`
+            lines = [[vo.line_id(l), l["shot"], l["text"], l.get("tts"), l.get("host"), vo.voice_of(spec, l)] for l in cfg["lines"]]
+            cfg = dict({k: v for k, v in cfg.items() if k != "lines"}, lines=lines)
+            models = {k: file_sig(A.asset_path(spec, cfg[k], man)) for k in ("model_asset", "voices_asset") if cfg.get(k)}
             return digest(cfg, models, code_hash("vo"))
         add("vo", "vo", vo_dig, [vo.vo_json_path(spec)], lambda a: vo.run(spec))
     from . import shot_audio
@@ -612,7 +622,8 @@ def build_parser():
     sub.add_parser("config", help="user config: `promo config output [home|repo|default|PATH]` (where new videos are saved: outside this repo, on an external drive), `promo config heavy-lock [PATH]`")
     sub.add_parser("projects", help="list the projects in the save location (PROMO_PROJECTS / `promo config output` / <repo>/projects)")
     sub.add_parser("rubric", help="PASS/FAIL of a scores file (or a review .md) against evals/rubric.yaml (see `promo rubric -h`)")
-    sub.add_parser("live2d", help="Live2D host renderer: fetch | models | render | lag (see `promo live2d -h`)")
+    sub.add_parser("live2d", help="Live2D host renderer: fetch | models | add | stills | render | lag (see `promo live2d -h`)")
+    sub.add_parser("podcast", help="podcast / VTuber show from a script: script | plan | set | preview | status (see `promo podcast -h`)")
     return ap
 
 
@@ -770,6 +781,9 @@ def main(argv=None):
         for p in home.list_projects():
             print(f"  {p['name']:<28} brief={'yes' if p['brief'] else 'no ':<3} rounds={p['rounds']}  {p['path']}")
         return 0
+    if argv[:1] == ["podcast"]:         # `promo podcast script|plan|set|preview|status -p PROJECT`: a podcast / VTuber show from a script
+        from . import podcast_cli
+        return podcast_cli.main(argv[1:])
     if argv[:1] == ["rubric"]:          # `promo rubric <scores>`: PASS/FAIL against evals/rubric.yaml (no promo.yaml needed)
         from . import rubric
         return rubric.main(argv[1:])

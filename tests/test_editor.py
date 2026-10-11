@@ -62,6 +62,74 @@ def test_shared_parse_cases(case):
     assert [{k: v for k, v in o.items() if k != "_n"} for o in E.parse(E.text_of(E.parse(case["text"])))] == ops      # text round trip
 
 
+def test_the_mod_knows_the_podcast_names_promo_uses():
+    """PF.editParse / editApply check layouts, sizes, places, frames, edges, moods and gestures with their own copies of these lists."""
+    from promo import perform, podcast
+    js = open(os.path.join(HERE, "..", "mods", "promo-flow", "logic.js")).read()
+    const = lambda name: json.loads(re.search(r"const %s = (\[[^\]]*\]);" % name, js).group(1))  # noqa: E731
+    assert const("LAYOUTS") == list(podcast.LAYOUTS) and const("FRAMES") == list(podcast.FRAMES) and const("EDGES") == list(podcast.EDGES)
+    assert const("SIZES") == list(podcast.SIZES) and const("ANCHORS") == list(podcast.ANCHOR_X)
+    assert const("MOODS") == list(perform.MOODS) and const("GESTURES") == list(perform.GESTURES)
+    assert const("HOST_EDITS") == list(E.HOST_EDITS)
+
+
+def test_podcast_edits_need_a_podcast_and_say_what_they_changed():
+    bare = {"shots": [{"id": "01", "beats": [0, 8], "type": "clip"}], "vo": {"lines": [{"id": "a1", "shot": "01", "text": "One."}]}}
+    for ops in ("host a size=l", "mood a1 happy", "gesture a1 nod"):
+        with pytest.raises(E.EditError, match="line 1: this video has no podcast hosts"):
+            E.apply_ops(bare, E.parse(ops), 0.5)
+    got, _ = E.apply_ops(bare, E.parse('say a1 "One, again."'), 0.5)           # the words of any voice-over can change
+    assert got["vo"]["lines"][0]["text"] == "One, again."
+    assert E.summary_of(E.parse("layout 04 speaker\nhost a size=l\nmood a3 happy\ngesture a3 nod\nsay a3 x\nsay a1 y")) == "layouts, hosts, moods, gestures, 2 words"
+
+
+PODCAST_SPEC = """# a podcast: comments survive the editor
+timeline: {bpm: 120, beats: 16}
+vo:
+  engine: kokoro
+  lines:
+  - {id: a1, shot: "01", at: 0.5, host: a, text: Hi there., tts: Hi there!, mood: happy}   # the opener
+  - id: b1
+    shot: "02"
+    at: 0.2
+    host: b
+    text: Hello.
+podcast:
+  hosts:
+    - {id: a, model: mao, name: Mao, color: "#7FD1FF", voice: {engine: kokoro, voice: af_bella}}
+    - {id: b, model: hiyori, name: Hiyori, voice: bf_emma}     # second host
+  layout: overlay
+  place: {a: {anchor: bottom-left, size: l}}
+  frame: none
+  script:
+    - {id: a1, host: a, text: Hi there., tts: Hi there!, mood: happy}
+    - {id: b1, host: b, text: Hello.}
+shots:
+  - id: "01"
+    beats: [0, 8]
+    type: podcast
+    layout: overlay
+  - id: "02"
+    beats: [8, 16]
+    type: podcast
+    layout: boxed      # the app in a window
+"""
+
+
+def test_podcast_edits_write_promo_yaml_as_text():
+    """`apply` refuses an edit whose text does not read back as the data: every podcast op must write cleanly, comments kept."""
+    old = yaml.safe_load(PODCAST_SPEC)
+    ops = E.parse('layout 02 speaker\nhost hiyori place=bottom-center size=0.7 frame=card name="Hiyo Chan" voice=bf_isabella\n'
+                  'mood a1 laugh:0.8 ; gesture b1 nod\nsay a1 "Hi, everyone."')
+    new, origin = E.apply_ops(old, ops, 0.5)
+    out = E.write_text(PODCAST_SPEC, old, new, origin)
+    assert yaml.safe_load(out) == new
+    assert "# a podcast: comments survive the editor" in out and "# the app in a window" in out
+    assert new["shots"][1] == {"id": "02", "beats": [8, 16], "type": "podcast", "layout": "speaker", "focus": "auto"}
+    assert new["podcast"]["script"][0] == {"id": "a1", "host": "a", "text": "Hi, everyone.", "mood": "laugh:0.8"}
+    assert new["podcast"]["hosts"][1]["voice"] == {"voice": "bf_isabella"} and new["podcast"]["frame"] == "card"
+
+
 # ---------------------------------------------------------------- a small real project
 SPEC = """# A test promo. This comment must survive every edit.
 project: {name: ed, title: Editor test}

@@ -1,6 +1,8 @@
 // promo-reel Live2D renderer: deterministic frame-by-frame capture from headless Chromium.
 //   node render.mjs job.json > frames.rgba      (raw RGBA, straight alpha, top-down rows, job.width x job.height)
-// job.json: {modelDir, model3, core, width, height, fps, frames, seed, warmup, frame:{zoom,at_x,at_y} (or legacy {zoom,cy,dx}), tracks:{ParamId:{v:[..], mode:set|add}}}
+// job.json: {modelDir, model3, core, width, height, fps, frames, seed, warmup, frame:{zoom,at_x,at_y} (or legacy {zoom,cy,dx}),
+//            tracks:{ParamId:[{mode:set|blend|add|mul, v:[..], w?:[..]}, ...]} (or one {v, mode}), premultiplied?: true}
+// premultiplied: true writes premultiplied RGBA (for a supersampled render that ffmpeg scales down, then un-premultiplies).
 // The model clock advances exactly 1/fps per frame (performance.now is virtualised in page.html); wall clock is
 // never read, so the same job gives the same pixels. Progress + stats go to stderr; frames go to stdout.
 import fs from "node:fs";
@@ -57,8 +59,10 @@ for (let i = 0; i < job.frames; i++) {
   const { b64, rb } = await page.evaluate((k) => window.L2D.frame(k), i);
   readback.push(rb);
   const px = Buffer.from(b64, "base64");
-  // flip rows (GL is bottom-up) and un-premultiply alpha
-  for (let y = 0; y < H; y++) {
+  // flip rows (GL is bottom-up) and un-premultiply alpha (unless the caller scales premultiplied pixels itself)
+  if (job.premultiplied) {
+    for (let y = 0; y < H; y++) px.copy(out, y * W * 4, (H - 1 - y) * W * 4, (H - y) * W * 4);
+  } else for (let y = 0; y < H; y++) {
     const src = (H - 1 - y) * W * 4, dst = y * W * 4;
     for (let x = 0; x < W * 4; x += 4) {
       const a = px[src + x + 3];

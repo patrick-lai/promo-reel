@@ -234,6 +234,10 @@ def run(spec):
     from . import livestream as LS
     for gate, status, msg in LS.check(spec, ctx):
         rep.add(gate, status, msg)
+    # 7b'. podcast / VTuber show: model licences + credits, framing, subtitles, lint, voice licences, claims with evidence
+    from . import podcast as PC
+    for gate, status, msg in PC.check(spec, ctx):
+        rep.add(gate, status, msg)
 
     # 7c. generic gates for every project (promo/generic_check.py): named >= 18 px on clip shots and the claims audit
     # (folded in from the hero's per-project tools), plus the WARN-only text-edge / empty-frame / caption-truth / long-hold

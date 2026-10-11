@@ -1,0 +1,60 @@
+# Podcast / VTuber show (style preset `podcast`): Live2D hosts talking over the real app, overlaid on the frame with NO box.
+#   1. promo podcast script --file script.yaml     (or edit `podcast.script` below: one line per {host, text, mood, gesture, look})
+#   2. promo podcast plan                          (voices every line, lays them out, writes vo.lines, timeline and shots)
+#   3. promo podcast preview                       (real stills per layout, a mood sheet and a voice sample per host)
+#   4. promo build && promo check
+# After `plan` this is an ordinary promo.yaml: edit shots / vo.lines (or use the Stage's editor); `plan --force` re-plans from the script.
+project: {name: my-promo, title: "My podcast"}
+output: {name: my-promo, resolution: 1080, fps: 30, duration: 10.0}
+paths: {build: build, out: out}
+assets: assets.yaml
+footage: footage/manifest.yaml
+
+style:
+  preset: podcast              # shots >= 3 s, subtitles <= 35 chars held >= 2 s, cuts only, lines on the half-beat grid
+  font:
+    path: "${PROMO_FONT:-/usr/share/fonts/truetype/sand-box/google/Inter/Inter-VariableFont_opsz,wght.ttf}"
+    fallbacks: [/System/Library/Fonts/SFNS.ttf, /System/Library/Fonts/Helvetica.ttc]
+
+podcast:
+  title: "Episode title"
+  tag: "EP 1"                  # no LIVE badges or viewer counts (podcast-lint)
+  hosts:
+    - {id: a, model: mao, name: Mao, color: "#7FD1FF", voice: {engine: kokoro, voice: af_bella}, seed: 11}
+    - {id: b, model: hiyori, name: Hiyori, color: "#FFB86B", voice: {engine: kokoro, voice: bf_emma}, seed: 22}
+  layout: overlay              # overlay (no box) | boxed (screen window + host panels) | two-shot | speaker (cuts to whoever talks)
+  frame: none                  # none | card | circle | soft  (a box is one toggle away: frame: card)
+  edge: shadow                 # shadow | glow | rim | none   (drawn from the avatar's own alpha)
+  place:
+    a: {anchor: bottom-left, size: l}     # size s | m | l | xl or a height fraction; x / y offsets (fraction or px)
+    b: {anchor: bottom-right, size: l}
+  backdrop: {gradient: [[12, 14, 30], [46, 30, 84]]}    # behind window layouts: | {plate: <footage id, ui: false>} | {image: path} | {blur_screen: true}
+  subtitles: {show: true, style: speaker}
+  keep_clear: []               # [{name, box: [x0, y0, x1, y1]}] normalised on the app screen: no host or subtitle may cover it
+  screens: [my-clip]           # footage ids `plan` puts on screen, in order (a `scene:` line moves to the next)
+  script:
+    - {host: a, text: "Hi, I'm Mao. Today we're looking at the new checkout.", mood: happy, gesture: nod}
+    - {host: b, text: "And I'm Hiyori. Let's see what it actually does.", look: partner, claim: false}
+
+vo:
+  engine: kokoro               # per-host voices come from podcast.hosts[].voice; a line may set its own `voice:`
+  model_asset: kokoro-model
+  voices_asset: kokoro-voices
+  lines: []                    # written by `promo podcast plan`
+
+timeline: {bpm: 120, beats: 20}
+
+shots:                         # written by `promo podcast plan`
+  - {id: "01", type: podcast, beats: [0, 14], layout: overlay, screen: {placeholder: "APP FOOTAGE"}}
+  - {id: "02", type: live2d_credits, beats: [14, 20], size: 30, fade_in: 0.25, title: Credits}
+
+sfx: {library: {tick: {asset: sfx-tick}}}
+
+mix:
+  sr: 48000
+  bus_db: {music: -5.0, sfx: -8.0, vo: 1.5}
+  vo_line_lufs: -16.0
+  duck: {db: 7.0, attack: 0.12, release: 0.35, pre: 0.12, post: 0.1}
+  fade_out: 0.03
+  masters:
+    - {name: web, suffix: "", lufs: -14.0, ceiling: -1.2, max_true_peak: -1.0}

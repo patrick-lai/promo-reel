@@ -3,9 +3,32 @@
 ```
 cd live2d && npm ci && cd ..          # pixi.js 6 + pixi-live2d-display 0.4 + playwright-core (node_modules gitignored)
 promo live2d fetch                    # official Cubism Core + Hiyori + Mao from cubism.live2d.com, sha256-checked, into live2d/media/
-promo live2d render --model hiyori --wav host_a.wav --partner-wav host_b.wav --out build/hiyori.mov [--size 420x500] [--seed 11]
+promo live2d render --model hiyori --wav host_a.wav --partner-wav host_b.wav --out build/hiyori.mov [--size 420x500] [--seed 11] [--lines lines.yaml] [--supersample 1]
 promo live2d lag build/hiyori.mouth.npy host_a.wav
+promo live2d models                   # samples + your own: expressions, motions, moods, mouth (vowels or open + form)
+promo live2d stills --model mao --moods --out /tmp/mao-moods.png      # a real portrait per mood
+promo live2d add ~/Models/mychar --id mine --name "My Char" --type commissioned --licence "..." --source https://... [--credit "Art: ..., Rig: ..."]
 ```
+- **Performance** (`promo/perform.py`, used by every host render): vowel mouth shapes from the voice (LPC formants
+  -> A/I/U/E/O weights; rigs with ParamA..ParamO get the five shapes, rigs with ParamMouthForm get a form), moods
+  (a model's `moods:` map of exp3 files / parameter targets, else generic targets on standard Cubism IDs; exp3
+  Add / Multiply / Overwrite with fades), gestures (nod, shake, tilt, lean_in, laugh_bounce, shrug, look_away, or
+  `motion:<name>` sampled from the model's motion3 curves), prosody (stressed syllables raise the brows and drive
+  head beats), gaze (saccades, `look:` camera | partner | screen | away, eyes lead and the head follows), listening
+  nods at the partner's phrase ends, body sway, shoulder breath and a resting smile. Per-line keys come from
+  `vo.lines[]` (`promo/podcast.py` timed_lines). The renderer gets per-parameter LAYER lists
+  `[{mode: set|blend|add|mul, v, w?}]`; page.html starts each driven parameter from its `set` value (or its default)
+  every frame, so add / mul never pile up, and clamps like Cubism (`perform.apply_layers` is the same maths; the
+  readback test compares them).
+- **Supersampling:** `supersample=2` (the default for podcast shows at 1080p and up) renders at 2x, writes
+  premultiplied pixels and lets ffmpeg scale down with lanczos and un-premultiply, so line art stays crisp with no
+  dark fringes. `1` is the draft mode.
+- **Your own model:** `promo live2d add` registers a Cubism 3+ model in `<config dir>/live2d-models.yaml` (next to
+  the promo config; `PROMO_LIVE2D_MODELS` overrides). Files are never copied or committed. It needs `--type
+  own|commissioned|original`, a licence and a source (collaboration / third-party characters are refused),
+  measures the framing anchors from renders (eyes / mouth by blinking and opening the mouth, the silhouette top
+  and width from alpha), and maps moods from expression names (smile, angry, sad, surprise, ...). A sample id
+  cannot be replaced. The free samples are good but not commissioned-VTuber art; your own rig is how a show gets there.
 - **Chromium:** Playwright's `chromium_headless_shell` from `~/.cache/ms-playwright` if present (or `PROMO_CHROMIUM`).
   WebGL2 runs on SwiftShader, so no GPU is needed.
 - **Deterministic:** the page virtualises `performance.now`/`Date.now` and seeds `Math.random`. The model clock
@@ -37,6 +60,7 @@ promo live2d lag build/hiyori.mouth.npy host_a.wav
   `probe_face` measure the eye and mouth lines from pixels) and read the rest off a grid. `promo check`
   (`livestream-framing`) and `tests/test_live2d.py` check that hosts get the same head height and scale.
 - **Sidecars:** each render writes `<out>.report.json`, `<out>.mouth.npy` and `<out>.readback.json`.
-- **Licences:** only Live2D Original Characters are accepted, and a `live2d_credits` end card (full notice + model
-  credits, >= 28 px at 1080p, >= 2 s) is required by `promo check`. See
+- **Licences:** of the samples only Live2D Original Characters are accepted, and a `live2d_credits` end card (full notice + model
+  credits, >= 28 px at 1080p, >= 2 s) is required by `promo check` (for your own models only when they carry a credit; the
+  sample notice is left out when no sample is in the show). See
   `../docs/live2d-licences.md`.

@@ -22,6 +22,10 @@ Presets:
                  eased camera, shots >= 0.8 s (UI >= 2.5 s), cut rate calm -> busier -> calm, fades from / to black,
                  sparse serif title + lower-third copy, no flashes. Shot type `cinema` (promo/shots/cinema.py), look in
                  promo/grade.py.
+  podcast        podcast / VTuber show (promo/podcast.py): Live2D hosts overlaid on the real app with no box by default
+                 (boxed / two-shot / speaker cam are layouts), speaker-coloured subtitles (<= 35 chars, >= 2 s), shots
+                 >= 3 s, cuts only, lines on a half-beat grid. Shot type `podcast` (promo/shots/podcast.py); `promo podcast`
+                 turns a script into VO, timeline and shots.
   horizon        Opus-5.5-style horizon film: rapid cuts (1/2 beat allowed in the burst, shots >= 0.3 s hard / 0.4 s soft)
                  of real surfaces, each framed so one real edge forms a horizon (`anchor`), ONE serif sentence on the
                  horizon whose words change while the picture keeps cutting (show-level `horizon_text`, each word spans
@@ -118,6 +122,16 @@ PRESETS = {
         transitions=dict(allowed=["cut"]),          # dissolves: not rendered by the engine yet
         checks=["caption-hold", "caption-zone", "beat-grid", "shot-hold", "no-fx"],
         qa=dict(min_caption_hold=2.5, beat_subdivision=1),
+    ),
+    "podcast": dict(
+        description="Podcast / VTuber show: Live2D hosts overlaid on the real app (no box by default), speaker-coloured subtitles, long holds, cuts only.",
+        pacing=dict(snap="beat", min_shot_s=3.0, min_caption_hold_s=2.0),
+        # the generic caption pills (overlays) keep the hero's 9:16-safe zone; subtitles have their own two-row zone (promo/podcast.py SUB_ZONE)
+        caption=dict(cx=960, cy=905, size=32, max_w=608, zone=dict(x0=656, x1=1264, y0=860, y1=950)),
+        typography=dict(font=INTER, weight="SemiBold"),
+        transitions=dict(allowed=["cut"]),
+        checks=["caption-hold", "caption-zone", "shot-hold", "no-fx"],
+        qa=dict(min_caption_hold=2.0, beat_subdivision=2),         # lines start on the half-beat grid
     ),
     "horizon": dict(
         description="Horizon film (Opus 5.5 look): rapid cuts of real surfaces each framed on a real edge, ONE serif line on the horizon whose words change across cuts, a held dawn end card.",

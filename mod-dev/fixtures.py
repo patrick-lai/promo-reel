@@ -627,6 +627,49 @@ def edit_stage(tmp):
     return F.snapshot(pd)
 
 
+PODCAST_INTENT = "A short podcast where two VTuber hosts talk through our checkout run, standing right on the app with no boxes."
+
+
+def podcast_stage(tmp):
+    """`podcast-discover` (the request mentions VTuber hosts: the podcast style is suggested) and `podcast`: the show planned, with its Cast
+    card previews (drawn here; a real project gets Live2D renders from `promo podcast preview --layouts`)."""
+    import hashlib
+
+    import yaml
+    pd = os.path.join(tmp, "podcast-show")
+    F.init(pd, PODCAST_INTENT)
+    disc = F.snapshot(pd)
+    F.discover(pd, "Podcast with animated hosts", [], True)
+    tpl = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "templates", "styles", "podcast", "promo.yaml")).read().replace("my-promo", "podcast-show")
+    raw = yaml.safe_load(tpl)
+    raw["vo"]["lines"] = [dict(id="a1", shot="01", at=0.5, host="a", text="Hi, I'm Mao, and this is Hiyori.", mood="happy"),
+                          dict(id="b1", shot="01", at=3.0, host="b", text="Today: one checkout, start to merge.", look="screen"),
+                          dict(id="a2", shot="02", at=0.0, host="a", text="It opened a pull request already?", mood="surprised")]
+    raw["shots"] = [dict(id="01", type="podcast", beats=[0, 12], layout="overlay", screen=dict(placeholder="APP FOOTAGE")),
+                    dict(id="02", type="podcast", beats=[12, 20], layout="speaker", focus="auto", screen=dict(placeholder="APP FOOTAGE")),
+                    dict(id="03", type="live2d_credits", beats=[20, 26], size=30, fade_in=0.25)]
+    raw["timeline"]["beats"] = 26
+    raw["podcast"]["title"] = "A checkout, start to merge"
+    text = yaml.safe_dump(raw, sort_keys=False)
+    write(os.path.join(pd, "promo.yaml"), text)
+    od = os.path.join(pd, "flow", "podcast")
+    hosts, layouts = [], {}
+    for hid, name, model, tint, hz in (("a", "Mao", "mao", (58, 66, 140), 330), ("b", "Hiyori", "hiyori", (150, 110, 80), 250)):
+        still(os.path.join(od, f"{hid}-portrait.png"), name, tint, size=(360, 420))
+        still(os.path.join(od, f"{hid}-moods.png"), name + ": neutral happy laugh excited thinking", tint, size=(1200, 640))
+        wav(os.path.join(od, f"{hid}-voice.wav"), hz, 1.5)
+        hosts.append(dict(id=hid, name=name, model=model, portrait=os.path.join(od, f"{hid}-portrait.png"), moods=os.path.join(od, f"{hid}-moods.png"),
+                          voice=os.path.join(od, f"{hid}-voice.wav"), voice_label="kokoro " + ("af_bella" if hid == "a" else "bf_emma"), sample="Hi, I'm " + name + "."))
+    for i, lay in enumerate(("overlay", "boxed", "two-shot", "speaker")):
+        p = os.path.join(od, f"layout-{lay}.jpg")
+        frame(p.replace(".jpg", ".png"), i + 1, lay.upper(), "layout", HUES[i % len(HUES)])
+        Image.open(p.replace(".jpg", ".png")).convert("RGB").save(p)
+        layouts[lay] = p
+    json.dump(dict(hosts=hosts, layouts=layouts, layout="overlay", frame="none", spec=hashlib.sha256(text.encode()).hexdigest()[:12], at=F.now()),
+              open(os.path.join(od, "preview.json"), "w"), indent=1)
+    return disc, F.snapshot(pd)
+
+
 def build(keep=None):
     tmp = keep or tempfile.mkdtemp(prefix="promo-flow-fixtures-")
     os.makedirs(tmp, exist_ok=True)
@@ -841,6 +884,7 @@ def _build(tmp):
     res["starting"] = {}
     res.update(picker_states(tmp, pd))
     res["edit"] = edit_stage(tmp)
+    res["podcast-discover"], res["podcast"] = podcast_stage(tmp)
     return res, tmp
 
 

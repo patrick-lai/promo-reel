@@ -32,7 +32,13 @@ Every path below that says `file` is `{"$file": "<absolute path>"}` (the host tu
     title, intent, stage (discover|scripts|pick|storyboard|assets|keyframes|confirm|drafts|review|final), stage_label, stage_since (ISO, last flow log entry), cycle, rounds_used, rounds_max
     steps      [{id, label, state: done|current|todo|stale, stale}]  (10, one per stage; `stale` = its approval no longer matches what was approved; never `done` then)
     stale_steps [{id, gate, label}]                            approvals that went stale; the mod shows "Approved earlier, but <step> changed since."
-    style      {style, refs[], no_refs} | null
+    style      {style, preset: hero|horizon|anime-opening|podcast|null, refs[], no_refs} | null
+    podcast    {title, tag, layout, frame, edge, subtitles, names, backdrop, lines, script, planned, preview_fresh, preview_at,
+                hosts [{id, name, model, color, place {anchor, size, x?, y?}, voice {engine, voice, ...}, portrait: file, moods: file, voice_sample: file, voice_label, sample_text}],
+                shots [{id, layout, focus}], layouts {overlay|boxed|two-shot|speaker: file}, layouts_list, frames_list, edges_list, sizes, anchors} | null
+                 a podcast / VTuber show (promo.yaml has a `podcast:` block; promo/podcast_cli.py status). The files are real renders from
+                 `promo podcast preview --layouts` (portraits, mood sheets, a voice sample per host, one still per layout); preview_fresh = made from
+                 the current promo.yaml. The Cast card (Overview, Plan, Storyboard) shows them and queues `promo podcast set ...` changes.
     scripts    [{id, title, logline, picked, verdict, recommended: why|null, beats[<=2], words, headings[{level,title}<=40], body: text|null, body_note}]   recommended = the agent's one pick (`promo flow recommend ID --why TEXT`): a "Recommended" pill on the card, the reason in its tooltip (hover or keyboard focus); beats = first two list items of the script file; body = the whole script (markdown)
     docs       [{id, title, kind, kind_label, group, story|null, summary, updated, source: agent|template, words, headings[<=40], preview, body: text|null, body_note}]   the Plan tab: planning documents the agent added with `promo flow doc ...`
                  kinds: script treatment shotlist direction edit audio capture schedule deliverables risks research review notes; groups: Script Direction Edit Audio Capture Delivery Notes
@@ -175,6 +181,10 @@ repaints and takes each new state in place (`api.update`), so playback, zoom and
 
 The host keeps at most 200 files per state: `editor.fit_files` gives way in a fixed order (older drafts' look stills, earlier projects' media and
 posters, posters, unused takes, the bin's media, stems, ...) and says so in `edit.files_note`.
+The style gate's `options` are [{label, description, recommended, preset}]: the podcast style comes first, `recommended`, when the request names a
+podcast, VTubers, Live2D, avatars, hosts or a talk show (the chat widget gets the first four, the recommended one labelled "(Recommended)").
+Action `podcast {what, list, ops}`: the Cast card's queued changes as full commands (`promo podcast set host a size=xl ; promo podcast set layout
+two-shot ; promo podcast preview --layouts`), or only the preview command for "Make the previews".
 Actions: `edit {draft, count, list, ops}`, `edit_preview {where, range, count, ops}` ("Quick preview": the agent applies the edits and runs `promo flow edit preview` on the selected or changed shots, no draft), `edit_bin {name}`, `edit_keep {id, note}`.
 
 ## Develop

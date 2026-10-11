@@ -95,6 +95,11 @@ def referenced(spec, shot_ids=None):
     if shot_ids is None:
         for name, p in (spec.raw.get("plates") or {}).items():
             _walk(p, None, found, f"plate:{name}")
+    plate = ((spec.raw.get("podcast") or {}).get("backdrop") or {}).get("plate")
+    if plate:                                  # a podcast backdrop plate is behind every podcast shot
+        for s in spec.shots:
+            if s.type == "podcast" and (shot_ids is None or s.id in shot_ids):
+                found.setdefault(plate, []).append(s.id)
     return found
 
 

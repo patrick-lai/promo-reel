@@ -51,28 +51,47 @@ def _host_match(line, h):
     return bool(who) and who in {str(h.get("id", "")).lower(), str(h.get("name", "")).lower(), str(h.get("model", "")).lower()}
 
 
+def host_lines(spec, h):
+    """The spec's VO lines spoken by host `h` (`vo.lines[].host` = host id, name or model); muted lines are silent."""
+    cfg = spec.raw.get("vo") or {}
+    return [ln for ln in cfg.get("lines") or [] if _host_match(ln, h) and not ln.get("mute")]
+
+
 def host_track(spec, h, log=print):
-    """Full-show mono track for host `h` built from the spec's VO lines (`vo.lines[].host` = host id/name/model),
-    each placed at its event time. Written to build/live2d/host-<id>-vo.wav (deterministic). None if no lines."""
+    """Full-show mono track for host `h` built from the spec's VO lines, each placed at its event time. Synthesised
+    lines are read through build/vo/vo.json (`promo vo` names them vo-<line id>.wav). Written to
+    build/live2d/host-<id>-vo.wav (deterministic). None if no lines."""
+    import json
+
     import soundfile as sf
     from .. import vo as VO
     cfg = spec.raw.get("vo") or {}
-    lines = [ln for ln in cfg.get("lines") or [] if _host_match(ln, h)]
+    lines = host_lines(spec, h)
     if not lines:
         return None
+    meta = {}
+    vj = VO.vo_json_path(spec)
+    if cfg.get("engine") != "files":
+        if not os.path.exists(vj):
+            raise ValueError("host lip-sync needs the VO takes: run `promo vo` first")
+        meta = {str(m.get("id", m["shot"])): m for m in json.load(open(vj))["lines"]}
     sr = None
     buf = None
     for ln in lines:
         if cfg.get("engine") == "files":
             x, r = VO.line_audio(spec, ln)                 # same trim/fade as the mix
         else:
-            x, r = sf.read(os.path.join(spec.vo_dir, ln["file"]), dtype="float32", always_2d=True)
+            m = meta.get(VO.line_id(ln))
+            if m is None:
+                raise ValueError(f"VO line {VO.line_id(ln)} has no take in {vj}: run `promo vo`")
+            x, r = sf.read(os.path.join(spec.vo_dir, m["file"]), dtype="float32", always_2d=True)
             x = x.mean(1)
         if sr is None:
             sr = r
             buf = np.zeros(int(round(spec.duration * sr)) + 1, np.float32)
         elif r != sr:
-            raise ValueError(f"VO line {ln.get('id')}: sample rate {r} != {sr}")
+            from scipy.signal import resample_poly
+            x = resample_poly(x, sr, r).astype(np.float32)
         a = int(round(spec.g(ln["shot"], ln.get("at", 0.0)) * sr))
         b = min(len(buf), a + len(x))
         buf[a:b] += x[: b - a]
@@ -587,17 +606,22 @@ class Livestream(ShotType):
 
 
 def credit_lines(spec):
-    """(notice, [(model name, credit)]) for every Live2D model used by the show's hosts."""
+    """(notice, [(model name, credit)]) for every Live2D model used by the show's hosts (livestream and podcast blocks).
+    The Live2D sample-data notice only when a sample model is in the show (None otherwise)."""
     from .. import live2d as L2
+    from .. import podcast as PC
     reg = L2.registry()
-    seen, models = set(), []
-    for h in LS.cfg(spec).get("hosts") or []:
+    seen, models, sample = set(), [], False
+    for h in list(LS.cfg(spec).get("hosts") or []) + PC.hosts(PC.cfg(spec)):
         if h["model"] in seen:
             continue
         seen.add(h["model"])
         m = reg["models"][h["model"]]
+        sample = sample or not m.get("user")
+        if m.get("user") and not m.get("credit"):
+            continue
         models.append((m["name"], m.get("credit", "")))
-    return reg["notice"]["long"], models
+    return (reg["notice"]["long"] if sample else None), models
 
 
 LICENCE_LINE = "Live2D sample models used under the Live2D Free Material License Agreement (Original Characters)."
@@ -631,7 +655,7 @@ def credits_card(ctx, notice, models, size=30, title="Credits", part=None):
     blocks = []
     if title:
         blocks.append(wrap(title, fh, (255, 255, 255, 255), size * 2.4 * K))
-    if part in (None, 1):
+    if part in (None, 1) and notice:
         blocks.append(wrap(notice, fb, body, lh) + wrap(LICENCE_LINE, fb, body, lh))  # licence line right under the notice
     if part in (None, 2):
         blocks.append([r for name, cr in models for r in wrap(f"{name}: {cr}" if cr else name, fb, body, lh)])

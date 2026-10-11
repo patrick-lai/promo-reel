@@ -36,7 +36,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     notes: {}, noteSeq: 0, player: null,
     booted: false, held: false, heldTimer: 0, builtAt: 0, previewUntil: 0, version: null, summary: {}, doc: {}, pending: null, offline: false, readonly: false,
     tab: null, userTab: false, stage: null, picks: new Set(), style: null, ownStyle: "", boardIdx: 0, draftSel: null, earlier: false, filter: null, checksOpen: false, assumeOpen: false,
-    ref: "", settingsOpen: false, setSel: null, setText: "", compose: false, composeKind: null, reader: null, sbView: "scenes", cmtPending: 0, cmtTotal: 0, cmtShown: 0, cmtChip: null, docGroup: null, docQ: "", docBase: null, docOpened: new Set(), reqHint: "", sending: null, justSent: null, stall: false, err: "", stale: null, stash: null, updated: false, stepsOpen: false, lastAction: null, title: "", lastBadge: "", noState: false,
+    ref: "", cast: {}, castOpen: false, settingsOpen: false, setSel: null, setText: "", compose: false, composeKind: null, reader: null, sbView: "scenes", cmtPending: 0, cmtTotal: 0, cmtShown: 0, cmtChip: null, docGroup: null, docQ: "", docBase: null, docOpened: new Set(), reqHint: "", sending: null, justSent: null, stall: false, err: "", stale: null, stash: null, updated: false, stepsOpen: false, lastAction: null, title: "", lastBadge: "", noState: false,
   };
 
   /* ---------------- tiny DOM helper ---------------- */
@@ -597,12 +597,12 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     if (S.reader) { const it = findReadable(S.reader.key); return [it && [it.title, it.words, it.body, it.updated]]; }
     if (tab === PF.WIDGET_TAB) return [PF.widgetsFor(d, "workbench")];
     if (tab === "scripts") return [d.scripts, d.intent, common, PF.widgetsFor(d, tab)];
-    if (tab === "storyboard") return [d.boards, d.stage === "confirm" ? d.assets.map((a) => [a.kind, a.source, a.scenes]) : 0, d.stage === "keyframes" ? d.to_make : 0, common, PF.widgetsFor(d, tab)];
+    if (tab === "storyboard") return [d.podcast, S.cast, d.boards, d.stage === "confirm" ? d.assets.map((a) => [a.kind, a.source, a.scenes]) : 0, d.stage === "keyframes" ? d.to_make : 0, common, PF.widgetsFor(d, tab)];
     if (tab === "assets") return [d.assets, d.to_make, d.boards, common, PF.widgetsFor(d, tab)];
-    if (tab === "draft") return [d.drafts, d.finals, d.rounds, d.rounds_used, d.rounds_max, d.share, common, PF.widgetsFor(d, tab)];
-    if (tab === "plan") return [d.docs, d.scripts, d.boards && d.boards.map((b) => b.id), d.lessons, common, PF.widgetsFor(d, tab)];
+    if (tab === "draft") return [d.podcast, S.cast, d.drafts, d.finals, d.rounds, d.rounds_used, d.rounds_max, d.share, common, PF.widgetsFor(d, tab)];
+    if (tab === "plan") return [d.podcast, S.cast, d.docs, d.scripts, d.boards && d.boards.map((b) => b.id), d.lessons, common, PF.widgetsFor(d, tab)];
     if (tab === "edit") return [d.edit, d.bin, d.job && d.job.state, arr(d.drafts).length, common];
-    return [d.intent, d.style, common];
+    return [d.intent, d.style, d.podcast, S.cast, common];
   }
   /* A clip the person is watching (playing, or just paused or scrubbed) is never rebuilt under them by an agent update. */
   const PREVIEW_GRACE_MS = 20000;
@@ -1022,10 +1022,90 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
 
   /* A small drawn sample of each look, so the choice is not just a name. It is a hint of the style, not a frame of the video. */
   function styleArt(label) {
-    const k = /hero/i.test(label) ? "hero" : /dialogue/i.test(label) ? "dialogue" : /horizon/i.test(label) ? "horizon" : /anime|kinetic/i.test(label) ? "kinetic" : "own";
+    const k = /podcast|vtuber|host/i.test(label) ? "podcast" : /hero/i.test(label) ? "hero" : /dialogue/i.test(label) ? "dialogue" : /horizon/i.test(label) ? "horizon" : /anime|kinetic/i.test(label) ? "kinetic" : "own";
+    /* podcast: two avatars standing right on the app screen, cut by the frame's bottom edge, no box around them */
     const inner = { hero: [h("i", { class: "win" }), h("i", { class: "pill" })], dialogue: [h("i", { class: "who a" }), h("i", { class: "who b" }), h("i", { class: "bub" })],
+      podcast: [h("i", { class: "scr" }), h("i", { class: "row r1" }), h("i", { class: "row r2" }), h("i", { class: "av a" }), h("i", { class: "av b" }), h("i", { class: "sub" })],
       horizon: [h("i", { class: "sun" }), h("i", { class: "hz" }), h("em", { text: "One line" })], kinetic: [h("i", { class: "ray" }), h("em", { text: "BOLD" })], own: [ic("film")] }[k];
     return h("div", { class: "sty sty-" + k, "aria-hidden": "true" }, ...inner);
+  }
+  /* ---------------- podcast cast ----------------
+     The hosts of a podcast show: a real portrait, a mood strip and a voice sample per host, the layouts as real stills, and chips that queue
+     `promo podcast set` changes. Nothing changes until the person sends them; the agent re-makes the previews and publishes. */
+  const CAST_PLACE = [["bottom-left", "Left"], ["bottom-center", "Middle"], ["bottom-right", "Right"]];
+  const CAST_SIZE = [["s", "S"], ["m", "M"], ["l", "L"], ["xl", "XL"]];
+  const CAST_FRAME = [["none", "No box"], ["card", "Card"], ["circle", "Circle"], ["soft", "Soft edge"]];
+  const CAST_LAYOUT = { overlay: ["On the picture", "Hosts stand on the app, no box"], boxed: ["Boxed", "App window, hosts in panels"], "two-shot": ["Two-shot", "Both hosts big, app in a window"], speaker: ["Speaker cam", "Cuts to whoever talks"] };
+  function castOps() { return Object.values(S.cast || {}); }
+  function castSet(key, label, op, value) {
+    S.cast = S.cast || {};
+    if (op == null) delete S.cast[key]; else S.cast[key] = { label, op, value };
+    render(true);
+  }
+  function castCard() {
+    const pc = S.doc.podcast;
+    if (!pc || !arr(pc.hosts).length) return null;
+    const ro = S.readonly || !!S.pending;
+    const pend = S.cast || {};
+    const val = (key, cur) => (pend[key] ? pend[key].value : cur);
+    const seg = (key, opts, cur, label, opFor, aria) => h("div", { class: "seg-ctl cast-seg", role: "group", "aria-label": aria },
+      opts.map(([v, t]) => h("button", { type: "button", "data-k": key + ":" + v, disabled: ro, "aria-pressed": String(val(key, cur) === v), onclick: () => {
+        if (v === cur) castSet(key, null, null); else castSet(key, label + ": " + t, opFor(v), v);
+      } }, t)));
+    const box = h("div", { class: "card cast", "aria-label": "Cast" });
+    box.append(h("div", { class: "h2-row" }, h("h2", { class: "h2", text: "Cast" }),
+      h("span", { class: "sub", text: (pc.title ? pc.title + " · " : "") + arr(pc.hosts).length + (arr(pc.hosts).length === 1 ? " host" : " hosts") + (pc.lines ? " · " + pc.lines + " lines" : "") })));
+    const noPrev = !arr(pc.hosts).some((x) => x.portrait);
+    for (const ho of arr(pc.hosts)) {
+      const por = h("div", { class: "cast-por", style: "position:relative;border-color:" + (ho.color || "var(--c-line)") });
+      const r = ho.portrait && mref(ho.portrait);
+      if (r && !r.error) lazyInto(por, r, (u) => h("img", { src: u, alt: "Portrait of " + ho.name }), { compact: true });
+      else por.append(h("div", { class: "mid", text: "No portrait yet" }));
+      const voice = h("div", { class: "cast-voice" });
+      const vr = ho.voice_sample && mref(ho.voice_sample);
+      if (vr && !vr.error) lazyInto(voice, vr, (u) => { const a = h("audio", { src: u, controls: "", preload: "metadata", "aria-label": "Voice sample of " + ho.name }); watchMedia(a); return a; }, { compact: true });
+      const pl = ho.place || {};
+      const key = (k) => "host:" + ho.id + ":" + k;
+      const rows = h("div", { class: "cast-body" },
+        h("div", { class: "t" }, h("span", { class: "dot", style: "background:" + (ho.color || "var(--c-accent)") }), h("b", { text: ho.name }), h("span", { class: "sub", text: ho.model })),
+        h("p", { class: "sub", text: "Voice: " + (ho.voice_label || [ho.voice.engine, ho.voice.voice].filter(Boolean).join(" ") || "default") }), voice,
+        h("div", { class: "cast-ctl" }, h("span", { class: "lbl", text: "Place" }), seg(key("place"), CAST_PLACE, pl.anchor, ho.name + " place", (v) => "host " + ho.id + " place=" + v, ho.name + ": where on the frame")),
+        h("div", { class: "cast-ctl" }, h("span", { class: "lbl", text: "Size" }), seg(key("size"), CAST_SIZE, pl.size, ho.name + " size", (v) => "host " + ho.id + " size=" + v, ho.name + ": size")));
+      const row = h("div", { class: "cast-host" }, por, rows);
+      box.append(row);
+      const mr = ho.moods && mref(ho.moods);
+      if (mr && !mr.error) {
+        const strip = h("div", { class: "cast-moods", style: "position:relative" });
+        lazyInto(strip, mr, (u) => h("img", { src: u, alt: ho.name + " in each mood: neutral, happy, laugh, excited, thinking, surprised, smug, sad, serious" }), { compact: true });
+        box.append(h("details", { class: "cast-fold" }, h("summary", { text: ho.name + "'s moods" }), strip));
+      }
+    }
+    /* layouts as real stills (Live2D renders over a real frame of the first screen) */
+    const lays = Object.keys(CAST_LAYOUT);
+    const cur = val("layout", pc.layout);
+    const grid = h("div", { class: "cast-lays", role: "radiogroup", "aria-label": "Layout" });
+    for (const l of lays) {
+      const th = pc.layouts && pc.layouts[l] && mref(pc.layouts[l]);
+      const slot = h("div", { class: "thumb", style: "position:relative" });
+      if (th && !th.error) lazyInto(slot, th, (u) => h("img", { src: u, alt: CAST_LAYOUT[l][0] + " layout, a still from your show" }), { compact: true });
+      else slot.append(h("div", { class: "mid sub", text: "No still yet" }));
+      grid.append(h("label", { class: "cast-lay" + (cur === l ? " on" : "") }, h("input", { type: "radio", name: "cast-layout", value: l, checked: cur === l, disabled: ro, onchange: () => {
+        if (l === pc.layout) castSet("layout", null, null); else castSet("layout", "Layout: " + CAST_LAYOUT[l][0], "layout " + l, l);
+      } }), slot, h("b", { text: CAST_LAYOUT[l][0] }), h("span", { class: "sub", text: CAST_LAYOUT[l][1] })));
+    }
+    box.append(h("div", { class: "cast-sec" }, h("span", { class: "lbl", text: "Layout" }), grid));
+    box.append(h("div", { class: "cast-ctl" }, h("span", { class: "lbl", text: "Box" }), seg("frame", CAST_FRAME, pc.frame || "none", "Box", (v) => "frame " + v, "Box around the hosts")));
+    if (!pc.preview_fresh && !noPrev) box.append(h("p", { class: "sub warnline" }, ic("alert"), h("span", { text: "These stills are from before the last change. Ask for new ones to see it." })));
+    const ops = castOps();
+    const sendNow = (what, opList) => send("podcast", { what, list: opList.map((o) => o.label).join("; ") || what,
+      ops: [...opList.map((o) => "promo podcast set " + o.op), "promo podcast preview --layouts"].join(" ; ") });
+    const actions = h("div", { class: "cast-actions" });
+    if (ops.length) actions.append(h("button", { type: "button", class: "btn primary sm", disabled: ro || !canAsk(), "data-k": "cast-send", onclick: () => { const o = castOps(); S.cast = {}; sendNow(o.length + (o.length === 1 ? " change" : " changes"), o); } },
+      "Send " + ops.length + (ops.length === 1 ? " change" : " changes")), h("button", { type: "button", class: "btn ghost sm", "data-k": "cast-undo", text: "Undo", disabled: ro, onclick: () => { S.cast = {}; render(true); } }));
+    else if (noPrev || !pc.preview_fresh || !Object.keys(pc.layouts || {}).length) actions.append(h("button", { type: "button", class: "btn sm", disabled: ro || !canAsk(), "data-k": "cast-prev", onclick: () => sendNow("new previews", []) }, ic("spark"), noPrev ? "Make the previews" : "New previews"));
+    if (actions.childNodes.length) box.append(actions);
+    if (ops.length) box.append(h("p", { class: "sub", text: "Not sent yet: " + ops.map((o) => o.label).join(", ") }));
+    return box;
   }
   function viewOverview() {
     const d = S.doc, g = gate();
@@ -1043,7 +1123,8 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
           const tslot = th && !th.error ? h("div", { class: "thumb", style: "position:relative" }) : styleArt(o.label);
           if (th && !th.error) lazyInto(tslot, th, (u) => h("img", { src: u, alt: "" }), { compact: true });
           const inp = h("input", { type: "radio", name: "style", value: o.label, checked: S.style === o.label, disabled: !!S.pending, onchange: () => { S.style = o.label; S.ownStyle = ""; const oi = $("own"); if (oi) oi.value = ""; renderGate(); } });
-          return h("label", { class: "card choice radio style" }, inp, h("div", { class: "row" }, h("span", { class: "box" }, ic("check")), tslot, h("div", { class: "body" }, h("div", { class: "t" }, h("b", { text: o.label })), h("p", { class: "logline", text: o.description || "" }))));
+          return h("label", { class: "card choice radio style" }, inp, h("div", { class: "row" }, h("span", { class: "box" }, ic("check")), tslot, h("div", { class: "body" }, h("div", { class: "t" }, h("b", { text: o.label }),
+            o.recommended ? h("span", { class: "chip accent", title: "Your request mentions hosts, a podcast or avatars" }, ic("spark"), "Suggested") : null), h("p", { class: "logline", text: o.description || "" }))));
         })),
         h("div", { class: "own", style: "margin-top:12px" }, h("label", { for: "own", text: "Or describe your own style" }),
           h("input", { id: "own", type: "text", maxlength: "200", value: S.ownStyle, placeholder: "For example: slow, warm, no music", disabled: !!S.pending, oninput: (e) => {
@@ -1060,6 +1141,8 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
         d.style.no_refs ? h("span", { class: "chip", text: "No references" }) : null, refs.length ? h("span", { class: "chip", text: refs.length + (refs.length === 1 ? " reference" : " references") }) : null),
         refs.length ? h("div", { class: "links", style: "margin-top:8px" }, refs.map(linkBtn)) : null));
     }
+    const cc = castCard();
+    if (cc) box.append(cc);
     const c = checksLine();
     if (c) box.append(c);
     return h("div", { class: "pane" }, box);
@@ -1254,6 +1337,8 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       QUICK.map(([label, text]) => h("button", { type: "button", class: "qchip", disabled: blocked, "data-k": "q-" + label, onclick: () => openRequest(text, "What should the agent add? Edit the request if you like.", label) }, ic("plus"), label)),
       h("button", { type: "button", class: "qchip other", disabled: blocked, "data-k": "q-other", text: "Something else…", onclick: () => openRequest("", "Say what you want the agent to add to the plan.", "something else") }));
     fadeX(quick);
+    const cast = castCard();
+    if (cast) box.append(cast);
     box.append(h("details", { class: "ask-card fold", open: all.length ? null : "" },
       h("summary", { class: "ask-h" }, ic("spark"), h("b", { text: "Ask the agent to add" }), ic("chevron", "ic-fold")), quick));
     if (!all.length) {
@@ -1481,6 +1566,8 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     if (confirm) box.append(confirmCard(boards));
     const boardRow = h("div", { class: "board-row" }, boards.length > 1 ? storySwitch(boards) : h("div", { class: "ttl", text: b.title }));
     box.append(boardRow);
+    const cast = castCard();
+    if (cast) box.append(h("details", { class: "cast-wrap fold", open: S.castOpen ? "" : null, ontoggle: (e) => { S.castOpen = e.target.open; } }, h("summary", { text: "Cast and layout" }), cast));
     const tools = scenes.length && !confirm ? sbTools(b, scenes) : null;
     if (tools) boardRow.append(tools.firstChild);
     const unmade = PF.previewRule(d, "storyboard-approved");
@@ -2142,6 +2229,8 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     }
     /* On a wide pane the credits sit under the rounds, so the left column is the video and its file. */
     if (right && el.sc.clientWidth >= 760) { if (S.credEl) right.append(S.credEl); if (S.shareEl && d.stage === "final") right.append(S.shareEl); }
+    const cast = castCard();
+    if (cast) left.append(h("details", { class: "cast-wrap fold", open: S.castOpen ? "" : null, ontoggle: (e) => { S.castOpen = e.target.open; } }, h("summary", { text: "Cast and layout" }), cast));
     return h("div", { class: "pane" }, h("div", { class: "draft-grid" + (right ? "" : " one") }, left, right));
   }
   /* Under a draft: what was checked on this very file, the person's notes pinned to it, how it did on every check, its look against the

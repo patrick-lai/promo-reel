@@ -1,4 +1,4 @@
-# Live2D licences, notices and rules for the `livestream` hosts
+# Live2D licences, notices and rules for the `livestream` and `podcast` hosts
 
 Checked on 2026-10-04 (AEDT) against live2d.com. Re-read the pages before every publish: Live2D can amend
 these terms at any time, and the newest version applies from its revision date. **This file is a summary for the
@@ -44,6 +44,15 @@ Mao: "Illustration: Live2D Inc. / Modeling: Live2D Inc.".
 - All samples: content where the character may seem to say or express erotic, violent or grotesque things, or
   that could upset viewers or make them misread the character image, is "unsuitable for use" (download pages,
   "Important notes").
+
+### Your own models (`promo live2d add`)
+A model the person drew, commissioned or bought is registered in `<config dir>/live2d-models.yaml` with `--type own | commissioned |
+original`, `--licence` (what lets them use it in a promo: the commission contract, the store licence) and `--source` (the artist or store
+page). `promo live2d add` refuses `collaboration` and `external` characters, and refuses a model without a licence or a source; an entry
+edited by hand without them is refused when a show uses it. The files stay where they are and are never committed or redistributed.
+**HUMAN:** read the model's actual licence before publishing (commercial use, credit wording, whether streaming-only licences cover a
+recorded promo). The Live2D sample-data notice is only shown when a sample model is in the show; a credited own model gets its credit line
+on the `live2d_credits` card (`--credit`). The Cubism Core licence (section 3) applies to every render, whatever the model.
 
 ## 2. Live2D Free Material License Agreement (v1.6, revised 2025-02-03)
 https://www.live2d.com/eula/live2d-free-material-license-agreement_en.html. It covers the sample models.
