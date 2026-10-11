@@ -9,7 +9,7 @@ A declarative, agent-runnable pipeline for **product promo videos made from real
 ## Install
 ```
 python3 -m venv .venv && . .venv/bin/activate
-pip install -e '.[vo,asr]'        # vo = kokoro-onnx TTS, asr = faster-whisper (the VO check gate is skipped without it)
+pip install -e '.[vo,asr,depth]'        # vo = kokoro-onnx TTS, asr = faster-whisper (the VO check gate is skipped without it), depth = promo depth
 # needs ffmpeg/ffprobe on PATH and the font named in style.font (Inter, OFL)
 ```
 

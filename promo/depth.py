@@ -58,7 +58,7 @@ def _model():
             import onnxruntime as ort
             from huggingface_hub import hf_hub_download
         except ImportError as e:
-            raise DepthError("the depth pass needs onnxruntime and huggingface_hub (`pip install onnxruntime huggingface_hub`)") from e
+            raise DepthError("the depth pass needs onnxruntime and huggingface_hub (`pip install -e .[depth]`)") from e
         path = hf_hub_download(REPO, MODEL_FILE, revision=REVISION)
         _session = ort.InferenceSession(path, providers=["CPUExecutionProvider"])
     return _session

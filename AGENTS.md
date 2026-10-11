@@ -114,7 +114,7 @@ Hand over: `out/<name>-1080.mp4` (web, -14 LUFS), `out/<name>-1080-social.mp4` (
 
 ## Operational notes for agents on the shared box
 - Heavy steps take a box-wide lock other heavy jobs on the machine can share (set `PROMO_HEAVY_LOCK` to the same path as e.g. your test gates, or `promo config heavy-lock PATH`; default `/tmp/promo-reel-heavy.lock`) (`promo/lock.py`) and wait while it is held. Never SIGCONT or kill a render that something else paused.
-- Use the project venv (`pip install -e .[vo,asr]` installs every dependency).
+- Use the project venv (`pip install -e .[vo,asr,depth]` installs every dependency).
 - Render one shot at a time (ffmpeg `-threads 2`); never run two renders at once. Heavy renders hold
   the box-wide heavy lock (`promo` takes it itself; see above). A full 1080 build takes ~15-25 min on 8 cores.
 - Do not commit media, builds or the music file; `.gitignore` covers `media/`, `build/`, `out/`, `*.mov`, `*.mp4`, `*.wav`, `*.mp3`, models.

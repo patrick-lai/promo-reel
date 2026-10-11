@@ -12,6 +12,7 @@ dependencies = ["numpy", "pillow", "scipy", "soundfile", "pyloudnorm", "librosa"
 [project.optional-dependencies]
 vo = ["kokoro-onnx"]
 asr = ["faster-whisper"]
+depth = ["onnxruntime", "huggingface_hub"]
 
 [project.scripts]
 promo = "promo.cli:main"
