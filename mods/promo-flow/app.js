@@ -1336,7 +1336,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   /* ---------------- Studio: Seedance and Grok Imagine takes (state `studio`, promo/studio.py) ----------------
      Higgsfield's layout on the person's own OpenRouter account: the composer prices every take before the click, one take runs at a time,
      and the takes gallery keeps every try with what it really cost. Takes are planning samples of non-UI plates, never the product. */
-  const TAKE_WORD = { queued: "Queued at OpenRouter", generating: "Being made", completed: "Downloading", done: "Done", failed: "Failed", stopped: "Stopped" };
+  const TAKE_WORD = { queued: "Queued at OpenRouter", preparing: "Preparing on this Mac", generating: "Being made", completed: "Downloading", done: "Done", failed: "Failed", stopped: "Stopped" };
   const TAKE_FROM = { rerun: "Final of ", restyle: "Restyle of ", swap: "Swap in " };
   const studio = () => S.doc.studio || {};
   const stChoice = () => PF.studioChoice(studio(), S.st);
@@ -1454,7 +1454,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     return box;
   }
   function takeCard(st, t) {
-    const live = ["queued", "generating", "completed"].includes(t.status);
+    const live = ["queued", "preparing", "generating", "completed"].includes(t.status);
     const media = h("div", { class: "st-media", "data-aspect": t.aspect });
     const vr = mref(t.video), sr = frameMedia(t.start_ref);
     if (vr && !vr.error) lazyInto(media, vr, (u) => { const v = h("video", { src: u, controls: "", muted: "", loop: "", playsinline: "", preload: "metadata", "aria-label": "Take " + t.id }); v.muted = true; return v; });
@@ -1478,8 +1478,9 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     const fin = PF.studioFinal(st, t, !canAsk());
     if (fin) acts.append(h("button", { type: "button", class: "btn ghost", "data-quiet": "1", "data-k": "st-final-" + t.id, disabled: !fin.ok, title: fin.why || "The same request as this take, at " + fin.res,
       onclick: () => { if (!fin.paid) return send("studio_rerun", fin.payload); S.stConfirm = t.id; S.stRestyle = null; render(true); } }, ic("spark"), fin.label));
-    if (st.edit && t.status === "done") acts.append(h("button", { type: "button", class: "btn ghost", "data-quiet": "1", "data-k": "st-restyle-" + t.id, disabled: !canAsk(), "aria-expanded": String((S.stRestyle || {}).take === t.id),
-      title: "Change this clip with " + st.edit.name + ": the prompt says what changes", onclick: () => { S.stRestyle = (S.stRestyle || {}).take === t.id ? null : { take: t.id, prompt: "" }; S.stConfirm = null; render(true); } }, ic("brush"), "Restyle"));
+    if ((st.edit || st.swap) && t.status === "done") acts.append(h("button", { type: "button", class: "btn ghost", "data-quiet": "1", "data-k": "st-restyle-" + t.id, disabled: !canAsk(), "aria-expanded": String((S.stRestyle || {}).take === t.id),
+      title: st.edit ? "Change this clip with " + st.edit.name + ", or swap the person (local prep, then Seedance)" : "Swap the person (local prep, then Seedance)",
+      onclick: () => { S.stRestyle = (S.stRestyle || {}).take === t.id ? null : { take: t.id, prompt: "", mode: st.edit ? "restyle" : "swap", prep: "face_mesh" }; S.stConfirm = null; render(true); } }, ic("brush"), st.edit ? "Restyle" : "Swap"));
     if (t.status === "done" && plates.length) {
       const sel = h("select", { class: "st-use", "aria-label": "Use take " + t.id + " as the sample of", "data-k": "st-use-" + t.id, disabled: !canAsk() },
         h("option", { value: "", text: "Use as sample of…" }), plates.map((p) => h("option", { value: p.id, text: p.label })));
@@ -1493,13 +1494,18 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
         h("button", { type: "button", class: "btn ghost", "data-k": "st-confirm-no", onclick: () => { S.stConfirm = null; render(true); } }, "Cancel")));
     else if ((S.stRestyle || {}).take === t.id) {
       const swap = S.stRestyle.mode === "swap";
-      const rs = () => PF.studioRestyle(st, t, S.stRestyle.prompt, !canAsk(), swap);
+      const rs = () => PF.studioRestyle(st, t, S.stRestyle.prompt, !canAsk(), swap, S.stRestyle.prep);
       const go = h("button", { type: "button", class: "btn primary", "data-k": "st-restyle-go", disabled: !rs().ok, text: rs().label,
         onclick: () => { const r = rs(); if (r.ok) { S.stRestyle = null; send(swap ? "studio_swap" : "studio_restyle", r.payload); } } });
       const why = h("p", { class: "hint", role: "status", text: rs().why || PF.studioSpendLine(st, rs().price) });
+      const modes = [];
+      if (st.edit) modes.push(["restyle", "Restyle"]);
+      if (st.swap) modes.push(["swap", "Swap character"]);
       extra = h("div", { class: "st-confirm", role: "group", "aria-label": (swap ? "Swap the person in take " : "Restyle take ") + t.id },
-        h("div", { class: "seg-ctl", role: "group", "aria-label": "Restyle or swap" }, [["restyle", "Restyle"], ["swap", "Swap character"]].map(([k, lb]) =>
-          h("button", { type: "button", "data-k": "st-mode-" + k, "aria-pressed": String((S.stRestyle.mode || "restyle") === k), onclick: () => { S.stRestyle.mode = k; render(true); } }, lb))),
+        modes.length > 1 ? h("div", { class: "seg-ctl", role: "group", "aria-label": "Restyle or swap" }, modes.map(([k, lb]) =>
+          h("button", { type: "button", "data-k": "st-mode-" + k, "aria-pressed": String((S.stRestyle.mode || "restyle") === k), onclick: () => { S.stRestyle.mode = k; render(true); } }, lb))) : null,
+        swap ? h("div", { class: "seg-ctl", role: "group", "aria-label": "Prep on this Mac" }, [["face_mesh", "Face mesh"], ["depth", "Depth"], ["depth_mesh", "Both"], ["none", "None"]].map(([k, lb]) =>
+          h("button", { type: "button", "data-k": "st-prep-" + k, "aria-pressed": String((S.stRestyle.prep || "face_mesh") === k), onclick: () => { S.stRestyle.prep = k; render(true); } }, lb))) : null,
         h("label", { class: "st-lbl", for: "st-rs-" + t.id, text: swap ? "Who goes into the clip" : "What should change" }),
         h("textarea", { id: "st-rs-" + t.id, class: "st-prompt", rows: "2", maxlength: "600", "data-k": "st-restyle-prompt", value: S.stRestyle.prompt,
           placeholder: swap ? "A red-haired courier in a yellow raincoat" : "Make it blue hour, wet streets",

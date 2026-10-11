@@ -231,7 +231,7 @@ def run_action(pd, name, payload):
                            "--seconds", str(payload.get("seconds")), "--aspect", str(payload.get("aspect")), *shlex.split(str(payload.get("flags", "")))],
                    studio_rerun=["rerun", "--take", str(payload.get("take")), "--res", str(payload.get("res"))],
                    studio_restyle=["restyle", "--take", str(payload.get("take")), "--prompt", str(payload.get("prompt", ""))],
-                   studio_swap=["swap", "--take", str(payload.get("take")), "--prompt", str(payload.get("prompt", ""))])[name]
+                   studio_swap=["swap", "--take", str(payload.get("take")), "--prompt", str(payload.get("prompt", "")), "--prep", str(payload.get("prep") or "face_mesh")])[name]
         argv = [sys.executable, "-m", "promo", "flow", "--project", pd, "studio", *cmd]
         if shutil.which("commissionctl") and not os.environ.get("OPENROUTER_API_KEY") and not str(payload.get("model", "")).startswith(("cli:", "local:")):
             argv = ["commissionctl", "secret", "exec", "OPENROUTER_API_KEY", "--", *argv]

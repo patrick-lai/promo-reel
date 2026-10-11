@@ -1166,7 +1166,7 @@
   const STUDIO_TAB = "studio";
   const STUDIO_MAX_S = 10;                // short takes keep a try cheap; longer clips are a `promo gen` job for the agent
   const usd = (x) => "$" + (x > 0 && x < 0.01 ? x.toFixed(3) : x.toFixed(2));
-  const studioBusy = (st) => arr(st && st.takes).some((t) => ["queued", "generating", "completed"].includes(t.status));
+  const studioBusy = (st) => arr(st && st.takes).some((t) => ["queued", "preparing", "generating", "completed"].includes(t.status));
   /* The person's choices made valid for the chosen model: an unknown model falls back to the default, a resolution / aspect / length it
      cannot make to one it can, so the button never prices a take the model would refuse. */
   function studioChoice(st, c) {
@@ -1230,10 +1230,9 @@
     return { ok: g.ok && ch.res === up, res: up, price, label, why: g.why || "", paid: !m.subscription && price > 0,
       payload: { take: t.id, res: up, what: [m.name, up, t.seconds + " s", t.seed != null ? "seed " + t.seed : "", m.local ? "free, on this Mac" : m.subscription ? "on their own subscription" : price == null ? "" : "about " + usd(price)].filter(Boolean).join(", ") } };
   }
-  /* Restyle a finished take, or swap the person in it (`swap`), with the edit model (FLUX Video Edit): priced per second of the take,
-     refused like any take over a limit. */
-  function studioRestyle(st, t, prompt, blocked, swap) {
-    const e = st && st.edit;
+  /* Restyle a finished take (FLUX Video Edit), or swap the person in it (`swap`): local prep then Seedance 2.5. Priced per second of the take. */
+  function studioRestyle(st, t, prompt, blocked, swap, prep) {
+    const e = swap ? (st && (st.swap || st.edit)) : st && st.edit;
     if (!e || t.status !== "done") return null;
     const price = Math.round(Math.max(e.per_second * t.seconds, e.minimum || 0) * 10000) / 10000;
     const label = (swap ? "Swap" : "Restyle") + " · ~" + usd(price);
@@ -1243,7 +1242,11 @@
     if (!String(prompt || "").trim()) return no(swap ? "Say who goes into the clip, e.g. a courier in a yellow raincoat." : "Say what should change, e.g. make it blue hour.");
     const money = moneyNo(st, price);
     if (money) return no(money);
-    return { ok: true, label, why: "", price, payload: { take: t.id, prompt: prompt.trim(), what: e.name + (swap ? " character swap" : "") + " on take " + t.id + ", " + t.seconds + " s, about " + usd(price) } };
+    const mode = prep || "face_mesh";
+    const payload = { take: t.id, prompt: prompt.trim(),
+      what: e.name + (swap ? " character swap (" + mode.replace("_", " ") + ")" : "") + " on take " + t.id + ", " + t.seconds + " s, about " + usd(price) };
+    if (swap) payload.prep = mode;
+    return { ok: true, label, why: "", price, payload };
   }
   /* The `studio` action: the choices as flags for `promo flow studio run`, and one line the chat can show. */
   function studioPayload(st, ch, startLabel, endLabel) {

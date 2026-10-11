@@ -197,8 +197,8 @@ Actions `studio {model, res, seconds, aspect, prompt, flags, what}` (the agent r
 `studio_use {take, asset, label}` (`promo flow studio use`: the take becomes that plate's sample). A picked start / end frame is shown large
 with an "I looked" tick that must be set before Generate turns on. `studio_rerun {take, res, what}` ("Final at 720p", sent only after an inline
 confirm with today's spend: `promo flow studio rerun` resends the take's stored request), `studio_restyle {take, prompt, what}` (FLUX Video Edit
-on a finished take: `promo flow studio restyle`), `studio_swap {take, prompt, what}` (the person in the take becomes who they
-describe: `promo flow studio swap`) and `studio_describe {frame, label}` (the agent writes the frame's setting with
+on a finished take: `promo flow studio restyle`), `studio_swap {take, prompt, prep, what}` (local face mesh / depth on this Mac, then Seedance 2.5
+on OpenRouter: `promo flow studio swap --prep face_mesh`) and `studio_describe {frame, label}` (the agent writes the frame's setting with
 `promo flow studio suggest`; the composer offers it as the prompt).
 Actions: `edit {draft, count, list, ops}`, `edit_preview {where, range, count, ops}` ("Quick preview": the agent applies the edits and runs `promo flow edit preview` on the selected or changed shots, no draft), `edit_bin {name}`, `edit_keep {id, note}`.
 

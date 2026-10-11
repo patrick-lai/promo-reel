@@ -12,10 +12,10 @@ Where a step needs a human, it says **HUMAN**.
 ## 0. Team rules (non-negotiable)
 1. **Real footage only.** Every UI frame comes from a real screen recording of the product (a real run, or the product's built-in demo mode, labelled internally as demo). No mock-ups, no AI-generated UI, no generative video of the product.
    **Carve-out (Patrick, 5 Oct 2026):** AI-generated *non-UI plates* (backgrounds, transitions, scenery, macro textures; no text, logos, screens or anything that reads as the product) are allowed via `promo gen`. Video plates go through this ACP agent's Higgsfield or Runway connectors (`skills/promo-video-route/SKILL.md`), or Seedance on the person's own OpenRouter key (`promo gen video --provider openrouter`, the Stage's Studio tab; priced and capped before each job, run under `commissionctl secret exec OPENROUTER_API_KEY`); grok / codex CLIs remain the headless fallback. They sit only on shots marked `ui: false`, carry `generated:` in the footage manifest, are flagged for human review by `promo check` (`generated-plates` FAIL on a UI shot, `generated-review` WARN), and are never described in captions as the product.
-   **Carve-out (requested 11 Oct 2026):** character swap. The Studio's Swap character (`promo flow studio swap`, FLUX Video Edit) replaces the person
-   in a clip with someone described in words: a Studio take or any clip the person brings, never the product's own recordings (refused). The provider's
-   content checks apply as they are; nothing is added to get past them (no face-mesh or depth disguise, no pitch-shifted audio to dodge matching). A
-   swapped clip is a generated plate (`generated:`, the gates above), and captions never present a swapped person as a real user or customer (rule 3).
+   **Carve-out (requested 11 Oct 2026):** character swap. The Studio's Swap character (`promo flow studio swap`) prepares the clip on this Mac
+   (MediaPipe face mesh, Depth Anything people, Demucs vocals pitched +3) and sends that to Seedance 2.5 on OpenRouter. Higgsfield is not used.
+   Source: a Studio take or any clip the person brings, never the product's own recordings (refused). A swapped clip is a generated plate
+   (`generated:`, the gates above), and captions never present a swapped person as a real user or customer (rule 3).
 2. **Never edit the app's UI in post.** No paint-outs, inpainting, retouching text/numbers, hiding elements by cloning. If something on screen is wrong or distracting (a bug, a stray badge, wrong project, a speech bubble), **reshoot** or **reframe** (crop it out with the camera box). The spec linter rejects `debubble` / `paint_out` / `inpaint` / `ui_edit` keys.
 3. **No invented claims.** Captions and VO may only state what the footage shows or what the product verifiably does today. Numbers ("8 tasks · 3 agents") must be true for the recorded run. No benchmarks, no "24/7", no features that are not shipped. Keep a note of the evidence (commit, run, screenshot) next to each claim in the shot list.
 4. **Licensed audio only.** Every music track, VO model/voice and SFX has an entry in `assets.yaml` with a licence and a source URL; `promo build` and `promo check` fail otherwise. Do not commit files whose licence forbids standalone redistribution (e.g. Pixabay music): store the manifest entry + `fetch_url` + `sha256`, and run `promo fetch`.
@@ -118,7 +118,7 @@ Hand over: `out/<name>-1080.mp4` (web, -14 LUFS), `out/<name>-1080-social.mp4` (
 
 ## Operational notes for agents on the shared box
 - Heavy steps take a box-wide lock other heavy jobs on the machine can share (set `PROMO_HEAVY_LOCK` to the same path as e.g. your test gates, or `promo config heavy-lock PATH`; default `/tmp/promo-reel-heavy.lock`) (`promo/lock.py`) and wait while it is held. Never SIGCONT or kill a render that something else paused.
-- Use the project venv (`pip install -e .[vo,asr,depth]` installs every dependency).
+- Use the project venv (`pip install -e .[vo,asr,depth,prep]` installs every dependency).
 - Render one shot at a time (ffmpeg `-threads 2`); never run two renders at once. Heavy renders hold
   the box-wide heavy lock (`promo` takes it itself; see above). A full 1080 build takes ~15-25 min on 8 cores.
 - Do not commit media, builds or the music file; `.gitignore` covers `media/`, `build/`, `out/`, `*.mov`, `*.mp4`, `*.wav`, `*.mp3`, models.

@@ -116,10 +116,10 @@ def size_for(m, resolution, aspect):
     return shape[m["supported_resolutions"].index(resolution)]
 
 
-def estimate(m, seconds, resolution, aspect, audio=False, first_frame=False):
+def estimate(m, seconds, resolution, aspect, audio=False, first_frame=False, video_input=False):
     """USD before the job, from the catalogue: Grok Imagine bills cents per output second (plus a fee per input image; `first_frame` is
-    a flag or the number of frame images), FLUX Video Edit cents per output second whatever the size, Seedance per video token.
-    OpenRouter bills the real figure; the ledger keeps both."""
+    a flag or the number of frame images), FLUX Video Edit cents per output second whatever the size, Seedance per video token
+    (`video_tokens_with_video_input` when a clip is sent as a reference). OpenRouter bills the real figure; the ledger keeps both."""
     sku = m["pricing_skus"]
     flat = sku.get("cents_per_second_output")
     if flat is not None:
@@ -127,9 +127,14 @@ def estimate(m, seconds, resolution, aspect, audio=False, first_frame=False):
     per_s = sku.get(f"cents_per_video_output_second_{resolution}")
     if per_s is not None:
         return round((float(per_s) * seconds + float(sku.get("cents_per_image_input", 0)) * int(first_frame)) / 100, 4)
-    price = sku.get({"1080p": "video_tokens_1080p", "4K": "video_tokens_4k"}.get(resolution, ""))
+    price = None
+    if video_input:
+        price = sku.get({"1080p": "video_tokens_1080p_with_video_input", "4K": "video_tokens_4k_with_video_input"}.get(resolution, ""))
+        price = price or sku.get("video_tokens_with_video_input")
     if price is None:
-        price = sku.get("video_tokens") if audio else sku.get("video_tokens_without_audio", sku.get("video_tokens"))
+        price = sku.get({"1080p": "video_tokens_1080p", "4K": "video_tokens_4k"}.get(resolution, ""))
+        if price is None:
+            price = sku.get("video_tokens") if audio else sku.get("video_tokens_without_audio", sku.get("video_tokens"))
     if price is None:
         raise OpenRouterError(f"no price for {m['id']} at {resolution} in the catalogue")
     w, h = size_for(m, resolution, aspect)
@@ -189,9 +194,17 @@ def _data_url(path):
 FILE = "file://"               # a stored request names its pictures and clips by path; the bytes are read again when it is resent
 
 
-def body_for(m, prompt, seconds, resolution, aspect, first_frame=None, audio=False, seed=None, last_frame=None):
-    """The job request as it is kept (pictures named by `file://` path; `wire()` reads them in when it is sent). Sound and seed go only to
-    models that take them (Grok Imagine takes neither), a last frame only to models that list one."""
+def _video_ref(source):
+    mb = Path(source).stat().st_size / 1e6
+    if mb > EDIT_MAX_MB:
+        raise OpenRouterError(f"the source clip is {mb:.0f} MB; video references go up to {EDIT_MAX_MB} MB (trim or use a smaller take)")
+    return dict(type="video_url", video_url=dict(url=FILE + str(Path(source).resolve())))
+
+
+def body_for(m, prompt, seconds, resolution, aspect, first_frame=None, audio=False, seed=None, last_frame=None, video=None):
+    """The job request as it is kept (pictures and clips named by `file://` path; `wire()` reads them in when it is sent). Sound and seed go
+    only to models that take them (Grok Imagine takes neither), a last frame only to models that list one. `video` is a motion/edit
+    reference (Seedance 2.x `input_references`)."""
     body = dict(model=m["id"], prompt=prompt, duration=int(seconds), resolution=resolution, aspect_ratio=aspect)
     if m.get("generate_audio"):
         body["generate_audio"] = bool(audio)
@@ -203,15 +216,14 @@ def body_for(m, prompt, seconds, resolution, aspect, first_frame=None, audio=Fal
             raise OpenRouterError(f"{m['id']} takes no {kind.replace('_', ' ')}")
     if first_frame or last_frame:
         body["frame_images"] = [dict(type="image_url", image_url=dict(url=FILE + str(Path(p).resolve())), frame_type=k) for p, k in frames if p]
+    if video:
+        body["input_references"] = [_video_ref(video)]
     return body
 
 
 def edit_body(m, prompt, source, seed=None):
     """An edit job: the prompt says what changes, the source clip is the picture (FLUX Video Edit: model, prompt, input_references)."""
-    mb = Path(source).stat().st_size / 1e6
-    if mb > EDIT_MAX_MB:
-        raise OpenRouterError(f"the source clip is {mb:.0f} MB; edit sources go up to {EDIT_MAX_MB} MB (trim or use a smaller take)")
-    body = dict(model=m["id"], prompt=prompt, input_references=[dict(type="video_url", video_url=dict(url=FILE + str(Path(source).resolve())))])
+    body = dict(model=m["id"], prompt=prompt, input_references=[_video_ref(source)])
     if seed is not None and m.get("seed"):
         body["seed"] = int(seed)
     return body
@@ -241,7 +253,9 @@ def price_of(m, body, seconds=None):
     """USD for a stored request; `seconds` is the source clip's length for an edit job (it has no duration of its own)."""
     if is_edit(m):
         return estimate(m, seconds, None, None)
-    return estimate(m, body["duration"], body["resolution"], body["aspect_ratio"], body.get("generate_audio", False), len(body.get("frame_images") or []))
+    video_in = any(e.get("type") == "video_url" for e in body.get("input_references") or [])
+    return estimate(m, body["duration"], body["resolution"], body["aspect_ratio"], body.get("generate_audio", False),
+                    len(body.get("frame_images") or []), video_in)
 
 
 def run(mid, prompt, out, seconds=DEFAULT_SECONDS, resolution=DEFAULT_RES, aspect="16:9", first_frame=None, audio=False, seed=None,

@@ -2030,7 +2030,7 @@ def _studio_cli(pd, a):
     elif a.action == "restyle":
         t = ST.restyle(pd, a.take, a.prompt, a.model or ST.EDIT, a.max_usd, on_change=live)
     elif a.action == "swap":
-        t = ST.swap(pd, a.take, a.prompt, a.model or ST.EDIT, a.max_usd, on_change=live)
+        t = ST.swap(pd, a.take, a.prompt, a.model, a.max_usd, on_change=live, prep=a.prep or "face_mesh")
     else:
         t = ST.run(pd, a.prompt or "", a.model or OR.DEFAULT_MODEL, a.res or OR.DEFAULT_RES, a.seconds, a.aspect, a.audio, a.preset, _studio_start(pd, a.start) if a.start else None, a.start,
                    a.max_usd, a.seed, on_change=live, end=_studio_start(pd, a.end) if a.end else None, end_ref=a.end,
@@ -2126,11 +2126,12 @@ def main(argv=None):
     p.add_argument("--scale", type=float, choices=(0.5, 1, 2)); p.add_argument("--json", action="store_true"); p.add_argument("--dry-run", action="store_true")
     p.add_argument("--at", type=float); p.add_argument("--shot"); p.add_argument("--from", dest="from_", type=float); p.add_argument("--to", type=float)
     p.add_argument("--frames", type=int); p.add_argument("--stem", choices=["mix", "music", "vo", "sfx"])
-    p = P("studio"); p.add_argument("action", choices=["run", "rerun", "restyle", "swap", "frame", "suggest", "use"]); p.add_argument("--prompt"); p.add_argument("--model", help=f"default {OR.DEFAULT_MODEL}; restyle: {ST.EDIT}")
+    p = P("studio"); p.add_argument("action", choices=["run", "rerun", "restyle", "swap", "frame", "suggest", "use"]); p.add_argument("--prompt"); p.add_argument("--model", help=f"default {OR.DEFAULT_MODEL}; restyle: {ST.EDIT}; swap: {ST.SWAP_MODEL}")
     p.add_argument("--res", help=f"default {OR.DEFAULT_RES}; rerun: leave out to keep the take's resolution"); p.add_argument("--seconds", type=int, default=OR.DEFAULT_SECONDS); p.add_argument("--aspect", default="16:9")
     p.add_argument("--audio", action="store_true"); p.add_argument("--preset", choices=list(ST.SENTENCE)); p.add_argument("--start", help="storyboard frame id (story/scene/start) or an image file")
     p.add_argument("--end", help="the last frame, like --start (models that list last_frame)"); p.add_argument("--frame", help="frame / suggest: a storyboard frame id")
     p.add_argument("--max-usd", type=float, default=OR.DEFAULT_MAX_USD); p.add_argument("--seed", type=int); p.add_argument("--take", help="rerun / restyle / swap / use: a take id (restyle also takes a generated plate file, swap any clip but the product's recordings)"); p.add_argument("--asset")
+    p.add_argument("--prep", choices=ST.PREPS, help="swap: local face_mesh / depth / depth_mesh on this Mac, then Seedance (default face_mesh); none sends the clip as it is")
     p = P("final"); p.add_argument("action", choices=["add"]); p.add_argument("file")
     P("revise").add_argument("--feedback", required=True)
     p = P("note"); p.add_argument("text"); p.add_argument("--kind", default="other", choices=NOTE_KINDS); p.add_argument("--done", action="store_true")

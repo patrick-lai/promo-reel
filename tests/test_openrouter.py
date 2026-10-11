@@ -23,7 +23,8 @@ PRO = dict(id="bytedance/seedance-1-5-pro", name="ByteDance: Seedance 1.5 Pro", 
            pricing_skus={"video_tokens": "0.0000024", "video_tokens_without_audio": "0.0000012"})
 V25 = dict(id="bytedance/seedance-2.5", name="ByteDance: Seedance 2.5", supported_resolutions=["480p", "720p"], supported_aspect_ratios=["16:9", "4:3"],
            supported_sizes=["854x480", "752x560", "1280x720", "1112x834"], supported_durations=list(range(4, 31)), supported_frame_images=["first_frame"],
-           generate_audio=True, seed=True, pricing_skus={"video_tokens": "0.0000107", "video_tokens_without_audio": "0.0000107"})
+           generate_audio=True, seed=True, pricing_skus={"video_tokens": "0.0000107", "video_tokens_without_audio": "0.0000107",
+                                                         "video_tokens_with_video_input": "0.0000064"})
 GROK = dict(id="x-ai/grok-imagine-video-1.5-lite", name="SpaceXAI: Grok Imagine Video 1.5 Lite", supported_resolutions=["480p", "720p"],
             supported_aspect_ratios=["16:9"], supported_sizes=None, supported_durations=list(range(1, 16)), supported_frame_images=["first_frame"],
             generate_audio=None, seed=None, pricing_skus={"cents_per_image_input": "1", "cents_per_video_output_second_480p": "2", "cents_per_video_output_second_720p": "3"})
@@ -66,6 +67,8 @@ def api(monkeypatch, tmp_path):
     monkeypatch.setattr(G, "_file", lambda p: False)            # no grok / codex login, whatever this machine has
     monkeypatch.setattr(STU.D, "available", lambda: False)      # nor the local depth model
     monkeypatch.setattr(G, "probe_media", lambda p: {"width": 854, "height": 480, "duration": 4.0})
+    monkeypatch.setattr(STU.P, "prepare", lambda src, dst, mode, on_progress=None, **k: (open(dst, "wb").write(open(src, "rb").read() or b"PREP"), dst)[1])
+    monkeypatch.setattr(STU.P, "restore_audio", lambda g, o, out: out)
     fake = FakeOpenRouter()
     monkeypatch.setattr(OR, "_request", fake)
     return fake
@@ -75,6 +78,7 @@ def test_price_comes_from_the_catalogue_size_and_audio_choice():
     assert OR.estimate(PRO, 4, "480p", "16:9") == pytest.approx(854 * 480 * 24 * 4 / 1024 * 0.0000012, abs=1e-4)
     assert OR.estimate(PRO, 4, "480p", "16:9", audio=True) == pytest.approx(2 * OR.estimate(PRO, 4, "480p", "16:9"), abs=1e-4)
     assert OR.size_for(V25, "480p", "4:3") == (752, 560)
+    assert OR.estimate(V25, 4, "480p", "16:9", video_input=True) < OR.estimate(V25, 4, "480p", "16:9")
     rows = OR.price_table([V25, PRO])
     assert [r["id"] for r in rows] == [PRO["id"], V25["id"]]
     assert rows[0]["price_4s"]["480p"] < 0.06
@@ -271,17 +275,20 @@ def test_a_frame_description_is_the_setting_only_and_shows_in_the_composer(api, 
     assert api.sent == []
 
 
-def test_a_character_swap_takes_any_clip_but_the_products_own_recordings(api, proj, tmp_path):
+def test_a_character_swap_preps_locally_and_sends_seedance_a_video_reference(api, proj, tmp_path):
     F.main(["--project", proj, "studio", "run", "--prompt", "dusk", "--model", PRO["id"]])
     assert F.main(["--project", proj, "studio", "swap", "--take", "t1", "--prompt", "a courier in a yellow raincoat"]) == 0
     sent = api.sent[1]
-    assert sent["model"] == EDIT["id"] and sent["prompt"] == G.NEG_PEOPLE + STU.SWAP.format(who="a courier in a yellow raincoat")
-    assert sent["input_references"][0]["type"] == "video_url"
+    assert sent["model"] == V25["id"] and sent["duration"] == 4 and sent["generate_audio"] is False
+    assert sent["input_references"][0]["type"] == "video_url" and "wireframe" in sent["prompt"]
     t2 = STU.load(proj)[1]
-    assert t2["kind"] == "swap" and t2["from"] == "t1" and t2["prompt"] == "a courier in a yellow raincoat"
+    assert t2["kind"] == "swap" and t2["from"] == "t1" and t2["prep"] == "face_mesh" and t2["prompt"] == "a courier in a yellow raincoat"
+    studio = F.snapshot(proj)["studio"]
+    assert studio["swap"]["id"] == V25["id"] and studio["preps"][0] == "face_mesh"
     own = tmp_path / "my-street-clip.mp4"                     # the person's own footage: no sidecar needed
     own.write_bytes(b"STREET")
-    assert F.main(["--project", proj, "studio", "swap", "--take", str(own), "--prompt", "an astronaut"]) == 0
+    assert F.main(["--project", proj, "studio", "swap", "--take", str(own), "--prompt", "an astronaut", "--prep", "none"]) == 0
+    assert "Replace the person in this clip" in api.sent[2]["prompt"]
     rec = os.path.join(proj, "footage", "board.mp4")
     os.makedirs(os.path.dirname(rec), exist_ok=True)
     open(rec, "wb").write(b"SCREEN")

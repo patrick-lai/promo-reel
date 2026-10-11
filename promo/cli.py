@@ -807,6 +807,9 @@ def main(argv=None):
     if argv[:1] == ["depth"]:           # `promo depth map|parallax IMG`: depth of a generated still plate, a 2.5D camera move over it (on this Mac)
         from . import depth
         return depth.main(argv[1:])
+    if argv[:1] == ["prep"]:            # `promo prep CLIP --out F [--mode face_mesh|depth|depth_mesh]`: local swap prep, then Seedance on OpenRouter
+        from . import prep
+        return prep.main(argv[1:])
     if argv[:1] == ["brief"]:           # `promo brief init|show|check|confirm|conflict --project projects/<name>` (no promo.yaml needed)
         from . import brief
         return brief.main(argv[1:])

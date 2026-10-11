@@ -5,8 +5,8 @@ an optional storyboard frame to animate, the price on the button, a gallery of t
     promo flow studio run --prompt "..." [--model M --res 480p --seconds 4 --aspect 16:9 --audio --preset push --start STORY/SCENE/start|FILE --end ...]
     promo flow studio rerun --take t3 [--res 720p]  the take's stored request sent again (same prompt, frames and seed), at another resolution for a final
     promo flow studio restyle --take t3 --prompt "make it dusk"   FLUX Video Edit on a take (or a generated plate file); never a screen recording
-    promo flow studio swap --take t3|FILE --prompt "a red-haired courier in a yellow raincoat"   replace the person in a clip (FLUX Video Edit);
-                                                  any clip except the product's own screen recordings, through the provider's own content checks
+    promo flow studio swap --take t3|FILE --prompt "a red-haired courier in a yellow raincoat" [--prep face_mesh|depth|depth_mesh|none]
+                                                  local prep on this Mac, then Seedance 2.5 on OpenRouter; any clip except the product's own recordings
     promo flow studio frame --frame STORY/SCENE/start            the picture's path, for the agent to look at
     promo flow studio suggest --frame STORY/SCENE/start --prompt "..."   the agent's description of that frame's setting, offered in the composer
     promo flow studio use --take t3 --asset ID      the take becomes that asset's sample (flow/samples.json)
@@ -34,6 +34,7 @@ from . import depth as D
 from . import footage as FT
 from . import genvideo as GV
 from . import openrouter as OR
+from . import prep as P
 from . import previews as PV
 
 PRESETS = [("static", "Static", "Locked-off camera, no camera movement."),
@@ -52,6 +53,8 @@ DEPTH_MOVE = {None: "push", "static": "static", "push": "push", "pull": "pull", 
               "crane": "crane", "handheld": "handheld"}
 HEIGHT = {"480p": 480, "720p": 720, "1080p": 1080}
 EDIT = OR.EDIT_MODELS[0]
+SWAP_MODEL = OR.DEFAULT_MODEL          # Seedance 2.5: takes a video reference; local prep, then this, never Higgsfield
+PREPS = ("face_mesh", "depth", "depth_mesh", "none")
 # a frame description is the setting only: the plate guard already rules out UI, text and logos, so naming them in the prompt invites them back
 NOT_SETTING = re.compile(r"\b(ui|user[- ]interface|interface|screens?|apps?|application|dashboard|software|logos?|brand|text|captions?|letters|typography|words)\b", re.I)
 
@@ -226,6 +229,13 @@ def restyle(pd, source, prompt, model=EDIT, max_usd=OR.DEFAULT_MAX_USD, on_chang
 
 SWAP = ("Replace the person in this clip with {who}. Keep the camera move, the timing of their motion, the framing, the light and the "
         "background exactly as they are.")
+SWAP_MESH = ("The white wireframe on the face is motion guidance only and must disappear. Replace the person with {who}: new face, hair "
+             "and clothes. Keep the camera, timing, framing, light, background and lip motion.")
+SWAP_DEPTH = ("The coloured figure is a depth map of the person's body, motion guidance only, and must disappear. Replace them with {who}. "
+              "Keep the camera, timing, background and light.")
+SWAP_BOTH = ("The coloured figure is a depth map of the body and the white wireframe is face motion guidance; both must disappear. "
+             "Replace the person with {who}: new face, hair and clothes. Keep the camera, timing, background, light and lip motion.")
+SWAP_TEXT = {"none": SWAP, "face_mesh": SWAP_MESH, "depth": SWAP_DEPTH, "depth_mesh": SWAP_BOTH}
 
 
 def _product_capture(pd, path):
@@ -239,31 +249,83 @@ def _product_capture(pd, path):
     return os.path.realpath(path) in real
 
 
-def swap(pd, source, who, model=EDIT, max_usd=OR.DEFAULT_MAX_USD, on_change=None):
-    """Character swap (carve-out of 11 Oct 2026, AGENTS.md rule 1): the person in a clip becomes `who`, by FLUX Video Edit. The source is
-    a finished take or any clip the person brought, except the product's own recordings. The provider's content checks apply as they are;
-    a refusal stays on the take with OpenRouter's reason."""
+def _swap_source(pd, source):
+    if re.fullmatch(r"t\d+", source):
+        return _plate_source(pd, source)
+    path, label = os.path.abspath(source), os.path.basename(source)
+    if not os.path.isfile(path):
+        raise StudioError(f"no clip {label}")
+    if _product_capture(pd, path):
+        raise StudioError(f"{label} is a recording of the product; a character swap never edits the app's own footage (AGENTS.md rule 2)")
+    return path, label
+
+
+def _duration_for(m, seconds):
+    durs = m["supported_durations"]
+    s = int(round(seconds))
+    return s if s in durs else min(durs, key=lambda d: abs(d - seconds))
+
+
+def _aspect_for(m, w, h, fallback="16:9"):
+    allowed = m.get("supported_aspect_ratios") or [fallback]
+    if not w or not h:
+        return fallback if fallback in allowed else allowed[0]
+    ratio = w / h
+    return min(allowed, key=lambda a: abs(int(a.split(":")[0]) / int(a.split(":")[1]) - ratio))
+
+
+def swap(pd, source, who, model=None, max_usd=OR.DEFAULT_MAX_USD, on_change=None, prep="face_mesh", resolution=None):
+    """Character swap (carve-out of 11 Oct 2026, AGENTS.md rule 1): local prep on this Mac, then Seedance 2.5 on OpenRouter recasts the
+    person as `who`. The source is a finished take or any clip the person brought, except the product's own recordings. Higgsfield is
+    not used. A refusal stays on the take with OpenRouter's reason."""
     if not who.strip():
         raise StudioError("say who goes into the clip")
-    if re.fullmatch(r"t\d+", source):
-        path, label = _plate_source(pd, source)
-    else:
-        path, label = os.path.abspath(source), os.path.basename(source)
-        if not os.path.isfile(path):
-            raise StudioError(f"no clip {label}")
-        if _product_capture(pd, path):
-            raise StudioError(f"{label} is a recording of the product; a character swap never edits the app's own footage (AGENTS.md rule 2)")
+    prep = prep or "face_mesh"
+    if prep not in PREPS:
+        raise StudioError(f"no prep {prep!r}; one of {', '.join(PREPS)}")
+    path, label = _swap_source(pd, source)
+    model = model or SWAP_MODEL
     m = OR.model(model)
-    if not OR.is_edit(m):
-        raise StudioError(f"{model} makes clips from a prompt; a swap needs an edit model ({', '.join(OR.EDIT_MODELS)})")
-    seconds = GV.probe_media(path)["duration"]
-    body = OR.edit_body(m, GV.NEG_PEOPLE + SWAP.format(who=who.strip()), path)
+    info = GV.probe_media(path)
+    seconds = info.get("duration") or 4
     src = take(pd, source) if re.fullmatch(r"t\d+", source) else {}
-    tid = _new_take(pd, kind="swap", prompt=who.strip(), model=model, seconds=round(seconds, 2), aspect=src.get("aspect"), resolution=src.get("resolution"),
-                    request=body, **{"from": label})
+    res = resolution or src.get("resolution") or OR.DEFAULT_RES
+    aspect = src.get("aspect") or _aspect_for(m, info.get("width"), info.get("height"))
     ping = on_change or (lambda: None)
+    tid = _new_take(pd, kind="swap", prompt=who.strip(), model=model, seconds=round(seconds, 2), aspect=aspect, resolution=res,
+                    prep=prep, request=None, **{"from": label})
     ping()
-    return _follow(pd, tid, ping, lambda out, status: GV.openrouter_send(body, out, max_usd, status, prompt=who, seconds=seconds, source=path))
+
+    def send(out, status):
+        src_clip = path
+        if prep != "none":
+            _update(pd, tid, status="preparing", progress=0)
+            ping()
+            prep_path = os.path.join(_dir(pd), tid + "-prep.mp4")
+            P.prepare(path, prep_path, prep, on_progress=lambda i, n: (_update(pd, tid, progress=round(i / max(n, 1), 2)), ping()))
+            src_clip = prep_path
+            _update(pd, tid, progress=None, prep_file=os.path.relpath(prep_path, pd))
+            ping()
+        text = GV.NEG_PEOPLE + SWAP_TEXT[prep].format(who=who.strip())
+        if OR.is_edit(m):
+            body = OR.edit_body(m, text, src_clip)
+            meta = GV.openrouter_send(body, out, max_usd, status, prompt=who, seconds=seconds, source=src_clip)
+        else:
+            dur = _duration_for(m, seconds)
+            OR.check_params(m, dur, res, aspect)
+            body = OR.body_for(m, text, dur, res, aspect, audio=False, video=src_clip)
+            _update(pd, tid, request=body, seconds=dur)
+            ping()
+            meta = GV.openrouter_send(body, out, max_usd, status, prompt=who, seconds=dur, source=src_clip)
+        P.restore_audio(out, path, out)
+        return meta
+
+    try:
+        return _follow(pd, tid, ping, send)
+    except P.PrepError as e:
+        _update(pd, tid, status="failed", error=str(e))
+        ping()
+        raise StudioError(str(e)) from None
 
 
 def _suggest_path(pd):
@@ -369,6 +431,20 @@ def use(pd, tid, asset_id):
     return samples[asset_id]
 
 
+def _swap_model(cat):
+    """Seedance 2.5 (or the first Seedance that prices a video reference): local prep, then this, never Higgsfield."""
+    m = next((x for x in cat if x["id"] == SWAP_MODEL), None)
+    if m is None:
+        m = next((x for x in cat if x["id"].startswith("bytedance/seedance") and "video_tokens_with_video_input" in (x.get("pricing_skus") or {})), None)
+    if m is None:
+        return None
+    try:
+        per = OR.estimate(m, 1000, OR.DEFAULT_RES, "16:9", video_input=True) / 1000
+    except OR.OpenRouterError:
+        return None
+    return dict(id=m["id"], name=m["name"].split(": ", 1)[-1], per_second=per, preps=list(PREPS))
+
+
 def _per_second(m):
     """{"480p|16:9|0": USD per second} for every resolution / aspect / audio choice the model has, so the Stage prices any take exactly."""
     out = {}
@@ -394,6 +470,7 @@ def view(pd, media, frames, now=None):
     models = subs + [dict(r, per_second=per_s[r["id"]]) for r in OR.price_table(cat)]
     edit = next((dict(id=m["id"], name=m["name"].split(": ", 1)[-1], per_second=OR.estimate(m, 1000, None, None) / 1000,
                       minimum=float(m["pricing_skus"].get("minimum_cents_per_generation", 0)) / 100) for m in cat if OR.is_edit(m)), None)
+    swap = _swap_model(cat)
     labels = {f["id"]: f["label"] for f in frames}
     takes = []
     for t in reversed(load(pd)):
@@ -410,4 +487,5 @@ def view(pd, media, frames, now=None):
     sp = OR.spend()
     return dict(models=models, models_error=models_error, default_model=GROK if any(m["id"] == GROK for m in subs) else OR.DEFAULT_MODEL, guard=GV.NEG, presets=[dict(id=k, label=lb, sentence=s) for k, lb, s in PRESETS],
                 max_usd=OR.DEFAULT_MAX_USD, account="ready" if "video" in next(p for p in GV.detect() if p["id"] == "openrouter")["verified"] else "unchecked",
-                spend=dict(today=sp["today"], total=sp["total"], cap=OR.daily_cap()), takes=takes, frames=frames, plates=plates, edit=edit, suggestion=suggestion(pd))
+                spend=dict(today=sp["today"], total=sp["total"], cap=OR.daily_cap()), takes=takes, frames=frames, plates=plates, edit=edit, swap=swap,
+                preps=list(PREPS), suggestion=suggestion(pd))

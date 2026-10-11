@@ -778,7 +778,8 @@ STUDIO_CATALOGUE = [
          supported_frame_images=["first_frame"], generate_audio=True, seed=True, pricing_skus={"video_tokens": "0.0000024", "video_tokens_without_audio": "0.0000012"}),
     dict(id="bytedance/seedance-2.5", name="ByteDance: Seedance 2.5", supported_resolutions=["480p", "720p"], supported_aspect_ratios=["16:9", "9:16"],
          supported_sizes=["854x480", "480x854", "1280x720", "720x1280"], supported_durations=list(range(4, 31)), supported_frame_images=["first_frame", "last_frame"],
-         generate_audio=True, seed=True, pricing_skus={"video_tokens": "0.0000107", "video_tokens_without_audio": "0.0000107"}),
+         generate_audio=True, seed=True, pricing_skus={"video_tokens": "0.0000107", "video_tokens_without_audio": "0.0000107",
+                                                       "video_tokens_with_video_input": "0.0000064"}),
     dict(id="black-forest-labs/flux-video-edit", name="Black Forest Labs: FLUX Video Edit", supported_resolutions=None, supported_aspect_ratios=None, supported_sizes=None,
          supported_durations=None, supported_frame_images=None, generate_audio=False, seed=False, pricing_skus={"cents_per_second_output": "3"})]
 
