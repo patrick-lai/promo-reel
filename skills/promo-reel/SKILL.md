@@ -113,7 +113,8 @@ grok, codex/GPT, a person with a recorder. promo-reel only specifies, ingests an
      In the flow the person does this themselves in the Stage's **Studio** tab (promo/studio.py): takes are samples until registered.
      `promo flow studio run` (`--start` / `--end` frames), `rerun --take tN --res 720p` (the final: the take's stored request resent, only
      the resolution changed; the Stage confirms the price first), `restyle --take tN --prompt "make it dusk"` (FLUX Video Edit; Studio takes
-     and generated plates only, a screen recording is refused), `frame` / `suggest --frame ID --prompt "..."` (on "Describe this frame" you
+     and generated plates only, a screen recording is refused), `swap --take tN|FILE --prompt "who goes in"` (character swap, AGENTS.md
+     rule 1 carve-out: any clip but the product's own recordings; the provider's checks decide), `frame` / `suggest --frame ID --prompt "..."` (on "Describe this frame" you
      write the frame's setting: place, light, lens, mood, never screens, text or logos), `use`. A picked frame must be ticked as checked
      before Generate turns on. The Studio also lists "Grok (your subscription)" (`--model cli:grok`, the default when grok is logged in):
      the grok CLI animates a still on the person's own plan, nothing billed per clip. Codex has an image tool only (no video): use it for stills and start frames.

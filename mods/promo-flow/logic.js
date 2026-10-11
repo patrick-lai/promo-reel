@@ -1230,19 +1230,20 @@
     return { ok: g.ok && ch.res === up, res: up, price, label, why: g.why || "", paid: !m.subscription && price > 0,
       payload: { take: t.id, res: up, what: [m.name, up, t.seconds + " s", t.seed != null ? "seed " + t.seed : "", m.local ? "free, on this Mac" : m.subscription ? "on their own subscription" : price == null ? "" : "about " + usd(price)].filter(Boolean).join(", ") } };
   }
-  /* Restyle a finished take with the edit model (FLUX Video Edit): priced per second of the take, refused like any take over a limit. */
-  function studioRestyle(st, t, prompt, blocked) {
+  /* Restyle a finished take, or swap the person in it (`swap`), with the edit model (FLUX Video Edit): priced per second of the take,
+     refused like any take over a limit. */
+  function studioRestyle(st, t, prompt, blocked, swap) {
     const e = st && st.edit;
     if (!e || t.status !== "done") return null;
     const price = Math.round(Math.max(e.per_second * t.seconds, e.minimum || 0) * 10000) / 10000;
-    const label = "Restyle · ~" + usd(price);
+    const label = (swap ? "Swap" : "Restyle") + " · ~" + usd(price);
     const no = (why) => ({ ok: false, label, why, price });
     if (blocked) return no("");
     if (studioBusy(st)) return no("One take at a time: wait for the take being made.");
-    if (!String(prompt || "").trim()) return no("Say what should change, e.g. make it blue hour.");
+    if (!String(prompt || "").trim()) return no(swap ? "Say who goes into the clip, e.g. a courier in a yellow raincoat." : "Say what should change, e.g. make it blue hour.");
     const money = moneyNo(st, price);
     if (money) return no(money);
-    return { ok: true, label, why: "", price, payload: { take: t.id, prompt: prompt.trim(), what: e.name + " on take " + t.id + ", " + t.seconds + " s, about " + usd(price) } };
+    return { ok: true, label, why: "", price, payload: { take: t.id, prompt: prompt.trim(), what: e.name + (swap ? " character swap" : "") + " on take " + t.id + ", " + t.seconds + " s, about " + usd(price) } };
   }
   /* The `studio` action: the choices as flags for `promo flow studio run`, and one line the chat can show. */
   function studioPayload(st, ch, startLabel, endLabel) {

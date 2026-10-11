@@ -29,13 +29,16 @@ He rebuilds Higgsfield's character-swap app on pay-per-use APIs, driven by an ag
 - **Start and end frame.** Models that list `last_frame` (Seedance 2.5) get an end-frame picker.
 - **Edit mode (video to video).** "Restyle" sends a finished take to FLUX Video Edit with a prompt saying what changes. Only Studio takes and
   files with a generated sidecar are accepted: restyling a screen recording would edit the app's UI (rules 1 and 2).
+- **Character swap.** "Swap character" on a take (`promo flow studio swap`, also any clip the person brings) asks FLUX Video Edit to put
+  the person they describe in place of the one in the clip, keeping the camera, motion and light. The product's own recordings are refused.
+  OpenRouter has no model that takes a picture of the new character with the clip; Higgsfield's own swap needs the person's Higgsfield login.
 - **Depth pass.** `promo depth` runs Depth Anything V2 Small (ONNX, Apache-2.0) on this Mac: a depth map, and a 2.5D parallax clip over a
   generated still with the camera presets and optional depth of field. In the Studio it is the free "Depth parallax" model.
 
 ## What we did not take
-- **Swapping people into copyrighted footage** and the tricks that get it past Seedance's filter (MediaPipe face mesh, depth used as a
-  disguise). That is against team rules 1 and 3.
-- **Rubber Band pitch-shifting a vocal** to get past audio matching, and **catbox uploads**: files travel as data URLs to OpenRouter only.
+- **The tricks that get a swap past the provider's filter** (a MediaPipe face mesh or a depth map used as a disguise) and **Rubber Band
+  pitch-shifting a vocal** to get past audio matching. Their only job is to defeat the provider's and the platforms' copyright checks.
+- **catbox uploads**: files travel as data URLs to OpenRouter only.
 - **SAM 3 segmentation.** Its use in the video was cutting a person out to swap them. A "title behind the subject" mask on generated
   plates would be the one fitting use; it waits until the depth pass proves useful.
 - **Demucs in the Studio.** Vocal separation is in promo-reel for lyric timing (`promo lyrics align --separate`), not for takes.

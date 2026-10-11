@@ -605,6 +605,12 @@ UICHECK = r"""(async () => {
     ok('with a prompt it can be sent, and says what is left today', !rgo().disabled && /left after this/.test(Q('.st-confirm .hint').textContent), Q('.st-confirm .hint').textContent);
     await click('[data-k=st-restyle-go]');
     ok('Restyle sends the take and their words', await until(() => /action studio_restyle -> .*promo flow studio restyle --take t2/.test(log()) && /make it blue hour/.test(log())), log().split('\n').find((l) => /studio_restyle/.test(l)) || 'no studio_restyle action');
+    window.harness.H.pending = null; window.harness.H.version++; await window.harness.sendState(); await wait(400);
+    await click('[data-k=st-restyle-t2]'); await click('[data-k=st-mode-swap]');
+    ok('Swap character asks who goes into the clip', /Who goes into the clip/.test(Q('.st-confirm').textContent) && /Swap · ~\$0\.12/.test(rgo().textContent) && rgo().disabled, Q('.st-confirm').textContent);
+    const sp = Q('[data-k=st-restyle-prompt]'); sp.value = 'a courier in a yellow raincoat'; sp.dispatchEvent(new Event('input', { bubbles: true })); await wait(100);
+    await click('[data-k=st-restyle-go]');
+    ok('Swap sends the take and who goes in', await until(() => /action studio_swap -> .*promo flow studio swap --take t2/.test(log()) && /yellow raincoat/.test(log())), log().split('\n').find((l) => /studio_swap/.test(l)) || 'no studio_swap action');
     ok('the Studio does not overflow the pane', Q('#scroller').scrollWidth <= Q('#scroller').clientWidth + 1, Q('#scroller').scrollWidth + ' > ' + Q('#scroller').clientWidth);
   }
   if (step === 'mv-discover') {

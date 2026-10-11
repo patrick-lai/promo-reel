@@ -580,3 +580,11 @@ test("studio: depth parallax needs a start frame, no prompt, and costs nothing",
   const f = L.studioFinal(st, { id: "t1", status: "done", model: "local:depth", resolution: "720p", seconds: 4, aspect: "16:9", start_ref: "A/01/start", preset: "push" });
   assert.deepEqual([f.ok, f.paid, f.label, f.payload.what], [true, false, "Final at 1080p", "Depth parallax (this Mac, free), 1080p, 4 s, free, on this Mac"]);
 });
+
+test("studio: a character swap says who goes in and is priced like a restyle", () => {
+  const st = studioState({ edit: { id: "black-forest-labs/flux-video-edit", name: "FLUX Video Edit", per_second: 0.03, minimum: 0 } });
+  const t = { id: "t2", status: "done", seconds: 4 };
+  assert.match(L.studioRestyle(st, t, "", false, true).why, /who goes into the clip/);
+  const r = L.studioRestyle(st, t, "an astronaut", false, true);
+  assert.deepEqual([r.ok, r.label, r.payload.what], [true, "Swap · ~$0.12", "FLUX Video Edit character swap on take t2, 4 s, about $0.12"]);
+});

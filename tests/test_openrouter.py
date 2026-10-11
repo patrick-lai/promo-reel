@@ -269,3 +269,23 @@ def test_a_frame_description_is_the_setting_only_and_shows_in_the_composer(api, 
     sug = F.snapshot(proj)["studio"]["suggestion"]
     assert sug["frame"] == "A/01/start" and sug["prompt"] == "Low dusk light over wet rooftops, 35 mm, calm"
     assert api.sent == []
+
+
+def test_a_character_swap_takes_any_clip_but_the_products_own_recordings(api, proj, tmp_path):
+    F.main(["--project", proj, "studio", "run", "--prompt", "dusk", "--model", PRO["id"]])
+    assert F.main(["--project", proj, "studio", "swap", "--take", "t1", "--prompt", "a courier in a yellow raincoat"]) == 0
+    sent = api.sent[1]
+    assert sent["model"] == EDIT["id"] and sent["prompt"] == G.NEG_PEOPLE + STU.SWAP.format(who="a courier in a yellow raincoat")
+    assert sent["input_references"][0]["type"] == "video_url"
+    t2 = STU.load(proj)[1]
+    assert t2["kind"] == "swap" and t2["from"] == "t1" and t2["prompt"] == "a courier in a yellow raincoat"
+    own = tmp_path / "my-street-clip.mp4"                     # the person's own footage: no sidecar needed
+    own.write_bytes(b"STREET")
+    assert F.main(["--project", proj, "studio", "swap", "--take", str(own), "--prompt", "an astronaut"]) == 0
+    rec = os.path.join(proj, "footage", "board.mp4")
+    os.makedirs(os.path.dirname(rec), exist_ok=True)
+    open(rec, "wb").write(b"SCREEN")
+    with open(os.path.join(proj, "footage", "manifest.yaml"), "w") as f:
+        json.dump({"clips": [dict(id="rec-board", path=rec, sha256=G.sha256(rec), capture="?view=board")]}, f)
+    assert F.main(["--project", proj, "studio", "swap", "--take", rec, "--prompt", "an astronaut"]) == 1
+    assert len(api.sent) == 3

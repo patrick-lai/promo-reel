@@ -10,7 +10,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   const BADGE_TEXT = { working: "With the agent", waiting: "Your turn", done: "Done", attention: "Needs attention" };
   const ACTION_WORD = { approve: "your approval", pick: "your picks", changes: "your changes", feedback: "your feedback", generate: "your request", request: "your request", scene_note: "your comment", density: "your request", share: "your upload request", settings: "your folder choice",
     widget: "your message from the panel", pins: "your notes", restore: "your restore request", ab: "your pick", autopilot: "your go", overturn: "your change", forget: "your request",
-    edit: "your edits", edit_preview: "your preview request", edit_bin: "your request", edit_keep: "your pick", studio: "your take", studio_use: "your pick", studio_rerun: "your final", studio_restyle: "your restyle", studio_describe: "your request" };
+    edit: "your edits", edit_preview: "your preview request", edit_bin: "your request", edit_keep: "your pick", studio: "your take", studio_use: "your pick", studio_rerun: "your final", studio_restyle: "your restyle", studio_swap: "your swap", studio_describe: "your request" };
   /* Composer kinds beyond plain changes/feedback: the button says what sending does. */
   const COMPOSE_SEND = { request: "Send request", overturn: "Send change", scene: "Send comment" };
   const KIND_ICON = { script: "doc", treatment: "spark", shotlist: "table", direction: "film", edit: "cut", audio: "music", capture: "camera", schedule: "clock", deliverables: "download", risks: "shield", research: "link", review: "refresh", notes: "doc" };
@@ -1337,6 +1337,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
      Higgsfield's layout on the person's own OpenRouter account: the composer prices every take before the click, one take runs at a time,
      and the takes gallery keeps every try with what it really cost. Takes are planning samples of non-UI plates, never the product. */
   const TAKE_WORD = { queued: "Queued at OpenRouter", generating: "Being made", completed: "Downloading", done: "Done", failed: "Failed", stopped: "Stopped" };
+  const TAKE_FROM = { rerun: "Final of ", restyle: "Restyle of ", swap: "Swap in " };
   const studio = () => S.doc.studio || {};
   const stChoice = () => PF.studioChoice(studio(), S.st);
   /* A Studio frame id is story/scene/start|end: its picture is that frame of the storyboard, already in the state once. */
@@ -1491,17 +1492,21 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       h("div", { class: "st-act" }, h("button", { type: "button", class: "btn primary", "data-k": "st-confirm-go", disabled: !fin.ok, onclick: () => { S.stConfirm = null; send("studio_rerun", fin.payload); } }, "Spend ~" + PF.usd(fin.price)),
         h("button", { type: "button", class: "btn ghost", "data-k": "st-confirm-no", onclick: () => { S.stConfirm = null; render(true); } }, "Cancel")));
     else if ((S.stRestyle || {}).take === t.id) {
-      const rs = () => PF.studioRestyle(st, t, S.stRestyle.prompt, !canAsk());
+      const swap = S.stRestyle.mode === "swap";
+      const rs = () => PF.studioRestyle(st, t, S.stRestyle.prompt, !canAsk(), swap);
       const go = h("button", { type: "button", class: "btn primary", "data-k": "st-restyle-go", disabled: !rs().ok, text: rs().label,
-        onclick: () => { const r = rs(); if (r.ok) { S.stRestyle = null; send("studio_restyle", r.payload); } } });
+        onclick: () => { const r = rs(); if (r.ok) { S.stRestyle = null; send(swap ? "studio_swap" : "studio_restyle", r.payload); } } });
       const why = h("p", { class: "hint", role: "status", text: rs().why || PF.studioSpendLine(st, rs().price) });
-      extra = h("div", { class: "st-confirm", role: "group", "aria-label": "Restyle take " + t.id },
-        h("label", { class: "st-lbl", for: "st-rs-" + t.id, text: "What should change" }),
-        h("textarea", { id: "st-rs-" + t.id, class: "st-prompt", rows: "2", maxlength: "600", "data-k": "st-restyle-prompt", value: S.stRestyle.prompt, placeholder: "Make it blue hour, wet streets",
+      extra = h("div", { class: "st-confirm", role: "group", "aria-label": (swap ? "Swap the person in take " : "Restyle take ") + t.id },
+        h("div", { class: "seg-ctl", role: "group", "aria-label": "Restyle or swap" }, [["restyle", "Restyle"], ["swap", "Swap character"]].map(([k, lb]) =>
+          h("button", { type: "button", "data-k": "st-mode-" + k, "aria-pressed": String((S.stRestyle.mode || "restyle") === k), onclick: () => { S.stRestyle.mode = k; render(true); } }, lb))),
+        h("label", { class: "st-lbl", for: "st-rs-" + t.id, text: swap ? "Who goes into the clip" : "What should change" }),
+        h("textarea", { id: "st-rs-" + t.id, class: "st-prompt", rows: "2", maxlength: "600", "data-k": "st-restyle-prompt", value: S.stRestyle.prompt,
+          placeholder: swap ? "A red-haired courier in a yellow raincoat" : "Make it blue hour, wet streets",
           oninput: (e) => { S.stRestyle.prompt = e.target.value; const r = rs(); go.disabled = !r.ok; go.textContent = r.label; why.textContent = r.why || PF.studioSpendLine(st, r.price); } }),
         h("div", { class: "st-act" }, go, h("button", { type: "button", class: "btn ghost", "data-k": "st-restyle-no", onclick: () => { S.stRestyle = null; render(true); } }, "Cancel")), why);
     }
-    const from = t.kind === "rerun" ? "Final of " + t.from : t.kind === "restyle" ? "Restyle of " + t.from : null;
+    const from = TAKE_FROM[t.kind] ? TAKE_FROM[t.kind] + t.from : null;
     return h("article", { class: "card st-take", "data-aid": "take-" + t.id, "aria-label": "Take " + t.id },
       media,
       h("div", { class: "st-tbody" },

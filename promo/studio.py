@@ -5,6 +5,8 @@ an optional storyboard frame to animate, the price on the button, a gallery of t
     promo flow studio run --prompt "..." [--model M --res 480p --seconds 4 --aspect 16:9 --audio --preset push --start STORY/SCENE/start|FILE --end ...]
     promo flow studio rerun --take t3 [--res 720p]  the take's stored request sent again (same prompt, frames and seed), at another resolution for a final
     promo flow studio restyle --take t3 --prompt "make it dusk"   FLUX Video Edit on a take (or a generated plate file); never a screen recording
+    promo flow studio swap --take t3|FILE --prompt "a red-haired courier in a yellow raincoat"   replace the person in a clip (FLUX Video Edit);
+                                                  any clip except the product's own screen recordings, through the provider's own content checks
     promo flow studio frame --frame STORY/SCENE/start            the picture's path, for the agent to look at
     promo flow studio suggest --frame STORY/SCENE/start --prompt "..."   the agent's description of that frame's setting, offered in the composer
     promo flow studio use --take t3 --asset ID      the take becomes that asset's sample (flow/samples.json)
@@ -29,6 +31,7 @@ import re
 
 from . import assetplan as AP
 from . import depth as D
+from . import footage as FT
 from . import genvideo as GV
 from . import openrouter as OR
 from . import previews as PV
@@ -171,8 +174,8 @@ def rerun(pd, tid, resolution=None, max_usd=OR.DEFAULT_MAX_USD, on_change=None):
     """The same job as take `tid` again: its stored request, with only the resolution changed when one is given (the paid final after a
     cheap draft). A take made on the person's grok subscription has no request; it runs again from its settings and seed."""
     t = take(pd, tid)
-    if t.get("kind") == "restyle":
-        raise StudioError(f"take {tid} is a restyle; restyle its source again instead")
+    if t.get("kind") in ("restyle", "swap"):
+        raise StudioError(f"take {tid} is a {t['kind']}; make it again from its source instead")
     res = resolution or t["resolution"]
     if not t.get("request"):
         start, end = (os.path.join(pd, t[k]) if t.get(k) else None for k in ("start", "end"))
@@ -219,6 +222,48 @@ def restyle(pd, source, prompt, model=EDIT, max_usd=OR.DEFAULT_MAX_USD, on_chang
     ping = on_change or (lambda: None)
     ping()
     return _follow(pd, tid, ping, lambda out, status: GV.openrouter_send(body, out, max_usd, status, prompt=prompt, seconds=seconds, source=path))
+
+
+SWAP = ("Replace the person in this clip with {who}. Keep the camera move, the timing of their motion, the framing, the light and the "
+        "background exactly as they are.")
+
+
+def _product_capture(pd, path):
+    """True when `path` is one of this project's real recordings of the product: a footage-manifest clip without `generated:` or a
+    real asset of the plan. Swapping a person into those would edit the app's footage (AGENTS.md rule 2)."""
+    sha = GV.sha256(path)
+    clips = FT.load_raw(os.path.join(pd, "footage", "manifest.yaml"))
+    if any(c.get("sha256") == sha and not c.get("generated") for c in clips):
+        return True
+    real = [os.path.realpath(os.path.join(pd, a["path"])) for a in AP.load(os.path.join(pd, "flow")) if a.get("source") == "real" and a.get("path")]
+    return os.path.realpath(path) in real
+
+
+def swap(pd, source, who, model=EDIT, max_usd=OR.DEFAULT_MAX_USD, on_change=None):
+    """Character swap (carve-out of 11 Oct 2026, AGENTS.md rule 1): the person in a clip becomes `who`, by FLUX Video Edit. The source is
+    a finished take or any clip the person brought, except the product's own recordings. The provider's content checks apply as they are;
+    a refusal stays on the take with OpenRouter's reason."""
+    if not who.strip():
+        raise StudioError("say who goes into the clip")
+    if re.fullmatch(r"t\d+", source):
+        path, label = _plate_source(pd, source)
+    else:
+        path, label = os.path.abspath(source), os.path.basename(source)
+        if not os.path.isfile(path):
+            raise StudioError(f"no clip {label}")
+        if _product_capture(pd, path):
+            raise StudioError(f"{label} is a recording of the product; a character swap never edits the app's own footage (AGENTS.md rule 2)")
+    m = OR.model(model)
+    if not OR.is_edit(m):
+        raise StudioError(f"{model} makes clips from a prompt; a swap needs an edit model ({', '.join(OR.EDIT_MODELS)})")
+    seconds = GV.probe_media(path)["duration"]
+    body = OR.edit_body(m, GV.NEG_PEOPLE + SWAP.format(who=who.strip()), path)
+    src = take(pd, source) if re.fullmatch(r"t\d+", source) else {}
+    tid = _new_take(pd, kind="swap", prompt=who.strip(), model=model, seconds=round(seconds, 2), aspect=src.get("aspect"), resolution=src.get("resolution"),
+                    request=body, **{"from": label})
+    ping = on_change or (lambda: None)
+    ping()
+    return _follow(pd, tid, ping, lambda out, status: GV.openrouter_send(body, out, max_usd, status, prompt=who, seconds=seconds, source=path))
 
 
 def _suggest_path(pd):
