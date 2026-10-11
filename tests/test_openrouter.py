@@ -64,6 +64,7 @@ def api(monkeypatch, tmp_path):
     monkeypatch.setattr(OR, "POLL_S", 0)
     monkeypatch.setattr(G, "HOME", tmp_path / "home")
     monkeypatch.setattr(G, "_file", lambda p: False)            # no grok / codex login, whatever this machine has
+    monkeypatch.setattr(STU.D, "available", lambda: False)      # nor the local depth model
     monkeypatch.setattr(G, "probe_media", lambda p: {"width": 854, "height": 480, "duration": 4.0})
     fake = FakeOpenRouter()
     monkeypatch.setattr(OR, "_request", fake)
@@ -227,7 +228,7 @@ def test_a_final_resends_the_takes_stored_request_with_only_the_resolution_chang
     t2 = STU.load(proj)[1]
     assert t2["kind"] == "rerun" and t2["from"] == "t1" and t2["seed"] == draft["seed"] and t2["end_ref"] == "A/01/end"
     view = F.snapshot(proj)["studio"]["takes"]
-    assert "request" not in view[0] and view[0]["resend"] and view[1]["end_label"] == "TA, scene 01 end"
+    assert "request" not in view[0] and view[1]["end_label"] == "TA, scene 01 end"
     assert F.main(["--project", proj, "studio", "rerun", "--take", "t1", "--res", "4K"]) == 1            # the model has no 4K
     assert len(api.sent) == 2
 

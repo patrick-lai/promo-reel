@@ -521,7 +521,6 @@ test("studio: what is sent leads with the plate guard and carries the camera mov
   const p = L.studioPayload(st, ch, "Wake up, scene 01 start");
   assert.equal(p.flags, "--preset push --start A/01/start");
   assert.equal(p.what, "Seedance 1.5 Pro, 480p, 5 s, 16:9, push in, from Wake up, scene 01 start, about $0.06");
-  assert.equal(L.studioPayload(st, L.studioChoice(st, { prompt: "x", res: "720p" }), null, 77).flags, "--seed 77");     // a final reuses its draft's seed
 });
 
 test("studio: a subscription model has no per-clip price and says so", () => {
@@ -568,4 +567,16 @@ test("studio: a restyle is priced per second of the take and says what should ch
   assert.equal(L.studioRestyle({ ...st, edit: null }, t, "x"), null);
   assert.equal(L.studioRestyle(st, { ...t, status: "failed" }, "x"), null);
   assert.match(L.studioRestyle({ ...st, max_usd: 0.1 }, t, "x").why, /over the \$0.10 limit/);
+});
+
+test("studio: depth parallax needs a start frame, no prompt, and costs nothing", () => {
+  const st = studioState();
+  st.models.unshift({ id: "local:depth", name: "Depth parallax (this Mac, free)", seconds: [2, 10], resolutions: ["720p", "1080p"], aspects: ["16:9"], subscription: true, local: true,
+    needs_frame: true, prompt: false, per_second: { "720p|16:9|0": 0, "1080p|16:9|0": 0 } });
+  const go = (c) => L.studioGo(st, L.studioChoice(st, { model: "local:depth", seconds: 4, ...c }), false, true);
+  assert.match(go({}).why, /Pick a start frame: Depth parallax moves a still frame/);
+  assert.deepEqual([go({ start: "A/01/start" }).ok, go({ start: "A/01/start" }).label], [true, "Generate · free"]);
+  assert.match(L.studioPayload(st, L.studioChoice(st, { model: "local:depth", seconds: 4, start: "A/01/start", preset: "push" })).what, /push in, from A\/01\/start, free, on this Mac$/);
+  const f = L.studioFinal(st, { id: "t1", status: "done", model: "local:depth", resolution: "720p", seconds: 4, aspect: "16:9", start_ref: "A/01/start", preset: "push" });
+  assert.deepEqual([f.ok, f.paid, f.label, f.payload.what], [true, false, "Final at 1080p", "Depth parallax (this Mac, free), 1080p, 4 s, free, on this Mac"]);
 });

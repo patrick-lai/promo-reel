@@ -650,6 +650,7 @@ def build_parser():
     sub.add_parser("watch", help="watch a video (file/URL): contact sheets, cut stills, transcript, audio + pacing metrics (see `promo watch -h`)")
     sub.add_parser("fx", help="audio character effects (radio, tape, vintage, telephone, vinyl, crackle): list | apply | audition (see `promo fx -h`)")
     sub.add_parser("gen", help="generated images/video for non-UI plates (backgrounds, transitions): detect | image | video | plan (see `promo gen -h`)")
+    sub.add_parser("depth", help="depth of a generated still plate and a 2.5D parallax clip from it, on this Mac: map | parallax (see `promo depth -h`)")
     sub.add_parser("brief", help="the locked brief (the user's exact words + references): init | show | check | confirm | conflict (see `promo brief -h`)")
     sub.add_parser("screen-quad", help="track the monitor quad of a generated plate (clip id or file): per-second quads + debug PNG (see `promo screen-quad -h`)")
     sub.add_parser("refs", help="study references for real: add (watch WITH transcript + scaffold DOSSIER.md) | check | show (see `promo refs -h`)")
@@ -803,6 +804,9 @@ def main(argv=None):
     if argv[:1] == ["gen"]:             # `promo gen detect|image|video|plan`: generated NON-UI plates via the logged-in grok / codex CLIs
         from . import genvideo as G
         return G.main(argv[1:])
+    if argv[:1] == ["depth"]:           # `promo depth map|parallax IMG`: depth of a generated still plate, a 2.5D camera move over it (on this Mac)
+        from . import depth
+        return depth.main(argv[1:])
     if argv[:1] == ["brief"]:           # `promo brief init|show|check|confirm|conflict --project projects/<name>` (no promo.yaml needed)
         from . import brief
         return brief.main(argv[1:])

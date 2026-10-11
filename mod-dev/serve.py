@@ -232,7 +232,7 @@ def run_action(pd, name, payload):
                    studio_rerun=["rerun", "--take", str(payload.get("take")), "--res", str(payload.get("res"))],
                    studio_restyle=["restyle", "--take", str(payload.get("take")), "--prompt", str(payload.get("prompt", ""))])[name]
         argv = [sys.executable, "-m", "promo", "flow", "--project", pd, "studio", *cmd]
-        if shutil.which("commissionctl") and not os.environ.get("OPENROUTER_API_KEY"):
+        if shutil.which("commissionctl") and not os.environ.get("OPENROUTER_API_KEY") and not str(payload.get("model", "")).startswith(("cli:", "local:")):
             argv = ["commissionctl", "secret", "exec", "OPENROUTER_API_KEY", "--", *argv]
         out = open(os.path.join(pd, "flow", "studio.log"), "a")
         LIVE["jobs"].append(subprocess.Popen(argv, cwd=ROOT, env={**os.environ, "PYTHONPATH": ROOT}, stdout=out, stderr=subprocess.STDOUT, text=True))

@@ -1411,14 +1411,14 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     };
     const frames = arr(st.frames);
     const frameLabel = (id) => (frames.find((f) => f.id === id) || {}).label;
-    btn.addEventListener("click", () => { const c = stChoice(); if (c && PF.studioGo(st, c, !canAsk(), stChecked()).ok) send("studio", PF.studioPayload(st, c, frameLabel(c.start), null, frameLabel(c.end))); });
+    btn.addEventListener("click", () => { const c = stChoice(); if (c && PF.studioGo(st, c, !canAsk(), stChecked()).ok) send("studio", PF.studioPayload(st, c, frameLabel(c.start), frameLabel(c.end))); });
     const prompt = h("textarea", { class: "st-prompt", rows: "4", maxlength: "1200", "data-k": "st-prompt", "data-dictate": "", "aria-label": "What the clip shows", value: S.st.prompt,
       placeholder: "Dusk light drifting over a quiet city, slow and calm", disabled: S.readonly,
       oninput: (e) => { S.st.prompt = e.target.value; S.stCaret = e.target.selectionStart; refresh(); },
       onfocus: (e) => { if (S.stCaret != null) e.target.setSelectionRange(S.stCaret, S.stCaret); },
       onkeydown: (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); btn.click(); } } });
     const box = h("section", { class: "card st-compose", "aria-label": "New take" },
-      h("header", { class: "st-h" }, h("b", { text: "New take" }), h("span", { class: "sub", text: "Grok on your own subscription, or Seedance and Grok Imagine on your OpenRouter account. Backgrounds, transitions and scenery only: never the app itself." })),
+      h("header", { class: "st-h" }, h("b", { text: "New take" }), h("span", { class: "sub", text: "Grok on your own subscription, depth parallax on this Mac, or Seedance and Grok Imagine on your OpenRouter account. Backgrounds, transitions and scenery only: never the app itself." })),
       h("label", { class: "st-lbl", for: "st-prompt-in", text: "What the clip shows" }), prompt);
     prompt.id = "st-prompt-in";
     box.append(stSeg("Camera", [["", "None"], ...arr(st.presets).map((p) => [p.id, p.label])], S.st.preset || "", (id) => set("preset", id || null), "st-cam"));
@@ -1443,7 +1443,8 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       if (ch.m.audio) box.append(h("label", { class: "st-check" }, h("input", { type: "checkbox", checked: ch.audio, "data-k": "st-audio", disabled: S.readonly, onchange: (e) => set("audio", e.target.checked) }),
         h("span", { text: "Sound: the model makes audio too" + (ch.m.per_second[ch.res + "|" + ch.aspect + "|1"] > ch.m.per_second[ch.res + "|" + ch.aspect + "|0"] ? " (costs more)" : "") })));
       sent.textContent = PF.studioPrompt(st, ch);
-      box.append(h("details", { class: "st-sent-box" }, h("summary", { text: "What the model gets" }), sent));
+      if (ch.m.prompt === false) box.append(h("p", { class: "hint", "data-k": "st-noprompt", text: ch.m.name + " reads no prompt: it moves the start frame you pick by its own depth, with the camera move. Nothing leaves this Mac." }));
+      else box.append(h("details", { class: "st-sent-box" }, h("summary", { text: "What the model gets" }), sent));
     }
     box.append(h("div", { class: "st-act" }, btn), why);
     const sp = st.spend || {};
@@ -1459,11 +1460,12 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     else {
       if (sr && !sr.error) { const bg = h("span", { class: "st-poster" }); lazyInto(bg, sr, (u) => h("img", { src: u, alt: "" }), { compact: true }); media.append(bg); }
       media.append(h("div", { class: "st-state" + (live ? " live" : " bad") }, live ? h("span", { class: "spin", "aria-hidden": "true" }) : ic("alert"),
-        h("b", { text: TAKE_WORD[t.status] || t.status }), live ? h("span", { class: "st-clock", "data-at": t.at, text: "0:00" }) : null));
+        h("b", { text: TAKE_WORD[t.status] || t.status }), live && t.progress != null ? h("span", { class: "st-clock", text: Math.round(t.progress * 100) + "% rendered" }) : null,
+        live ? h("span", { class: "st-clock", "data-at": t.at, text: "0:00" }) : null));
     }
     const short = (arr(st.models).find((m) => m.id === t.model) || {}).name || (t.model || "").split("/").pop();
     const m = arr(st.models).find((x) => x.id === t.model);
-    const cost = m && m.subscription ? "Your plan" : t.cost != null ? PF.usd(t.cost) : t.estimate != null ? "~" + PF.usd(t.estimate) : "";
+    const cost = m && m.local ? "Free" : m && m.subscription ? "Your plan" : t.cost != null ? PF.usd(t.cost) : t.estimate != null ? "~" + PF.usd(t.estimate) : "";
     const plates = arr(st.plates);
     const acts = h("div", { class: "st-tacts" },
       h("button", { type: "button", class: "btn ghost", "data-quiet": "1", "data-k": "st-again-" + t.id, disabled: S.readonly, onclick: () => {
@@ -1505,7 +1507,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       h("div", { class: "st-tbody" },
         h("div", { class: "chips" }, h("span", { class: "chip", text: short }), h("span", { class: "chip", text: [t.resolution, t.seconds + " s", t.aspect].filter(Boolean).join(" · ") }),
           from ? h("span", { class: "chip", text: from }) : null,
-          cost ? h("span", { class: "chip" + (t.cost != null ? " ok" : ""), title: m && m.subscription ? "Made on your own subscription" : t.cost != null ? "What OpenRouter billed" : "Estimate until OpenRouter reports the cost", text: cost }) : null,
+          cost ? h("span", { class: "chip" + (t.cost != null ? " ok" : ""), title: m && m.local ? "Made on this Mac, nothing billed" : m && m.subscription ? "Made on your own subscription" : t.cost != null ? "What OpenRouter billed" : "Estimate until OpenRouter reports the cost", text: cost }) : null,
           t.preset ? h("span", { class: "chip", text: (arr(st.presets).find((p) => p.id === t.preset) || {}).label || t.preset }) : null,
           t.start_label ? h("span", { class: "chip", title: "Animated from " + t.start_label, text: "From frame" }) : null,
           t.end_label ? h("span", { class: "chip", title: "Lands on " + t.end_label, text: "To frame" }) : null,

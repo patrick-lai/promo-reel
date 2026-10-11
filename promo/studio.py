@@ -1,6 +1,7 @@
 """The Stage's Studio tab: Seedance and Grok Imagine takes through OpenRouter, laid out like Higgsfield (prompt, model, length, resolution, aspect, a camera move,
 an optional storyboard frame to animate, the price on the button, a gallery of takes).
 
+    promo flow studio run --model local:depth --start STORY/SCENE/start [--preset orbit --res 1080p]   depth parallax of a generated frame, on this Mac
     promo flow studio run --prompt "..." [--model M --res 480p --seconds 4 --aspect 16:9 --audio --preset push --start STORY/SCENE/start|FILE --end ...]
     promo flow studio rerun --take t3 [--res 720p]  the take's stored request sent again (same prompt, frames and seed), at another resolution for a final
     promo flow studio restyle --take t3 --prompt "make it dusk"   FLUX Video Edit on a take (or a generated plate file); never a screen recording
@@ -11,8 +12,8 @@ an optional storyboard frame to animate, the price on the button, a gallery of t
 Takes are planning samples of NON-UI plates (AGENTS.md rule 1): the plate guard leads every prompt, they never enter the footage manifest from
 here, and a take reaches a cut only through `promo gen register` like any other generated plate.
 
-    flow/studio/takes.json   [{id, kind, from, prompt, preset, model, resolution, seconds, aspect, audio, seed, start, start_ref, end, end_ref, request,
-                               status, job_id, estimate, cost, file, error, at, updated, used_for}]
+    flow/studio/takes.json   [{id, kind, from, prompt, preset, model, resolution, seconds, aspect, audio, seed, start, start_ref, end, end_ref, start_plate,
+                               request, status, progress, job_id, estimate, cost, file, error, at, updated, used_for}]
     flow/studio/suggest.json {frame, prompt, at}
 
 `request` is the OpenRouter body exactly as it was sent, pictures named by path (openrouter.body_for): a rerun or a final sends it again
@@ -27,6 +28,7 @@ import random
 import re
 
 from . import assetplan as AP
+from . import depth as D
 from . import genvideo as GV
 from . import openrouter as OR
 from . import previews as PV
@@ -42,6 +44,10 @@ PRESETS = [("static", "Static", "Locked-off camera, no camera movement."),
 SENTENCE = {k: s for k, _, s in PRESETS}
 STOPPED_S = OR.TIMEOUT_S + 120          # a take still "running" this long after its last update lost its process
 GROK = "cli:grok"                       # the person's own grok login: video on their subscription, nothing billed per take
+DEPTH = "local:depth"                   # depth parallax on this Mac (promo/depth.py): moves a generated frame, free, nothing sent anywhere
+DEPTH_MOVE = {None: "push", "static": "static", "push": "push", "pull": "pull", "orbit": "orbit", "pan_left": "pan_left", "pan_right": "pan_right",
+              "crane": "crane", "handheld": "handheld"}
+HEIGHT = {"480p": 480, "720p": 720, "1080p": 1080}
 EDIT = OR.EDIT_MODELS[0]
 # a frame description is the setting only: the plate guard already rules out UI, text and logos, so naming them in the prompt invites them back
 NOT_SETTING = re.compile(r"\b(ui|user[- ]interface|interface|screens?|apps?|application|dashboard|software|logos?|brand|text|captions?|letters|typography|words)\b", re.I)
@@ -99,7 +105,7 @@ def _new_take(pd, **fields):
     tid = f"t{max((int(t['id'][1:]) for t in takes), default=0) + 1}"
     now = _now()
     takes.append(dict(dict(id=tid, kind="generate", prompt="", preset=None, resolution=None, seconds=None, aspect=None, audio=False, seed=None, start=None, start_ref=None,
-                           end=None, end_ref=None, request=None), **fields, id=tid, status="queued", job_id=None, estimate=None, cost=None, file=None, error=None,
+                           end=None, end_ref=None, start_plate=False, request=None, progress=None), **fields, id=tid, status="queued", job_id=None, estimate=None, cost=None, file=None, error=None,
                       at=now, updated=now, used_for=[]))
     _save(pd, takes)
     return tid
@@ -131,23 +137,29 @@ def take(pd, tid):
 
 
 def run(pd, prompt, model=OR.DEFAULT_MODEL, resolution=OR.DEFAULT_RES, seconds=OR.DEFAULT_SECONDS, aspect="16:9", audio=False, preset=None,
-        start=None, start_ref=None, max_usd=OR.DEFAULT_MAX_USD, seed=None, on_change=None, end=None, end_ref=None):
+        start=None, start_ref=None, max_usd=OR.DEFAULT_MAX_USD, seed=None, on_change=None, end=None, end_ref=None, start_plate=False):
     """Make one take. The take is in takes.json from the first moment (queued, then OpenRouter's statuses, then done or failed with the reason),
     and `on_change()` runs after every change so the Stage can follow it. `start` / `end` are the first and last frames' files, `start_ref` /
     `end_ref` what the person picked (storyboard frame ids), kept so "same settings" can pick them again. Every take has a seed and keeps
-    the request it sent, so a final at a higher resolution is the same job again (`rerun`)."""
-    if not prompt.strip():
+    the request it sent, so a final at a higher resolution is the same job again (`rerun`). `start_plate`: the start frame is known to be
+    a generated plate (a storyboard frame of a generated scene), which depth parallax needs."""
+    if model == DEPTH and not start:
+        raise StudioError("depth parallax moves a still: pick a start frame")
+    if not prompt.strip() and model != DEPTH:
         raise StudioError("a take needs a prompt")
     for path, ref, which in ((start, start_ref, "start"), (end, end_ref, "end")):
         if path and not os.path.isfile(path):
             raise StudioError(f"{which} frame not found: {ref or path}")
-    if end and model == GROK:
-        raise StudioError("grok on your subscription takes a start frame only; pick a model that lists an end frame")
+    if end and model in (GROK, DEPTH):
+        raise StudioError("this model takes a start frame only; pick a model that lists an end frame")
     seed = random.randrange(2 ** 31) if seed is None else seed
     tid = _new_take(pd, prompt=prompt.strip(), preset=preset, model=model, resolution=resolution, seconds=seconds, aspect=aspect, audio=bool(audio), seed=seed,
-                    start=os.path.relpath(start, pd) if start else None, start_ref=start_ref, end=os.path.relpath(end, pd) if end else None, end_ref=end_ref)
+                    start=os.path.relpath(start, pd) if start else None, start_ref=start_ref, end=os.path.relpath(end, pd) if end else None, end_ref=end_ref,
+                    start_plate=bool(start_plate))
     ping = on_change or (lambda: None)
     ping()
+    if model == DEPTH:
+        return _run_depth(pd, tid, start, preset, resolution, aspect, seconds, start_plate, ping)
     if model == GROK:
         return _run_grok(pd, tid, os.path.join("flow", "studio", tid + ".mp4"), prompt_text(prompt, preset), seconds, aspect, resolution, start, ping)
     return _follow(pd, tid, ping, lambda out, status: GV.generate_openrouter(prompt_text(prompt, preset), out, seconds, aspect, model=model, resolution=resolution,
@@ -165,7 +177,7 @@ def rerun(pd, tid, resolution=None, max_usd=OR.DEFAULT_MAX_USD, on_change=None):
     if not t.get("request"):
         start, end = (os.path.join(pd, t[k]) if t.get(k) else None for k in ("start", "end"))
         return run(pd, t["prompt"], t["model"], res, t["seconds"], t["aspect"], t["audio"], t["preset"], start, t["start_ref"], max_usd, t["seed"], on_change,
-                   end, t.get("end_ref"))
+                   end, t.get("end_ref"), t.get("start_plate", False))
     m = OR.model(t["model"])
     OR.check_params(m, t["request"]["duration"], res, t["request"]["aspect_ratio"])
     body = dict(t["request"], resolution=res)
@@ -185,12 +197,7 @@ def _plate_source(pd, source):
             raise StudioError(f"take {source} is not finished")
         return os.path.join(pd, t["file"]), source
     path = os.path.abspath(source)
-    try:
-        with open(path + ".gen.json") as f:
-            generated = json.load(f).get("generated") is True
-    except (FileNotFoundError, ValueError):
-        generated = False
-    if not generated:
+    if not D.is_generated(path):
         raise StudioError(f"{source} is not a generated plate (no .gen.json sidecar saying so); only Studio takes and generated plates can be "
                           "restyled, never a screen recording (AGENTS.md rules 1 and 2)")
     return path, os.path.basename(path)
@@ -239,6 +246,33 @@ def suggestion(pd):
         return None
 
 
+def _size(resolution, aspect):
+    a, b = (int(x) for x in aspect.split(":"))
+    short = HEIGHT.get(resolution, 720)
+    return (round(short * a / b), short) if a >= b else (short, round(short * b / a))
+
+
+def _run_depth(pd, tid, start, preset, resolution, aspect, seconds, start_plate, ping):
+    """A depth parallax take: the start frame moved by its own depth with the camera preset, on this Mac, nothing billed. The take
+    shows how far the render is (`progress`), so a 30 s render never looks stuck."""
+    rel = os.path.join("flow", "studio", tid + ".mp4")
+    _update(pd, tid, status="generating", estimate=0, cost=0, progress=0)
+    ping()
+
+    def progress(i, n):
+        _update(pd, tid, progress=round(i / n, 2))
+        ping()
+    try:
+        D.parallax(start, os.path.join(pd, rel), seconds, DEPTH_MOVE[preset], size=_size(resolution, aspect), trusted=start_plate, on_progress=progress)
+    except D.DepthError as e:
+        _update(pd, tid, status="failed", error=str(e))
+        ping()
+        raise StudioError(str(e)) from None
+    _update(pd, tid, status="done", file=rel, progress=None)
+    ping()
+    return take(pd, tid)
+
+
 def _run_grok(pd, tid, rel, text, seconds, aspect, resolution, start, ping):
     _update(pd, tid, status="generating", estimate=0, cost=0)
     ping()
@@ -254,12 +288,19 @@ def _run_grok(pd, tid, rel, text, seconds, aspect, resolution, start, ping):
 
 
 def _subscriptions():
-    """Video generators on the person's own logins, as Studio models. Only grok: the codex CLI has an image tool and no video tool."""
-    if not next(p for p in GV.detect() if p["id"] == "grok")["available"]:
-        return []
-    aspects, res = ["16:9", "9:16", "1:1", "3:2", "2:3"], ["480p", "720p"]
-    return [dict(id=GROK, name="Grok (your subscription)", seconds=[1, 15], resolutions=res, aspects=aspects, first_frame=True, audio=False,
-                 price_4s={r: 0 for r in res}, image_input=0, per_second={f"{r}|{a}|0": 0 for r in res for a in aspects}, subscription=True)]
+    """Video makers that bill nothing per take, as Studio models: grok on the person's own login (the codex CLI has an image tool and no
+    video tool) and depth parallax on this Mac (`needs_frame`: it moves a picked frame; `prompt: False`: it reads no prompt)."""
+    out = []
+    if next(p for p in GV.detect() if p["id"] == "grok")["available"]:
+        aspects, res = ["16:9", "9:16", "1:1", "3:2", "2:3"], ["480p", "720p"]
+        out.append(dict(id=GROK, name="Grok (your subscription)", seconds=[1, 15], resolutions=res, aspects=aspects, first_frame=True, audio=False,
+                        price_4s={r: 0 for r in res}, image_input=0, per_second={f"{r}|{a}|0": 0 for r in res for a in aspects}, subscription=True))
+    if D.available():
+        aspects, res = ["16:9", "9:16", "1:1"], ["720p", "1080p"]
+        out.append(dict(id=DEPTH, name="Depth parallax (this Mac, free)", seconds=[2, 10], resolutions=res, aspects=aspects, first_frame=True, audio=False,
+                        price_4s={r: 0 for r in res}, image_input=0, per_second={f"{r}|{a}|0": 0 for r in res for a in aspects}, subscription=True,
+                        local=True, needs_frame=True, prompt=False))
+    return out
 
 
 def use(pd, tid, asset_id):
@@ -318,10 +359,10 @@ def view(pd, media, frames, now=None):
         t["video"] = media(os.path.join(pd, t["file"])) if t.get("file") else None
         t["start_label"] = labels.get(t["start_ref"], os.path.basename(t["start"])) if t.get("start") else None
         t["end_label"] = labels.get(t.get("end_ref"), os.path.basename(t["end"])) if t.get("end") else None
-        t["resend"] = bool(t.pop("request", None))      # the request names files on this box; the Stage needs only whether there is one
+        t.pop("request", None)              # it names files on this box; the Stage never needs it
         takes.append(t)
     plates = [dict(id=a["id"], label=a.get("label") or a["id"]) for a in AP.load(os.path.join(pd, "flow")) if a["kind"] == "video" and a["source"] == "generated"]
     sp = OR.spend()
-    return dict(models=models, models_error=models_error, default_model=GROK if subs else OR.DEFAULT_MODEL, guard=GV.NEG, presets=[dict(id=k, label=lb, sentence=s) for k, lb, s in PRESETS],
+    return dict(models=models, models_error=models_error, default_model=GROK if any(m["id"] == GROK for m in subs) else OR.DEFAULT_MODEL, guard=GV.NEG, presets=[dict(id=k, label=lb, sentence=s) for k, lb, s in PRESETS],
                 max_usd=OR.DEFAULT_MAX_USD, account="ready" if "video" in next(p for p in GV.detect() if p["id"] == "openrouter")["verified"] else "unchecked",
                 spend=dict(today=sp["today"], total=sp["total"], cap=OR.daily_cap()), takes=takes, frames=frames, plates=plates, edit=edit, suggestion=suggestion(pd))

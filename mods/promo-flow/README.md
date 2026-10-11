@@ -57,10 +57,10 @@ Every path below that says `file` is `{"$file": "<absolute path>"}` (the host tu
                  the mod shows a `ready` asset whose file is missing or failed as "File missing", never as ready, and disables Approve at the assets gate while any file is missing.
                  `label` is the human title (explicit `label`, else the first clause of `how`, else the id made readable); the raw `id` is only a tooltip
     to_make    [{kind: keyframe|asset, id, label, at?, detail, story?, scene?, which?, asset_kind?, source?}]   what `promo flow needs` lists; keyframe label is "Scene 03 · mid frame 1", at is "t=14.5 s"
-    studio     {models [{id, name, seconds [min, max], resolutions, aspects, first_frame, last_frame, audio, price_4s {res: USD}, per_second {"480p|16:9|0": USD}}], models_error, default_model,
+    studio     {models [{id, name, seconds [min, max], resolutions, aspects, first_frame, last_frame, audio, subscription, local, needs_frame, prompt (false: reads none), price_4s {res: USD}, per_second {"480p|16:9|0": USD}}], models_error, default_model,
                 guard (the plate guard that leads every prompt), presets [{id, label, sentence}], max_usd (one take), account: ready|unchecked, spend {today, total, cap},
                 takes [{id, kind: generate|rerun|restyle, from (the take a rerun / restyle came from), prompt, preset, model, resolution (null for a restyle), seconds, aspect, audio, seed,
-                start_ref, start_label, end_ref, end_label, resend (a stored request exists), status: queued|generating|completed|done|failed|stopped,
+                start_ref, start_label, end_ref, end_label, status: queued|generating|completed|done|failed|stopped, progress (0-1 while a local:depth take renders),
                 job_id, estimate, cost (what OpenRouter billed), video: file, error, at, updated, used_for []}] (newest first), frames [{id: story/scene/start|end, label}] (the picture is that frame in `boards`),
                 plates [{id, label}] (generated video assets a take can stand in for), edit {id, name, per_second, minimum} | null (the restyle model),
                 suggestion {frame, prompt, at} | null (the agent's description of a frame's setting)}

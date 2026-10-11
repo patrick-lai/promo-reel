@@ -1206,11 +1206,12 @@
   function studioGo(st, ch, blocked, checked) {
     if (!ch) return { ok: false, label: "Generate", why: st && st.models_error ? "The price list did not load: " + st.models_error : "No video models listed yet." };
     const price = studioPrice(ch);
-    const label = "Generate" + (ch.m.subscription ? " · on your plan" : price == null ? "" : " · ~" + usd(price));
+    const label = "Generate" + (ch.m.local ? " · free" : ch.m.subscription ? " · on your plan" : price == null ? "" : " · ~" + usd(price));
     const no = (why) => ({ ok: false, label, why, price });
     if (blocked) return no("");
     if (studioBusy(st)) return no("One take at a time: wait for the take being made.");
-    if (!ch.prompt.trim()) return no("Say what the clip should show.");
+    if (ch.m.needs_frame && !ch.start) return no("Pick a start frame: " + ch.m.name.replace(/ \(.*$/, "") + " moves a still frame.");
+    if (ch.m.prompt !== false && !ch.prompt.trim()) return no("Say what the clip should show.");
     if (price == null) return no("This model has no price for that choice.");
     const money = moneyNo(st, price);
     if (money) return no(money + (price > st.max_usd ? " Pick a shorter, smaller or cheaper take." : ""));
@@ -1227,7 +1228,7 @@
     const price = g.price;
     const label = "Final at " + up + (price != null && !m.subscription ? " · ~" + usd(price) : "");
     return { ok: g.ok && ch.res === up, res: up, price, label, why: g.why || "", paid: !m.subscription && price > 0,
-      payload: { take: t.id, res: up, what: [m.name, up, t.seconds + " s", "seed " + t.seed, m.subscription ? "on their own subscription" : price == null ? "" : "about " + usd(price)].filter(Boolean).join(", ") } };
+      payload: { take: t.id, res: up, what: [m.name, up, t.seconds + " s", t.seed != null ? "seed " + t.seed : "", m.local ? "free, on this Mac" : m.subscription ? "on their own subscription" : price == null ? "" : "about " + usd(price)].filter(Boolean).join(", ") } };
   }
   /* Restyle a finished take with the edit model (FLUX Video Edit): priced per second of the take, refused like any take over a limit. */
   function studioRestyle(st, t, prompt, blocked) {
@@ -1243,13 +1244,13 @@
     if (money) return no(money);
     return { ok: true, label, why: "", price, payload: { take: t.id, prompt: prompt.trim(), what: e.name + " on take " + t.id + ", " + t.seconds + " s, about " + usd(price) } };
   }
-  /* The `studio` action: the choices as flags for `promo flow studio run`, and one line the chat can show. `seed` makes a final from a draft's seed. */
-  function studioPayload(st, ch, startLabel, seed, endLabel) {
+  /* The `studio` action: the choices as flags for `promo flow studio run`, and one line the chat can show. */
+  function studioPayload(st, ch, startLabel, endLabel) {
     const pre = arr(st && st.presets).find((p) => p.id === ch.preset);
-    const flags = [pre ? "--preset " + pre.id : "", ch.start ? "--start " + ch.start : "", ch.end ? "--end " + ch.end : "", ch.audio ? "--audio" : "", seed != null ? "--seed " + seed : ""].filter(Boolean).join(" ");
+    const flags = [pre ? "--preset " + pre.id : "", ch.start ? "--start " + ch.start : "", ch.end ? "--end " + ch.end : "", ch.audio ? "--audio" : ""].filter(Boolean).join(" ");
     const price = studioPrice(ch);
-    const what = [ch.m.name, ch.res, ch.seconds + " s", ch.aspect, pre ? pre.label.toLowerCase() : "", ch.start ? "from " + (startLabel || ch.start) : "", ch.end ? "ending on " + (endLabel || ch.end) : "", ch.audio ? "with sound" : "", seed != null ? "seed " + seed : "",
-      ch.m.subscription ? "on their own subscription" : price == null ? "" : "about " + usd(price)].filter(Boolean).join(", ");
+    const what = [ch.m.name, ch.res, ch.seconds + " s", ch.aspect, pre ? pre.label.toLowerCase() : "", ch.start ? "from " + (startLabel || ch.start) : "", ch.end ? "ending on " + (endLabel || ch.end) : "", ch.audio ? "with sound" : "",
+      ch.m.local ? "free, on this Mac" : ch.m.subscription ? "on their own subscription" : price == null ? "" : "about " + usd(price)].filter(Boolean).join(", ");
     return { model: ch.model, res: ch.res, seconds: ch.seconds, aspect: ch.aspect, prompt: ch.prompt.trim(), flags, what };
   }
 

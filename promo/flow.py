@@ -2031,7 +2031,8 @@ def _studio_cli(pd, a):
         t = ST.restyle(pd, a.take, a.prompt, a.model or ST.EDIT, a.max_usd, on_change=live)
     else:
         t = ST.run(pd, a.prompt or "", a.model or OR.DEFAULT_MODEL, a.res or OR.DEFAULT_RES, a.seconds, a.aspect, a.audio, a.preset, _studio_start(pd, a.start) if a.start else None, a.start,
-                   a.max_usd, a.seed, on_change=live, end=_studio_start(pd, a.end) if a.end else None, end_ref=a.end)
+                   a.max_usd, a.seed, on_change=live, end=_studio_start(pd, a.end) if a.end else None, end_ref=a.end,
+                   start_plate=any(f["id"] == a.start for f in _studio_frames(boards(pd, load(pd)))))
     print(f"take {t['id']}: {t['file']} ({t['model']}, {t['resolution'] or 'source size'}, {t['seconds']} s, cost ${t['cost'] if t['cost'] is not None else '?'}, estimate ${t['estimate']})")
     return True
 

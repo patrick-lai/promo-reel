@@ -109,13 +109,22 @@ grok, codex/GPT, a person with a recorder. promo-reel only specifies, ingests an
   5. Seedance on the person's OpenRouter key (pay per job, never picked by `auto`): `promo gen models` (prices), then
      `commissionctl secret exec OPENROUTER_API_KEY -- promo gen video "..." --out F --provider openrouter [--model M --res 480p --seconds 4 --first-frame IMG]`
      (`--dry-run` prices it without sending). If the key is not saved, that command opens the secure key box for the person by itself; never wait for them to ask for it. Each job is refused over `--max-usd` (default $0.50) or the daily cap (PROMO_GEN_DAILY_USD, default $2);
-     `promo gen spend` shows the ledger. Draft at 480p, then the final from the same prompt and `--seed`. In the flow the person does this
-     themselves in the Stage's **Studio** tab (`promo flow studio run|use`, promo/studio.py): takes are samples until registered.
-     The Studio also lists "Grok (your subscription)" (`--model cli:grok`, the default when grok is logged in): the grok CLI animates a still
-     on the person's own plan, nothing billed per clip. Codex has an image tool only (no video): use it for stills and start frames.
+     `promo gen spend` shows the ledger. Draft at 480p, then the final from the same prompt and `--seed` (`--last-frame IMG` on models that list one).
+     In the flow the person does this themselves in the Stage's **Studio** tab (promo/studio.py): takes are samples until registered.
+     `promo flow studio run` (`--start` / `--end` frames), `rerun --take tN --res 720p` (the final: the take's stored request resent, only
+     the resolution changed; the Stage confirms the price first), `restyle --take tN --prompt "make it dusk"` (FLUX Video Edit; Studio takes
+     and generated plates only, a screen recording is refused), `frame` / `suggest --frame ID --prompt "..."` (on "Describe this frame" you
+     write the frame's setting: place, light, lens, mood, never screens, text or logos), `use`. A picked frame must be ticked as checked
+     before Generate turns on. The Studio also lists "Grok (your subscription)" (`--model cli:grok`, the default when grok is logged in):
+     the grok CLI animates a still on the person's own plan, nothing billed per clip. Codex has an image tool only (no video): use it for stills and start frames.
+  6. Depth on this Mac (free, nothing sent): `promo depth map IMG` (Depth Anything V2 Small, ONNX) and `promo depth parallax IMG --out F.mp4
+     [--move push|pull|orbit|pan_left|pan_right|crane|handheld|static --amount 1 --focus 0.5 --blur 4 --size 1920x1080]`: a 2.5D camera move
+     over a generated still (it needs the still's `.gen.json` sidecar; a screenshot is refused) with its own generated sidecar, ~10 s of render
+     per second of 1080p. In the Studio it is the model "Depth parallax" (`--model local:depth --start STORY/SCENE/start`).
   USE FOR: backgrounds, scenery, macro textures, light leaks / bokeh overlays, dawn/night skies, transition plates between real shots.
   NEVER FOR: app UI, anything that reads as the product, text, logos, people-as-users. `promo check` FAILs a generated clip on a UI shot
-  (`generated-plates`) and WARNs for human review (`generated-review`). Image-to-video / reference images are not wired; describe the look in words.
+  (`generated-plates`) and WARNs for human review (`generated-review`). Image to video is the Studio's start frame (`--first-frame` on
+  `promo gen video`); reference images (style guidance) are not wired, so describe the look in words.
 
 ## Pick a style preset first (do not write your own renderer)
 Every look is a **style preset**: pacing rules, a caption/card band, typography, transitions and the `promo check` gates
