@@ -60,6 +60,42 @@ def fade_out_video(spec, vid):
     return out
 
 
+WATERMARK = "TEST · 試作 · unlicensed audio · not for publication"
+
+
+def watermark_png(spec, path, text=WATERMARK):
+    """A small dark pill with the TEST line (Japanese-capable font), sized for the output scale."""
+    from PIL import Image, ImageDraw, ImageFont
+    K = spec.OW / 1920
+    fp = next((p for p in ("/System/Library/Fonts/ヒラギノ角ゴシック W6.ttc", "/System/Library/Fonts/Hiragino Sans GB.ttc",
+                           "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc") if os.path.exists(p)), None)
+    f = ImageFont.truetype(fp, int(22 * K)) if fp else ImageFont.load_default()
+    x0, y0, x1, y1 = ImageDraw.Draw(Image.new("RGBA", (1, 1))).textbbox((0, 0), text, font=f)
+    pad = int(10 * K)
+    im = Image.new("RGBA", (x1 - x0 + 2 * pad, y1 - y0 + 2 * pad), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    d.rounded_rectangle((0, 0, im.width - 1, im.height - 1), radius=int(8 * K), fill=(150, 20, 30, 210))
+    d.text((pad - x0, pad - y0), text, font=f, fill=(255, 255, 255, 255))
+    im.save(path)
+    return path
+
+
+def watermark_video(spec, vid):
+    """Burn the TEST watermark into every frame (top-left, inside the frame) while a `test_only` asset is in the spec."""
+    from . import assets as A
+    tests = A.test_only_assets(spec)
+    if not tests:
+        return vid
+    png = watermark_png(spec, os.path.join(spec.segs_dir, "watermark.png"))
+    out = os.path.join(spec.segs_dir, "video-watermarked.mp4")
+    m = int(24 * spec.OW / 1920)
+    subprocess.run(["nice", "-n", "10", "ffmpeg", "-v", "error", "-y", "-threads", "2", "-i", vid, "-i", png, "-filter_complex", f"[0:v][1:v]overlay={m}:{m}",
+                    "-c:v", "libx264", "-preset", "slow", "-crf", "14", "-profile:v", "high", "-pix_fmt", "yuv420p", "-g", "60", "-bf", "2",
+                    "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709", out], check=True)
+    print(f"watermarked (test-only assets: {', '.join(tests)})", flush=True)
+    return out
+
+
 def run(spec, force=False):
     os.makedirs(spec.out, exist_ok=True)
     lst = os.path.join(spec.segs_dir, "list.txt")
@@ -73,6 +109,7 @@ def run(spec, force=False):
     vid = os.path.join(spec.segs_dir, "video-only.mp4")
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-threads", "2", "-f", "concat", "-safe", "0", "-i", lst, "-c", "copy", vid], check=True)
     vid = fade_out_video(spec, vid)
+    vid = watermark_video(spec, vid)
     outs = []
     for m in spec.masters:
         wav = master_path(spec, m["name"])

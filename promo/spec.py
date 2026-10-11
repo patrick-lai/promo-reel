@@ -157,6 +157,7 @@ class Spec:
             if tl.get("bpm") is not None and abs(float(tl["bpm"]) - self.grid.bpm) > 1e-6:
                 raise SpecError(f"timeline.bpm {tl['bpm']} != grid tempo {self.grid.bpm} ({tl['grid']}); drop timeline.bpm")
             bpm = self.grid.bpm
+            self.grid.markers.update(tl.get("markers") or {})      # named in the editor (`marker chorus at=42`) over the grid's own
         self.timeline = Timeline(bpm, tl.get("beats", 98), self.fps)
         self.shots = self._build_shots()
         self.plugins = [self.resolve(p) for p in raw.get("plugins", [])]

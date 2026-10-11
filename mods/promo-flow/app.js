@@ -1024,11 +1024,13 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
 
   /* A small drawn sample of each look, so the choice is not just a name. It is a hint of the style, not a frame of the video. */
   function styleArt(label) {
-    const k = /podcast|vtuber|host/i.test(label) ? "podcast" : /hero/i.test(label) ? "hero" : /dialogue/i.test(label) ? "dialogue" : /horizon/i.test(label) ? "horizon" : /anime|kinetic/i.test(label) ? "kinetic" : "own";
+    const k = /music video|\bmv\b|lyric/i.test(label) ? "mv" : /podcast|vtuber|host/i.test(label) ? "podcast" : /hero/i.test(label) ? "hero" : /dialogue/i.test(label) ? "dialogue" : /horizon/i.test(label) ? "horizon" : /anime|kinetic/i.test(label) ? "kinetic" : "own";
     /* podcast: two avatars standing right on the app screen, cut by the frame's bottom edge, no box around them */
     const inner = { hero: [h("i", { class: "win" }), h("i", { class: "pill" })], dialogue: [h("i", { class: "who a" }), h("i", { class: "who b" }), h("i", { class: "bub" })],
       podcast: [h("i", { class: "scr" }), h("i", { class: "row r1" }), h("i", { class: "row r2" }), h("i", { class: "av a" }), h("i", { class: "av b" }), h("i", { class: "sub" })],
-      horizon: [h("i", { class: "sun" }), h("i", { class: "hz" }), h("em", { text: "One line" })], kinetic: [h("i", { class: "ray" }), h("em", { text: "BOLD" })], own: [ic("film")] }[k];
+      horizon: [h("i", { class: "sun" }), h("i", { class: "hz" }), h("em", { text: "One line" })],
+      /* music video: a letterboxed sky band on a cream page with a petal, one small lyric line under it */
+      mv: [h("i", { class: "band" }), h("i", { class: "pet p1" }), h("i", { class: "pet p2" }), h("em", { text: "歌 詞" })], kinetic: [h("i", { class: "ray" }), h("em", { text: "BOLD" })], own: [ic("film")] }[k];
     return h("div", { class: "sty sty-" + k, "aria-hidden": "true" }, ...inner);
   }
   /* ---------------- podcast cast ----------------
@@ -1126,7 +1128,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
           if (th && !th.error) lazyInto(tslot, th, (u) => h("img", { src: u, alt: "" }), { compact: true });
           const inp = h("input", { type: "radio", name: "style", value: o.label, checked: S.style === o.label, disabled: !!S.pending, onchange: () => { S.style = o.label; S.ownStyle = ""; const oi = $("own"); if (oi) oi.value = ""; renderGate(); } });
           return h("label", { class: "card choice radio style" }, inp, h("div", { class: "row" }, h("span", { class: "box" }, ic("check")), tslot, h("div", { class: "body" }, h("div", { class: "t" }, h("b", { text: o.label }),
-            o.recommended ? h("span", { class: "chip accent", title: "Your request mentions hosts, a podcast or avatars" }, ic("spark"), "Suggested") : null), h("p", { class: "logline", text: o.description || "" }))));
+            o.recommended ? h("span", { class: "chip accent", title: o.why || "Your request points at this style" }, ic("spark"), "Suggested") : null), h("p", { class: "logline", text: o.description || "" }))));
         })),
         h("div", { class: "own", style: "margin-top:12px" }, h("label", { for: "own", text: "Or describe your own style" }),
           h("input", { id: "own", type: "text", maxlength: "200", value: S.ownStyle, placeholder: "For example: slow, warm, no music", disabled: !!S.pending, oninput: (e) => {
@@ -2229,6 +2231,8 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     else S.editor = { api: PFEditor.create({ h, ic, ...view, getMedia, download: downloadButton, canSend: () => canAsk() && !S.editSend,
       onOps: () => renderTabs(tabList()), onRender: editRender, onPreview: editPreview, onAsk: (where) => openRequest("", "What should the agent try? It can answer with edits you try here before you keep them.", "Ask about " + clip(where.replace(/^editor: /, ""), 60), where),
       onImport: editImport, onOpenProject: (name) => send("edit_bin", { name }), onKeep: (x) => send("edit_keep", { id: x.id, note: x.note }),
+      onPlateGen: (shot, ops) => { if (!canAsk()) return false; send("plate_gen", { shot, ops: String(ops || "").split("\n").filter(Boolean).join(" ; ") || "(none)" }); return true; },
+      onBible: (text) => { if (!canAsk()) return false; send("bible", { text }); return true; },
       onDraft: (id) => { S.draftSel = "d" + (+id.slice(1) - 1); pickTab("draft"); }, onScript: (id) => openScriptModal("script:" + id) }) };
     return h("div", { class: "pane ed-pane" }, S.editor.api.el);
   }

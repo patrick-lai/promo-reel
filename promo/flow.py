@@ -106,27 +106,38 @@ MAX_WHY = 240
 URL_RE = re.compile(r"https?://[^\s)>\]\"']+")
 STYLES = [("Calm product hero", "A steady voice-over walks through the real app. Simple captions, cuts that land on the beat."), ("Dialogue film", "People talking, with the app on their screens. Real speech carries the story."),
           ("Horizon film", "Fast cuts of the real app building to one proof moment, ending on a calm dawn card."), ("Kinetic anime opening", "Bold title cards and quick, punchy cuts timed to the music."),
-          ("Podcast with animated hosts", "Two animated hosts talk over the real app, right on the picture (no box). Their own voices, moods and subtitles.")]
+          ("Podcast with animated hosts", "Two animated hosts talk over the real app, right on the picture (no box). Their own voices, moods and subtitles."),
+          ("Anime music video", "A song told in drawn anime shots: one heroine, a letterboxed frame, the lyrics under the picture, cuts on the beat. No app footage.")]
 # the style preset behind each choice (`promo new <name> --style <preset>`); Dialogue film has none yet
 STYLE_PRESET = {"Calm product hero": "hero", "Dialogue film": None, "Horizon film": "horizon", "Kinetic anime opening": "anime-opening",
-                "Podcast with animated hosts": "podcast"}
+                "Podcast with animated hosts": "podcast", "Anime music video": "anime-mv"}
 PODCAST_RE = re.compile(r"\b(podcast|vtuber|v-tuber|live2d|avatars?|hosts?|talk[- ]?show|co-?hosts?|anime (girls?|characters?)|animated characters?)\b", re.I)
+# a song told in pictures: checked before PODCAST_RE, so "an anime MV with characters" is not taken for a talk show
+MV_RE = re.compile(r"\b(music[- ]?videos?|mvs?|pvs?|lyrics? videos?|songs?|singles?)\b|アニメ\s*MV|ミュージックビデオ|歌|楽曲", re.I)
+# why a style card is marked Suggested (the chip's tooltip)
+STYLE_WHY = {"Podcast with animated hosts": "Your request mentions hosts, a podcast or avatars",
+             "Anime music video": "Your request mentions a music video, a song or lyrics"}
 
 
 def style_preset(label):
     """The preset of a recorded style (a label of STYLES, or the person's own words naming one), or None."""
     if label in STYLE_PRESET:
         return STYLE_PRESET[label]
+    if label and MV_RE.search(label):
+        return "anime-mv"
     return "podcast" if label and PODCAST_RE.search(label) else None
 
 
 def style_options(st, limit=None):
-    """The style choices, the one the request points at first and marked recommended (the request mentions a podcast,
-    VTubers, Live2D, avatars, hosts or a talk show -> the podcast style)."""
-    rec = "Podcast with animated hosts" if PODCAST_RE.search(st.get("intent") or "") else None
-    order = ([x for x in STYLES if x[0] == rec] + [x for x in STYLES if x[0] != rec]) if rec else [x for x in STYLES if x[0] != "Podcast with animated hosts"] + [
-        x for x in STYLES if x[0] == "Podcast with animated hosts"]
-    out = [dict(label=a, description=b, recommended=a == rec, preset=STYLE_PRESET.get(a)) for a, b in order]
+    """The style choices, the one the request points at first and marked recommended: a music video, MV, lyric video or song ->
+    the anime music video; else a podcast, VTubers, Live2D, avatars, hosts or a talk show -> the podcast style. The two
+    special-purpose styles sit last when the request names neither."""
+    intent = st.get("intent") or ""
+    rec = "Anime music video" if MV_RE.search(intent) else "Podcast with animated hosts" if PODCAST_RE.search(intent) else None
+    late = ("Podcast with animated hosts", "Anime music video")
+    order = ([x for x in STYLES if x[0] == rec] + [x for x in STYLES if x[0] != rec]) if rec else [x for x in STYLES if x[0] not in late] + [
+        x for x in STYLES if x[0] in late]
+    out = [dict(label=a, description=b, recommended=a == rec, why=STYLE_WHY.get(a) if a == rec else None, preset=STYLE_PRESET.get(a)) for a, b in order]
     return out[:limit] if limit else out
 
 
@@ -769,10 +780,30 @@ def judged(pd, jid):
     return res
 
 
+def test_only_in_mix(pd):
+    """Test-only (unlicensed) asset ids the project's promo.yaml uses; [] when there is no spec or none."""
+    p = os.path.join(pd, "promo.yaml")
+    if not os.path.exists(p):
+        return []
+    from . import assets as A
+    from .spec import SpecError, load_spec
+    try:
+        return A.test_only_assets(load_spec(p, plugins=False))
+    except SpecError as e:                   # unreadable licences must stop an upload, not let it through
+        raise FlowError(f"cannot check the licences in promo.yaml / assets.yaml: {e}") from e
+
+
+def refuse_test_only(pd, what):
+    tests = test_only_in_mix(pd)
+    if tests:
+        raise FlowError(f"cannot {what}: test-only (unlicensed) assets {', '.join(tests)} are in the mix; swap in licensed audio first (AGENTS.md rule 4)")
+
+
 def add_final(pd, file):
     st = load(pd)
     if st["stage"] != "final":
         raise FlowError("not at `final`: approve the draft and `advance`")
+    refuse_test_only(pd, "register a final")
     if not os.path.isfile(file):
         raise FlowError(f"no such file {file}")
     st["finals"].append(dict(file=os.path.abspath(file), at=now()))
@@ -796,6 +827,7 @@ def share_upload(pd, kind, n, dest, by, access=None):
     """The person's upload of draft/final N (default the latest). Returns (n, record, created|updated|unchanged)."""
     st = load(pd)
     by = human(by)
+    refuse_test_only(pd, f"share a {kind}")
     items = st["drafts"] if kind == "draft" else st["finals"]
     if not items:
         raise FlowError(f"no {kind} is registered yet")

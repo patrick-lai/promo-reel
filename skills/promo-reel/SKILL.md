@@ -126,7 +126,9 @@ for them. `promo styles` lists them. Scaffold with the one that matches the brie
 - `promo new <name> --style podcast`: Live2D hosts talking over the real app, overlaid on the picture with no box (see "Podcast / VTuber videos" below).
 - `promo new <name> --style horizon`: 20-25 s horizon film (rapid cuts of real surfaces, each shot `type: horizon` with `anchor: {src: [x, y], out_y: 0.58}` putting a real edge on the horizon; show-level `horizon_text: [{words, beats}]` is the ONE serif line that persists across cuts; end with `type: dawn`). A burst (half beats ok) must be followed by a hold >= 3 s. Template: `templates/styles/horizon/promo.yaml`.
 
-If the brief says "anime", "opening", "kinetic titles", "J-rock", "speed lines" or "title cards", it is **anime-opening**:
+- `promo new <name> --style anime-mv`: an anime MUSIC VIDEO for a song (no app footage): letterboxed drawn shots, lyrics under the picture (see "Anime music videos" below).
+
+If the brief says "anime", "opening", "kinetic titles", "J-rock", "speed lines" or "title cards", it is **anime-opening** (a music video for a song, MV, PV or lyric video is **anime-mv**):
 - `timeline: {grid: <music JSON>, beats: N}` loads tempo, bars and markers from the music analysis JSON; `promo grid` prints the bar table. Plan cuts on bar lines; `qa.cut_markers: [intro_hit, ...]` must land on cuts.
 - Shots are `type: anime`. Set `ui: true|false` on every shot. UI shots hold >= 1 bar and are framed above the band (`layout: band`; `fit: contain` keeps a 16:9 crop); text-free shots (scenery, robots) may hold 1/2 bar and run full-bleed.
 - Words go in `cards: [{row: title|sub|tag, text: ..., bars: [a, b]}]`: held >= 1 bar, start on a bar line, all in ONE fixed lower-third band (no per-card positions). Full-bleed UI shots must list `ui_text` rects (source coords) and no card may cover them.
@@ -174,6 +176,37 @@ commissioned-VTuber art. For that level the person brings their own model: `prom
 own|commissioned|original --licence TEXT --source URL [--credit T]` registers it (files stay where they are, never committed), measures its
 framing anchors from renders and maps moods by expression names; check it with `promo live2d stills --model ID --moods --out sheet.png`.
 Collaboration and third-party characters are refused. Sample models need the `live2d_credits` end card (gated); so does any credited model.
+
+## Anime music videos (style `anime-mv`)
+If the request is a **music video, MV, PV, lyric video or a song told in pictures** (in THE FLOW the "Anime music video" card is marked
+suggested), it is `anime-mv`. Measured on Eve 「心海」: a 2.35:1 picture band on a cream page (y 131-949 of 1080), ONE small tracked Mincho
+lyric line under it (ink y 996-1028), flat-cel characters over painted backgrounds, drawings held on 2s, median shot ~1.5 s with half-beat
+bursts, petals / bubbles, whiteouts and ink wipes on big cuts. No product UI ever (every shot `type: mv`, gate mv-shots). Recipe:
+1. `promo new <name> --style anime-mv`; the song in assets.yaml. A song the person has no licence for may go in as `test_only: true` for an
+   internal test only: `promo check` WARNs test-audio, the assembled video carries a burned-in TEST watermark, share / final are refused.
+2. `promo music analyse song.wav --from S --to S [--bpm 143] --mark verse=40.9 --mark chorus=79.0 --out music/grid.json`: the beat grid
+   (comb fit on the onset envelope; `beat contrast` well above 1 = on the beat), bars, sections by ear (the loudness guess is weak on
+   compressed pop), and the `music:` block that cuts the excerpt on bar lines. Then `timeline: {grid: music/grid.json, beats: N}`.
+3. Lyrics: `promo lyrics import song.srt|.lrc|.txt -p promo.yaml` (music-file times mapped through the edit), then `promo lyrics align`
+   (faster-whisper large-v3, Japanese, fuzzy per-character match: ASR kanji mistakes only cost the characters they touch; `--words asr.json`
+   reuses a run). Lines under 0.8 s fail lyrics-hold: merge them into the next line. Layouts band | center | vertical (tategaki) | big;
+   anims fade | type | ink | none. Gates: lyrics-glyphs (no tofu), lyrics-safe, lyrics-hold, lyrics-overlap, lyrics-sync (> 0.25 s off the voice).
+4. The look bible BEFORE any shot: one style paragraph + the cast + palette + a character sheet and a style frame drawn first (grok
+   image_edit from a first sheet keeps the heroine on-model; crop the generator's corner logo off the refs). `promo mv bible --prompt ...
+   --ref character=bible/sheet.png --ref style=bible/style.png --cast hero="..."`. Every plate prompt is bible + cast + scene.
+5. Shots: `{type: mv, beats, plate: {kind: video|still, cast: [hero], prompt, motion}, fill: [r,g,b] (shown until a take exists),
+   cam (stills drift), frame_step: 2, particles: {kind: petals|bubbles|motes|snow|rain}, fx_in / fx_out: whiteout|flash|ink|iris|smear|rgb,
+   frame: full (title cards), words: [{text, t, layout: big}]}`. Vary the framing on purpose (extreme close-ups of hands / eyes / feet, high
+   and low angles, the heroine off-centre or small): the character sheet pulls every keyframe towards a centred front view.
+6. `promo mv gen -p promo.yaml --missing --jobs 4`: per shot a keyframe (`key-tN.png`) then, for `kind: video`, grok image_to_video at 720p
+   (`clip-tN.mp4`), registered as footage `k<shot>-tN` / `v<shot>-tN` with the bible id. A shot's first take goes in; later takes wait for
+   `promo mv use SHOT TAKE` (or the Stage). ~25 s per keyframe, ~80 s per clip, 4 at a time. `promo mv plan` lists prompts, takes, stale takes.
+7. `promo build`, `promo check` (mv-shots, mv-cuts, mv-hold, mv-median, mv-flashes, mv-plates, look-bible, the lyric gates, test-audio).
+The Stage editor shows a Lyrics lane (drag / trim snaps to 1/4 beat, Alt = free; double-click edits the words), the song's sections and bar
+numbers on the ruler, and for an mv shot its takes, plate prompt, "Generate another take" (action `plate_gen`) and look keys; the look bible
+card sends `bible`. Edit language: `lyric add|N ...|N rm|N sync`, `plate SHOT take=|prompt=|motion=|kind=`, `look SHOT step= particles=
+fx_in= fx_out= frame=`, `marker NAME at=|rm`. Be honest about the ceiling: generated motion is limited (hair, cloth, blinks, camera), so the
+edit, the lyrics and the frame carry the music; say so in the review note.
 
 ## STEP 0: Lock the brief and study the references (before any shot list or spec)
 A cut that passes every gate can still miss what the person asked for, because it was judged against the agent's OWN summary of the

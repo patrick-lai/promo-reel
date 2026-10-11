@@ -28,6 +28,7 @@ class ShotType:
     editing those words then makes its cached shots stale, like the built-in horizon / dawn types."""
 
     draws_horizon_text = False
+    draws_lyrics = False            # True: paints the show-level `lyrics:` (promo/lyrics.py); a lyric edit re-renders only the shots it crosses
 
     def render(self, ctx, shot):
         raise NotImplementedError
@@ -40,4 +41,4 @@ class ShotType:
         return caption_boxes(ctx, shot)
 
 
-from . import anime, card, cinema, clip, horizon, livestream, podcast, screen  # noqa: E402,F401  (register built-in types)
+from . import anime, card, cinema, clip, horizon, livestream, mv, podcast, screen  # noqa: E402,F401  (register built-in types)

@@ -14,6 +14,11 @@
   const ZOOM_PRESETS = [[1, "Fit"], [2, "2×"], [4, "4×"], [8, "8×"]];
   const PPS_MAX = 600;
   const LANES = [["v", "Picture"], ["cap", "Captions"], ["vo", "Voice"], ["music", "Music"], ["sfx", "Sound effects"]];
+  /* A music video (edit.mv, style anime-mv) adds the Lyrics lane under the picture and drops empty Captions / Voice lanes. */
+  const LANE_PX = { v: 46, lyr: 30, cap: 22, vo: 36, music: 40, sfx: 32 };
+  const LYR_LABEL = { band: "Under the picture", center: "On the picture", vertical: "Vertical (tategaki)", big: "One huge word" };
+  const ANIM_LABEL = { fade: "Fade", type: "Type on", ink: "Ink in", none: "Cut" };
+  const FX_LABEL = { whiteout: "Whiteout", flash: "Flash", ink: "Ink wipe", iris: "Iris", smear: "Smear", rgb: "RGB split" };
   const AUDIO_LANES = ["vo", "music", "sfx"];
   const KIND_ICON = { footage: "film", plate: "image", music: "music", sfx: "wave", voice: "wave", script: "doc", draft: "film" };
   const BIN_GROUPS = [["footage", "Footage"], ["plate", "Plates"], ["music", "Music"], ["voice", "Voice"], ["sfx", "Sound effects"], ["script", "Scripts"], ["draft", "Drafts"]];
@@ -71,7 +76,12 @@
         gains: arr((m.edit || {}).gains).filter((g) => !g0.includes(JSON.stringify(g))), fx: !!m.fx !== !!(m0 || {}).fx || JSON.stringify(m.fx) !== JSON.stringify((m0 || {}).fx) } : null;
       const buses = { ...(edit.buses || {}), ...(((raw.mix || {}).bus_db) || {}) };
       const dur = shots.length ? shots[shots.length - 1].t1 : edit.duration || 0;
-      D = { raw, shots, vo, sfx, music, buses, dur, origin };
+      const mvv = edit.mv || null, specTl = ((edit.spec || {}).timeline || {}).markers || {};
+      const lyr = mvv ? arr((raw.lyrics || {}).lines).map((l, k) => { const t = l.t || l.sung; return { i: k + 1, text: l.text || "", a: t ? +t[0] : null, b: t ? +t[1] : null, layout: l.layout || "band", anim: l.anim || "fade", sung: l.sung || null, unsynced: !!l.unsynced }; }) : [];
+      const lyrEdited = !!mvv && JSON.stringify(arr((raw.lyrics || {}).lines)) !== JSON.stringify(arr(((edit.spec || {}).lyrics || {}).lines));
+      const markers = {};
+      if (mvv) { for (const [k, v] of Object.entries(mvv.markers || {})) if (!(k in specTl)) markers[k] = +v; Object.assign(markers, (raw.timeline || {}).markers || {}); }
+      D = { raw, shots, vo, sfx, music, buses, dur, origin, lyr, lyrEdited, markers };
       if (playhead > dur) playhead = dur;
     }
     /* A podcast show's speaker colour for a voice line (promo/podcast.py COLORS when the host has none). */
@@ -93,9 +103,9 @@
        the second half of a split, else its source footage at t_in. */
     function clipMedia(s) {
       const v = s.v, cfg = s.cfg, sp = s.spec;
-      if (v && v.seg && sp && same(cfg, sp, ["beats", "bars", "id"]) && s.id === v.id) return { ref: v.seg, off: 0, speed: 1, rendered: Math.abs((s.t1 - s.t0) - (v.end_s - v.start_s)) < 1e-6, kind: "video" };
+      if (v && v.seg && sp && same(cfg, sp, ["beats", "bars", "id"]) && s.id === v.id) return { ref: v.seg, off: 0, speed: 1, rendered: Math.abs((s.t1 - s.t0) - (v.end_s - v.start_s)) < 0.5 / (edit.fps || 30), kind: "video" };     /* same length to the frame: a grid tempo (142.8192 BPM) rounds beat_s */
       if (v && v.seg && sp && same(cfg, sp, ["beats", "bars", "id", "t_in"])) return { ref: v.seg, off: ((+cfg.t_in || 0) - (+sp.t_in || 0)) / (+cfg.speed || 1), speed: 1, rendered: false, kind: "video" };
-      const src = cfg.source;
+      const src = cfg.source || cfg.still;
       const it = src ? binItem("footage:" + src) || binItem("plate:" + src) : null;
       const ref = (it && it.media) || (v && v.source === src && v.src_preview) || null;
       if (ref) { const r = PF.mref(ref); const still = r && /^image\//.test(r.mime || "") || /\.(png|jpe?g|webp)$/i.test((r && r.name) || ""); return { ref, off: +cfg.t_in || 0, speed: +cfg.speed || 1, rendered: false, kind: still ? "image" : "video", poster: it && it.poster }; }
@@ -122,14 +132,15 @@
     const slate = h("div", { class: "ed-slate", hidden: true });
     const badge = h("span", { class: "ed-badge", hidden: true }, ic("clock"), h("span", { text: "Not rendered yet" }));
     const capOv = h("div", { class: "ed-cap", hidden: true });
+    const lyrOv = h("div", { class: "ed-lyrov", hidden: true });
     const tcode = h("span", { class: "ed-tc", "aria-live": "off" });
     const playBtn = h("button", { type: "button", class: "ed-b", "data-k": "ed-play", "aria-label": "Play (Space)", title: "Play (Space)", onclick: () => toggle() }, ic("play"));
-    const stage = h("div", { class: "ed-stage" }, vA, vB, still, slate, capOv, badge);
+    const stage = h("div", { class: "ed-stage" }, vA, vB, still, slate, capOv, lyrOv, badge);
     const viewer = h("section", { class: "ed-viewer", "aria-label": "Viewer" }, stage,
       h("div", { class: "ed-vbar" }, playBtn, tcode, h("span", { class: "ed-rough", text: "Rough mix. Render for the final mix." })));
     const insp = h("aside", { class: "ed-insp", "aria-label": "Inspector" });
     const heads = h("div", { class: "ed-heads" });
-    const lanes = h("div", { class: "ed-lanes", tabindex: "0", role: "application", "aria-label": "Timeline. Space plays, B splits, Delete removes, Cmd+Z undoes, + and − zoom, 0 fits, Z zooms to the shot." });
+    const lanes = h("div", { class: "ed-lanes", tabindex: "0", role: "application", "aria-label": "Timeline. Space plays, B splits, Delete removes, Cmd+Z undoes, + and − zoom, 0 fits, Z zooms to the shot. Double-click a lyric to change its words." });
     const scroller = h("div", { class: "ed-scroll" }, lanes);
     const tl = h("div", { class: "ed-tl" }, heads, scroller);
     const zbar = h("div", { class: "ed-zbar", role: "toolbar", "aria-label": "Timeline zoom" });
@@ -263,6 +274,10 @@
       const cap = captionOf(s.cfg);
       const showCap = !m.rendered && cap && (!Array.isArray(cap.t) || (lt >= +cap.t[0] && lt < +cap.t[1]));
       capOv.hidden = !showCap; if (showCap) capOv.textContent = cap.text;
+      /* lyrics not in the rendered picture yet (an unrendered shot, or lyric edits): drawn over the viewer, roughly where they will sit */
+      const ln = (!m.rendered || D.lyrEdited) ? D.lyr.filter((x) => x.a != null && t >= x.a && t < x.b) : [];
+      lyrOv.hidden = !ln.length;
+      if (ln.length) { lyrOv.textContent = ln.map((x) => x.text).join("  /  "); lyrOv.dataset.layout = ln[0].layout; }
       const vis = mon.v.mute ? false : true;
       /* a grade or fade not rendered yet: shown with CSS on the picture (rough; the render uses ffmpeg's filters) */
       const look = [];
@@ -280,7 +295,9 @@
       still.hidden = true;
       if (m.kind !== "video" || !vis) {
         slate.hidden = false; vA.hidden = vB.hidden = true; vA.pause(); vB.pause();
-        slate.replaceChildren(ic("film"), h("b", { text: "Shot " + s.id }), h("span", { text: m.kind === "none" ? "Nothing to show yet: Render makes this shot." : "Picture off (muted)" }));
+        const fill = m.kind === "none" && vis && Array.isArray(s.cfg.fill) && !(s.cfg.source || s.cfg.still) ? s.cfg.fill : null;     /* a music video's flat-colour shot */
+        slate.style.background = fill ? "rgb(" + fill.join(",") + ")" : "";
+        slate.replaceChildren(ic("film"), h("b", { text: "Shot " + s.id }), h("span", { text: fill ? "A flat colour shot: Render draws its words and effects." : m.kind === "none" ? "Nothing to show yet: Render makes this shot." : "Picture off (muted)" }));
         return;
       }
       slate.hidden = true;
@@ -392,9 +409,38 @@
       const s = sel && sel.kind === "shot" ? D.shots.find((x) => x.id === sel.id) : null;
       const l = sel && sel.kind === "vo" ? D.vo.find((x) => x.id === sel.id) : null;
       const e = sel && sel.kind === "sfx" ? D.sfx.find((x) => x.shot === sel.shot && x.i === sel.i) : null;
+      const ly = sel && sel.kind === "lyr" ? D.lyr.find((x) => x.i === sel.i) : null;
       const field = (label, input) => h("label", { class: "ed-f" }, h("span", { text: label }), input);
       const dis = readonly;
-      if (s) {
+      if (s && s.cfg.type === "mv" && edit.mv) {
+        parts.push(h("h3", { class: "ed-ih" }, "Shot " + s.id, h("small", { text: "music video · " + clock(s.t0) + "–" + clock(s.t1) + " · beats " + s.b0 + "–" + s.b1 })),
+          s.media.rendered ? h("p", { class: "ed-ok" }, ic("check"), "Rendered") : h("p", { class: "ed-warn" }, ic("clock"), "Not rendered yet: the viewer shows the plate"),
+          ...mvShot(s, field, dis),
+          h("div", { class: "ed-acts" },
+            h("button", { type: "button", class: "btn ghost sm", "data-k": "ins-split", disabled: dis || !(playhead > s.t0 + B() / 2 && playhead < s.t1 - B() / 2), onclick: () => split(s) }, ic("cut"), "Split at playhead"),
+            h("button", { type: "button", class: "btn ghost sm", "data-k": "ins-delete", disabled: dis || D.shots.length < 2, onclick: () => push({ op: "delete", shot: s.id }) && (sel = null) }, ic("close"), "Delete")),
+          askBox("shot " + s.id + ", " + clock(s.t0) + "–" + clock(s.t1)));
+      } else if (ly) {
+        const text = h("input", { type: "text", value: ly.text, maxlength: "120", "data-k": "ins-lyr-text", disabled: dis, lang: "ja" });
+        text.addEventListener("change", () => { const t = text.value.split(/\s+/).filter(Boolean).join(" "); if (t && t !== ly.text) push({ op: "lyric", act: "set", i: ly.i, text: t }); });
+        const at = h("input", { type: "number", step: "0.05", min: "0", value: ly.a != null ? String(ly.a) : "", "data-k": "ins-lyr-at", disabled: dis });
+        const end = h("input", { type: "number", step: "0.05", min: "0", value: ly.b != null ? String(ly.b) : "", "data-k": "ins-lyr-end", disabled: dis });
+        const setT = () => { const a = Math.round((+at.value || 0) * 100) / 100, b = Math.round((+end.value || 0) * 100) / 100; if (b > a) push({ op: "lyric", act: "set", i: ly.i, at: a, end: b }); else flash("A lyric line ends after it starts."); };
+        at.addEventListener("change", setT); end.addEventListener("change", setT);
+        const lay = h("select", { "data-k": "ins-lyr-layout", disabled: dis }, arr(edit.mv.layouts).map((x) => h("option", { value: x, selected: x === ly.layout }, LYR_LABEL[x] || x)));
+        lay.addEventListener("change", () => push({ op: "lyric", act: "set", i: ly.i, layout: lay.value }));
+        const an = h("select", { "data-k": "ins-lyr-anim", disabled: dis }, arr(edit.mv.anims).map((x) => h("option", { value: x, selected: x === ly.anim }, ANIM_LABEL[x] || x)));
+        an.addEventListener("change", () => push({ op: "lyric", act: "set", i: ly.i, anim: an.value }));
+        const off = ly.sung && ly.a != null ? Math.round((ly.a - +ly.sung[0]) * 100) / 100 : null;
+        parts.push(h("h3", { class: "ed-ih" }, "Lyric " + ly.i, h("small", { text: ly.a != null ? clock(ly.a) + "–" + clock(ly.b) : "no time yet" })),
+          field("Words", text), h("div", { class: "ed-row2" }, field("From (s)", at), field("To (s)", end)), field("Where", lay), field("How it appears", an),
+          ly.sung ? h("p", { class: Math.abs(off) > 0.25 ? "ed-warn" : "sub" }, Math.abs(off) > 0.25 ? ic("alert") : null, "Sung " + clock(+ly.sung[0]) + "–" + clock(+ly.sung[1]) + (off ? " (this line starts " + (off > 0 ? "+" : "") + off + " s from the voice)" : " (on the voice)"))
+            : h("p", { class: "ed-warn" }, ic("alert"), "Not matched to the sung voice yet."),
+          h("div", { class: "ed-acts" },
+            h("button", { type: "button", class: "btn ghost sm", "data-k": "ins-lyr-sync", disabled: dis || !ly.sung, title: "Put the line back where it is sung", onclick: () => push({ op: "lyric", act: "sync", i: ly.i }) }, ic("refresh"), "Snap to the voice"),
+            h("button", { type: "button", class: "btn ghost sm", "data-k": "ins-lyr-rm", disabled: dis, onclick: () => { push({ op: "lyric", act: "rm", i: ly.i }); sel = null; paint(); } }, ic("close"), "Remove")),
+          askBox("lyric line " + ly.i + " (“" + ly.text + "”)"));
+      } else if (s) {
         const foot = arr(bin.here).filter((x) => x.kind === "footage" || x.kind === "plate");
         const srcSel = h("select", { "data-k": "ins-source", disabled: dis || !("source" in s.cfg) }, foot.map((x) => h("option", { value: x.id, selected: x.id === s.cfg.source }, x.label + (x.kind === "plate" ? " (plate)" : ""))));
         if (s.cfg.source && !foot.some((x) => x.id === s.cfg.source)) srcSel.prepend(h("option", { value: s.cfg.source, selected: true }, s.cfg.source));
@@ -458,7 +504,8 @@
         parts.push(h("h3", { class: "ed-ih" }, "Music", h("small", { text: it ? it.label : D.music.asset })), it && it.licence ? h("p", { class: "sub", text: "Licence: " + it.licence }) : null,
           field("Laid from (s into the track)", off), h("p", { class: "sub", text: "Drop another track from the bin on the Music lane to try it." }), askBox("the music (" + D.music.asset + ")"));
       } else {
-        parts.push(h("h3", { class: "ed-ih" }, "Inspector"), h("p", { class: "sub", text: "Select a shot, a voice line, a sound or the music to change it. Drag from the bin onto the timeline to swap footage or music." }));
+        parts.push(h("h3", { class: "ed-ih" }, "Inspector"), h("p", { class: "sub", text: edit.mv ? "Select a shot to pick its take, change its plate or its look; a lyric line to change its words, timing or layout." : "Select a shot, a voice line, a sound or the music to change it. Drag from the bin onto the timeline to swap footage or music." }));
+        if (edit.mv) parts.push(addLyric(), bibleCard());
         parts.push(askBox("the whole video"));
       }
       const pv = arr(edit.previews).filter((x) => PF.mref(x.file) && !PF.mref(x.file).error);
@@ -482,6 +529,62 @@
             h("button", { type: "button", class: "btn ghost sm", "data-k": "sug-hide:" + x.id, onclick: () => { hidden.add(x.id); if (trying === x.id) trying = null; rebuild(); paint(); } }, "Dismiss")));
       })));
       insp.replaceChildren(...parts.filter(Boolean));
+    }
+    /* A music-video shot: its takes (one sprite sheet), the plate it is drawn from, and its look. */
+    function mvShot(s, field, dis) {
+      const mv = edit.mv, info = (mv.shots || {})[s.id] || {}, cfg = s.cfg, pl = cfg.plate || {};
+      const used = cfg.source || cfg.still || null;
+      const cols = (mv.take_cell || [192, 108, 8])[2];
+      const takes = arr(info.takes);
+      const strip = h("div", { class: "ed-takes", role: "group", "aria-label": "Takes of shot " + s.id },
+        takes.length ? takes.map((t) => {
+          const on = used === t.id;
+          const b = h("button", { type: "button", class: "ed-take" + (t.stale ? " stale" : ""), "aria-pressed": String(on), "data-k": "ins-take:" + t.id, disabled: dis,
+            title: t.id + (t.kind === "clip" ? " (animated)" : " (still)") + (t.stale ? ", drawn before the look bible changed" : ""), onclick: () => { if (!on) push({ op: "plate", shot: s.id, take: t.id }); } },
+            h("i", { class: "ed-tk", "data-cell": t.cell ? t.cell.join(",") : "" }), h("span", null, "t" + t.n, h("small", { text: t.kind === "clip" ? " clip" : " still" })), t.stale ? ic("alert") : null);
+          return b;
+        }) : h("p", { class: "sub", text: pl.prompt ? "No takes yet: Generate makes the first." : "A flat colour shot (no plate)." }));
+      /* the sheet is cols x rows cells; rows = the deepest cell any take uses */
+      const rows = 1 + Math.max(0, ...Object.values(mv.shots || {}).flatMap((x) => arr(x.takes).map((t) => (t.cell ? +t.cell[1] : 0))));
+      if (mv.takes_sheet && takes.length) urlOf(mv.takes_sheet).then((u) => { for (const x of strip.querySelectorAll(".ed-tk")) { const c = (x.dataset.cell || "").split(","); if (c.length === 2) { x.style.backgroundImage = "url(\"" + u + "\")"; x.style.backgroundSize = cols * 100 + "% " + rows * 100 + "%"; x.style.backgroundPosition = (+c[0] / Math.max(1, cols - 1)) * 100 + "% " + (rows > 1 ? (+c[1] / (rows - 1)) * 100 : 0) + "%"; } } }, () => {});
+      const prompt = h("textarea", { rows: "3", maxlength: "600", "data-k": "ins-plate-prompt", disabled: dis, "aria-label": "What the plate shows" }); prompt.value = pl.prompt || "";
+      prompt.addEventListener("change", () => { const t = prompt.value.trim(); if (t && t !== pl.prompt) push({ op: "plate", shot: s.id, prompt: t }); });
+      const motion = h("textarea", { rows: "2", maxlength: "300", "data-k": "ins-plate-motion", disabled: dis || pl.kind === "still", "aria-label": "How it moves" }); motion.value = pl.motion || "";
+      motion.addEventListener("change", () => { const t = motion.value.trim(); if (t && t !== pl.motion) push({ op: "plate", shot: s.id, motion: t }); });
+      const kind = h("select", { "data-k": "ins-plate-kind", disabled: dis }, PF.MV.PLATE_KINDS.map((x) => h("option", { value: x, selected: x === (pl.kind || "video") }, x === "video" ? "Animated" : "Still + camera")));
+      kind.addEventListener("change", () => push({ op: "plate", shot: s.id, kind: kind.value }));
+      const pend = stack.done.filter((x) => x.op === "plate" && String(x.shot) === s.id && !("take" in x));
+      const gen = h("button", { type: "button", class: "btn ghost sm", "data-k": "ins-plate-gen", disabled: dis || !pl.prompt || (o.canSend && !o.canSend()),
+        title: "The agent draws a new keyframe" + ((pl.kind || "video") === "video" ? " and animates it" : "") + " (about 2 minutes); it shows up here as the next take", onclick: () => o.onPlateGen && o.onPlateGen(s.id, PF.editText(pend)) }, ic("refresh"), "Generate another take");
+      const sel_ = (k, opts, cur, label) => { const x = h("select", { "data-k": "ins-look-" + k, disabled: dis }, opts.map(([v, l]) => h("option", { value: v, selected: v === cur }, l))); x.addEventListener("change", () => push({ op: "look", shot: s.id, [k]: k === "step" ? +x.value : x.value })); return field(label, x); };
+      const parts0 = cfg.particles ? (typeof cfg.particles === "object" ? cfg.particles.kind : cfg.particles) : "none";
+      const fxo = [["none", "None"], ...arr(mv.fx).map((f) => [f, FX_LABEL[f] || f])];
+      return [h("h4", { class: "ed-sh", text: "Takes" }), strip, pl.prompt || takes.length ? gen : null,
+        pl.prompt != null ? h("details", { class: "ed-plate", open: "" }, h("summary", { text: "Plate" }), field("What it shows", prompt), field("How it moves", motion), field("Kind", kind),
+          pend.length ? h("p", { class: "sub", text: "A new prompt needs a new take: Generate another take." }) : null) : null,
+        h("details", { class: "ed-look" }, h("summary", { text: "Look" }),
+          sel_("step", [[1, "Every frame (smooth)"], [2, "On 2s (anime)"], [3, "On 3s (limited)"], [4, "On 4s"]], +(cfg.frame_step || 2), "Drawings held"),
+          sel_("particles", [["none", "None"], ...arr(mv.particles).map((p) => [p, p[0].toUpperCase() + p.slice(1)])], parts0, "Particles"),
+          sel_("fx_in", fxo, cfg.fx_in || "none", "Cut in"), sel_("fx_out", fxo, cfg.fx_out || "none", "Cut out"),
+          sel_("frame", [["band", "Letterbox band"], ["full", "Full bleed"]], cfg.frame || "band", "Frame"))];
+    }
+    function addLyric() {
+      if (readonly) return null;
+      const t = h("input", { type: "text", maxlength: "120", placeholder: "Words of a new line", "data-k": "ins-lyr-new", lang: "ja" });
+      const go = () => { const w = t.value.split(/\s+/).filter(Boolean).join(" "); if (!w) return; const a = Math.round(playhead * 100) / 100; if (push({ op: "lyric", act: "add", text: w, at: a, end: Math.round(Math.min(D.dur, a + 2) * 100) / 100 })) t.value = ""; };
+      t.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); go(); } });
+      return h("div", { class: "ed-f ed-addlyr" }, h("span", { text: "Add a lyric line at " + clock(playhead) }), h("span", { class: "ed-row" }, t, h("button", { type: "button", class: "btn ghost sm", "data-k": "ins-lyr-add", onclick: go }, ic("plus"), "Add")));
+    }
+    function bibleCard() {
+      const b = edit.mv && edit.mv.bible;
+      if (!b) return null;
+      const refs = h("div", { class: "ed-refs" }, arr(b.refs).filter((r) => r.file).map((r) => { const im = h("img", { alt: r.role + " reference", loading: "lazy" }); urlOf(r.file).then((u) => { im.src = u; }, () => im.remove()); return h("figure", null, im, h("figcaption", { text: r.role })); }));
+      const ask = h("textarea", { rows: "2", maxlength: "600", placeholder: "Change the look of the whole video…", "data-k": "ins-bible-ask", disabled: readonly });
+      const send = h("button", { type: "button", class: "btn ghost sm", "data-k": "ins-bible-send", disabled: readonly || (o.canSend && !o.canSend()), onclick: () => { const t = ask.value.trim(); if (t && o.onBible && o.onBible(t) !== false) ask.value = ""; } }, ic("comment"), "Send to the agent");
+      return h("section", { class: "ed-bible", "aria-label": "Look bible" }, h("h4", null, "Look bible", b.id ? h("small", { text: " · " + b.id }) : null),
+        h("div", { class: "ed-pal", "aria-label": "Palette" }, arr(b.palette).map((c) => h("i", { style: "background:" + c, title: c }))), refs,
+        b.prompt ? h("details", null, h("summary", { text: "The look, in words" }), h("p", { class: "sub ed-bprompt", text: b.prompt })) : null,
+        h("p", { class: "sub", text: "Every plate is drawn from this. Changing it makes the plates drawn before stale; the agent asks before redrawing them." }), ask, send);
     }
     function keepSug(x) {
       const ops = PF.editParse(x.text).map(({ _n, ...op }) => op);
@@ -517,11 +620,27 @@
       lanes.style.width = width + "px";
       const ruler = h("div", { class: "ed-ruler", "aria-hidden": "true" });
       const bar = (edit.beats_per_bar || 4) * B(), step = pps >= 60 ? 1 : pps >= 24 ? 2 : pps >= 10 ? 5 : 10;
-      for (let t = 0; t <= D.dur + 1e-6; t += step) ruler.append(h("i", { style: "left:" + t * pps + "px" }, h("span", { text: clock(t).replace(/\.0$/, "") })));
+      if (!edit.mv) for (let t = 0; t <= D.dur + 1e-6; t += step) ruler.append(h("i", { style: "left:" + t * pps + "px" }, h("span", { text: clock(t).replace(/\.0$/, "") })));     /* a music video counts bars instead */
       const grid = h("div", { class: "ed-grid-b", "aria-hidden": "true" });
       if (pps * B() >= 5) for (let t = 0; t <= D.dur + 1e-6; t += B()) grid.append(h("i", { class: Math.abs(t / bar - Math.round(t / bar)) < 1e-6 ? "bar" : "", style: "left:" + t * pps + "px" }));
       const lv = h("div", { class: "ed-lane", "data-lane": "v" }), lc = h("div", { class: "ed-lane", "data-lane": "cap" }), lo = h("div", { class: "ed-lane", "data-lane": "vo" }),
-        lm = h("div", { class: "ed-lane", "data-lane": "music" }), ls = h("div", { class: "ed-lane", "data-lane": "sfx" });
+        lm = h("div", { class: "ed-lane", "data-lane": "music" }), ls = h("div", { class: "ed-lane", "data-lane": "sfx" }), ll = h("div", { class: "ed-lane", "data-lane": "lyr" });
+      if (edit.mv) {
+        /* the song's sections as bands on the ruler, and bar numbers when there is room */
+        const mk = Object.entries(D.markers).filter(([, v]) => v != null && +v < D.dur).sort((a, b) => a[1] - b[1]);
+        mk.forEach(([name, t0], k) => { const t1 = k + 1 < mk.length ? mk[k + 1][1] : D.dur; ruler.append(h("b", { class: "ed-sec", "data-sec": name, title: name + " from " + clock(t0), style: "left:" + t0 * pps + "px;width:" + Math.max(2, (t1 - t0) * pps) + "px" }, h("span", { text: name }))); });
+        const bars = arr(edit.mv.bars), every = pps * bar >= 34 ? 1 : pps * bar >= 16 ? 2 : pps * bar >= 8 ? 4 : 8;
+        bars.forEach((t, k) => { if (k % every === 0 && t < D.dur) ruler.append(h("em", { class: "ed-barn", style: "left:" + t * pps + "px", text: String(k + 1) })); });
+        for (const L of D.lyr) if (L.a != null) {
+          const isSel = sel && sel.kind === "lyr" && sel.i === L.i, w = Math.max(6, (L.b - L.a) * pps);
+          const off = L.sung ? Math.abs(L.a - +L.sung[0]) > 0.25 : false;
+          const blk = h("div", { class: "ed-lyr" + (isSel ? " sel" : "") + (off ? " off" : "") + (L.layout !== "band" ? " alt" : ""), "data-lyr": String(L.i), tabindex: "-1", role: "button", lang: "ja",
+            "aria-label": "Lyric " + L.i + ": " + L.text + ", " + clock(L.a) + " to " + clock(L.b) + (off ? ", off the voice" : ""), title: L.text + (L.layout !== "band" ? " · " + (LYR_LABEL[L.layout] || L.layout) : ""),
+            style: "left:" + L.a * pps + "px;width:" + w + "px" }, h("span", { text: L.text }), h("span", { class: "ed-edge l", "aria-hidden": "true" }), h("span", { class: "ed-edge", "aria-hidden": "true" }));
+          if (L.sung) blk.append(h("i", { class: "ed-sung", "aria-hidden": "true", style: "left:" + (+L.sung[0] - L.a) * pps + "px;width:" + Math.max(2, (+L.sung[1] - +L.sung[0]) * pps) + "px" }));
+          ll.append(blk);
+        }
+      }
       const rows = Math.max(1, arr(edit.shots).length);
       for (const s of D.shots) {
         const w = (s.t1 - s.t0) * pps, isSel = sel && sel.kind === "shot" && sel.id === s.id;
@@ -553,14 +672,22 @@
         drawWave(cv);
       }
       for (const e of D.sfx) ls.append(h("div", { class: "ed-sfx" + (sel && sel.kind === "sfx" && sel.shot === e.shot && sel.i === e.i ? " sel" : ""), "data-sfx": e.shot + "/" + e.i, tabindex: "-1", role: "button", title: e.name + " at " + clock(e.t), "aria-label": "Sound " + e.name + " at " + clock(e.t), style: "left:" + e.t * pps + "px" }, h("span", { text: e.name })));
-      lanes.replaceChildren(ruler, grid, lv, lc, lo, lm, ls, h("div", { class: "ed-ph", "aria-hidden": "true" }));
+      const ln = lanesNow(), byLane = { v: lv, lyr: ll, cap: lc, vo: lo, music: lm, sfx: ls };
+      /* row heights follow the lanes shown (a music video's ruler is taller: section bands over the bar numbers) */
+      const rh = edit.mv ? 34 : 24, laneRows = [rh, ...ln.map(([k]) => LANE_PX[k])].map((x) => x + "px").join(" ");
+      lanes.style.gridTemplateRows = heads.style.gridTemplateRows = laneRows; ruler.style.height = rh + "px"; grid.style.top = rh + "px";
+      lanes.replaceChildren(ruler, grid, ...ln.map(([k]) => byLane[k]), h("div", { class: "ed-ph", "aria-hidden": "true" }));
       paintZoom();
       heads.replaceChildren(h("div", { class: "ed-hr" }),
-        ...LANES.map(([k, label]) => h("div", { class: "ed-head", "data-lane": k }, h("span", { class: "ed-hl", text: label }),
-          k === "cap" ? null : h("span", { class: "ed-ms" },
+        ...ln.map(([k, label]) => h("div", { class: "ed-head", "data-lane": k }, h("span", { class: "ed-hl", text: label }),
+          k === "cap" || k === "lyr" ? null : h("span", { class: "ed-ms" },
             h("button", { type: "button", class: "ed-m", "aria-pressed": String(mon[k].mute), "aria-label": "Mute " + label, "data-k": "mute-" + k, onclick: () => monitor(k, "mute") }, "M"),
             h("button", { type: "button", class: "ed-m", "aria-pressed": String(mon[k].solo), "aria-label": "Solo " + label, "data-k": "solo-" + k, onclick: () => monitor(k, "solo") }, "S")),
           AUDIO_LANES.includes(k) ? level(k) : null)));
+    }
+    function lanesNow() {
+      if (!edit.mv) return LANES;
+      return [["v", "Picture"], ["lyr", "Lyrics"], ...(D.shots.some((s) => captionOf(s.cfg)) ? [["cap", "Captions"]] : []), ...(D.vo.length ? [["vo", "Voice"]] : []), ["music", "Music"], ["sfx", "Sound effects"]];
     }
     function paintStrips(lv) {
       if (!edit.strip) return;
@@ -659,9 +786,14 @@
     lanes.addEventListener("pointerdown", (e) => {
       if (e.button !== 0) return;
       lanes.focus({ preventScroll: true });
-      const clip = e.target.closest(".ed-clip"), vo = e.target.closest(".ed-vob"), sx = e.target.closest(".ed-sfx"), mu = e.target.closest(".ed-mus");
+      const clip = e.target.closest(".ed-clip"), vo = e.target.closest(".ed-vob"), sx = e.target.closest(".ed-sfx"), mu = e.target.closest(".ed-mus"), ly = e.target.closest(".ed-lyr");
       const x0 = e.clientX;
-      if (clip) {
+      if (ly) {
+        const L = D.lyr.find((z) => String(z.i) === ly.dataset.lyr), r = ly.getBoundingClientRect();
+        sel = { kind: "lyr", i: L.i };
+        const mode = e.clientX - r.left < 7 ? "l" : r.right - e.clientX < 7 ? "r" : "move";
+        gesture = { kind: "lyr", L, mode, x0, el: ly, moved: false };
+      } else if (clip) {
         const s = D.shots.find((z) => z.id === clip.dataset.shot);
         sel = { kind: "shot", id: s.id };
         const edge = e.target.classList.contains("ed-edge") || clip.getBoundingClientRect().right - e.clientX < 7;
@@ -673,7 +805,13 @@
       if (gesture && gesture.kind !== "seek" && !readonly) try { lanes.setPointerCapture(e.pointerId); } catch (_) { /* a pointer the browser no longer tracks */ }
       paintInsp();
       for (const x of lanes.querySelectorAll(".sel")) x.classList.remove("sel");
-      const se = clip || vo || sx || mu; if (se) se.classList.add("sel");
+      const se = ly || clip || vo || sx || mu; if (se) se.classList.add("sel");
+    });
+    lanes.addEventListener("dblclick", (e) => {          /* a lyric's words: straight into the inspector's text box */
+      const ly = e.target.closest(".ed-lyr");
+      if (!ly || readonly) return;
+      sel = { kind: "lyr", i: +ly.dataset.lyr }; paintInsp();
+      const f = insp.querySelector('[data-k="ins-lyr-text"]'); if (f) { f.focus(); f.select(); }
     });
     lanes.addEventListener("pointermove", (e) => {
       const g = gesture;
@@ -696,6 +834,15 @@
         for (const x of lanes.querySelectorAll(".ed-clip.ins")) x.classList.remove("ins");
         const tgt = lanes.querySelector('.ed-clip[data-shot="' + (g.to.before || g.to.after) + '"]');
         if (tgt) { tgt.classList.add("ins"); tgt.dataset.side = g.to.before ? "l" : "r"; }
+      } else if (g.kind === "lyr") {
+        /* lyric timing snaps to a quarter beat (hold Alt for free timing); a line keeps at least 0.2 s */
+        const q = B() / 4, sn = (t) => (e.altKey ? Math.round(t * 100) / 100 : Math.round(Math.round(t / q) * q * 1000) / 1000);
+        let a = g.L.a, b = g.L.b;
+        if (g.mode === "move") { a = Math.max(0, sn(g.L.a + dx / pps)); b = a + (g.L.b - g.L.a); }
+        else if (g.mode === "l") a = Math.max(0, Math.min(b - 0.2, sn(g.L.a + dx / pps)));
+        else b = Math.min(D.dur, Math.max(a + 0.2, sn(g.L.b + dx / pps)));
+        g.to = [Math.round(a * 1000) / 1000, Math.round(b * 1000) / 1000];
+        g.el.style.left = a * pps + "px"; g.el.style.width = (b - a) * pps + "px"; g.el.classList.add("drag");
       } else if (g.kind === "vo" || g.kind === "sfx") {
         const t0 = (g.kind === "vo" ? g.l.t : g.e.t) + dx / pps;
         g.to = Math.max(0, Math.min(D.dur - 0.05, t0));
@@ -706,7 +853,8 @@
       const g = gesture;
       gesture = null;
       if (!g || !g.moved || g.to == null) return;
-      if (g.kind === "trim" && g.to !== g.s.b1) push({ op: "trim", shot: g.s.id, end: g.to });
+      if (g.kind === "lyr") { if (g.to[0] !== g.L.a || g.to[1] !== g.L.b) push({ op: "lyric", act: "set", i: g.L.i, at: g.to[0], end: g.to[1] }); else paint(); }
+      else if (g.kind === "trim" && g.to !== g.s.b1) push({ op: "trim", shot: g.s.id, end: g.to });
       else if (g.kind === "move") {
         const ids = D.shots.map((z) => z.id), i = ids.indexOf(g.s.id), tgt = g.to.before || g.to.after, j = ids.indexOf(tgt);
         const noop = (g.to.before && j === i + 1) || (g.to.after && j === i - 1);
@@ -760,6 +908,7 @@
         if (sel.kind === "shot" && D.shots.length > 1) { push({ op: "delete", shot: sel.id }); sel = null; paintInsp(); }
         else if (sel.kind === "vo") { const l = D.vo.find((z) => z.id === sel.id); if (l) push({ op: "vo", line: l.id, mute: !l.muted }); }
         else if (sel.kind === "sfx") { push({ op: "sfx", shot: sel.shot, act: "rm", i: sel.i }); sel = null; paintInsp(); }
+        else if (sel.kind === "lyr") { push({ op: "lyric", act: "rm", i: sel.i }); sel = null; paintInsp(); }
       }
       else if (e.key === "Home") { e.preventDefault(); seek(0); }
       else if (e.key === "End") { e.preventDefault(); seek(D.dur); }

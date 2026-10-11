@@ -198,3 +198,10 @@ def fetch(spec, force=False):
         os.replace(tmp, p)
         res.append((aid, "downloaded"))
     return res
+
+
+def test_only_assets(spec, manifest=None):
+    """Ids of assets the spec uses that are marked `test_only: true`: unlicensed material allowed in an internal test render
+    only. The assembled video then carries a burned-in TEST watermark and `promo flow share` / `flow final` refuse it."""
+    manifest = manifest or load_manifest(spec)
+    return [aid for aid in referenced_ids(spec) if (manifest.get(aid) or {}).get("test_only")]

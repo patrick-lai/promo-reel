@@ -95,6 +95,11 @@ def shot_digest(spec, shot, legacy=False, raw=False):
         # the show-level horizon_text layer (drawn into every horizon shot, and into project types that declare `draws_horizon_text = True`) + the resolved preset
         code = code + ["shots/horizon", "shots/brand", "pane3d", "styles"]
         extra = [spec.style, spec.raw.get("horizon_text"), spec.timeline.bpm]
+    if getattr(get_type(shot.type), "draws_lyrics", False):
+        # the lyric lines live during this shot (+ lyric style / font) and the resolved preset (frame, look): an edit to a line elsewhere keeps this shot cached
+        from . import lyrics as LY
+        code = code + ["shots/mv", "lyrics", "grade", "styles"]
+        extra = [spec.style, LY.digest_part(spec, shot)]
     if shot.type in ("podcast", "live2d_credits") and spec.raw.get("podcast"):
         # hosts, layout, subtitles and the performance come from the show block, the VO lines and their takes
         code = code + ["shots/podcast", "podcast", "perform", "vo"]
@@ -194,7 +199,7 @@ def plan(spec):
         assemble.run(spec)
     add("assemble", f"assemble_{spec.OW}",
         lambda: digest({s.id: file_sig(spec.seg_path(s.id)) for s in spec.shots}, {m["name"]: file_sig(mix.master_path(spec, m["name"])) for m in spec.masters},
-                       spec.raw.get("mix", {}).get("masters"), spec.duration, spec.name, code_hash("assemble")),
+                       spec.raw.get("mix", {}).get("masters"), spec.duration, spec.name, code_hash("assemble"), A.test_only_assets(spec)),
         outs, assemble_run, deps=[f"shot {s.id}" for s in spec.shots] + ["mix"])
     add("contact", f"contact_{spec.OW}", lambda: digest(file_sig(outs[0]), [s.get("contact_at") for s in spec.shots], spec.title, code_hash("contact")),
         [contact.contact_paths(spec)[0]], lambda a: contact.run(spec), deps=["assemble"])
@@ -738,6 +743,9 @@ def main(argv=None):
     if argv[:1] == ["live2d"]:          # `promo live2d ...` does not need a promo.yaml
         from . import live2d
         return live2d.main(argv[1:])
+    if argv[:2] == ["music", "analyse"]:  # `promo music analyse FILE [--from S --to S] --out grid.json`: the beat grid a preset cuts on
+        from . import music
+        return music.main_analyse(argv[2:])
     if argv[:1] == ["watch"]:           # `promo watch <url|file> [--out DIR]`: frames, cuts, transcript, audio metrics of any video
         from . import watch
         import argparse as _ap
@@ -755,6 +763,12 @@ def main(argv=None):
     if argv[:1] == ["fx"]:              # `promo fx list|apply|audition`: radio / tape / ... on any audio file (no promo.yaml needed)
         from . import audiofx
         return audiofx.main(argv[1:])
+    if argv[:1] == ["lyrics"]:          # `promo lyrics import|align|show -p promo.yaml`: sung words for the anime-mv style
+        from . import lyrics
+        return lyrics.main(argv[1:])
+    if argv[:1] == ["mv"]:              # `promo mv plan|bible|takes|use`: look bible + generated plates for the anime-mv style
+        from . import mv
+        return mv.main(argv[1:])
     if argv[:1] == ["gen"]:             # `promo gen detect|image|video|plan`: generated NON-UI plates via the logged-in grok / codex CLIs
         from . import genvideo as G
         return G.main(argv[1:])

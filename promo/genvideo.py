@@ -42,6 +42,20 @@ HOME = Path.home()
 
 NEG = ("No people, no text, no logos, no user-interface, no screens, no software windows. ")
 NEG_PEOPLE = "No on-screen text, no logos, no user-interface or software windows readable on any screen. "
+GUARDS = {
+    "plate": NEG,
+    "people": NEG_PEOPLE,
+    # anime-mv: original illustrated characters are the point; still no text, logos, UI, real people or existing characters
+    "illustrated": ("No text, no letters, no captions, no logos, no signatures, no watermark, no user-interface or screens. Characters are "
+                    "ORIGINAL illustrated characters: not real people, not existing anime or game characters. "),
+}
+REF_ROLES = {
+    "identity": "Use the image file {f} as the identity AND set reference: exactly the same person (same face, hair and clothes) in exactly the same place. ",
+    "set": "Use the image file {f} as the layout reference for the set and the objects in it. ",
+    "character": "Use the image file {f} as the CHARACTER reference: keep this exact character design (face, hair, colours, clothes, proportions). ",
+    "style": "Use the image file {f} as the STYLE reference only: match its drawing style, line weight, palette and texture, not its content. ",
+    "keyframe": "Animate the image file {f} as the exact first frame (image-to-video); keep its drawing style, linework and palette unchanged. ",
+}
 STORYBOARD = ("This is a STORYBOARD STILL for planning, not final footage: one clean, believable concept frame. If it shows software, draw a plausible generic "
               "app window; no real brand logos, no watermarks, only short legible labels. ")
 
@@ -104,22 +118,41 @@ def pick(kind: str, provider: str = "auto") -> dict:
     return providers(kind, provider)[0]
 
 
+def parse_refs(ref) -> list[tuple[str, str]]:
+    """[(role, file)] from `--ref` values: `ROLE=FILE` (roles in REF_ROLES) or a bare file (first = identity, second = set)."""
+    refs = [ref] if isinstance(ref, str) else list(ref or [])
+    out = []
+    for i, r in enumerate(refs):
+        if isinstance(r, (tuple, list)):
+            out.append((str(r[0]), str(r[1])))
+            continue
+        role, _, f = str(r).partition("=")
+        if f and role in REF_ROLES:
+            out.append((role, f))
+        else:
+            out.append(("identity" if i == 0 else "set", str(r)))
+    return out
+
+
 def prompt_for(kind: str, prompt: str, out: Path, seconds: float, aspect: str, people: bool = False, ref=None, guard: str | None = None,
                first_frame=None, resolution: str | None = None) -> str:
-    base = (f"{guard if guard is not None else NEG_PEOPLE if people else NEG}{prompt.strip()} ")
-    refs = [ref] if isinstance(ref, str) else list(ref or [])
+    """`guard`: free text, or a GUARDS name (plate / people / illustrated). `first_frame` is the `keyframe` reference role."""
+    g = GUARDS.get(guard, guard) if guard is not None else (NEG_PEOPLE if people else NEG)
+    base = f"{g}{prompt.strip()} "
+    refs = parse_refs(ref)
+    if first_frame and not any(r == "keyframe" for r, _ in refs):
+        refs.append(("keyframe", str(first_frame)))
     if refs:
-        lead = f"Use the image file {refs[0]} as the identity AND set reference: the person must be exactly the same woman (same face, same hair, same oatmeal hoodie) in exactly the same room (same wood panelling, same brass desk lamp, same desk). "
-        if len(refs) > 1:
-            lead += f"Use the image file {refs[1]} as the layout reference for the desk and the single unbranded monitor standing on it. "
-        base = lead + base
+        base = "".join(REF_ROLES[r].format(f=f) for r, f in refs) + base
+    keyframe = next((f for r, f in refs if r == "keyframe"), None)
     if kind == "video":
-        # grok's video tools animate a picture: with a start frame it uses that, without one it draws a still first
-        start = (f"Use the image file {first_frame} as the first frame (image to video). " if first_frame else "")
-        return (f"Generate a {seconds:g} second {aspect} VIDEO{' at ' + resolution if resolution else ''} using your video generation tool. {start}{base}"
-                f"Save the video file to {out} (mp4) and print only that path.")
-    return (f"Generate one {aspect} IMAGE using your image generation tool. {base}"
-            f"Save the image to {out} (png) and print only that path.")
+        tool = (f"Use your image_to_video tool on {keyframe}" + (f" with resolution_name {resolution}" if resolution else "")
+                + f" and duration {6 if seconds <= 6 else 10}. ") if keyframe else (
+            f"Generate a {seconds:g} second {aspect} VIDEO{' at ' + resolution if resolution else ''} using your video generation tool. ")
+        return (f"{tool}{base}Copy the resulting video file unmodified (no trimming, no re-encoding) to {out} (mp4) and print only that path.")
+    tool = (f"Use your image_edit tool with the reference images {', '.join(f for _, f in refs)} to make one NEW {aspect} IMAGE. "
+            if refs else f"Generate one {aspect} IMAGE using your image generation tool. ")
+    return f"{tool}{base}Save the image to {out} (png) and print only that path."
 
 
 def argv_for(provider: dict, text: str) -> list[str]:
@@ -188,6 +221,16 @@ def register(spec, file: str, cid: str, provider: str = "agent", prompt: str = "
     return meta
 
 
+def register_existing(spec, file: str, cid: str, shots=()) -> dict:
+    """Footage-manifest entry for a file `generate` already made (its sidecar `.gen.json` is kept as written)."""
+    from . import footage as FT
+    f = Path(file).resolve()
+    meta = json.loads(Path(str(f) + ".gen.json").read_text())
+    return FT.add(spec, str(f), cid, shots=list(shots), capture=f"generated by {meta.get('provider')}", framing="generated plate, text-free, UI-free",
+                  dpr=1, notes=f"AI-generated plate: {meta.get('prompt', '')[:200]}",
+                  generated={k: meta.get(k) for k in ("provider", "kind", "prompt", "at", "sha256", "bible")})
+
+
 def requests(spec) -> list[dict]:
     """Open generation requests from `broll:` with everything an agent needs to fulfil them with any tool."""
     rows = []
@@ -243,11 +286,11 @@ def generate_openrouter(prompt: str, out: str, seconds: float = OR.DEFAULT_SECON
 
 
 def generate(kind: str, prompt: str, out: str, seconds: float = 4.0, aspect: str = "16:9", provider: str = "auto",
-             timeout: int = 900, people: bool = False, ref=None, guard: str | None = None, first_frame=None, resolution: str | None = None) -> dict:
+             timeout: int = 900, people: bool = False, ref=None, guard: str | None = None, first_frame=None, resolution: str | None = None, extra=None) -> dict:
     """`guard` replaces the plate guard (no UI, no text) for callers that need another look, e.g. STORYBOARD stills; their corner logo is the caller's to crop."""
     out_p = Path(out).expanduser().resolve()
     out_p.parent.mkdir(parents=True, exist_ok=True)
-    text = prompt_for(kind, prompt, out_p, seconds, aspect, people, ref, guard, first_frame, resolution)
+    text = prompt_for(kind, prompt, out_p, seconds, aspect, people, ref, guard, first_frame=first_frame, resolution=resolution)
     why = []
     for p in providers(kind, provider):
         err = _run_provider(p, text, out_p, timeout)
@@ -256,9 +299,10 @@ def generate(kind: str, prompt: str, out: str, seconds: float = 4.0, aspect: str
         why.append(err)
     else:
         raise RuntimeError("; ".join(why))
-    wm = strip_watermark(out_p, kind) if p["id"] == "grok" and guard is None else None
+    wm = strip_watermark(out_p, kind) if p["id"] == "grok" and guard in (None, "plate", "people", "illustrated") else None
     meta = dict(generated=True, kind=kind, watermark_cropped=wm, provider=p["id"], prompt=prompt, seconds=seconds if kind == "video" else None, aspect=aspect,
-                sha256=sha256(out_p), at=time.strftime("%Y-%m-%dT%H:%M:%S"), **probe_media(out_p))
+                refs=[dict(role=r, file=f) for r, f in parse_refs(ref)], guard=guard,
+                sha256=sha256(out_p), at=time.strftime("%Y-%m-%dT%H:%M:%S"), **probe_media(out_p), **(extra or {}))
     Path(str(out_p) + ".gen.json").write_text(json.dumps(meta, indent=1))
     _mark_ok(p["id"], kind)
     return meta
@@ -339,7 +383,8 @@ def main(argv):
         q.add_argument("--out", required=True)
         q.add_argument("--provider", default="auto")
         q.add_argument("--aspect", default="16:9")
-        q.add_argument("--ref", action="append", help="reference image(s) for people scenes: first = identity + set, second = desk/monitor layout (repeat the flag)")
+        q.add_argument("--ref", action="append", help="reference image, ROLE=FILE with ROLE in character|style|keyframe|identity|set (repeat); a bare FILE = identity, then set")
+        q.add_argument("--guard", choices=sorted(GUARDS), help="content guard (default plate; people with --people; illustrated for anime-mv characters)")
         q.add_argument("--people", action="store_true", help="the scene may contain people (live-action film); text/logo/UI-on-screen guard stays on")
         q.add_argument("--register", metavar="PROJECT_YAML", help="add the file to that project's footage manifest (generated: ...)")
         q.add_argument("--id", help="clip id for --register (default: file stem)")
@@ -400,9 +445,9 @@ def main(argv):
             raise SystemExit(f"promo gen: {e}") from None
     elif a.cmd == "video":
         meta = generate(a.cmd, a.prompt, a.out, a.seconds, a.aspect, a.provider, people=a.people, ref=a.ref, first_frame=a.first_frame,
-                        resolution=a.res if a.res != OR.DEFAULT_RES else None)
+                        resolution=a.res if a.res != OR.DEFAULT_RES else None, guard=a.guard)
     elif a.cmd == "image":
-        meta = generate(a.cmd, a.prompt, a.out, 4.0, a.aspect, a.provider, people=a.people, ref=a.ref)
+        meta = generate(a.cmd, a.prompt, a.out, 4.0, a.aspect, a.provider, people=a.people, ref=a.ref, guard=a.guard)
     if a.cmd in ("image", "video"):
         if a.register:
             from . import footage as FT

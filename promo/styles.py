@@ -31,6 +31,11 @@ Presets:
                  horizon whose words change while the picture keeps cutting (show-level `horizon_text`, each word spans
                  >= 2 shots or >= 1.2 s), burst followed by a hold >= 3 s, held `dawn` sunrise end card, cuts only.
                  Shot types `horizon` and `dawn` (promo/shots/horizon.py).
+  anime-mv       anime music video (Eve "心海" look, measured): a 2.35:1 picture band on a cream page, ONE small tracked
+                 Mincho lyric line under it, flat-cel generated or drawn plates (never product UI), drawings on 2s, cuts on
+                 beats from a music grid (half beats in bursts, shots >= 0.25 s, median ~1.5 s), petals / bubbles, whiteouts
+                 and ink wipes on big cuts (<= 3 flashes/s). Shot type `mv` (promo/shots/mv.py), lyrics in promo/lyrics.py,
+                 plates and the look bible via `promo mv`.
 """
 from __future__ import annotations
 
@@ -169,6 +174,35 @@ PRESETS = {
         checks=["horizon-shot-hold", "horizon-cuts", "horizon-burst-hold", "horizon-text", "horizon-text-fit", "horizon-edge",
                 "horizon-transitions", "horizon-dawn", "horizon-text-ui", "horizon-wordless-open", "horizon-sky", "caption-hold", "beat-grid"],
         qa=dict(min_caption_hold=2.0, beat_subdivision=2),
+    ),
+    "anime-mv": dict(
+        description="Anime music video: a letterboxed 2.35:1 picture band on a cream page, one small lyric line under it, flat-cel generated plates, drawings on 2s, cuts on the beat.",
+        pacing=dict(
+            snap="beat",                # cuts on beats from the music grid ...
+            burst_snap=0.5,             # ... or half beats inside a burst (consecutive shots < burst_below_s)
+            burst_below_s=1.0,
+            min_shot_s=0.25,            # FAIL under this (the reference's shortest cut is 0.27 s)
+            median_shot_s=[0.9, 3.0],   # WARN outside this range (reference: median 1.47 s, mean 2.19 s)
+            frame_step=2,               # drawings held 2 frames unless a shot says otherwise
+            max_flashes_per_s=3,        # flash / whiteout photosensitivity
+        ),
+        # the reference page: cream #FFFDF9, picture y 131-949 of 1080 (2.35:1); `mode: full` = full bleed
+        frame=dict(mode="band", color=[255, 253, 249], top=131, bottom=949),
+        # lyric line in the cream under the picture (promo/lyrics.py DEFAULT_STYLE): Mincho ~34 px, tracked 0.32 em, slate
+        lyrics=dict(layout="band", size=34, color=[44, 58, 74], tracking=0.32, y=1012, anim="fade", fade_s=0.12),
+        # picture-only look: clean and clear like the reference's flat cel (generated plates already carry haze, so no shadow lift),
+        # a breath of bloom on the highlights and fine paper grain; no vignette
+        look=dict(grade=dict(on=True, lift=[0.0, 0.0, 0.0], gamma=[1.04, 1.03, 1.02], gain=[1.0, 1.0, 1.0], shadows=[0.0, 0.0, 0.006],
+                             highlights=[0.008, 0.004, 0.0], split=1.0, saturation=1.04),
+                  bloom=dict(on=True, threshold=0.80, radius=0.012, strength=0.18, tint=[1.0, 0.98, 0.95]),
+                  vignette=False, grain=dict(on=True, amount=0.012, size=1.0, seed=11)),
+        # the look bible every plate prompt starts with (`promo mv plan`); a project writes its own under `look_bible:`
+        guard="illustrated",
+        caption=dict(cx=960, cy=1012, size=34, max_w=1600, zone=dict(x0=96, x1=1824, y0=960, y1=1060)),   # engine contract; lyrics have their own gates
+        typography=dict(font="/System/Library/Fonts/ヒラギノ明朝 ProN.ttc"),
+        transitions=dict(allowed=["cut", "whiteout", "flash", "ink", "iris", "smear", "rgb"]),
+        checks=["mv-shots", "mv-cuts", "mv-hold", "mv-median", "mv-flashes", "mv-plates", "look-bible", "lyrics", "test-audio"],
+        qa=dict(min_caption_hold=0.8, beat_subdivision=2),
     ),
 }
 

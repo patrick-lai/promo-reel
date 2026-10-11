@@ -1292,6 +1292,253 @@
    "name": "say to a voice line that is not there",
    "ops": "say a9 \"x\"",
    "error": "there is no voice line a9"
+  },
+  {
+   "spec": "mv",
+   "name": "a new lyric line goes in time order",
+   "ops": "lyric add \"晴れた\" at=1 end=2 layout=vertical anim=type",
+   "expect": {
+    "lyrics": {
+     "lines": [
+      {
+       "text": "夢を見ていた"
+      },
+      {
+       "t": [
+        1,
+        2
+       ],
+       "text": "晴れた",
+       "layout": "vertical",
+       "anim": "type"
+      },
+      {
+       "text": "雨上がりの街で"
+      },
+      "..."
+     ]
+    }
+   }
+  },
+  {
+   "spec": "mv",
+   "name": "a lyric line's words and times",
+   "ops": "lyric 2 \"雨のち晴れ\" at=2.5",
+   "expect": {
+    "lyrics": {
+     "lines": [
+      {},
+      {
+       "t": [
+        2.5,
+        4
+       ],
+       "text": "雨のち晴れ"
+      },
+      "..."
+     ]
+    }
+   }
+  },
+  {
+   "spec": "mv",
+   "name": "a lyric line back onto what was sung (held at least 0.8 s)",
+   "ops": "lyric 1 sync",
+   "expect": {
+    "lyrics": {
+     "lines": [
+      {
+       "t": [
+        0.6,
+        1.9
+       ]
+      },
+      "..."
+     ]
+    }
+   }
+  },
+  {
+   "spec": "mv",
+   "name": "an unsynced lyric line gets a time",
+   "ops": "lyric 3 at=5 end=6",
+   "expect": {
+    "lyrics": {
+     "lines": [
+      {},
+      {},
+      {
+       "t": [
+        5,
+        6
+       ],
+       "text": "まだ"
+      }
+     ]
+    }
+   },
+   "absent": [
+    [
+     "lyrics",
+     "lines",
+     2,
+     "unsynced"
+    ]
+   ]
+  },
+  {
+   "spec": "mv",
+   "name": "a lyric line removed",
+   "ops": "lyric 2 rm",
+   "expect": {
+    "lyrics": {
+     "lines": [
+      {
+       "text": "夢を見ていた"
+      },
+      {
+       "text": "まだ"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "spec": "mv",
+   "name": "sync needs a measured vocal",
+   "ops": "lyric 2 sync",
+   "error": "has no measured vocal"
+  },
+  {
+   "spec": "mv",
+   "name": "a time needs both ends on a line without one",
+   "ops": "lyric 3 at=5",
+   "error": "give both at= and end="
+  },
+  {
+   "spec": "mv",
+   "name": "no lyric line 9",
+   "ops": "lyric 9 rm",
+   "error": "there are 3 lyric lines"
+  },
+  {
+   "spec": "mv",
+   "name": "a keyframe take replaces the clip",
+   "ops": "plate 02 take=k02-t3",
+   "expect": {
+    "shots": [
+     {},
+     {
+      "id": "02",
+      "still": "k02-t3"
+     }
+    ]
+   },
+   "absent": [
+    [
+     "shots",
+     1,
+     "source"
+    ],
+    [
+     "shots",
+     1,
+     "t_in"
+    ]
+   ]
+  },
+  {
+   "spec": "mv",
+   "name": "a new plate prompt keeps the rest of the plate",
+   "ops": "plate 02 prompt=\"she walks\" kind=still",
+   "expect": {
+    "shots": [
+     {},
+     {
+      "plate": {
+       "prompt": "she walks",
+       "kind": "still",
+       "motion": "hair streams"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "spec": "mv",
+   "name": "look keys on an mv shot",
+   "ops": "look 02 step=3 particles=bubbles fx_in=whiteout fx_out=none frame=full",
+   "expect": {
+    "shots": [
+     {},
+     {
+      "frame_step": 3,
+      "particles": {
+       "kind": "bubbles",
+       "n": 30
+      },
+      "fx_in": "whiteout",
+      "frame": "full"
+     }
+    ]
+   },
+   "absent": [
+    [
+     "shots",
+     1,
+     "fx_out"
+    ]
+   ]
+  },
+  {
+   "spec": "mv",
+   "name": "particles none removes them",
+   "ops": "look 02 particles=none",
+   "expect": {
+    "shots": [
+     {},
+     {
+      "id": "02"
+     }
+    ]
+   },
+   "absent": [
+    [
+     "shots",
+     1,
+     "particles"
+    ]
+   ]
+  },
+  {
+   "spec": "mv",
+   "name": "a marker set and one removed",
+   "ops": "marker chorus at=4.5 ; marker verse rm",
+   "expect": {
+    "timeline": {
+     "markers": {
+      "chorus": 4.5
+     }
+    }
+   },
+   "absent": [
+    [
+     "timeline",
+     "markers",
+     "verse"
+    ]
+   ]
+  },
+  {
+   "spec": "mv",
+   "name": "a grid marker is not removed here",
+   "ops": "marker bridge rm",
+   "error": "there is no marker bridge"
+  },
+  {
+   "name": "plate only on music-video shots",
+   "ops": "plate 01 prompt=x",
+   "error": "is not a music-video shot"
   }
  ],
  "parse": [
@@ -1478,6 +1725,167 @@
   {
    "text": "say a3",
    "error": "say takes a voice line id and the new words"
+  },
+  {
+   "text": "lyric add \"夢 を\" at=1.5 end=3 layout=big ; lyric 2 \"x\" anim=ink\nlyric 3 rm\nlyric 1 sync",
+   "ops": [
+    {
+     "op": "lyric",
+     "act": "add",
+     "text": "夢 を",
+     "at": 1.5,
+     "end": 3,
+     "layout": "big"
+    },
+    {
+     "op": "lyric",
+     "act": "set",
+     "i": 2,
+     "text": "x",
+     "anim": "ink"
+    },
+    {
+     "op": "lyric",
+     "act": "rm",
+     "i": 3
+    },
+    {
+     "op": "lyric",
+     "act": "sync",
+     "i": 1
+    }
+   ]
+  },
+  {
+   "text": "plate 05 take=v05-t2\nplate 05 prompt=\"she \\\"smiles\\\"\" motion=\"hair\" kind=still\nlook 05 step=2 particles=petals fx_in=ink frame=band\nmarker chorus at=42",
+   "ops": [
+    {
+     "op": "plate",
+     "shot": "05",
+     "take": "v05-t2"
+    },
+    {
+     "op": "plate",
+     "shot": "05",
+     "prompt": "she \"smiles\"",
+     "motion": "hair",
+     "kind": "still"
+    },
+    {
+     "op": "look",
+     "shot": "05",
+     "step": 2,
+     "particles": "petals",
+     "fx_in": "ink",
+     "frame": "band"
+    },
+    {
+     "op": "marker",
+     "name": "chorus",
+     "at": 42
+    }
+   ]
+  },
+  {
+   "text": "plate 05 take=v06-t1",
+   "error": "is not a take of shot 05"
+  },
+  {
+   "text": "look 05 step=5",
+   "error": "step is 1, 2, 3 or 4"
+  },
+  {
+   "text": "look 05 fx_in=wipe",
+   "error": "fx_in is one of"
+  },
+  {
+   "text": "lyric add \"x\" at=3 end=2",
+   "error": "end= must be after at="
+  },
+  {
+   "text": "lyric 0 rm",
+   "error": "numbered from 1"
+  },
+  {
+   "text": "lyric 2 layout=sideways",
+   "error": "layout is one of"
   }
- ]
+ ],
+ "mv_spec": {
+  "timeline": {
+   "bpm": 120,
+   "beats": 16,
+   "markers": {
+    "verse": 2.0
+   }
+  },
+  "output": {
+   "name": "mv",
+   "duration": 8.0
+  },
+  "style": {
+   "preset": "anime-mv"
+  },
+  "lyrics": {
+   "lines": [
+    {
+     "t": [
+      0.5,
+      2.0
+     ],
+     "text": "夢を見ていた",
+     "sung": [
+      0.6,
+      1.9
+     ]
+    },
+    {
+     "t": [
+      2.2,
+      4.0
+     ],
+     "text": "雨上がりの街で"
+    },
+    {
+     "text": "まだ",
+     "unsynced": true
+    }
+   ]
+  },
+  "shots": [
+   {
+    "id": "01",
+    "beats": [
+     0,
+     8
+    ],
+    "type": "mv",
+    "fill": [
+     30,
+     42,
+     58
+    ]
+   },
+   {
+    "id": "02",
+    "beats": [
+     8,
+     16
+    ],
+    "type": "mv",
+    "source": "v02-t1",
+    "t_in": 0.5,
+    "plate": {
+     "kind": "video",
+     "prompt": "she runs",
+     "motion": "hair streams"
+    },
+    "particles": {
+     "kind": "petals",
+     "n": 30
+    },
+    "fx_out": "ink"
+   }
+  ]
+ }
 }

@@ -627,6 +627,89 @@ def edit_stage(tmp):
     return F.snapshot(pd)
 
 
+MV_INTENT = "Make an anime music video for our song, in the style of Eve's MV: lyrics under the picture, one heroine, the chorus turns the sky pink."
+
+
+def mv_stage(tmp):
+    """`mv-edit`: an anime music video (style anime-mv) at its first draft: the template's shots with a real beat grid, five lyric lines
+    (one off the voice), takes for shots 02 (two stills, the first from an older look bible) and 07 (a clip), a look bible with
+    a reference image; build outputs made directly and stamped with the real step digests, so the editor reads them as built."""
+    import yaml as Y
+    from promo import cli
+    from promo import events as EV
+    from promo import genvideo as GV
+    from promo import mv as MV
+    from promo.cache import Stamps
+    from promo.spec import load_spec
+    pd = os.path.join(tmp, "kokoro-mv")
+    if os.path.isdir(pd):
+        shutil.rmtree(pd)
+    shutil.copytree(os.path.join(ROOT, "templates", "styles", "anime-mv"), pd)          # its footage manifest starts empty
+    wav(os.path.join(pd, "media", "music", "song.wav"), 330, 14.0)
+    B = 0.420112
+    grid = dict(tempo_bpm=142.8192, time_signature="4/4", beats=[dict(i=i, t=round(i * B, 4), downbeat=i % 4 == 0) for i in range(33)],
+                bars=[dict(bar=n + 1, t=round(n * 4 * B, 4), phrase_start=n % 4 == 0) for n in range(8)], markers={"verse": round(8 * B, 4), "chorus": round(24 * B, 4)},
+                duration_s=round(32 * B, 4))
+    write(os.path.join(pd, "music", "grid.json"), json.dumps(grid))
+    raw = Y.safe_load(open(os.path.join(pd, "promo.yaml")))
+    raw["project"]["name"] = raw["output"]["name"] = "kokoro-mv"
+    raw["timeline"] = dict(grid="music/grid.json", beats=32)
+    raw["assets"] = "assets.yaml"
+    raw["lyrics"] = dict(style=dict(layout="band"), lines=[
+        dict(t=[0.6, 3.0], text="夢を見ていた", sung=[0.62, 2.9]), dict(t=[3.4, 5.9], text="雨上がりの街で", sung=[3.0, 5.8]),
+        dict(t=[6.2, 8.0], text="傘を閉じて", sung=[6.25, 7.9], layout="vertical"), dict(t=[8.6, 10.9], text="桃色の心予報", sung=[8.6, 10.8], anim="type"),
+        dict(t=[11.2, 13.2], text="君に染まって", sung=[11.25, 13.1])])
+    sheet = os.path.join(pd, "bible", "sheet.png")
+    still(sheet, "Character sheet", (90, 140, 136))
+    raw["look_bible"]["refs"] = [dict(role="character", file="bible/sheet.png")]
+    Y.safe_dump(raw, open(os.path.join(pd, "promo.yaml"), "w"), allow_unicode=True, sort_keys=False)
+    write(os.path.join(pd, "assets.yaml"), "assets:\n  - {id: song, kind: music, path: media/music/song.wav, licence: \"CC0-1.0 (fixture tone)\", source_url: \"https://example.com/fixture\"}\n"
+          "  - {id: sfx-tick, kind: sfx, path: build/sfx/tick.wav, licence: CC0-1.0, source_url: \"https://example.com/sfx\"}\n")
+    spec = load_spec(os.path.join(pd, "promo.yaml"))
+    bid = MV.bible_id(MV.bible_of(spec))
+    plates = os.path.join(pd, "media", "plates")
+    for sid, n, kind, tint, bible in (("02", 1, "key", (169, 195, 160), "0ldb1b1e"), ("02", 2, "key", (242, 184, 168), bid), ("07", 1, "key", (95, 143, 139), bid),
+                                      ("07", 1, "clip", None, bid)):
+        f = os.path.join(plates, sid, f"key-t{n}.png" if kind == "key" else f"clip-t{n}.mp4")
+        if kind == "key":
+            still(f, f"Shot {sid} take {n}", tint)
+        else:
+            mp4(f, "testsrc2", 3, "640x360")
+        write(f + ".gen.json", json.dumps(dict(generated=True, kind="image" if kind == "key" else "video", provider="fixture", prompt="fixture plate", at="2026-10-11T10:00:00",
+                                               sha256=GV_sha(f), bible=bible)))
+        GV.register_existing(spec, f, ("k" if kind == "key" else "v") + f"{sid}-t{n}", shots=[sid])
+    raw = Y.safe_load(open(os.path.join(pd, "promo.yaml")))
+    for sh in raw["shots"]:
+        if sh["id"] == "02":
+            sh["still"] = "k02-t1"
+        if sh["id"] == "07":
+            sh["source"] = "v07-t1"
+    Y.safe_dump(raw, open(os.path.join(pd, "promo.yaml"), "w"), allow_unicode=True, sort_keys=False)
+    spec = load_spec(os.path.join(pd, "promo.yaml"))
+    EV.write_events(spec)
+    os.makedirs(spec.segs_dir, exist_ok=True)
+    for sh in spec.shots:
+        mp4(spec.seg_path(sh.id), "smptebars" if sh.id != "02" else "testsrc", sh.dur, "640x360")
+    os.makedirs(os.path.join(spec.audio_dir, "stems"), exist_ok=True)
+    for f in ("music-edit.wav", "mix-web.wav", "mix-social.wav", "stems/music.wav", "stems/vo.wav", "stems/sfx.wav"):
+        wav(os.path.join(spec.audio_dir, f), 330, spec.duration)
+    for nm in __import__("promo.sfx", fromlist=["x"]).NAMES:
+        wav(os.path.join(spec.sfx_dir, nm + ".wav"), 500, 0.1)
+    mp4(spec.output_path(""), "testsrc2", spec.duration, "640x360")
+    from promo import contact
+    still(contact.contact_paths(spec)[0], "Contact sheet", (40, 40, 60))
+    stamps = Stamps(spec.build)
+    for st in cli.plan(spec):
+        if all(os.path.exists(o) for o in st["outputs"]):
+            stamps.write(st["key"], st["dig"](), at=0, secs={"mix": 6.0, "music": 1.5, "assemble": 9.0, "contact": 3.0}.get(st["name"], 20.0 if st["name"].startswith("shot") else 0.2))
+    F.init(pd, MV_INTENT)
+    st = F.load(pd)
+    st["stage"] = "drafts"
+    F.save(pd, st)
+    F.add_draft(pd, spec.output_path(""), "First cut: every shot's first take.")
+    return F.snapshot(pd)
+
+
 PODCAST_INTENT = "A short podcast where two VTuber hosts talk through our checkout run, standing right on the app with no boxes."
 
 
@@ -902,6 +985,11 @@ def _build(tmp):
     res["starting"] = {}
     res.update(picker_states(tmp, pd))
     res["edit"] = edit_stage(tmp)
+    res["mv-edit"] = mv_stage(tmp)
+    disc = os.path.join(tmp, "mv-discover")
+    os.makedirs(disc, exist_ok=True)
+    F.init(disc, "Make a music video for my song with anime characters, like Eve's MV.")
+    res["mv-discover"] = F.snapshot(disc)
     res["podcast-discover"], res["podcast"] = podcast_stage(tmp)
     return res, tmp
 

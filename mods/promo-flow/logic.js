@@ -374,7 +374,7 @@
 
   /* The live panel for a preview run (snapshot `job`, promo/flowjob.py). `now` is ms since the epoch, passed in so the clock is the caller's.
      Tiles fill left to right: made (or failed) items, then the ones being made now, then a row of the queue; a long run keeps its newest pictures. */
-  const JOB_NOUN = { frames: ["image", "images"], samples: ["sample", "samples"], build: ["step", "steps"] };
+  const JOB_NOUN = { frames: ["image", "images"], samples: ["sample", "samples"], build: ["step", "steps"], plates: ["plate", "plates"] };
   const JOB_TILES = 24, JOB_QUEUE_TILES = 0, JOB_DONE_SHOWN_MIN = 10;
   /* A run writes a heartbeat every minute (promo/flowjob.py HEARTBEAT_S): three missed beats and it is no longer shown as alive. A rendered
      shot can take many minutes, so "slow" (a gentle note, spinner kept) waits longer for builds than for one generated picture. */
@@ -544,7 +544,14 @@
   }
 
   /* ---- the editor: the same edit language and the same edits as promo/editor.py, so the preview is what the render makes (tests/edit-cases.json runs both) ---- */
-  const EDIT_OPS = ["swap", "trim", "move", "split", "delete", "caption", "music", "bus", "vo", "sfx", "grade", "fade", "speed", "fx", "gain", "layout", "host", "mood", "gesture", "say", "import"];
+  const EDIT_OPS = ["swap", "trim", "move", "split", "delete", "caption", "music", "bus", "vo", "sfx", "grade", "fade", "speed", "fx", "gain", "layout", "host", "mood", "gesture", "say", "import", "lyric", "plate", "look", "marker"];
+  /* Music videos (promo/lyrics.py, promo/shots/mv.py); tests/test_editor.py keeps them equal to promo/editor.py's. */
+  const LYRIC_LAYOUTS = ["band", "center", "vertical", "big"];
+  const LYRIC_ANIMS = ["fade", "type", "ink", "none"];
+  const MV_FX = ["whiteout", "flash", "ink", "iris", "smear", "rgb"];
+  const MV_PARTICLES = ["petals", "bubbles", "motes", "snow", "rain"];
+  const PLATE_KINDS = ["video", "still"];
+  const TAKE_RE = /^([kv])(.+)-t(\d+)$/;
   const GRADE_KEYS = ["brightness", "contrast", "saturation", "gamma", "temperature", "vignette"];
   const GRADE_RANGE = { brightness: [-0.5, 0.5], contrast: [0.5, 2], saturation: [0, 2.5], gamma: [0.5, 2], temperature: [2500, 10000], vignette: [0, 1] };
   const FX_PRESETS = ["radio", "tape", "vintage", "telephone", "vinyl", "crackle", "none"];
@@ -732,6 +739,33 @@
           if (!IMPORT_KINDS.includes(kv.kind)) eerr(n, "import needs kind= one of " + IMPORT_KINDS.join(", "));
           for (const k of ["licence", "source"]) if (!String(kv[k] || "").trim()) eerr(n, "import needs " + k + '="..." (rule 4: every file carries a licence and where it came from; "My own recording" is fine for the person\'s own)');
           o = { op, path, ...kv };
+        } else if (op === "lyric") {
+          o = parseLyric(a, n, need);
+        } else if (op === "plate") {
+          const sid = need(0, "a shot id"), { kv } = kvOf(a.slice(1), n, ["take", "prompt", "motion", "kind"]);
+          if (!Object.keys(kv).length) eerr(n, "plate " + sid + " needs take=, prompt=, motion= or kind=");
+          if ("take" in kv && Object.keys(kv).length > 1) eerr(n, "plate takes either take= or the prompt settings, not both");
+          if ("take" in kv) { const m = TAKE_RE.exec(kv.take); if (!m || m[2] !== String(sid)) eerr(n, "'" + kv.take + "' is not a take of shot " + sid + " (k" + sid + "-tN for a keyframe, v" + sid + "-tN for a clip)"); }
+          if ("kind" in kv && !PLATE_KINDS.includes(kv.kind)) eerr(n, "kind is video or still, not '" + kv.kind + "'");
+          for (const k of ["prompt", "motion"]) if (k in kv && !kv[k].trim()) eerr(n, k + "= cannot be empty");
+          o = { op, shot: sid, ...kv };
+        } else if (op === "look") {
+          const sid = need(0, "a shot id"), { kv } = kvOf(a.slice(1), n, ["step", "particles", "fx_in", "fx_out", "frame"]);
+          if (!Object.keys(kv).length) eerr(n, "look " + sid + " needs step=, particles=, fx_in=, fx_out= or frame=");
+          o = { op, shot: sid };
+          if ("step" in kv) { const st = numOf(kv.step, "step", n); if (![1, 2, 3, 4].includes(st)) eerr(n, "step is 1, 2, 3 or 4 (frames each drawing is held)"); o.step = st; }
+          if ("particles" in kv) { if (![...MV_PARTICLES, "none"].includes(kv.particles)) eerr(n, "particles is one of " + MV_PARTICLES.join(", ") + " or none"); o.particles = kv.particles; }
+          for (const k of ["fx_in", "fx_out"]) if (k in kv) { if (![...MV_FX, "none"].includes(kv[k])) eerr(n, k + " is one of " + MV_FX.join(", ") + " or none"); o[k] = kv[k]; }
+          if ("frame" in kv) { if (!["band", "full"].includes(kv.frame)) eerr(n, "frame is band or full"); o.frame = kv.frame; }
+        } else if (op === "marker") {
+          const name = need(0, "a marker name, e.g. chorus");
+          if (a.length === 2 && a[1] === "rm") o = { op, name, rm: true };
+          else {
+            const { kv } = kvOf(a.slice(1), n, ["at"]);
+            if (!("at" in kv)) eerr(n, "marker " + name + " needs at=SECONDS or rm");
+            o = { op, name, at: numOf(kv.at, "at", n) };
+            if (o.at < 0) eerr(n, "a marker cannot be before the start");
+          }
         } else eerr(n, "unknown edit '" + t[0] + "' (one of " + EDIT_OPS.join(", ") + ")");
         o._n = n;
         ops.push(o);
@@ -740,6 +774,33 @@
     if (!ops.length) throw new EditError("no edits: write one edit per line, e.g. `swap 07 rec-w-ask` or `music music-eternal-hope`");
     return ops;
   }
+  /* lyric add "words" at= end= [layout= anim=] | lyric N "words" | lyric N at= end= layout= anim= | lyric N rm | lyric N sync */
+  function parseLyric(a, n, need) {
+    const first = need(0, "add or a line number"), keys = ["at", "end", "layout", "anim"];
+    let o, kv;
+    if (first === "add") {
+      const text = need(1, "the words in quotes").split(/\s+/).filter(Boolean).join(" ");
+      kv = kvOf(a.slice(2), n, keys).kv;
+      if (!("at" in kv) || !("end" in kv)) eerr(n, "lyric add needs at=SECONDS and end=SECONDS");
+      o = { op: "lyric", act: "add", text };
+    } else {
+      const i = numOf(first, "the line number", n);
+      if (!Number.isInteger(i) || i < 1) eerr(n, "lyric lines are numbered from 1");
+      let rest = a.slice(1);
+      if (rest.length === 1 && (rest[0] === "rm" || rest[0] === "sync")) return { op: "lyric", act: rest[0], i };
+      o = { op: "lyric", act: "set", i };
+      if (rest.length && !rest[0].includes("=")) { o.text = rest[0].split(/\s+/).filter(Boolean).join(" "); rest = rest.slice(1); }
+      kv = kvOf(rest, n, keys).kv;
+      if (!Object.keys(kv).length && !("text" in o)) eerr(n, "lyric " + i + " needs the words in quotes, at=, end=, layout=, anim=, rm or sync");
+    }
+    if ("text" in o && !o.text) eerr(n, "a lyric line cannot be empty (lyric N rm removes it)");
+    for (const k of ["at", "end"]) if (k in kv) o[k] = numOf(kv[k], k, n);
+    if ("at" in o && "end" in o && o.end <= o.at) eerr(n, "end= must be after at=");
+    if ("layout" in kv) { if (!LYRIC_LAYOUTS.includes(kv.layout)) eerr(n, "layout is one of " + LYRIC_LAYOUTS.join(", ")); o.layout = kv.layout; }
+    if ("anim" in kv) { if (!LYRIC_ANIMS.includes(kv.anim)) eerr(n, "anim is one of " + LYRIC_ANIMS.join(", ")); o.anim = kv.anim; }
+    return o;
+  }
+  const dq = (s) => '"' + String(s).replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
   const qtok = (s) => (/^[\w.:/@+-]+$/.test(String(s)) ? String(s) : '"' + String(s).replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"');
   const fnum = (x) => { const v = n6(x); return Number.isInteger(v) ? String(v) : String(v); };
   /* Ops back to edit text: one per line, the same text promo/editor.py's text_of writes. */
@@ -767,6 +828,14 @@
       if (x === "gesture") return "gesture " + o.line + " " + qtok(o.gesture);
       if (x === "say") return "say " + o.line + ' "' + String(o.text).replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
       if (x === "import") return "import " + qtok(o.path) + " kind=" + o.kind + " licence=" + qtok(o.licence) + " source=" + qtok(o.source) + (o.id ? " id=" + qtok(o.id) : "");
+      if (x === "lyric") {
+        const head = o.act === "add" ? "lyric add" : "lyric " + o.i;
+        if (o.act === "rm" || o.act === "sync") return head + " " + o.act;
+        return head + " " + [...("text" in o ? [dq(o.text)] : []), ...["at", "end", "layout", "anim"].filter((k) => k in o).map((k) => k + "=" + (typeof o[k] === "number" ? fnum(o[k]) : o[k]))].join(" ");
+      }
+      if (x === "plate") return "plate " + o.shot + " " + ["take", "prompt", "motion", "kind"].filter((k) => k in o).map((k) => k + "=" + (k === "prompt" || k === "motion" ? dq(o[k]) : o[k])).join(" ");
+      if (x === "look") return "look " + o.shot + " " + ["step", "particles", "fx_in", "fx_out", "frame"].filter((k) => k in o).map((k) => k + "=" + (typeof o[k] === "number" ? fnum(o[k]) : o[k])).join(" ");
+      if (x === "marker") return "marker " + qtok(o.name) + " " + (o.rm ? "rm" : "at=" + fnum(o.at));
       return "";
     }).join("\n");
   }
@@ -973,6 +1042,24 @@
           else if (x === "gesture") ln.gesture = o.gesture;
           else { ln.text = o.text; delete ln.tts; }   // tts spelled the old words; takes are cached by text + voice, so only this line is voiced again
         }
+      } else if (x === "lyric") {
+        applyLyric(raw, o, n);
+      } else if (x === "plate" || x === "look") {
+        const s = shots[findShot(shots, o.shot, n)];
+        if (s.type !== "mv") eerr(n, "shot " + o.shot + " is not a music-video shot (type mv)");
+        if (x === "plate" && "take" in o) { for (const k of ["source", "still", "t_in"]) delete s[k]; s[o.take.startsWith("v") ? "source" : "still"] = o.take; }
+        else if (x === "plate") { const pl = { ...(s.plate || {}) }; for (const k of ["prompt", "motion", "kind"]) if (k in o) pl[k] = o[k]; s.plate = pl; }
+        else {
+          if ("step" in o) s.frame_step = o.step;
+          if ("particles" in o) { if (o.particles === "none") delete s.particles; else s.particles = { ...(s.particles && typeof s.particles === "object" ? s.particles : {}), kind: o.particles }; }
+          for (const k of ["fx_in", "fx_out"]) if (k in o) { if (o[k] === "none") delete s[k]; else s[k] = o[k]; }
+          if ("frame" in o) { if (o.frame === "band") delete s.frame; else s.frame = o.frame; }
+        }
+      } else if (x === "marker") {
+        const tl = (raw.timeline = raw.timeline || {}), mk = { ...(tl.markers || {}) };
+        if (o.rm) { if (!(o.name in mk)) eerr(n, "there is no marker " + o.name + " set here (markers from the music grid are changed with `promo music analyse --mark`)"); delete mk[o.name]; }
+        else mk[o.name] = o.at;
+        if (Object.keys(mk).length) tl.markers = mk; else delete tl.markers;
       } else if (x === "sfx") {
         const s = shots[findShot(shots, o.shot, n)];
         let lst = arr(s.sfx);
@@ -991,6 +1078,34 @@
       }
     }
     return { raw, origin };
+  }
+  function applyLyric(raw, o, n) {
+    const ly = (raw.lyrics = raw.lyrics || {}), lines = (ly.lines = ly.lines || []);
+    if (o.act === "add") {
+      const ln = { t: [o.at, o.end], text: o.text };
+      for (const k of ["layout", "anim"]) if (k in o) ln[k] = o[k];
+      let k = lines.findIndex((x) => +((x.t || x.sung || [1e9])[0]) > o.at);
+      if (k < 0) k = lines.length;
+      lines.splice(k, 0, ln);
+      return;
+    }
+    if (!(o.i >= 1 && o.i <= lines.length)) eerr(n, "there are " + lines.length + " lyric lines, so there is no number " + o.i);
+    const ln = lines[o.i - 1];
+    if (o.act === "rm") { lines.splice(o.i - 1, 1); return; }
+    if (o.act === "sync") {
+      if (!ln.sung) eerr(n, "lyric " + o.i + " has no measured vocal (`promo lyrics align` first)");
+      const a = +ln.sung[0], b = +ln.sung[1];
+      ln.t = [n6(a), n6(Math.max(b, a + 0.8))]; delete ln.unsynced; return;
+    }
+    if ("text" in o) ln.text = o.text;
+    if ("at" in o || "end" in o) {
+      const cur = ln.t || ln.sung;
+      if (!cur && !("at" in o && "end" in o)) eerr(n, "lyric " + o.i + " has no time yet: give both at= and end=");
+      const a = "at" in o ? o.at : cur[0], b = "end" in o ? o.end : cur[1];
+      if (+b <= +a) eerr(n, "lyric " + o.i + " would end before it starts");
+      ln.t = [n6(a), n6(b)]; delete ln.unsynced;
+    }
+    for (const k of ["layout", "anim"]) if (k in o) ln[k] = o[k];
   }
   /* The person's edits as a stack: every change is one op; undo moves the last one aside, redo puts it back, a new change drops what was undone. */
   const editPush = (st, op) => ({ done: [...arr(st && st.done), op], undone: [] });
@@ -1016,13 +1131,20 @@
       else if (o.op === "vo") { steps.add("events"); if ("take" in o) steps.add("vo"); }
       else if (o.op === "sfx") steps.add("events");
       else if (o.op === "import") steps.add("import");
-      else if (o.op === "layout") shots.add(String(o.shot));
+      else if (o.op === "layout" || o.op === "plate" || o.op === "look") shots.add(String(o.shot));
+      else if (o.op === "lyric") {
+        /* a lyric line is drawn by every shot it crosses: before and after the edit */
+        const ly = arr(edit.mv && edit.mv.lyrics), old = o.act === "add" ? null : ly[o.i - 1];
+        const spans = [old && old.a != null ? [old.a, old.b] : null, "at" in o || "end" in o ? [("at" in o ? o.at : old && old.a), ("end" in o ? o.end : old && old.b)] : null].filter((x) => x && x[0] != null && x[1] != null);
+        if (o.act === "sync" && old && old.sung) spans.push([+old.sung[0], +old.sung[1]]);
+        for (const [a, b] of spans) for (const s of arr(edit.shots)) if (s.start_s < b && s.end_s > a) shots.add(String(s.id));
+      }
       else if (["host", "mood", "gesture", "say"].includes(o.op)) {
         /* each host is performed once for the show and every podcast shot draws it, so they all render again; new words or a voice re-voice */
         for (const s of arr(edit.shots)) if (s.type === "podcast") shots.add(String(s.id));
         if (o.op === "say" || "voice" in o) steps.add("vo");
       }
-      if (!["import", "grade", "fade"].includes(o.op)) steps.add("mix");
+      if (!["import", "grade", "fade", "lyric", "plate", "look", "marker"].includes(o.op)) steps.add("mix");
     }
     if (shots.size) steps.add("events");
     const graded = ops.filter((o) => o.op === "grade" || o.op === "fade").map((o) => String(o.shot)), full = [...shots].filter((id) => !graded.includes(id) || ops.some((o) => o.op !== "grade" && o.op !== "fade" && String(o.shot) === id));
@@ -1092,7 +1214,8 @@
   }
 
   const PODCAST = { LAYOUTS, MOODS, GESTURES };
-  const api = { STUDIO_TAB, STUDIO_MAX_S, usd, studioBusy, studioChoice, studioPrice, studioPrompt, studioGo, studioPayload, PODCAST, EDIT_INLINE_MAX, editInline, editFilesMessage, importMessage, EditError, editParse, editText, editApply, editPush, editUndo, editRedo, editSummary, localId, takeFile, spaceVideo, spaceFree, FILES_TAB, FILES_MAX, fileProblem, addFiles, filesMessage, isVideoFile, WIDGET_TAB, WIDGET_PX, widgetsFor, widgetHeight, widgetDoc, themeCss, widgetMessage, settleWait, SETTLE_GAP_MS, PREVIEW_POLL_MS, commentCount, forYou, canAutopilot, jobView, clockS, aboutS, arr, mref, fileBad, missingFile, missingAll, hasPreview, noFrame, sceneStatus, model, finalState, missingRule, previewRule, bodyOf, downloadName, textFileName, wordsOf, parseBlocks, inline, plain, paginate, outline, findPages, markSplit, readMinutes, frameTimeline, DENSITY_CHOICES, clockT, noteChange, notesView, notesUnsettled, notesMessage, shareRows, outputProblem, previewOutput, outputDirty };
+  const MV = { LYRIC_LAYOUTS, LYRIC_ANIMS, MV_FX, MV_PARTICLES, PLATE_KINDS };
+  const api = { STUDIO_TAB, STUDIO_MAX_S, usd, studioBusy, studioChoice, studioPrice, studioPrompt, studioGo, studioPayload, PODCAST, MV, EDIT_INLINE_MAX, editInline, editFilesMessage, importMessage, EditError, editParse, editText, editApply, editPush, editUndo, editRedo, editSummary, localId, takeFile, spaceVideo, spaceFree, FILES_TAB, FILES_MAX, fileProblem, addFiles, filesMessage, isVideoFile, WIDGET_TAB, WIDGET_PX, widgetsFor, widgetHeight, widgetDoc, themeCss, widgetMessage, settleWait, SETTLE_GAP_MS, PREVIEW_POLL_MS, commentCount, forYou, canAutopilot, jobView, clockS, aboutS, arr, mref, fileBad, missingFile, missingAll, hasPreview, noFrame, sceneStatus, model, finalState, missingRule, previewRule, bodyOf, downloadName, textFileName, wordsOf, parseBlocks, inline, plain, paginate, outline, findPages, markSplit, readMinutes, frameTimeline, DENSITY_CHOICES, clockT, noteChange, notesView, notesUnsettled, notesMessage, shareRows, outputProblem, previewOutput, outputDirty };
   root.PF = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof window !== "undefined" ? window : globalThis);

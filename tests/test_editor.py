@@ -37,18 +37,19 @@ def subset(want, got, path="$"):
 @pytest.mark.parametrize("case", CASES["cases"], ids=[c["name"] for c in CASES["cases"]])
 def test_shared_edit_cases(case):
     """The same cases run through PF.editApply in mods/promo-flow/test/logic.test.js: preview and render make the same edit."""
+    spec = CASES["mv_spec"] if case.get("spec") == "mv" else CASES["spec"]
     if "error" in case:
         with pytest.raises(E.EditError, match=re.escape(case["error"])):
-            E.apply_ops(CASES["spec"], E.parse(case["ops"]), CASES["B"])
+            E.apply_ops(spec, E.parse(case["ops"]), CASES["B"])
         return
-    got, _ = E.apply_ops(CASES["spec"], E.parse(case["ops"]), CASES["B"])
+    got, _ = E.apply_ops(spec, E.parse(case["ops"]), CASES["B"])
     subset(case["expect"], got)
     for path in case.get("absent", []):
         x = got
         for k in path[:-1]:
             x = x[k]
         assert path[-1] not in x, f"{path} should be gone"
-    assert CASES["spec"]["shots"][0]["beats"] == [0, 8]          # the input is never changed in place
+    assert spec["shots"][0]["beats"] == [0, 8]                   # the input is never changed in place
 
 
 @pytest.mark.parametrize("case", CASES["parse"], ids=[c["text"][:30] or "empty" for c in CASES["parse"]])
@@ -60,6 +61,17 @@ def test_shared_parse_cases(case):
     ops = [{k: v for k, v in o.items() if k != "_n"} for o in E.parse(case["text"])]
     assert ops == case["ops"]
     assert [{k: v for k, v in o.items() if k != "_n"} for o in E.parse(E.text_of(E.parse(case["text"])))] == ops      # text round trip
+
+
+def test_the_mod_knows_the_music_video_names_promo_uses():
+    """PF.editParse checks lyric layouts / anims, cut effects and particles with its own copies of the editor's lists, which follow the renderer's."""
+    from promo import lyrics
+    from promo.shots import mv
+    js = open(os.path.join(HERE, "..", "mods", "promo-flow", "logic.js")).read()
+    const = lambda name: json.loads(re.search(r"const %s = (\[[^\]]*\]);" % name, js).group(1))  # noqa: E731
+    assert const("LYRIC_LAYOUTS") == list(E.LYRIC_LAYOUTS) and const("LYRIC_ANIMS") == list(E.LYRIC_ANIMS)
+    assert const("MV_FX") == list(E.MV_FX) == list(mv.FX) and const("MV_PARTICLES") == list(E.MV_PARTICLES) == list(mv.PARTICLES)
+    assert set(E.LYRIC_LAYOUTS) == {"band", "center", "vertical", "big"} and "vertical" in lyrics.__doc__
 
 
 def test_the_mod_knows_the_podcast_names_promo_uses():

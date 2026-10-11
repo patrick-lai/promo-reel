@@ -13,7 +13,7 @@ import threading
 FILE = "job.json"
 ITEMS_MAX = 48
 HEARTBEAT_S = 60        # a shot can render for minutes: `updated` keeps moving while the process lives, so the Stage can tell slow from dead
-NOUN = dict(frames=("image", "images"), samples=("sample", "samples"), build=("step", "steps"))
+NOUN = dict(frames=("image", "images"), samples=("sample", "samples"), build=("step", "steps"), plates=("plate", "plates"))
 
 
 def _now():

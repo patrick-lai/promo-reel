@@ -25,7 +25,7 @@ sys.path.insert(0, HERE)
 import serve  # noqa: E402
 
 CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-STAGES = ["discover", "scripts", "pick", "storyboard", "assets", "keyframes", "confirm", "drafts", "review", "autopilot", "final", "edit", "podcast"]
+STAGES = ["discover", "scripts", "pick", "storyboard", "assets", "keyframes", "confirm", "drafts", "review", "autopilot", "final", "edit", "podcast", "mv-edit"]
 WIDTHS = [(380, 780), (520, 900), (900, 900), (1100, 900)]
 
 
@@ -531,6 +531,48 @@ UICHECK = r"""(async () => {
     await click('[data-k=ed-bin-toggle]');
     ok('the drawer opens', getComputedStyle(Q('.ed-bin')).display !== 'none');
   }
+  if (step === 'mv-edit') {
+    const pend = () => +((Q('[data-k=ed-pending]') || {}).textContent || '').replace(/\D/g, '');
+    const lane = (k) => Q('.ed-lane[data-lane="' + k + '"]');
+    ok('the music video opens in the editor', await until(() => QA('.ed-clip').length === 7), QA('.ed-clip').length);
+    ok('a Lyrics lane under the picture, no empty Captions or Voice lanes', !!lane('lyr') && !lane('cap') && !lane('vo') && QA('.ed-head').map((x) => x.dataset.lane).join() === 'v,lyr,music,sfx', QA('.ed-head').map((x) => x.dataset.lane).join());
+    ok('every lyric line is a block, the one off the voice is marked', QA('.ed-lyr').length === 5 && QA('.ed-lyr.off').length === 1 && Q('.ed-lyr.off').dataset.lyr === '2', QA('.ed-lyr').length + ' ' + QA('.ed-lyr.off').map((x) => x.dataset.lyr).join());
+    ok('the ruler shows the song: sections and bar numbers', QA('.ed-sec').map((x) => x.dataset.sec).join() === 'verse,chorus' && QA('.ed-barn').length >= 4, QA('.ed-sec').map((x) => x.dataset.sec).join() + ' / ' + QA('.ed-barn').length);
+    ok('the look bible card shows the palette and the reference', await until(() => QA('.ed-bible .ed-pal i').length === 5 && QA('.ed-refs img').length === 1), QA('.ed-pal i').length);
+    const lanes = Q('.ed-lanes'), pe = (type, x, y, id, el) => (el || lanes).dispatchEvent(new PointerEvent(type, { clientX: x, clientY: y, button: 0, buttons: type === 'pointerup' ? 0 : 1, bubbles: true, pointerId: id, isPrimary: true }));
+    const L2 = Q('.ed-lyr[data-lyr="2"]').getBoundingClientRect();
+    pe('pointerdown', L2.left + L2.width / 2, L2.top + 5, 11, Q('.ed-lyr[data-lyr="2"]')); pe('pointerup', L2.left + L2.width / 2, L2.top + 5, 11); await wait(150);
+    ok('selecting a lyric line opens it in the inspector', /Lyric 2/.test(Q('.ed-ih').textContent) && Q('[data-k=ins-lyr-text]').value === '雨上がりの街で' && /from the voice/.test(Q('.ed-insp').textContent), (Q('.ed-ih') || {}).textContent);
+    await click('[data-k=ins-lyr-sync]');
+    ok('Snap to the voice moves it back onto what was sung', pend() === 1 && !Q('.ed-lyr[data-lyr="2"]').classList.contains('off') && Q('.ed-lyr[data-lyr="2"]').getBoundingClientRect().left < L2.left - 2, pend());
+    const L1 = Q('.ed-lyr[data-lyr="1"]').getBoundingClientRect(), beat = Q('.ed-clip[data-shot="01"]').getBoundingClientRect().width / 8;
+    pe('pointerdown', L1.left + L1.width / 2, L1.top + 5, 12, Q('.ed-lyr[data-lyr="1"]')); pe('pointermove', L1.left + L1.width / 2 + beat, L1.top + 5, 12); pe('pointerup', L1.left + L1.width / 2 + beat, L1.top + 5, 12); await wait(150);
+    ok('dragging a lyric moves it on the quarter-beat grid', pend() === 2 && Math.abs(Q('.ed-lyr[data-lyr="1"]').getBoundingClientRect().left - (L1.left + beat)) < 3, pend() + ' ' + Q('.ed-lyr[data-lyr="1"]').getBoundingClientRect().left + ' want ' + (L1.left + beat));
+    const L3 = Q('.ed-lyr[data-lyr="3"]');
+    L3.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); await wait(100);
+    ok('double-clicking a lyric puts the cursor in its words', root.activeElement === Q('[data-k=ins-lyr-text]') && Q('[data-k=ins-lyr-layout]').value === 'vertical', (root.activeElement || {}).dataset && root.activeElement.dataset.k);
+    const c2 = Q('.ed-clip[data-shot="02"]').getBoundingClientRect();
+    pe('pointerdown', c2.left + 8, c2.top + 10, 13, Q('.ed-clip[data-shot="02"]')); pe('pointerup', c2.left + 8, c2.top + 10, 13); await wait(150);
+    ok('a music-video shot shows its takes, the one in use pressed, the stale one marked', QA('.ed-take').length === 2 && Q('[data-k="ins-take:k02-t1"]').getAttribute('aria-pressed') === 'true' && Q('[data-k="ins-take:k02-t1"]').classList.contains('stale'), QA('.ed-take').length);
+    ok('the takes show their keyframes from one sprite sheet', await until(() => QA('.ed-tk').every((x) => /url\(/.test(x.style.backgroundImage))), QA('.ed-tk').map((x) => x.style.backgroundImage.slice(0, 20)).join());
+    ok('its plate prompt and look are editable', Q('[data-k=ins-plate-prompt]').value.length > 10 && !!Q('[data-k=ins-look-particles]') && !Q('[data-k=ins-source]'));
+    await click('[data-k="ins-take:k02-t2"]');
+    ok('picking another take is an edit', pend() === 3 && Q('[data-k="ins-take:k02-t2"]').getAttribute('aria-pressed') === 'true' && Q('.ed-clip[data-shot="02"]').classList.contains('stale'), pend());
+    const ps = Q('[data-k=ins-look-particles]'); ps.value = 'bubbles'; ps.dispatchEvent(new Event('change')); await wait(150);
+    ok('changing the particles is an edit', pend() === 4, pend());
+    await click('[data-k=ins-plate-gen]');
+    ok('Generate another take asks the agent for a new take of that shot', await until(() => /action plate_gen -> .*promo mv gen -p promo.yaml --shots 02/.test(log())), log().split('\n').find((l) => /plate_gen/.test(l)) || 'no plate_gen action');
+    const H = window.harness.H; await wait(400); H.pending = null; H.version++; await window.harness.sendState(); await wait(400);          /* the agent picked it up and answered: a new state */
+    ok('the Render line counts only the shots the edits touch', /2 shots/.test(Q('.ed-sum').textContent) && !/mix/.test(Q('.ed-sum').textContent), Q('.ed-sum').textContent);
+    await click('[data-k=ed-render]');
+    ok('Render sends the lyric, take and look edits', await until(() => /action edit -> .*lyric 2 sync ; lyric 1 at=[\d.]+ end=[\d.]+ ; plate 02 take=k02-t2 ; look 02 particles=bubbles/.test(log())), log().split('\n').find((l) => /action edit/.test(l)) || 'no edit action');
+    ok('the editor does not overflow the pane', Q('.ed').scrollWidth <= Q('.ed').clientWidth + 1, Q('.ed').scrollWidth + ' > ' + Q('.ed').clientWidth);
+  }
+  if (step === 'mv-discover') {
+    const labels = QA('.choice.style b').map((b) => b.textContent);
+    ok('a music-video request puts the anime music video first, suggested', labels[0] === 'Anime music video' && !!Q('.choice.style .chip.accent') && /music video/.test(Q('.choice.style .chip.accent').title), labels.join(' | '));
+    ok('its sample is the letterbox sketch', !!Q('.choice.style .sty-mv .band'));
+  }
   if (step === 'pick') {
     const badge = () => Q('#badgeText').textContent;
     const read = Q('[data-k="open-script:A"]');
@@ -568,7 +610,7 @@ def uicheck(sh, only=()):
     for r in ([] if only else sh.js(WIDE, sh.open("widgets", 900, 1000, False)) or []):
         bad += not r["pass"]
         print(("ok   " if r["pass"] else "FAIL ") + f"widgets-wide: {r['name']}" + (f"  [{r['info']}]" if r["info"] and not r["pass"] else ""))
-    for st in ["starting", "plan", "widgets", "dense", "pick", "review", "autopilot", "storyboard", "foryou-many", "edit", "podcast-discover", "podcast"]:
+    for st in ["starting", "plan", "widgets", "dense", "pick", "review", "autopilot", "storyboard", "foryou-many", "edit", "mv-edit", "mv-discover", "podcast-discover", "podcast"]:
         if only and st not in only:
             continue
         mod = sh.open(st, 520, 1000, False)

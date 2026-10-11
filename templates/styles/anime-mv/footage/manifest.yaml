@@ -1,0 +1,3 @@
+# Footage manifest. A music video has no app footage: `promo mv gen` registers every generated take here (k<shot>-tN keyframes,
+# v<shot>-tN clips, each with `generated:` and a sidecar .gen.json carrying the look bible id). Raw media is NOT in git.
+clips: []

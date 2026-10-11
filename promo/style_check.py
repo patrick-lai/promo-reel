@@ -1,6 +1,7 @@
 """`promo check` gates contributed by the style preset (see promo/styles.py). Each gate -> (gate, status, msg)."""
 from __future__ import annotations
 
+import json
 import os
 import re
 
@@ -28,7 +29,9 @@ def run(spec):
         out += cinema_gates(spec, st, checks)
     if preset == "horizon":
         out += horizon_gates(spec, st, checks)
-    if "shot-hold" in checks and preset != "anime-opening":
+    if preset == "anime-mv":
+        out += mv_gates(spec, st, checks)
+    if "shot-hold" in checks and preset not in ("anime-opening", "anime-mv"):
         m = st.get("pacing", {}).get("min_shot_s")
         bad = [f"shot {s.id} {s.dur:.2f}s < {m}s" for s in spec.shots if m and s.dur < m - 1e-6]
         out.append(("shot-hold", "FAIL" if bad else "PASS", "; ".join(bad) or f"every shot holds >= {m}s"))
@@ -821,3 +824,118 @@ def horizon_gates(spec, st, checks):
         s_, m = _st(bad, warn, f"dawn end card held {dn[-1].dur:.1f}s >= {need}s" if dn else "")
         out.append(("horizon-dawn", s_, m))
     return out
+
+
+# ---------------------------------------------------------------- anime-mv
+def mv_bursts(spec, st):
+    """Runs of >= 3 consecutive shots shorter than pacing.burst_below_s: inside them cuts may sit on half beats."""
+    pace = st["pacing"]
+    runs, run = [], []
+    for s in spec.shots:
+        if s.dur < pace.get("burst_below_s", 1.0) - 1e-9:
+            run.append(s)
+        else:
+            if len(run) >= 3:
+                runs.append(run)
+            run = []
+    if len(run) >= 3:
+        runs.append(run)
+    return runs
+
+
+def mv_flash_times(spec):
+    """Output seconds of every flash-like cut effect (flash, whiteout) at shot heads and tails."""
+    ts = []
+    for s in spec.shots:
+        if s.get("fx_in") in ("flash", "whiteout"):
+            ts.append(s.t0)
+        if s.get("fx_out") in ("flash", "whiteout"):
+            ts.append(s.t1)
+    return sorted(ts)
+
+
+def mv_gates(spec, st, checks):
+    """anime-mv gates. FAIL: a shot that is not `mv` or that is marked ui: true / shows real app footage (mv-shots), a cut off
+    the beat grid (half beats only inside a burst) or no music grid (mv-cuts), a shot under pacing.min_shot_s (mv-hold), more
+    than max_flashes_per_s flashes / whiteouts in any 1 s window (mv-flashes), a shot with no plate (mv-plates). WARN: median
+    shot length outside pacing.median_shot_s (mv-median), a plate source that is not marked generated (mv-plates, a hand-drawn
+    plate should say so in `notes`), plates generated without the look bible (look-bible), the lyric gates (promo/lyrics.py)
+    and unlicensed test audio in the mix (test-audio)."""
+    import statistics
+
+    from . import lyrics as L
+    out = []
+    pace, shots = st["pacing"], spec.shots
+    real = _real_clip_ids(spec)
+    bad = [f"shot {s.id}: type {s.type!r}" for s in shots if s.type != "mv"]
+    bad += [f"shot {s.id}: ui: true" for s in shots if s.get("ui")]
+    bad += [f"shot {s.id}: real app footage {s.get('source')!r}" for s in shots if s.get("source") in real]
+    out.append(("mv-shots", "FAIL" if bad else "PASS", "; ".join(bad) or "every shot is an `mv` illustration shot (no product UI)"))
+    if spec.grid is None:
+        out.append(("mv-cuts", "FAIL", "no music grid: `promo music analyse <song> --from S --to S --out music/grid.json`, then timeline.grid"))
+    else:
+        burst = {id(s) for r in mv_bursts(spec, st) for s in r}
+        off = []
+        for a, b in zip(shots, shots[1:]):
+            beat = b.b0
+            step = pace.get("burst_snap", 0.5) if (id(a) in burst or id(b) in burst) else 1.0
+            if abs(beat / step - round(beat / step)) > 1e-6:
+                off.append(f"cut before {b.id} at beat {beat:g}")
+        out.append(("mv-cuts", "FAIL" if off else "PASS", "; ".join(off) or "every cut on a beat (half beats inside bursts)"))
+    m = pace.get("min_shot_s", 0.25)
+    short = [f"shot {s.id} {s.dur:.2f}s" for s in shots if s.dur < m - 1e-6]
+    out.append(("mv-hold", "FAIL" if short else "PASS", "; ".join(short) or f"every shot >= {m}s"))
+    if shots:
+        med = statistics.median(s.dur for s in shots)
+        lo, hi = pace.get("median_shot_s", [0.9, 3.0])
+        out.append(("mv-median", "PASS" if lo <= med <= hi else "WARN",
+                    f"median shot {med:.2f}s" + ("" if lo <= med <= hi else f" outside {lo}-{hi}s (reference 1.47 s)")))
+    ft = mv_flash_times(spec)
+    mx = pace.get("max_flashes_per_s", 3)
+    worst = max((sum(1 for u in ft if t <= u < t + 1.0) for t in ft), default=0)
+    out.append(("mv-flashes", "FAIL" if worst > mx else "PASS", f"at most {worst} flashes / whiteouts in any 1 s (limit {mx})"))
+    from . import footage as FT
+    man = FT.load(spec)
+    nop, hand = [], []
+    for s in shots:
+        if not (s.get("source") or s.get("still") or s.get("fill") is not None):
+            nop.append(f"shot {s.id}")
+        cid = s.get("source") or s.get("still")
+        if cid and cid in man and not (man[cid] or {}).get("generated") and "drawn" not in str(s.get("notes", "")):
+            hand.append(f"shot {s.id}: {cid} is not marked generated")
+    stt, msg = _st([f"{x}: no source / still / fill" for x in nop], hand, "every shot has a plate")
+    out.append(("mv-plates", stt, msg))
+    out.append(look_bible_gate(spec, man))
+    out += L.gates(spec)
+    out.append(test_audio_gate(spec))
+    return out
+
+
+def look_bible_gate(spec, man):
+    """WARN when the spec has no look_bible, or a generated plate's sidecar prompt does not carry the bible's id."""
+    from . import mv as MV
+    bible = spec.raw.get("look_bible")
+    if not bible:
+        return ("look-bible", "WARN", "no look_bible: every plate prompt should start from one shared look + character sheet (`promo mv bible`)")
+    bid = MV.bible_id(bible)
+    off = []
+    for cid, c in sorted(man.items()):
+        if not (c or {}).get("generated"):
+            continue
+        side = str(c.get("path", "")) + ".gen.json"
+        if not os.path.isfile(side):            # registered by hand (`promo footage add`): nothing says which bible it came from
+            continue
+        meta = json.load(open(side))
+        if meta.get("bible") != bid:
+            off.append(cid)
+    return ("look-bible", "WARN" if off else "PASS",
+            f"plates made without the current look bible {bid}: {', '.join(off)} (regenerate, or keep them on purpose)" if off
+            else f"every generated plate carries look bible {bid}")
+
+
+def test_audio_gate(spec):
+    from . import assets as A
+    rows = A.test_only_assets(spec)
+    if not rows:
+        return ("test-audio", "PASS", "no test-only assets")
+    return ("test-audio", "WARN", f"TEST-ONLY assets {', '.join(rows)}: unlicensed, the render carries a burned-in watermark and cannot be shared or finalised")

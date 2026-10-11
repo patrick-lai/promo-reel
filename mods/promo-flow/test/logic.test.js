@@ -427,12 +427,12 @@ function subset(want, got, path) {
   } else assert.equal(got, want, path);
 }
 for (const c of CASES.cases) test("edit case: " + c.name, () => {
-  const before = JSON.stringify(CASES.spec);
-  if (c.error) { assert.throws(() => L.editApply(CASES.spec, L.editParse(c.ops), CASES.B), (e) => e instanceof L.EditError && e.message.includes(c.error)); return; }
-  const { raw } = L.editApply(CASES.spec, L.editParse(c.ops), CASES.B);
+  const spec = c.spec === "mv" ? CASES.mv_spec : CASES.spec, before = JSON.stringify(spec);
+  if (c.error) { assert.throws(() => L.editApply(spec, L.editParse(c.ops), CASES.B), (e) => e instanceof L.EditError && e.message.includes(c.error)); return; }
+  const { raw } = L.editApply(spec, L.editParse(c.ops), CASES.B);
   subset(c.expect, raw, "$");
   for (const p of c.absent || []) { let x = raw; for (const k of p.slice(0, -1)) x = x[k]; assert.ok(!(p[p.length - 1] in x), p.join(".") + " should be gone"); }
-  assert.equal(JSON.stringify(CASES.spec), before);
+  assert.equal(JSON.stringify(spec), before);
 });
 for (const c of CASES.parse) test("edit parse: " + (c.text.slice(0, 30) || "empty"), () => {
   if (c.error) { assert.throws(() => L.editParse(c.text), (e) => e instanceof L.EditError && e.message.includes(c.error)); return; }

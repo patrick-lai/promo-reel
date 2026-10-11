@@ -1,0 +1,84 @@
+# Anime music video (style preset `anime-mv`, measured on Eve "心海"): a 2.35:1 picture band on a cream page, ONE small
+# tracked Mincho lyric line under it, flat-cel generated plates (never product UI), drawings on 2s, cuts on the beat.
+# Steps (skills/promo-reel/SKILL.md "Anime music videos"):
+#   promo music analyse media/music/song.wav --from S --to S --out music/grid.json    -> timeline.grid / beats + the music: block
+#   promo lyrics import lyrics.srt -p promo.yaml ; promo lyrics align -p promo.yaml    -> lyrics.lines with what was sung
+#   promo mv bible -p promo.yaml --ref character=bible/sheet.png --ref style=bible/frame.png
+#   promo mv gen -p promo.yaml --missing        -> a keyframe + animated take per plate shot (grok), first take goes in
+#   promo build ; promo check
+project: {name: my-promo, title: "My music video"}
+output: {name: my-promo, resolution: 1080, fps: 30, duration: 13.4453}   # 32 beats at 142.8 BPM
+paths: {build: build, out: out}
+assets: assets.yaml
+footage: footage/manifest.yaml
+
+style:
+  preset: anime-mv
+  # frame: {mode: full}                      # full bleed instead of the cream letterbox band
+  # lyrics: {size: 34, y: 1012, tracking: 0.32, color: [44, 58, 74]}
+
+music:                                       # paste the `music_block` that `promo music analyse --from --to` prints
+  asset: song
+  bpm: 142.8192
+  track_beat: 0.420112
+  track_offset: 0.051
+  edit: {segments: [[0, 0, 32]], crossfade: 0.03}
+
+timeline: {bpm: 142.8192, beats: 32}                      # add grid: music/grid.json once analysed (bars, downbeats, chorus marker)
+
+look_bible:
+  prompt: >-
+    Japanese indie anime music-video still. Flat cel-shaded 2D animation: characters drawn with thin, sparse line art and
+    FLAT colour fills (one shadow tone at most, no gradients on characters), small simple faces. Backgrounds richly painted
+    (gouache texture) with shallow depth of field. Palette: muted teal, sage green, slate navy, cream white, ONE vermillion
+    accent. Soft overcast daylight, gentle bloom, faint paper grain. Cinematic 2.35:1 composition, subject in the middle band.
+  cast:
+    hero: "a slim teenage girl, shoulder-length black hair with a sky-blue inner layer, an oversized off-white raincoat, a small vermillion hair clip"
+  palette: ["#5f8f8b", "#a9c3a0", "#2b3a4a", "#fffdf9", "#e0603a"]
+  refs: []                                   # [{role: character, file: bible/sheet.png}, {role: style, file: bible/frame.png}]
+
+lyrics:
+  style: {layout: band}
+  lines:                                     # `promo lyrics import` writes these; t = output seconds, sung = measured on the vocal
+    - {t: [1.0, 4.2], text: 夢を見ていた}
+    - {t: [4.4, 8.0], text: 雨上がりの街で}
+
+shots:
+  - id: "01"                                 # title on the navy page
+    beats: [0, 8]
+    type: mv
+    fill: [30, 42, 58]
+    frame: full
+    words: [{text: 夢, t: [0.4, 3.2], layout: big, color: [160, 214, 210], anim: ink}]
+  - id: "02"
+    beats: [8, 16]
+    type: mv
+    fill: [169, 195, 160]                    # placeholder colour until `promo mv gen` puts the first take in
+    plate: {kind: video, cast: [hero], prompt: "wide shot, she stands on a flooded rooftop among moss, huge summer clouds", motion: "wind in her hair and coat, clouds drift, slow push-in"}
+    particles: {kind: petals, n: 30}
+  - id: "03"
+    beats: [16, 20]
+    type: mv
+    fill: [95, 143, 139]
+    plate: {kind: still, cast: [hero], prompt: "close-up of her face in profile looking up at the rain"}
+    cam: [[0, 0.5, 0.5, 1.0], [999, 0.52, 0.48, 0.9]]
+  - id: "04"                                 # a burst: half-beat cuts are allowed inside runs of short shots
+    beats: [20, 21]
+    type: mv
+    fill: [224, 96, 58]
+  - id: "05"
+    beats: [21, 22]
+    type: mv
+    fill: [43, 58, 74]
+  - id: "06"
+    beats: [22, 24]
+    type: mv
+    fill: [255, 253, 249]
+    fx_in: whiteout
+  - id: "07"
+    beats: [24, 32]
+    type: mv
+    fill: [95, 143, 139]
+    plate: {kind: video, cast: [hero], prompt: "she sits in an abandoned overgrown train car, warm light shafts", motion: "light shafts flicker, dust motes drift"}
+    particles: {kind: motes, n: 24}
+    fx_out: ink
