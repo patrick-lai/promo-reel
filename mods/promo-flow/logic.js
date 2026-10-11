@@ -1040,8 +1040,59 @@
   const importMessage = (name, kind, licence, source) => "[mod:promo-flow] The person imported a " + kind + " file in the Stage's editor (attached): " + name + ". Licence: " + licence + ". Source: " + source + ". Run: promo flow edit import .commission/attachments/" + name + " --kind " + kind
     + " --licence " + shq(licence) + " --source " + shq(source) + " --by \"<their name>\" (rule 4: it is refused without both), then publish. It shows up in the editor's bin. Do not approve anything.";
 
+  /* ---- Studio: Seedance takes through OpenRouter (state `studio`, promo/studio.py) ---- */
+  const STUDIO_TAB = "studio";
+  const STUDIO_MAX_S = 10;                // short takes keep a try cheap; longer clips are a `promo gen` job for the agent
+  const usd = (x) => "$" + (x > 0 && x < 0.01 ? x.toFixed(3) : x.toFixed(2));
+  const studioBusy = (st) => arr(st && st.takes).some((t) => ["queued", "generating", "completed"].includes(t.status));
+  /* The person's choices made valid for the chosen model: an unknown model falls back to the default, a resolution / aspect / length it
+     cannot make to one it can, so the button never prices a take the model would refuse. */
+  function studioChoice(st, c) {
+    const ms = arr(st && st.models);
+    const m = ms.find((x) => x.id === c.model) || ms.find((x) => x.id === (st && st.default_model)) || ms[0];
+    if (!m) return null;
+    const res = m.resolutions.includes(c.res) ? c.res : m.resolutions[0];
+    const aspects = m.aspects.filter((a) => (m.per_second || {})[res + "|" + a + "|0"] != null);
+    const aspect = aspects.includes(c.aspect) ? c.aspect : aspects.includes("16:9") ? "16:9" : aspects[0];
+    const top = Math.min(m.seconds[1], STUDIO_MAX_S);
+    const seconds = Math.max(m.seconds[0], Math.min(top, Math.round(+c.seconds || m.seconds[0])));
+    return { m, model: m.id, res, aspect, aspects, seconds, lengths: [m.seconds[0], top], audio: !!c.audio && !!m.audio, prompt: c.prompt || "", preset: c.preset || null, start: c.start || null };
+  }
+  function studioPrice(ch) {
+    const p = ch && (ch.m.per_second || {})[ch.res + "|" + ch.aspect + "|" + (ch.audio ? 1 : 0)];
+    return p == null ? null : Math.round(p * ch.seconds * 10000) / 10000;
+  }
+  /* The words Seedance gets: the plate guard (no UI, no text, no logos), the person's prompt, then the camera move's sentence. */
+  function studioPrompt(st, ch) {
+    const pre = arr(st && st.presets).find((p) => p.id === ch.preset);
+    return [st && st.guard, ch.prompt.trim(), pre ? pre.sentence : ""].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+  }
+  function studioGo(st, ch, blocked) {
+    if (!ch) return { ok: false, label: "Generate", why: st && st.models_error ? "The Seedance price list did not load: " + st.models_error : "No Seedance models listed yet." };
+    const price = studioPrice(ch);
+    const label = "Generate" + (price == null ? "" : " · ~" + usd(price));
+    const no = (why) => ({ ok: false, label, why, price });
+    if (blocked) return no("");
+    if (studioBusy(st)) return no("One take at a time: wait for the take being made.");
+    if (!ch.prompt.trim()) return no("Say what the clip should show.");
+    if (price == null) return no("This model has no price for that choice.");
+    if (price > st.max_usd) return no("About " + usd(price) + ", over the " + usd(st.max_usd) + " limit for one take. Pick a shorter, smaller or cheaper take.");
+    const sp = st.spend || { today: 0, cap: Infinity };
+    if (sp.today + price > sp.cap) return no("Today's spend is " + usd(sp.today) + " of the " + usd(sp.cap) + " daily cap; this take would pass it.");
+    return { ok: true, label, why: "", price };
+  }
+  /* The `studio` action: the choices as flags for `promo flow studio run`, and one line the chat can show. `seed` makes a final from a draft's seed. */
+  function studioPayload(st, ch, startLabel, seed) {
+    const pre = arr(st && st.presets).find((p) => p.id === ch.preset);
+    const flags = [pre ? "--preset " + pre.id : "", ch.start ? "--start " + ch.start : "", ch.audio ? "--audio" : "", seed != null ? "--seed " + seed : ""].filter(Boolean).join(" ");
+    const price = studioPrice(ch);
+    const what = [ch.m.name, ch.res, ch.seconds + " s", ch.aspect, pre ? pre.label.toLowerCase() : "", ch.start ? "from " + (startLabel || ch.start) : "", ch.audio ? "with sound" : "", seed != null ? "seed " + seed : "",
+      price == null ? "" : "about " + usd(price)].filter(Boolean).join(", ");
+    return { model: ch.model, res: ch.res, seconds: ch.seconds, aspect: ch.aspect, prompt: ch.prompt.trim(), flags, what };
+  }
+
   const PODCAST = { LAYOUTS, MOODS, GESTURES };
-  const api = { PODCAST, EDIT_INLINE_MAX, editInline, editFilesMessage, importMessage, EditError, editParse, editText, editApply, editPush, editUndo, editRedo, editSummary, localId, takeFile, spaceVideo, spaceFree, FILES_TAB, FILES_MAX, fileProblem, addFiles, filesMessage, isVideoFile, WIDGET_TAB, WIDGET_PX, widgetsFor, widgetHeight, widgetDoc, themeCss, widgetMessage, settleWait, SETTLE_GAP_MS, PREVIEW_POLL_MS, commentCount, forYou, canAutopilot, jobView, clockS, aboutS, arr, mref, fileBad, missingFile, missingAll, hasPreview, noFrame, sceneStatus, model, finalState, missingRule, previewRule, bodyOf, downloadName, textFileName, wordsOf, parseBlocks, inline, plain, paginate, outline, findPages, markSplit, readMinutes, frameTimeline, DENSITY_CHOICES, clockT, noteChange, notesView, notesUnsettled, notesMessage, shareRows, outputProblem, previewOutput, outputDirty };
+  const api = { STUDIO_TAB, STUDIO_MAX_S, usd, studioBusy, studioChoice, studioPrice, studioPrompt, studioGo, studioPayload, PODCAST, EDIT_INLINE_MAX, editInline, editFilesMessage, importMessage, EditError, editParse, editText, editApply, editPush, editUndo, editRedo, editSummary, localId, takeFile, spaceVideo, spaceFree, FILES_TAB, FILES_MAX, fileProblem, addFiles, filesMessage, isVideoFile, WIDGET_TAB, WIDGET_PX, widgetsFor, widgetHeight, widgetDoc, themeCss, widgetMessage, settleWait, SETTLE_GAP_MS, PREVIEW_POLL_MS, commentCount, forYou, canAutopilot, jobView, clockS, aboutS, arr, mref, fileBad, missingFile, missingAll, hasPreview, noFrame, sceneStatus, model, finalState, missingRule, previewRule, bodyOf, downloadName, textFileName, wordsOf, parseBlocks, inline, plain, paginate, outline, findPages, markSplit, readMinutes, frameTimeline, DENSITY_CHOICES, clockT, noteChange, notesView, notesUnsettled, notesMessage, shareRows, outputProblem, previewOutput, outputDirty };
   root.PF = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof window !== "undefined" ? window : globalThis);

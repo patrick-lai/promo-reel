@@ -1,7 +1,7 @@
 {
   "id": "promo-flow",
   "name": "Promo flow",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "protocol": 2,
   "description": "Plan, storyboard and review a produced video with the person in the loop.",
   "entry": "index.html",
@@ -32,6 +32,8 @@
     "edit": {"message": "[mod:promo-flow] {by} edited the video in the Stage's editor ({count} changes after {draft}: {list}). Run: promo flow edit render --by \"{by}\" --file - with these edits on stdin, one per line (here ` ; ` separates them): {ops}. It builds only what changed, checks it and registers the next draft; then publish. Do not approve anything."},
     "edit_preview": {"message": "[mod:promo-flow] {by} wants a quick preview of {where} with their {count} edits from the Stage's editor. Run: promo flow edit apply --by \"{by}\" --file - with these edits on stdin, one per line (here ` ; ` separates them): {ops}. Then promo flow edit preview {range} (only those shots and the sound are built; the clip shows in the editor), then publish. Do not register a draft or approve anything."},
     "edit_bin": {"message": "[mod:promo-flow] {by} opened the earlier project {name} in the editor's bin. Run: promo flow edit bin --open \"{name}\", then publish."},
+    "studio": {"message": "[mod:promo-flow] {by} wants a Seedance take from the Studio ({what}). Their prompt, verbatim: {prompt} Run: commissionctl secret exec OPENROUTER_API_KEY -- promo flow studio run --prompt \"<their prompt>\" --model {model} --res {res} --seconds {seconds} --aspect {aspect} {flags} (it is priced and capped before it is sent, and publishes as it goes). If the key is not saved yet, ask for it with commissionctl secret request OPENROUTER_API_KEY. Never raise --max-usd or PROMO_GEN_DAILY_USD unless they ask. Do not approve anything."},
+    "studio_use": {"message": "[mod:promo-flow] {by} wants Studio take {take} as the sample of {label}. Run: promo flow studio use --take {take} --asset {asset}, then publish. It stays a sample until the plate is registered with promo gen register."},
     "edit_keep": {"message": "[mod:promo-flow] {by} kept your editor suggestion {id} ({note}); its edits are now in their pending edits and render with their next Render. Run: promo flow edit keep {id} --by \"{by}\", then publish."}
   },
   "skill": "agent/SKILL.md"

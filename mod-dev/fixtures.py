@@ -686,6 +686,21 @@ def build(keep=None):
                 os.environ[k] = v
 
 
+def studio_takes(pd):
+    """The Studio with one take of each kind: a finished one (a real mp4, used as a plate's sample), one being made from a storyboard frame, one refused."""
+    now = datetime.datetime.now().astimezone()
+    at = lambda s: (now - datetime.timedelta(seconds=s)).isoformat(timespec="seconds")  # noqa: E731
+    mp4(os.path.join(pd, "flow", "studio", "t2.mp4"), "testsrc2", 4, "854x480")
+    base = dict(model="bytedance/seedance-1-5-pro", resolution="480p", seconds=4, aspect="16:9", audio=False, start=None, start_ref=None, job_id=None, file=None, error=None, used_for=[])
+    takes = [dict(base, id="t1", prompt="Dawn light through blinds, slow drift of dust in the air", preset=None, status="failed", estimate=0.0461, cost=None, at=at(900), updated=at(899),
+                  error="today's OpenRouter spend is $1.98; this job (~$0.05) would pass the $2.00 daily cap (raise it with PROMO_GEN_DAILY_USD)"),
+             dict(base, id="t2", prompt="Dawn light through blinds, slow drift of dust in the air, warm and calm", preset="push", status="done", estimate=0.0461, cost=0.0461,
+                  job_id="job-fixture-2", file="flow/studio/t2.mp4", at=at(600), updated=at(480), used_for=["plate-dawn"]),
+             dict(base, id="t3", prompt="The quiet desk at night, the lamp slowly warming up", preset="orbit", model="bytedance/seedance-2.0-mini", seconds=5, status="generating",
+                  estimate=0.1681, cost=None, start="flow/boards/A/frames/01-start.png", start_ref="A/01/start", job_id="job-fixture-3", at=at(42), updated=at(30))]
+    write(os.path.join(pd, "flow", "studio", "takes.json"), json.dumps(takes, indent=1))
+
+
 def _build(tmp):
     pd = os.path.join(tmp, "proj")
     if os.path.isdir(pd):
@@ -757,6 +772,9 @@ def _build(tmp):
     F.advance(pd)
     gen_assets(pd, "plan")
     snap("assets")
+    studio_takes(pd)
+    snap("studio")
+    os.remove(os.path.join(pd, "flow", "studio", "takes.json"))       # later states have no takes; t2.mp4 stays on disk for the snapshot above
     F.approve(pd, "assets-approved", "Sam")
     bp = os.path.join(pd, "flow", "boards", "A", "board.json")
     original = open(bp).read()
@@ -879,7 +897,7 @@ def _build(tmp):
     uploaded(pd, "final", 1, "artifacts")
     snap("final")
     order = ["discover", "scripts", "pick", "storyboard", "storyboard-notes", "assets", "keyframes", "confirm", "drafts", "review", "autopilot", "final",
-             "generating", "generating-stopped", "building", "storyboard-partial", "plan", "widgets", "dense", "assets-error", "stale-approval", "long-content", "foryou-many", "review-maxed"]
+             "generating", "generating-stopped", "building", "storyboard-partial", "plan", "widgets", "dense", "studio", "assets-error", "stale-approval", "long-content", "foryou-many", "review-maxed"]
     res = {k: out[k] for k in order}
     res["starting"] = {}
     res.update(picker_states(tmp, pd))

@@ -7,6 +7,15 @@ description: Pick a video generation provider and model for promo-reel non-UI pl
 
 promo-reel specifies and ingests plates (`promo gen plan` / `promo gen register`). You generate them. This skill picks **where** and **which model**. Team rules and ingest live in `skills/promo-reel/SKILL.md` and AGENTS.md rule 1 (generated non-UI plates only).
 
+## Seedance on the person's OpenRouter key (built in)
+
+When the person has an OpenRouter key (saved as the board secret `OPENROUTER_API_KEY`), Seedance runs from promo-reel itself, no connector needed:
+`promo gen models` lists the Seedance models with what 4 s costs (catalogue is public), and
+`commissionctl secret exec OPENROUTER_API_KEY -- promo gen video "..." --out F --provider openrouter --model bytedance/seedance-1-5-pro --res 480p --seconds 4`
+runs one job (`--first-frame IMG` animates a still, `--dry-run` only prices it). Draft at 480p with the cheapest model, then make the final
+from the same prompt and `--seed`. Jobs over `--max-usd` (default $0.40) or the daily cap (`PROMO_GEN_DAILY_USD`, $2) are refused; the ledger
+(`promo gen spend`) keeps estimate and billed cost. Prices: `references/prices.md`.
+
 ## Reach the vendor through this agent's connectors
 
 promo-reel never calls Runway or Higgsfield. CommissionAI does not inject those MCP servers. Use the connector already on **this** ACP agent.

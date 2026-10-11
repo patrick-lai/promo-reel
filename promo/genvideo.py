@@ -8,8 +8,12 @@ Architecture: the CALLING AGENT generates, promo-reel specifies, ingests and gat
                                                ingest a supplied file: probe, optional corner-watermark crop + 1080p upscale (raw kept),
                                                sidecar `.gen.json`, footage-manifest entry with `generated:`; prints the next steps.
     promo gen detect [--json]                  which built-in runners this box has (grok / codex CLI logins, API keys), as a hint to agents.
+    promo gen models | spend [--json]          Seedance on OpenRouter: models with prices, and the spend ledger (promo/openrouter.py)
   Optional built-in runner (fallback when the agent has no generation tool of its own; headless one-shot, no auto-approve flags):
     promo gen image|video "prompt" --out F [--provider auto] [--register promo.yaml --id ID]     promo gen plan --run
+    promo gen video "prompt" --out F --provider openrouter [--model M --res 480p --seconds 4 --first-frame IMG --dry-run]
+                                               Seedance through OpenRouter (pay per job): priced first, refused over --max-usd or the daily cap.
+                                               Never picked by `auto`; run under `commissionctl secret exec OPENROUTER_API_KEY -- ...`.
 
 Rules (AGENTS.md rule 1, generated-plate carve-out):
 - Generated media may fill only text-free, UI-free plates: backgrounds, transitions, scenery, macro textures. Never the product UI, never
@@ -18,7 +22,8 @@ Rules (AGENTS.md rule 1, generated-plate carve-out):
 - Every generated file gets a sidecar `<file>.gen.json` (provider, model, prompt, seconds, sha256) and is registered in the footage
   manifest with `generated: {provider, prompt, ...}` (`promo gen ... --register` or `promo footage add`).
 - Providers are CLIs the user is already logged into (headless one-shot, no blanket auto-approve flags) or API keys; `auto` picks the first
-  available that supports the kind. Nothing runs unless the user asked for generation (plan is dry-run unless `--run`).
+  available that supports the kind, never a paid API (openrouter runs only when named). Nothing runs unless the user asked for generation
+  (plan is dry-run unless `--run`).
 """
 from __future__ import annotations
 
@@ -27,8 +32,11 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
+
+from . import openrouter as OR
 
 HOME = Path.home()
 
@@ -55,8 +63,10 @@ def detect() -> list[dict]:
                     login=bool(os.environ.get("OPENAI_API_KEY")), how="OPENAI_API_KEY (images/videos endpoints); key validity not probed"))
     out.append(dict(id="xai-api", kind=["image", "video"], tool="api" if os.environ.get("XAI_API_KEY") else None,
                     login=bool(os.environ.get("XAI_API_KEY")), how="XAI_API_KEY"))
+    out.append(dict(id="openrouter", kind=["video"], tool="openrouter" if OR.has_key() else None, login=OR.has_key(),
+                    how=f"OPENROUTER_API_KEY: Seedance, pay per job (default {OR.DEFAULT_MODEL} {OR.DEFAULT_RES} {OR.DEFAULT_SECONDS} s); `promo gen models` for prices"))
     for p in out:
-        p["available"] = bool(p["tool"] and p["login"]) and p["tool"] != "api"      # API adapters are not wired yet (key seen, not usable)
+        p["available"] = bool(p["tool"] and p["login"]) and p["tool"] != "api"      # openai/xai adapters are not wired yet (key seen, not usable)
         p["verified"] = sorted(state.get(p["id"], {}).get("ok", []))
     return out
 
@@ -83,8 +93,7 @@ def _mark_ok(provider, kind):
 
 def providers(kind: str, provider: str = "auto") -> list[dict]:
     ps = [p for p in detect() if p["available"] and kind in p["kind"]]
-    if provider != "auto":
-        ps = [p for p in ps if p["id"] == provider]
+    ps = [p for p in ps if p["id"] == provider] if provider != "auto" else [p for p in ps if p["id"] != "openrouter"]     # auto never spends money
     if not ps:
         raise SystemExit(f"no available provider for {kind} (provider={provider}); run `promo gen detect`")
     ps.sort(key=lambda p: (kind not in p["verified"], p["id"] not in ("grok", "codex")))
@@ -215,6 +224,21 @@ def _run_provider(p: dict, text: str, out_p: Path, timeout: int) -> str:
     return f"{p['id']} produced no file at {out_p} (exit {r.returncode}): {(r.stdout or r.stderr)[-400:]}"
 
 
+def generate_openrouter(prompt: str, out: str, seconds: float = OR.DEFAULT_SECONDS, aspect: str = "16:9", people: bool = False,
+                        model: str = OR.DEFAULT_MODEL, resolution: str = OR.DEFAULT_RES, first_frame=None, audio: bool = False,
+                        max_usd: float = OR.DEFAULT_MAX_USD, on_status=None, seed: int | None = None) -> dict:
+    """A Seedance plate through OpenRouter: the plate guard leads the prompt; the sidecar keeps the model, the job id and the real cost."""
+    out_p = Path(out).expanduser().resolve()
+    job = OR.run(model, (NEG_PEOPLE if people else NEG) + prompt.strip(), out_p, int(seconds), resolution, aspect, first_frame, audio,
+                 seed=seed, max_usd=max_usd, on_status=on_status)
+    meta = dict(generated=True, kind="video", watermark_cropped=None, provider=f"openrouter:{model}", prompt=prompt, seconds=seconds, aspect=aspect,
+                resolution=resolution, first_frame=str(first_frame) if first_frame else None, audio=bool(audio), seed=seed, job_id=job["job_id"],
+                cost_usd=job["cost"], estimate_usd=job["estimate"], sha256=sha256(out_p), at=time.strftime("%Y-%m-%dT%H:%M:%S"), **probe_media(out_p))
+    Path(str(out_p) + ".gen.json").write_text(json.dumps(meta, indent=1))
+    _mark_ok("openrouter", "video")
+    return meta
+
+
 def generate(kind: str, prompt: str, out: str, seconds: float = 4.0, aspect: str = "16:9", provider: str = "auto",
              timeout: int = 900, people: bool = False, ref=None, guard: str | None = None) -> dict:
     """`guard` replaces the plate guard (no UI, no text) for callers that need another look, e.g. STORYBOARD stills; their corner logo is the caller's to crop."""
@@ -239,7 +263,8 @@ def generate(kind: str, prompt: str, out: str, seconds: float = 4.0, aspect: str
 
 # ---------------------------------------------------------------- spec side: `broll:` plan + the plate gate
 def broll_entries(spec) -> list[dict]:
-    """promo.yaml `broll: [{id, kind: video|image, prompt, seconds, aspect, provider, out}]` (out defaults to media/gen/<id>.mp4|png)."""
+    """promo.yaml `broll: [{id, kind: video|image, prompt, seconds, aspect, provider, out}]` (out defaults to media/gen/<id>.mp4|png);
+    `provider: openrouter` entries may add `model` and `resolution`."""
     res = []
     for b in spec.raw.get("broll") or []:
         b = dict(b)
@@ -255,7 +280,11 @@ def plan(spec, run=False):
     for b in broll_entries(spec):
         have = Path(b["out"]).exists()
         row = dict(id=b["id"], kind=b["kind"], out=b["out"], exists=have, ran=False)
-        if not have and run:
+        if not have and run and b.get("provider") == "openrouter":
+            row["meta"] = generate_openrouter(b["prompt"], b["out"], b.get("seconds", OR.DEFAULT_SECONDS), b.get("aspect", "16:9"),
+                                              model=b.get("model", OR.DEFAULT_MODEL), resolution=b.get("resolution", OR.DEFAULT_RES))
+            row["ran"] = True
+        elif not have and run:
             row["meta"] = generate(b["kind"], b["prompt"], b["out"], b.get("seconds", 4.0), b.get("aspect", "16:9"), b.get("provider", "auto"))
             row["ran"] = True
         rows.append(row)
@@ -299,6 +328,8 @@ def main(argv):
     sub = ap.add_subparsers(dest="cmd", required=True)
     d = sub.add_parser("detect")
     d.add_argument("--json", action="store_true")
+    for k in ("models", "spend"):
+        sub.add_parser(k).add_argument("--json", action="store_true")
     for k in ("image", "video"):
         q = sub.add_parser(k)
         q.add_argument("prompt")
@@ -312,6 +343,12 @@ def main(argv):
         q.add_argument("--shots", nargs="*", default=[], help="shot ids that will use it")
         if k == "video":
             q.add_argument("--seconds", type=float, default=4.0)
+            q.add_argument("--model", default=OR.DEFAULT_MODEL, help="openrouter: Seedance model id (`promo gen models`)")
+            q.add_argument("--res", default=OR.DEFAULT_RES, help="openrouter: 480p | 720p | 1080p | 4K, as the model allows")
+            q.add_argument("--first-frame", help="openrouter: image the clip starts from (animate a still)")
+            q.add_argument("--audio", action="store_true", help="openrouter: let Seedance make sound too (dearer on some models)")
+            q.add_argument("--max-usd", type=float, default=OR.DEFAULT_MAX_USD, help="openrouter: refuse a job priced above this")
+            q.add_argument("--dry-run", action="store_true", help="openrouter: print the request and its price, submit nothing")
     pl = sub.add_parser("plan")
     pl.add_argument("-p", "--project", default="promo.yaml")
     pl.add_argument("--run", action="store_true", help="built-in runner: generate the missing ones with the grok/codex CLI (default: only list the requests)")
@@ -334,8 +371,33 @@ def main(argv):
             for p in ps:
                 print(f"{p['id']:<11} {'READY' if p['available'] else 'no   '}  kinds={','.join(p['kind']):<12} verified={','.join(p['verified']) or '-':<12} {p['how']}")
         return 0
-    if a.cmd in ("image", "video"):
+    if a.cmd == "models":
+        rows = OR.price_table(OR.models())
+        if a.json:
+            print(json.dumps(rows, indent=1))
+            return 0
+        for r in rows:
+            print(f"{r['id']:<30} {r['seconds'][0]}-{r['seconds'][1]} s  {'  '.join(f'{k} ${v:.2f}' for k, v in r['price_4s'].items()):<44} per 4 s 16:9, no audio")
+        return 0
+    if a.cmd == "spend":
+        sp = OR.spend()
+        print(json.dumps(sp, indent=1) if a.json else f"OpenRouter today ${sp['today']:.2f} of ${OR.daily_cap():.2f} cap, all time ${sp['total']:.2f}, {len(sp['jobs'])} jobs")
+        return 0
+    if a.cmd == "video" and a.provider == "openrouter":
+        try:
+            if a.dry_run:
+                m = OR.model(a.model)
+                OR.check_params(m, int(a.seconds), a.res, a.aspect)
+                body = OR.body_for(a.model, NEG + a.prompt, a.seconds, a.res, a.aspect, None, a.audio)
+                print(json.dumps(dict(request=body, first_frame=a.first_frame, estimate_usd=OR.estimate(m, int(a.seconds), a.res, a.aspect, a.audio)), indent=1))
+                return 0
+            meta = generate_openrouter(a.prompt, a.out, int(a.seconds), a.aspect, a.people, a.model, a.res, a.first_frame, a.audio, a.max_usd,
+                                       on_status=lambda s, j: print(f"  {s} ({j})", file=sys.stderr))
+        except OR.OpenRouterError as e:
+            raise SystemExit(f"promo gen: {e}") from None
+    elif a.cmd in ("image", "video"):
         meta = generate(a.cmd, a.prompt, a.out, getattr(a, "seconds", 4.0), a.aspect, a.provider, people=getattr(a, "people", False), ref=getattr(a, "ref", None))
+    if a.cmd in ("image", "video"):
         if a.register:
             from . import footage as FT
             from .spec import load_spec as _ls

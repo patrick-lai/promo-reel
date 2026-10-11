@@ -14,6 +14,18 @@ def _private_config(tmp_path, monkeypatch):
     monkeypatch.setenv("PROMO_FLOW_PUBLISH", "0")
 
 
+@pytest.fixture(autouse=True)
+def _no_openrouter(tmp_path, monkeypatch):
+    """No test spends OpenRouter credit or reads the person's spend ledger: the API is unreachable unless a test fakes it."""
+    from promo import openrouter as OR
+
+    def offline(*a, **kw):
+        raise OR.OpenRouterError("OpenRouter is not reachable in tests")
+    monkeypatch.setattr(OR, "HOME", tmp_path / "home")
+    monkeypatch.setattr(OR, "_request", offline)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+
+
 @pytest.fixture
 def sheets(monkeypatch):
     """Blind comparison sheets without ffmpeg: one PNG per order."""

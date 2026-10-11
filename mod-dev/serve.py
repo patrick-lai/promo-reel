@@ -18,6 +18,7 @@ import mimetypes
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -225,6 +226,17 @@ def run_action(pd, name, payload):
         argv = ["edit", "bin", "--open", str(payload.get("name"))] if name == "edit_bin" else ["edit", "keep", str(payload.get("id")), "--by", BY]
         rc = flow.main(["--project", pd, *argv])
         return {"ok": rc == 0, "error": f"promo flow {' '.join(argv[:2])} failed (see the harness console)", "pending": False}
+    elif name == "studio":
+        argv = [sys.executable, "-m", "promo", "flow", "--project", pd, "studio", "run", "--prompt", str(payload.get("prompt", "")), "--model", str(payload.get("model")),
+                "--res", str(payload.get("res")), "--seconds", str(payload.get("seconds")), "--aspect", str(payload.get("aspect")), *shlex.split(str(payload.get("flags", "")))]
+        if shutil.which("commissionctl") and not os.environ.get("OPENROUTER_API_KEY"):
+            argv = ["commissionctl", "secret", "exec", "OPENROUTER_API_KEY", "--", *argv]
+        out = open(os.path.join(pd, "flow", "studio.log"), "a")
+        LIVE["jobs"].append(subprocess.Popen(argv, cwd=ROOT, env={**os.environ, "PYTHONPATH": ROOT}, stdout=out, stderr=subprocess.STDOUT, text=True))
+        return {"ok": True, "message": f"making a Seedance take ({payload.get('what')}); real OpenRouter credit", "pending": False}
+    elif name == "studio_use":
+        rc = flow.main(["--project", pd, "studio", "use", "--take", str(payload.get("take")), "--asset", str(payload.get("asset"))])
+        return {"ok": rc == 0, "error": "promo flow studio use failed (see the harness console)", "pending": False}
     elif name == "density":
         args = ["--clear"] if not payload.get("every") else ["--every", str(payload["every"])]
         rc = flow.main(["--project", pd, "density", "--story", payload["story"], *args])

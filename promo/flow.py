@@ -80,12 +80,14 @@ from . import flowjob as FJ
 from . import genvideo as GV
 from . import home
 from . import lessons as LS
+from . import openrouter as OR
 from . import plandocs as PD
 from . import previews as PV
 from . import roundbrief as RB
 from . import scout as SC
 from . import share as SH
 from . import storyboard as SB
+from . import studio as ST
 from . import versions as VR
 from . import widgets as WG
 from .compare_ref import CompareError
@@ -1382,7 +1384,35 @@ def snapshot(pd):
                 approvals={k: dict(by=v["by"], at=v["at"], fresh=gate_ok(pd, st, k)) for k, v in st["gates"].items()},
                 pairs=[AB.person_view(pd, p) for p in st.get("pairs") or [] if p["kind"] == "person"], autopilot=AU.view(st),
                 assumptions=[dict(id=a["id"], text=a["text"], scene=a.get("scene"), overturned=a.get("overturned")) for a in st.get("assumptions") or []],
-                scout=SC.summary(SC.listing(pd)), lessons=[dict(id=x["id"], line=x["line"], videos=x["videos"]) for x in LS.top(st.get("person"))])))
+                scout=SC.summary(SC.listing(pd)), lessons=[dict(id=x["id"], line=x["line"], videos=x["videos"]) for x in LS.top(st.get("person"))],
+                studio=ST.view(pd, _media, [dict(id=f["id"], label=f["label"]) for f in _studio_frames(bds)]))))
+
+
+STUDIO_FRAMES = 40
+
+
+def _studio_frames(bds):
+    """Storyboard stills the Studio can animate, by id (`story/scene/start|end`) so the Stage never sends a path. Only scenes planned as
+    generated plates: animating a frame of a real scene would make up the app's UI (rule 1). `path` is for the CLI only: the Stage finds
+    the picture in `boards`, so the state carries each file once (the host keeps 200)."""
+    out = []
+    for sid, b, d in bds:
+        for s in b.get("scenes", []):
+            for which in ("start", "end") if s.get("source") == "generated" else ():
+                p = os.path.join(d, (s.get(which) or {}).get("image") or "")
+                if os.path.isfile(p) and not SB.is_slate(p):
+                    out.append(dict(id=f"{sid}/{s['id']}/{which}", label=f"{b.get('title', sid)}, scene {s['id']} {which}", path=_media(p)))
+    return out[:STUDIO_FRAMES]
+
+
+def _studio_start(pd, ref):
+    """--start: a storyboard frame id from the Stage, or a file."""
+    for f in _studio_frames(boards(pd, load(pd))):
+        if f["id"] == ref:
+            return f["path"]["$file"]
+    if os.path.isfile(ref):
+        return os.path.abspath(ref)
+    raise FlowError(f"no storyboard frame or file {ref!r} to start from")
 
 
 def _podcast(pd):
@@ -1441,7 +1471,7 @@ def _draft_extras(pd, st, i):
 
 PUBLISH_AFTER = {"init", "advance", "discover", "script", "recommend", "doc", "widget", "plan", "story", "scene", "density", "council", "approve", "asset", "frames", "make",
                  "draft", "round", "final", "revise", "note", "resume", "share", "check", "pin", "look", "restore", "ab", "autopilot", "assume", "lessons",
-                 "recipe", "second-opinion", "scout", "notes", "edit"}
+                 "recipe", "second-opinion", "scout", "notes", "edit", "studio"}
 PUBLISH_TIMEOUT_S = 300          # the host copies every frame and clip on publish
 
 
@@ -1947,13 +1977,26 @@ def _look_cli(pd, a):
     return True
 
 
+def _studio_cli(pd, a):
+    if a.action == "use":
+        if not (a.take and a.asset):
+            raise FlowError("studio use needs --take and --asset")
+        print(f"take {a.take} is now the sample of {a.asset}: {ST.use(pd, a.take, a.asset)['note']}")
+        return True
+    t = ST.run(pd, a.prompt or "", a.model, a.res, a.seconds, a.aspect, a.audio, a.preset, _studio_start(pd, a.start) if a.start else None, a.start,
+               a.max_usd, a.seed, on_change=lambda: publish_live(pd))
+    print(f"take {t['id']}: {t['file']} ({t['model']}, {t['resolution']}, {t['seconds']} s, cost ${t['cost'] if t['cost'] is not None else '?'}, estimate ${t['estimate']})")
+    return True
+
+
 def _edit_cli(pd, a):
     from . import editor as ED
     return ED.cli(pd, a)
 
 
 EXTRA = {"edit": _edit_cli, "check": _check_cli, "pin": _pin_cli, "look": _look_cli, "restore": _restore_cli, "ab": _ab_cli, "autopilot": _autopilot_cli, "assume": _assume_cli,
-         "lessons": _lessons_cli, "recipe": _recipe_cli, "calibration": _calibration_cli, "second-opinion": _second_cli, "scout": _scout_cli, "notes": _notes_cli}
+         "lessons": _lessons_cli, "recipe": _recipe_cli, "calibration": _calibration_cli, "second-opinion": _second_cli, "scout": _scout_cli, "notes": _notes_cli,
+         "studio": _studio_cli}
 
 
 def main(argv=None):
@@ -2033,6 +2076,10 @@ def main(argv=None):
     p.add_argument("--scale", type=float, choices=(0.5, 1, 2)); p.add_argument("--json", action="store_true"); p.add_argument("--dry-run", action="store_true")
     p.add_argument("--at", type=float); p.add_argument("--shot"); p.add_argument("--from", dest="from_", type=float); p.add_argument("--to", type=float)
     p.add_argument("--frames", type=int); p.add_argument("--stem", choices=["mix", "music", "vo", "sfx"])
+    p = P("studio"); p.add_argument("action", choices=["run", "use"]); p.add_argument("--prompt"); p.add_argument("--model", default=OR.DEFAULT_MODEL)
+    p.add_argument("--res", default=OR.DEFAULT_RES); p.add_argument("--seconds", type=int, default=OR.DEFAULT_SECONDS); p.add_argument("--aspect", default="16:9")
+    p.add_argument("--audio", action="store_true"); p.add_argument("--preset", choices=list(ST.SENTENCE)); p.add_argument("--start", help="storyboard frame id (story/scene/start) or an image file")
+    p.add_argument("--max-usd", type=float, default=OR.DEFAULT_MAX_USD); p.add_argument("--seed", type=int); p.add_argument("--take"); p.add_argument("--asset")
     p = P("final"); p.add_argument("action", choices=["add"]); p.add_argument("file")
     P("revise").add_argument("--feedback", required=True)
     p = P("note"); p.add_argument("text"); p.add_argument("--kind", default="other", choices=NOTE_KINDS); p.add_argument("--done", action="store_true")
@@ -2176,7 +2223,7 @@ def main(argv=None):
             out = publish(pd, explicit=a.cmd == "publish")
             if out:
                 print(f"Stage updated: {out}", file=sys.stderr)
-    except (FlowError, BR.BriefError, SH.ShareError, PD.DocError, BE.BoardError, home.ConfigError, CompareError) as e:
+    except (FlowError, BR.BriefError, SH.ShareError, PD.DocError, BE.BoardError, home.ConfigError, CompareError, ST.StudioError, OR.OpenRouterError) as e:
         print(f"promo flow: {e}", file=sys.stderr)
         return 1
     return rc

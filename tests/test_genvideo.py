@@ -12,7 +12,7 @@ def test_detect_shape(monkeypatch, tmp_path):
     monkeypatch.setattr(G, "HOME", tmp_path)
     monkeypatch.setenv("OPENAI_API_KEY", "x")
     ps = {p["id"]: p for p in G.detect()}
-    assert set(ps) == {"grok", "codex", "openai-api", "xai-api"}
+    assert set(ps) == {"grok", "codex", "openai-api", "xai-api", "openrouter"}
     assert not ps["openai-api"]["available"]          # API adapter not wired: never auto-picked
 
 

@@ -106,6 +106,11 @@ grok, codex/GPT, a person with a recorder. promo-reel only specifies, ingests an
      probes it, crops a Grok corner logo + upscales to 1080p (raw kept), writes the `.gen.json` sidecar and the footage-manifest entry with `generated:`.
   4. Reference it as `source: bg-night` on a shot with `ui: false`. `promo gen detect` shows which built-in runners exist here; `promo gen video|image "..." --out F`
      and `promo gen plan --run` are the optional fallback that drives those CLIs headless (one-shot, ~1 min each) when you have no generator of your own.
+  5. Seedance on the person's OpenRouter key (pay per job, never picked by `auto`): `promo gen models` (prices), then
+     `commissionctl secret exec OPENROUTER_API_KEY -- promo gen video "..." --out F --provider openrouter [--model M --res 480p --seconds 4 --first-frame IMG]`
+     (`--dry-run` prices it without sending). Each job is refused over `--max-usd` (default $0.40) or the daily cap (PROMO_GEN_DAILY_USD, default $2);
+     `promo gen spend` shows the ledger. Draft at 480p, then the final from the same prompt and `--seed`. In the flow the person does this
+     themselves in the Stage's **Studio** tab (`promo flow studio run|use`, promo/studio.py): takes are samples until registered.
   USE FOR: backgrounds, scenery, macro textures, light leaks / bokeh overlays, dawn/night skies, transition plates between real shots.
   NEVER FOR: app UI, anything that reads as the product, text, logos, people-as-users. `promo check` FAILs a generated clip on a UI shot
   (`generated-plates`) and WARNs for human review (`generated-review`). Image-to-video / reference images are not wired; describe the look in words.

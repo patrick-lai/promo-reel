@@ -5,7 +5,7 @@
 The promo flow (`promo flow ...`, see `promo/flow.py`) as a mod: a web app that the host mounts into its own page and shows in its Stage (right pane, about 380 to 900 px wide, full height),
 with a short summary card in the chat. The agent publishes state; the person's clicks come back to the agent as `[mod:promo-flow] ...` messages. In CommissionAI the agent publishes with `commissionctl mod publish promo-flow --file F`.
 
-    mod.json        manifest: slash command, activation message, actions approve | pick | changes | feedback | generate | share | resume | edit | edit_bin | edit_keep | ..., agent skill
+    mod.json        manifest: slash command, activation message, actions approve | pick | changes | feedback | generate | share | resume | edit | edit_bin | edit_keep | studio | studio_use | ..., agent skill
     index.html      shell (header + stepper, tabs, content, sticky gate bar, lightbox)
     app.js          registers window.commissionMods["promo-flow"] = mount({root, post}) -> {receive, unmount}; rendering, lazy media; icons.js inline SVG icons; style.css
     player.js       the draft player (notes on the timeline); editor.js the Edit tab (window.PFEditor); logic.js the pure parts (window.PF, node --test)
@@ -57,6 +57,12 @@ Every path below that says `file` is `{"$file": "<absolute path>"}` (the host tu
                  the mod shows a `ready` asset whose file is missing or failed as "File missing", never as ready, and disables Approve at the assets gate while any file is missing.
                  `label` is the human title (explicit `label`, else the first clause of `how`, else the id made readable); the raw `id` is only a tooltip
     to_make    [{kind: keyframe|asset, id, label, at?, detail, story?, scene?, which?, asset_kind?, source?}]   what `promo flow needs` lists; keyframe label is "Scene 03 · mid frame 1", at is "t=14.5 s"
+    studio     {models [{id, name, seconds [min, max], resolutions, aspects, first_frame, audio, price_4s {res: USD}, per_second {"480p|16:9|0": USD}}], models_error, default_model,
+                guard (the plate guard that leads every prompt), presets [{id, label, sentence}], max_usd (one take), account: ready|unchecked, spend {today, total, cap},
+                takes [{id, prompt, preset, model, resolution, seconds, aspect, audio, start_ref, start_label, status: queued|generating|completed|done|failed|stopped,
+                job_id, estimate, cost (what OpenRouter billed), video: file, error, at, updated, used_for []}] (newest first), frames [{id: story/scene/start|end, label}] (the picture is that frame in `boards`),
+                plates [{id, label}] (generated video assets a take can stand in for)}
+                 the Studio tab (promo/studio.py): Seedance through the person's OpenRouter key, priced before the click, one take at a time
     drafts     [{id, label, note, path, name, rel, after, share_as, shared, verify, board, look, pins, judged, restorable}]   after = "round 2" when the draft was made for that round; finals [{id, label, path, name, rel, share_as, shared}]
                  verify {state: checked|failed|not_checked, line, passed, warned, failed, skipped[{gate, why}]}: what `promo check` measured on this very file (a report
                  of another file is refused), skipped gates named with their reason, never counted as passed. board {line, fixed, broken, open, held, total, passing,
@@ -185,6 +191,8 @@ The style gate's `options` are [{label, description, recommended, preset}]: the 
 podcast, VTubers, Live2D, avatars, hosts or a talk show (the chat widget gets the first four, the recommended one labelled "(Recommended)").
 Action `podcast {what, list, ops}`: the Cast card's queued changes as full commands (`promo podcast set host a size=xl ; promo podcast set layout
 two-shot ; promo podcast preview --layouts`), or only the preview command for "Make the previews".
+Actions `studio {model, res, seconds, aspect, prompt, flags, what}` (the agent runs `promo flow studio run` under `commissionctl secret exec OPENROUTER_API_KEY`) and
+`studio_use {take, asset, label}` (`promo flow studio use`: the take becomes that plate's sample).
 Actions: `edit {draft, count, list, ops}`, `edit_preview {where, range, count, ops}` ("Quick preview": the agent applies the edits and runs `promo flow edit preview` on the selected or changed shots, no draft), `edit_bin {name}`, `edit_keep {id, note}`.
 
 ## Develop

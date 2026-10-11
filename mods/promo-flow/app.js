@@ -10,7 +10,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   const BADGE_TEXT = { working: "With the agent", waiting: "Your turn", done: "Done", attention: "Needs attention" };
   const ACTION_WORD = { approve: "your approval", pick: "your picks", changes: "your changes", feedback: "your feedback", generate: "your request", request: "your request", scene_note: "your comment", density: "your request", share: "your upload request", settings: "your folder choice",
     widget: "your message from the panel", pins: "your notes", restore: "your restore request", ab: "your pick", autopilot: "your go", overturn: "your change", forget: "your request",
-    edit: "your edits", edit_preview: "your preview request", edit_bin: "your request", edit_keep: "your pick" };
+    edit: "your edits", edit_preview: "your preview request", edit_bin: "your request", edit_keep: "your pick", studio: "your take", studio_use: "your pick" };
   /* Composer kinds beyond plain changes/feedback: the button says what sending does. */
   const COMPOSE_SEND = { request: "Send request", overturn: "Send change", scene: "Send comment" };
   const KIND_ICON = { script: "doc", treatment: "spark", shotlist: "table", direction: "film", edit: "cut", audio: "music", capture: "camera", schedule: "clock", deliverables: "download", risks: "shield", research: "link", review: "refresh", notes: "doc" };
@@ -284,6 +284,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     if (arr(d.assets).length && !prod) { const m = model(); t.push({ id: "assets", label: "Assets", n: m.total, title: "Assets: " + m.total + " rows for this story (" + m.n.ready + " ready, " + m.n.mock + " mock, " + m.n.todo + " to make" + (m.n.missing ? ", " + m.n.missing + " missing" : "") + ")" }); }
     if (arr(d.docs).length || (arr(d.scripts).length && stageIdx() >= STAGE_IDS.indexOf("scripts"))) t.push({ id: "plan", label: "Plan", n: readables().length || null, title: "Plan: full scripts and production documents. Ask the agent to add more." });
     if (t.length) t.push({ id: PF.FILES_TAB, label: "Add files", n: S.files.length || null, title: "Add files: drop your own footage or pictures here for the agent" });
+    if (d.studio && t.length) t.push({ id: PF.STUDIO_TAB, label: "Studio", n: arr(d.studio.takes).length || null, title: "Studio: make Seedance clips for backgrounds, transitions and scenery" + (PF.studioBusy(d.studio) ? " (a take is being made)" : "") });
     const wn = PF.widgetsFor(d, "workbench").length;
     if (wn) t.push({ id: PF.WIDGET_TAB, label: "Workbench", n: wn, title: "Workbench: panels the agent built for this job" });
     if (arr(d.drafts).length || arr(d.finals).length || arr(d.rounds).length || stageIdx() >= STAGE_IDS.indexOf("drafts")) t.push({ id: "draft", label: "Drafts", n: arr(d.drafts).length + arr(d.finals).length || null });
@@ -601,6 +602,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     if (tab === "assets") return [d.assets, d.to_make, d.boards, common, PF.widgetsFor(d, tab)];
     if (tab === "draft") return [d.podcast, S.cast, d.drafts, d.finals, d.rounds, d.rounds_used, d.rounds_max, d.share, common, PF.widgetsFor(d, tab)];
     if (tab === "plan") return [d.podcast, S.cast, d.docs, d.scripts, d.boards && d.boards.map((b) => b.id), d.lessons, common, PF.widgetsFor(d, tab)];
+    if (tab === PF.STUDIO_TAB) return [d.studio, (curBoard() || {}).aspect];
     if (tab === "edit") return [d.edit, d.bin, d.job && d.job.state, arr(d.drafts).length, common];
     return [d.intent, d.style, d.podcast, S.cast, common];
   }
@@ -704,7 +706,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     else if (S.settingsOpen) view = viewSettings();
     else if (!list.length) view = viewOverview();
     else if (S.reader) view = viewReader(S.reader, false);
-    else view = ({ scripts: viewScripts, storyboard: viewStoryboard, assets: viewAssets, draft: viewDraft, edit: viewEdit, plan: viewPlan, [PF.FILES_TAB]: viewFiles, [PF.WIDGET_TAB]: viewWorkbench }[S.tab] || viewOverview)();
+    else view = ({ scripts: viewScripts, storyboard: viewStoryboard, assets: viewAssets, draft: viewDraft, edit: viewEdit, plan: viewPlan, [PF.STUDIO_TAB]: viewStudio, [PF.FILES_TAB]: viewFiles, [PF.WIDGET_TAB]: viewWorkbench }[S.tab] || viewOverview)();
     if (calm) view.classList.add("calm");
     const pinned = S.tab && S.tab !== PF.WIDGET_TAB && !S.settingsOpen && !S.reader && hasDoc() && readable() ? PF.widgetsFor(S.doc, S.tab) : [];
     if (pinned.length) (view.querySelector(":scope > .stack") || view).prepend(widgetGrid(pinned));
@@ -1326,6 +1328,148 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
         h("ul", { class: "file-list sent" }, S.fileSent.map((x) => h("li", { class: "file-row" }, ic("check"), h("span", { class: "nm", title: x.names.join(", "), text: x.names.join(", ") }), h("span", { class: "sz", text: fmtSize(x.size) }))))));
     } else if (!staged.length) box.append(h("p", { class: "files-note", text: "Nothing added yet. The agent records the app itself; use this for your own footage, pictures, or references it should look at." }));
     return box;
+  }
+
+  /* ---------------- Studio: Seedance takes (state `studio`, promo/studio.py) ----------------
+     Higgsfield's layout on the person's own OpenRouter account: the composer prices every take before the click, one take runs at a time,
+     and the takes gallery keeps every try with what it really cost. Takes are planning samples of non-UI plates, never the product. */
+  const TAKE_WORD = { queued: "Queued at OpenRouter", generating: "Seedance is making it", completed: "Downloading", done: "Done", failed: "Failed", stopped: "Stopped" };
+  const studio = () => S.doc.studio || {};
+  const stChoice = () => PF.studioChoice(studio(), S.st);
+  /* A Studio frame id is story/scene/start|end: its picture is that frame of the storyboard, already in the state once. */
+  const frameMedia = (id) => {
+    const [story, scene, which] = String(id || "").split("/");
+    const b = arr(S.doc.boards).find((x) => x.id === story), s = b && arr(b.scenes).find((x) => String(x.id) === scene);
+    return s && s[which] ? mref(s[which].path) : null;
+  };
+  function studioTick() {
+    clearInterval(S.stTick);
+    const clocks = () => el.content.querySelectorAll(".st-clock[data-at]");
+    if (!clocks().length) return;
+    const upd = () => { const cs = clocks(); if (!cs.length) return clearInterval(S.stTick); for (const c of cs) c.textContent = fmtTime((Date.now() - Date.parse(c.dataset.at)) / 1000); };
+    upd();
+    S.stTick = setInterval(upd, 1000);
+  }
+  function stSeg(label, opts, cur, pick, key) {
+    return h("div", { class: "st-field" }, h("span", { class: "st-lbl", text: label }),
+      h("div", { class: "seg-ctl wrap", role: "group", "aria-label": label }, opts.map(([id, text]) => h("button", { type: "button", "data-k": key + "-" + id, "aria-pressed": String(cur === id), onclick: () => pick(id) }, text))));
+  }
+  function studioComposer(st, ch) {
+    const set = (k, v) => { S.st[k] = v; render(true); };
+    const blocked = !canAsk();
+    const go = PF.studioGo(st, ch, blocked);
+    const btn = h("button", { type: "button", class: "btn primary st-go", "data-k": "st-go", disabled: !go.ok, text: go.label });
+    const why = h("p", { class: "hint st-why", role: "status", text: go.why });
+    const sent = h("p", { class: "st-sent" });
+    const refresh = () => {
+      const c = stChoice(), g = PF.studioGo(st, c, !canAsk());
+      btn.disabled = !g.ok; btn.textContent = g.label; why.textContent = g.why;
+      sent.textContent = c ? PF.studioPrompt(st, c) : "";
+    };
+    const frames = arr(st.frames);
+    const frameLabel = (id) => (frames.find((f) => f.id === id) || {}).label;
+    btn.addEventListener("click", () => { const c = stChoice(); if (c && PF.studioGo(st, c, !canAsk()).ok) send("studio", PF.studioPayload(st, c, frameLabel(c.start))); });
+    const prompt = h("textarea", { class: "st-prompt", rows: "4", maxlength: "1200", "data-k": "st-prompt", "data-dictate": "", "aria-label": "What the clip shows", value: S.st.prompt,
+      placeholder: "Dusk light drifting over a quiet city, slow and calm", disabled: S.readonly,
+      oninput: (e) => { S.st.prompt = e.target.value; S.stCaret = e.target.selectionStart; refresh(); },
+      onfocus: (e) => { if (S.stCaret != null) e.target.setSelectionRange(S.stCaret, S.stCaret); },
+      onkeydown: (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); btn.click(); } } });
+    const box = h("section", { class: "card st-compose", "aria-label": "New take" },
+      h("header", { class: "st-h" }, h("b", { text: "New take" }), h("span", { class: "sub", text: "Seedance on your OpenRouter account. Backgrounds, transitions and scenery only: never the app itself." })),
+      h("label", { class: "st-lbl", for: "st-prompt-in", text: "What the clip shows" }), prompt);
+    prompt.id = "st-prompt-in";
+    box.append(stSeg("Camera", [["", "None"], ...arr(st.presets).map((p) => [p.id, p.label])], S.st.preset || "", (id) => set("preset", id || null), "st-cam"));
+    if (frames.length) {
+      const strip = h("div", { class: "st-frames", role: "group", "aria-label": "Start from a storyboard frame" },
+        h("button", { type: "button", class: "st-frame none", "data-k": "st-f-none", "aria-pressed": String(!S.st.start), onclick: () => set("start", null) }, h("span", { text: "From the prompt only" })),
+        frames.map((f) => {
+          const slot = h("span", { class: "st-fslot" });
+          const r = frameMedia(f.id);
+          if (r && !r.error) lazyInto(slot, r, (u) => h("img", { src: u, alt: "", draggable: "false" }), { compact: true });
+          return h("button", { type: "button", class: "st-frame", title: f.label, "aria-label": "Start from " + f.label, "data-k": "st-f-" + f.id, "aria-pressed": String(S.st.start === f.id), onclick: () => set("start", f.id) }, slot);
+        }));
+      fadeX(strip);
+      box.append(h("div", { class: "st-field" }, h("span", { class: "st-lbl", text: "Start frame" }), strip,
+        S.st.start ? h("span", { class: "hint", text: "Animates " + (frameLabel(S.st.start) || S.st.start) + "." } ) : null));
+    }
+    if (ch) {
+      box.append(h("div", { class: "st-field" }, h("label", { class: "st-lbl", for: "st-model", text: "Model" }),
+        h("select", { id: "st-model", class: "st-model", "data-k": "st-model", disabled: S.readonly, onchange: (e) => set("model", e.target.value) },
+          arr(st.models).map((m) => h("option", { value: m.id, selected: m.id === ch.model }, m.name + " · " + (m.price_4s["480p"] != null ? PF.usd(m.price_4s["480p"]) + " per 4 s at 480p" : PF.usd(Object.values(m.price_4s)[0]) + " per 4 s"))))));
+      const row = h("div", { class: "st-row" });
+      row.append(stSeg("Resolution", ch.m.resolutions.map((r) => [r, r]), ch.res, (v) => set("res", v), "st-res"),
+        stSeg("Aspect", ch.aspects.map((a) => [a, a]), ch.aspect, (v) => set("aspect", v), "st-asp"));
+      box.append(row);
+      const len = h("input", { type: "range", min: String(ch.lengths[0]), max: String(ch.lengths[1]), step: "1", value: String(ch.seconds), "data-k": "st-len", id: "st-len", disabled: S.readonly,
+        oninput: (e) => { S.st.seconds = +e.target.value; out.textContent = e.target.value + " s"; refresh(); } });
+      const out = h("output", { for: "st-len", class: "st-out", text: ch.seconds + " s" });
+      box.append(h("div", { class: "st-field st-len" }, h("label", { class: "st-lbl", for: "st-len", text: "Length" }), len, out));
+      if (ch.m.audio) box.append(h("label", { class: "st-check" }, h("input", { type: "checkbox", checked: ch.audio, "data-k": "st-audio", disabled: S.readonly, onchange: (e) => set("audio", e.target.checked) }),
+        h("span", { text: "Sound: Seedance makes audio too" + (ch.m.per_second[ch.res + "|" + ch.aspect + "|1"] > ch.m.per_second[ch.res + "|" + ch.aspect + "|0"] ? " (costs more)" : "") })));
+      sent.textContent = PF.studioPrompt(st, ch);
+      box.append(h("details", { class: "st-sent-box" }, h("summary", { text: "What Seedance gets" }), sent));
+    }
+    box.append(h("div", { class: "st-act" }, btn), why);
+    const sp = st.spend || {};
+    box.append(h("p", { class: "st-spend" }, ic("shield"),
+      h("span", { text: "Today " + PF.usd(sp.today || 0) + " of the " + PF.usd(sp.cap || 0) + " daily cap · all time " + PF.usd(sp.total || 0) + " · at most " + PF.usd(st.max_usd || 0) + " a take" + (st.account === "ready" ? "" : ". Your first take checks the OpenRouter key.") })));
+    return box;
+  }
+  function takeCard(st, t) {
+    const live = ["queued", "generating", "completed"].includes(t.status);
+    const media = h("div", { class: "st-media", "data-aspect": t.aspect });
+    const vr = mref(t.video), sr = frameMedia(t.start_ref);
+    if (vr && !vr.error) lazyInto(media, vr, (u) => { const v = h("video", { src: u, controls: "", muted: "", loop: "", playsinline: "", preload: "metadata", "aria-label": "Take " + t.id }); v.muted = true; return v; });
+    else {
+      if (sr && !sr.error) { const bg = h("span", { class: "st-poster" }); lazyInto(bg, sr, (u) => h("img", { src: u, alt: "" }), { compact: true }); media.append(bg); }
+      media.append(h("div", { class: "st-state" + (live ? " live" : " bad") }, live ? h("span", { class: "spin", "aria-hidden": "true" }) : ic("alert"),
+        h("b", { text: TAKE_WORD[t.status] || t.status }), live ? h("span", { class: "st-clock", "data-at": t.at, text: "0:00" }) : null));
+    }
+    const short = (arr(st.models).find((m) => m.id === t.model) || {}).name || (t.model || "").split("/").pop();
+    const cost = t.cost != null ? PF.usd(t.cost) : t.estimate != null ? "~" + PF.usd(t.estimate) : "";
+    const plates = arr(st.plates);
+    const acts = h("div", { class: "st-tacts" },
+      h("button", { type: "button", class: "btn ghost", "data-quiet": "1", "data-k": "st-again-" + t.id, disabled: S.readonly, onclick: () => {
+        S.st = { prompt: t.prompt, model: t.model, res: t.resolution, seconds: t.seconds, aspect: t.aspect, audio: t.audio, preset: t.preset, start: arr(st.frames).some((f) => f.id === t.start_ref) ? t.start_ref : null };
+        S.stCaret = null; render(true); const p = el.content.querySelector('[data-k="st-prompt"]'); if (p) p.focus();
+      } }, ic("refresh"), "Same settings"));
+    const m = arr(st.models).find((x) => x.id === t.model), up = m && t.status === "done" ? m.resolutions[m.resolutions.indexOf(t.resolution) + 1] : null;
+    if (up) {
+      /* the reference studio's habit: try at 480p, then pay for the bigger one from the same prompt and seed */
+      const fc = PF.studioChoice(st, { prompt: t.prompt, model: t.model, res: up, seconds: t.seconds, aspect: t.aspect, audio: t.audio, preset: t.preset, start: t.start_ref });
+      const g = PF.studioGo(st, fc, !canAsk());
+      acts.append(h("button", { type: "button", class: "btn ghost", "data-quiet": "1", "data-k": "st-final-" + t.id, disabled: !g.ok || fc.res !== up, title: g.why || "Same prompt and seed as this take, at " + up,
+        onclick: () => send("studio", PF.studioPayload(st, fc, t.start_label, t.seed)) }, ic("spark"), "Final at " + up + (g.price != null ? " \u00b7 ~" + PF.usd(g.price) : "")));
+    }
+    if (t.status === "done" && plates.length) {
+      const sel = h("select", { class: "st-use", "aria-label": "Use take " + t.id + " as the sample of", "data-k": "st-use-" + t.id, disabled: !canAsk() },
+        h("option", { value: "", text: "Use as sample of…" }), plates.map((p) => h("option", { value: p.id, text: p.label })));
+      sel.addEventListener("change", () => { const p = plates.find((x) => x.id === sel.value); if (p) send("studio_use", { take: t.id, asset: p.id, label: p.label }); });
+      acts.append(sel);
+    }
+    return h("article", { class: "card st-take", "data-aid": "take-" + t.id, "aria-label": "Take " + t.id },
+      media,
+      h("div", { class: "st-tbody" },
+        h("div", { class: "chips" }, h("span", { class: "chip", text: short }), h("span", { class: "chip", text: t.resolution + " · " + t.seconds + " s · " + t.aspect }),
+          cost ? h("span", { class: "chip" + (t.cost != null ? " ok" : ""), title: t.cost != null ? "What OpenRouter billed" : "Estimate until OpenRouter reports the cost", text: cost }) : null,
+          t.preset ? h("span", { class: "chip", text: (arr(st.presets).find((p) => p.id === t.preset) || {}).label || t.preset }) : null,
+          t.start_label ? h("span", { class: "chip", title: "Animated from " + t.start_label, text: "From frame" }) : null,
+          arr(t.used_for).map((a) => h("span", { class: "chip accent", text: "Sample of " + ((plates.find((p) => p.id === a) || {}).label || a) }))),
+        h("p", { class: "st-tprompt", title: t.prompt, text: t.prompt }),
+        t.error ? h("p", { class: "st-err", role: "alert", text: t.error }) : null,
+        acts));
+  }
+  function viewStudio() {
+    const st = studio();
+    if (!S.st) S.st = { prompt: "", model: st.default_model, res: "480p", seconds: 4, aspect: (curBoard() || {}).aspect || "16:9", audio: false, preset: null, start: null };
+    const ch = stChoice();
+    const takes = arr(st.takes);
+    const gallery = h("section", { class: "st-gallery", "aria-label": "Takes" }, secH("Takes", takes.length || null),
+      takes.length ? h("div", { class: "st-grid" }, takes.map((t) => takeCard(st, t)))
+        : h("div", { class: "empty card" }, h("div", { class: "ring" }, ic("film")), h("h2", { text: "No takes yet" }), h("p", { text: "Write what the clip shows and press Generate. The take shows up here while Seedance makes it, usually in one to three minutes." })));
+    const view = h("div", { class: "pane st-pane" }, h("div", { class: "st-wrap" }, studioComposer(st, ch), gallery));
+    S.scrollHook = studioTick;
+    return view;
   }
 
   function viewPlan() {
@@ -2566,7 +2710,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       if (!text) return;
       if (S.composeKind === "overturn") return send("overturn", { id: S.composeData.id, choice: S.composeData.choice, text });
       if (S.composeKind === "scene") return send("scene_note", { story: S.composeData.story, scene: S.composeData.scene, beat: S.composeData.beat, text });
-      if (S.composeKind === "request") return send("request", { text, where: S.reqWhere || ({ plan: "Plan", scripts: "Scripts", storyboard: "Storyboard", assets: "Assets", draft: "Drafts", edit: "Edit", widgets: "Workbench" })[S.tab] || "Stage" });
+      if (S.composeKind === "request") return send("request", { text, where: S.reqWhere || ({ plan: "Plan", scripts: "Scripts", storyboard: "Storyboard", assets: "Assets", draft: "Drafts", edit: "Edit", widgets: "Workbench", studio: "Studio" })[S.tab] || "Stage" });
       if (m.g && m.g.kind === "style") return send("changes", { stage: "discover", text: "Style: " + text + refTail() });
       if (m.changes === "feedback") return send("feedback", { round: m.round, max_rounds: m.max, text });
       return send("changes", { stage: m.stage, text });

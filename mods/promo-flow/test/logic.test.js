@@ -489,3 +489,37 @@ test("podcast edits: a layout renders its shot, a host / mood / gesture every po
   for (const ops of ["host a size=l", "mood a1 happy", "gesture a1 nod"]) assert.throws(() => L.editApply(bare, L.editParse(ops), 0.5), /line 1: this video has no podcast hosts/);
   assert.equal(L.editApply(bare, L.editParse('say a1 "One, again."'), 0.5).raw.vo.lines[0].text, "One, again.");
 });
+
+const studioState = (extra) => ({
+  default_model: "bytedance/seedance-1-5-pro", max_usd: 0.4, guard: "No text, no UI.", spend: { today: 0, total: 0, cap: 2 },
+  presets: [{ id: "push", label: "Push in", sentence: "The camera pushes in." }],
+  models: [{ id: "bytedance/seedance-1-5-pro", name: "Seedance 1.5 Pro", seconds: [4, 12], resolutions: ["480p", "720p"], aspects: ["16:9", "9:16"], audio: true,
+    per_second: { "480p|16:9|0": 0.0115, "480p|16:9|1": 0.023, "720p|16:9|0": 0.0259, "480p|9:16|0": 0.0115 } }],
+  takes: [], ...extra });
+
+test("studio: choices the model cannot make snap to ones it can, and the button shows the exact price", () => {
+  const st = studioState();
+  const ch = L.studioChoice(st, { model: "gone/model", res: "4K", aspect: "21:9", seconds: 30, prompt: "ink in water" });
+  assert.deepEqual([ch.model, ch.res, ch.aspect, ch.seconds], ["bytedance/seedance-1-5-pro", "480p", "16:9", L.STUDIO_MAX_S]);
+  assert.deepEqual(L.studioGo(st, L.studioChoice(st, { prompt: "ink", seconds: 4 })), { ok: true, label: "Generate · ~$0.05", why: "", price: 0.046 });
+  assert.equal(L.studioPrice(L.studioChoice(st, { seconds: 4, audio: true })), 0.092);
+});
+
+test("studio: the button says why it cannot run", () => {
+  const ch = (st, c) => L.studioGo(st, L.studioChoice(st, { prompt: "ink", seconds: 4, ...c }));
+  assert.match(ch(studioState(), { prompt: " " }).why, /what the clip should show/);
+  assert.match(ch(studioState({ max_usd: 0.04 }), {}).why, /over the \$0.04 limit/);
+  assert.match(ch(studioState({ spend: { today: 1.98, cap: 2 } }), {}).why, /daily cap/);
+  assert.match(ch(studioState({ takes: [{ id: "t1", status: "generating" }] }), {}).why, /One take at a time/);
+  assert.match(L.studioGo({ models: [], models_error: "offline" }, null).why, /did not load: offline/);
+});
+
+test("studio: what is sent leads with the plate guard and carries the camera move and the start frame", () => {
+  const st = studioState();
+  const ch = L.studioChoice(st, { prompt: " dusk over a city ", preset: "push", start: "A/01/start", seconds: 5 });
+  assert.equal(L.studioPrompt(st, ch), "No text, no UI. dusk over a city The camera pushes in.");
+  const p = L.studioPayload(st, ch, "Wake up, scene 01 start");
+  assert.equal(p.flags, "--preset push --start A/01/start");
+  assert.equal(p.what, "Seedance 1.5 Pro, 480p, 5 s, 16:9, push in, from Wake up, scene 01 start, about $0.06");
+  assert.equal(L.studioPayload(st, L.studioChoice(st, { prompt: "x", res: "720p" }), null, 77).flags, "--seed 77");     // a final reuses its draft's seed
+});
