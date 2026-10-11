@@ -140,6 +140,26 @@ def use(spec, sid, cid):
     _set_plate(spec, sid, cid, "key" if m.group(1) == "k" else "clip")
 
 
+def latest(spec, shots=None):
+    """{shot: take id}: each plate shot's newest take drawn with the current look bible (its clip for `kind: video`, else the
+    keyframe), for shots whose take in use is something else. Used after a bible change has redrawn every plate."""
+    bid = bible_id(bible_of(spec))
+    tk = takes(spec)
+    out = {}
+    for r in plan(spec):
+        sid = r["shot"]
+        if shots and sid not in shots:
+            continue
+        fresh = [t for t in tk.get(sid, []) if t["bible"] == bid]
+        if not fresh:
+            continue
+        n = max(t["n"] for t in fresh)
+        pick = [t for t in fresh if t["n"] == n and t["kind"] == ("clip" if r["kind"] == "video" else "key")] or [t for t in fresh if t["n"] == n]
+        if pick[0]["id"] != r["in_use"]:
+            out[sid] = pick[0]["id"]
+    return out
+
+
 def gen_take(spec, row, provider="auto", say=print, video=True):
     """Make take N of one shot: keyframe (+ clip). Registers both; returns the ids made."""
     from . import genvideo as G
@@ -256,9 +276,10 @@ def main(argv):
     t = sub.add_parser("takes", help="the takes of one shot", parents=[common])
     t.add_argument("shot")
     t.add_argument("--json", action="store_true")
-    u = sub.add_parser("use", help="put a take on its shot", parents=[common])
-    u.add_argument("shot")
-    u.add_argument("take")
+    u = sub.add_parser("use", help="put a take on its shot (or --latest: every shot's newest take of the current bible)", parents=[common])
+    u.add_argument("shot", nargs="?")
+    u.add_argument("take", nargs="?")
+    u.add_argument("--latest", action="store_true")
     a = ap.parse_args(argv)
     spec = load_spec(a.project, plugins=False)
     if a.cmd == "bible":
@@ -289,6 +310,14 @@ def main(argv):
         print(json.dumps(dict(ok=True, shot=a.shot, takes=rows), ensure_ascii=False) if a.json
               else "\n".join(f"{t['id']:12} {t['kind']:4} bible {t['bible']} {'IN USE' if t['in_use'] else ''}" for t in rows) or "no takes")
         return 0
+    if a.latest:
+        picks = latest(spec, [a.shot] if a.shot else None)
+        for sid, cid in picks.items():
+            use(load_spec(a.project, plugins=False), sid, cid)
+        print(f"{len(picks)} shots now use their newest take: " + ", ".join(f"{k}={v}" for k, v in picks.items()))
+        return 0
+    if not (a.shot and a.take):
+        raise SystemExit("promo mv use SHOT TAKE, or promo mv use --latest [SHOT]")
     use(spec, a.shot, a.take)
     print(f"shot {a.shot} now uses {a.take}")
     return 0

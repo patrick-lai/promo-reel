@@ -189,10 +189,15 @@ bursts, petals / bubbles, whiteouts and ink wipes on big cuts. No product UI eve
    compressed pop), and the `music:` block that cuts the excerpt on bar lines. Then `timeline: {grid: music/grid.json, beats: N}`.
 3. Lyrics: `promo lyrics import song.srt|.lrc|.txt -p promo.yaml` (music-file times mapped through the edit), then `promo lyrics align`
    (faster-whisper large-v3, Japanese, fuzzy per-character match: ASR kanji mistakes only cost the characters they touch; `--words asr.json`
-   reuses a run). Lines under 0.8 s fail lyrics-hold: merge them into the next line. Layouts band | center | vertical (tategaki) | big;
+   reuses a run). On a full mix Whisper's line starts drift 0.5-1 s on singing: `--separate` transcribes the HTDemucs vocal stem
+   (needs demucs + torch on PYTHONPATH) and moves each phrase start past the breath Whisper glues onto its first word; start lines on
+   that measure (`lyric N at=`) so they are never late. Lines under 0.8 s fail lyrics-hold: merge them into the next line. Layouts band | center | vertical (tategaki) | big;
    anims fade | type | ink | none. Gates: lyrics-glyphs (no tofu), lyrics-safe, lyrics-hold, lyrics-overlap, lyrics-sync (> 0.25 s off the voice).
 4. The look bible BEFORE any shot: one style paragraph + the cast + palette + a character sheet and a style frame drawn first (grok
-   image_edit from a first sheet keeps the heroine on-model; crop the generator's corner logo off the refs). `promo mv bible --prompt ...
+   image_edit from a first sheet keeps the heroine on-model; crop the generator's corner logo off the refs). Words alone give
+   generic TV-anime shading; to reach a reference's look, give 2-3 of its stills as `--ref style=...` (style-only refs, internal
+   tests) and redraw the character sheet through them first, then draw every plate from that sheet. Watch for borrowed details
+   (a badge, a hairstyle) and prompt them away. `promo mv bible --prompt ...
    --ref character=bible/sheet.png --ref style=bible/style.png --cast hero="..."`. Every plate prompt is bible + cast + scene.
 5. Shots: `{type: mv, beats, plate: {kind: video|still, cast: [hero], prompt, motion}, fill: [r,g,b] (shown until a take exists),
    cam (stills drift), frame_step: 2, particles: {kind: petals|bubbles|motes|snow|rain}, fx_in / fx_out: whiteout|flash|ink|iris|smear|rgb,
@@ -200,7 +205,7 @@ bursts, petals / bubbles, whiteouts and ink wipes on big cuts. No product UI eve
    and low angles, the heroine off-centre or small): the character sheet pulls every keyframe towards a centred front view.
 6. `promo mv gen -p promo.yaml --missing --jobs 4`: per shot a keyframe (`key-tN.png`) then, for `kind: video`, grok image_to_video at 720p
    (`clip-tN.mp4`), registered as footage `k<shot>-tN` / `v<shot>-tN` with the bible id. A shot's first take goes in; later takes wait for
-   `promo mv use SHOT TAKE` (or the Stage). ~25 s per keyframe, ~80 s per clip, 4 at a time. `promo mv plan` lists prompts, takes, stale takes.
+   `promo mv use SHOT TAKE` (or the Stage); after a bible change and a full `promo mv gen`, `promo mv use --latest` adopts every new take. ~25 s per keyframe, ~80 s per clip, 4 at a time. `promo mv plan` lists prompts, takes, stale takes.
 7. `promo build`, `promo check` (mv-shots, mv-cuts, mv-hold, mv-median, mv-flashes, mv-plates, look-bible, the lyric gates, test-audio).
 The Stage editor shows a Lyrics lane (drag / trim snaps to 1/4 beat, Alt = free; double-click edits the words), the song's sections and bar
 numbers on the ruler, and for an mv shot its takes, plate prompt, "Generate another take" (action `plate_gen`) and look keys; the look bible

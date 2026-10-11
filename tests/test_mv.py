@@ -89,6 +89,17 @@ def test_align_matches_characters_despite_asr_kanji_mistakes():
     assert abs(out[1]["sung"][0] - 12.5) < 0.05 and "unsynced" not in out[1]
 
 
+def test_a_breath_glued_to_the_first_word_is_cut_off():
+    """Whisper starts a phrase's first word where the last one ended; the singing starts after the breath (the quiet dip)."""
+    sr = 16000
+    t = np.arange(int(3.0 * sr)) / sr
+    y = (0.3 * np.sin(2 * np.pi * 220 * t)).astype(np.float32)
+    y[int(1.0 * sr):int(1.6 * sr)] *= 0.003                               # the breath: 1.0-1.6 s, singing again from 1.6 s
+    words = [dict(w="喧", start=0.5, end=1.0), dict(w="故", start=1.0, end=1.9), dict(w="に", start=1.9, end=2.1)]
+    out = L.refine_starts(words, (y, sr), t0=0.0)
+    assert abs(out[1]["start"] - 1.6) < 0.05 and out[0]["start"] == 0.5 and out[2]["start"] == 1.9
+
+
 @needs_jp_font
 def test_vertical_layout_stacks_down_and_uses_vertical_forms():
     line = dict(text="夢、ーまだ", layout="vertical", size=50, tracking=0.1, x=1500, y=200, color=[255, 255, 255], shadow=0)
@@ -264,6 +275,9 @@ def test_bible_gate_flags_plates_from_an_older_bible(tmp_path):
     MV.use(spec, "02", "k02-t2")
     raw = yaml.safe_load((d / "promo.yaml").read_text())
     assert raw["shots"][1]["still"] == "k02-t2"
+    raw["shots"][1].update(still="k02-t1", plate=dict(kind="still", prompt="p"))
+    (d / "promo.yaml").write_text(yaml.safe_dump(raw, allow_unicode=True, sort_keys=False))
+    assert MV.latest(load_spec(str(d / "promo.yaml"), plugins=False)) == {"02": "k02-t2"}          # the newest take of the current bible
 
 
 def test_plate_prompt_is_bible_then_cast_then_scene():

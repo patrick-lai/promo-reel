@@ -200,7 +200,62 @@ def transcribe(wav_path, t0=0.0, t1=None, model="large-v3"):
         y = librosa.resample(y, orig_sr=sr, target_sr=16000)
     m = WhisperModel(model, device="cpu", compute_type="int8")
     segs, _ = m.transcribe(y, language="ja", word_timestamps=True, vad_filter=False, beam_size=5, condition_on_previous_text=False)
-    return [dict(w=w.word, start=round(w.start + t0, 3), end=round(w.end + t0, 3)) for s in segs for w in (s.words or [])]
+    return [dict(w=w.word, start=round(float(w.start) + t0, 3), end=round(float(w.end) + t0, 3)) for s in segs for w in (s.words or [])]
+
+
+def refine_starts(words, voice, t0=0.0, min_word_s=0.4):
+    """Whisper puts the breath before a sung phrase into its first word (the word starts where the last one ended). On the separated
+    voice, a long word's real onset is the rise after the quietest point (the breath) inside it. `voice` is (samples, rate) starting at
+    music-file time t0; words are music-file times. Words without a clear dip (< 8 dB) keep their start."""
+    y, sr = voice
+    y = y.mean(axis=1) if y.ndim > 1 else y
+    hop = int(sr * 0.01)
+    n = max(0, (len(y) - 2 * hop) // hop)
+    frames = np.lib.stride_tricks.sliding_window_view(y, 2 * hop)[::hop][:n]
+    db = 20 * np.log10(np.sqrt((frames ** 2).mean(axis=1)) + 1e-6)
+    out = []
+    for w in words:
+        w = dict(w)
+        if w["end"] - w["start"] >= min_word_s:
+            i0, i1 = int((w["start"] - t0) / 0.01), int((w["end"] - t0) / 0.01)
+            seg = db[max(0, i0):max(0, i1) + 1]
+            k = int(np.argmin(seg)) if len(seg) >= 5 else 0
+            # a breath: a dip of >= 8 dB in the first 70 % of the word with >= 0.15 s of singing after it (a dip at the end is the next breath)
+            if len(seg) >= 5 and k < 0.7 * len(seg) and seg[k:].max() - seg[k] >= 8:
+                j = k + int(np.argmax(seg[k:] > seg[k] + 0.5 * (seg[k:].max() - seg[k])))
+                if len(seg) - j >= 15:
+                    w["start"] = round(t0 + (max(0, i0) + j) * 0.01, 3)
+        out.append(w)
+    return out
+
+
+def separate_vocals(src, t0, t1, out):
+    """The sung voice alone (HTDemucs) for [t0, t1] of `src`, written to `out` (44.1 kHz stereo). Whisper's word starts on a full
+    mix drift 0.5-0.7 s on sung vocals; on the separated voice they land within a few hundredths of the singing."""
+    try:
+        import torch
+        from demucs.apply import apply_model
+        from demucs.pretrained import get_model
+    except ImportError as e:
+        raise LyricsError("--separate needs demucs and torch (`pip install demucs`, e.g. into a --target dir on PYTHONPATH)") from e
+    import librosa
+    import soundfile as sf
+    y, sr = sf.read(str(src), dtype="float32", always_2d=True)
+    y = y[int(t0 * sr):int(t1 * sr) if t1 else None]
+    model = get_model("htdemucs")
+    model.eval()
+    if sr != model.samplerate:
+        y = librosa.resample(y.T, orig_sr=sr, target_sr=model.samplerate).T
+    if y.shape[1] == 1:
+        y = np.repeat(y, 2, axis=1)
+    x = torch.from_numpy(np.ascontiguousarray(y.T))
+    ref = x.mean(0)
+    with torch.no_grad():
+        stems = apply_model(model, ((x - ref.mean()) / ref.std())[None], device="cpu", split=True, overlap=0.25, progress=False)[0]
+    voc = (stems[model.sources.index("vocals")] * ref.std() + ref.mean()).numpy().T
+    os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
+    sf.write(out, voc, model.samplerate)
+    return out
 
 
 # ---------------------------------------------------------------- spec side
@@ -497,6 +552,7 @@ def main(argv):
             p.add_argument("--audio", help="audio to transcribe (default: the music asset, mapped through music.edit)")
             p.add_argument("--words", help="reuse an ASR word list JSON [{w, start, end}] (music-file time) instead of running whisper")
             p.add_argument("--snap", action="store_true", help="also move each line's `t` to what was sung")
+            p.add_argument("--separate", action="store_true", help="transcribe the separated voice (HTDemucs) instead of the full mix: far tighter word starts on singing")
         if n == "show":
             p.add_argument("--json", action="store_true")
     a = ap.parse_args(argv)
@@ -516,7 +572,14 @@ def main(argv):
             segs = (m.get("edit") or {}).get("segments") or []
             t0 = min((m["track_offset"] + s[1] * m["track_beat"] for s in segs), default=0.0)
             t1 = max((m["track_offset"] + s[2] * m["track_beat"] for s in segs), default=None)
-            words = transcribe(src, max(0.0, t0 - 1), (t1 + 1) if t1 else None)
+            a0, a1 = max(0.0, t0 - 1), (t1 + 1) if t1 else None
+            if a.separate:
+                import soundfile as sf
+                stem = separate_vocals(src, a0, a1, os.path.join(spec.build, "lyrics-vocals.wav"))
+                words = [dict(w, start=round(w["start"] + a0, 3), end=round(w["end"] + a0, 3)) for w in transcribe(stem)]
+                words = refine_starts(words, sf.read(stem, dtype="float32"), a0)
+            else:
+                words = transcribe(src, a0, a1)
             os.makedirs(spec.build, exist_ok=True)
             json.dump(words, open(os.path.join(spec.build, "lyrics-asr.json"), "w"), ensure_ascii=False, indent=0)
         mapped = []
