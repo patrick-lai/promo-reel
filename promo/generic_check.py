@@ -123,7 +123,7 @@ def clip_at(s, t):
 def is_ui_shot(spec, s, rules):
     if "ui" in s.cfg:
         return bool(s.cfg["ui"])
-    if s.type in ("card", "live2d_credits") or s.cfg.get("placeholder"):
+    if s.type in ("card", "live2d_credits", "mv") or s.cfg.get("placeholder"):          # an mv shot never shows app UI (gate mv-shots)
         return False
     from . import footage as FT
     try:
