@@ -1070,7 +1070,7 @@
   function studioGo(st, ch, blocked) {
     if (!ch) return { ok: false, label: "Generate", why: st && st.models_error ? "The price list did not load: " + st.models_error : "No video models listed yet." };
     const price = studioPrice(ch);
-    const label = "Generate" + (price == null ? "" : " · ~" + usd(price));
+    const label = "Generate" + (ch.m.subscription ? " · on your plan" : price == null ? "" : " · ~" + usd(price));
     const no = (why) => ({ ok: false, label, why, price });
     if (blocked) return no("");
     if (studioBusy(st)) return no("One take at a time: wait for the take being made.");
@@ -1087,7 +1087,7 @@
     const flags = [pre ? "--preset " + pre.id : "", ch.start ? "--start " + ch.start : "", ch.audio ? "--audio" : "", seed != null ? "--seed " + seed : ""].filter(Boolean).join(" ");
     const price = studioPrice(ch);
     const what = [ch.m.name, ch.res, ch.seconds + " s", ch.aspect, pre ? pre.label.toLowerCase() : "", ch.start ? "from " + (startLabel || ch.start) : "", ch.audio ? "with sound" : "", seed != null ? "seed " + seed : "",
-      price == null ? "" : "about " + usd(price)].filter(Boolean).join(", ");
+      ch.m.subscription ? "on their own subscription" : price == null ? "" : "about " + usd(price)].filter(Boolean).join(", ");
     return { model: ch.model, res: ch.res, seconds: ch.seconds, aspect: ch.aspect, prompt: ch.prompt.trim(), flags, what };
   }
 

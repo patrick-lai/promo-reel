@@ -104,7 +104,8 @@ def pick(kind: str, provider: str = "auto") -> dict:
     return providers(kind, provider)[0]
 
 
-def prompt_for(kind: str, prompt: str, out: Path, seconds: float, aspect: str, people: bool = False, ref=None, guard: str | None = None) -> str:
+def prompt_for(kind: str, prompt: str, out: Path, seconds: float, aspect: str, people: bool = False, ref=None, guard: str | None = None,
+               first_frame=None, resolution: str | None = None) -> str:
     base = (f"{guard if guard is not None else NEG_PEOPLE if people else NEG}{prompt.strip()} ")
     refs = [ref] if isinstance(ref, str) else list(ref or [])
     if refs:
@@ -113,7 +114,9 @@ def prompt_for(kind: str, prompt: str, out: Path, seconds: float, aspect: str, p
             lead += f"Use the image file {refs[1]} as the layout reference for the desk and the single unbranded monitor standing on it. "
         base = lead + base
     if kind == "video":
-        return (f"Generate a {seconds:g} second {aspect} VIDEO using your video generation tool. {base}"
+        # grok's video tools animate a picture: with a start frame it uses that, without one it draws a still first
+        start = (f"Use the image file {first_frame} as the first frame (image to video). " if first_frame else "")
+        return (f"Generate a {seconds:g} second {aspect} VIDEO{' at ' + resolution if resolution else ''} using your video generation tool. {start}{base}"
                 f"Save the video file to {out} (mp4) and print only that path.")
     return (f"Generate one {aspect} IMAGE using your image generation tool. {base}"
             f"Save the image to {out} (png) and print only that path.")
@@ -240,11 +243,11 @@ def generate_openrouter(prompt: str, out: str, seconds: float = OR.DEFAULT_SECON
 
 
 def generate(kind: str, prompt: str, out: str, seconds: float = 4.0, aspect: str = "16:9", provider: str = "auto",
-             timeout: int = 900, people: bool = False, ref=None, guard: str | None = None) -> dict:
+             timeout: int = 900, people: bool = False, ref=None, guard: str | None = None, first_frame=None, resolution: str | None = None) -> dict:
     """`guard` replaces the plate guard (no UI, no text) for callers that need another look, e.g. STORYBOARD stills; their corner logo is the caller's to crop."""
     out_p = Path(out).expanduser().resolve()
     out_p.parent.mkdir(parents=True, exist_ok=True)
-    text = prompt_for(kind, prompt, out_p, seconds, aspect, people, ref, guard)
+    text = prompt_for(kind, prompt, out_p, seconds, aspect, people, ref, guard, first_frame, resolution)
     why = []
     for p in providers(kind, provider):
         err = _run_provider(p, text, out_p, timeout)
@@ -344,8 +347,8 @@ def main(argv):
         if k == "video":
             q.add_argument("--seconds", type=float, default=4.0)
             q.add_argument("--model", default=OR.DEFAULT_MODEL, help="openrouter: model id (`promo gen models`)")
-            q.add_argument("--res", default=OR.DEFAULT_RES, help="openrouter: 480p | 720p | 1080p | 4K, as the model allows")
-            q.add_argument("--first-frame", help="openrouter: image the clip starts from (animate a still)")
+            q.add_argument("--res", default=OR.DEFAULT_RES, help="480p | 720p | 1080p | 4K, as the model allows (openrouter; grok takes 480p or 720p)")
+            q.add_argument("--first-frame", help="image the clip starts from (animate a still; openrouter and grok)")
             q.add_argument("--audio", action="store_true", help="openrouter: let the model make sound too (Seedance only; dearer on some models)")
             q.add_argument("--max-usd", type=float, default=OR.DEFAULT_MAX_USD, help="openrouter: refuse a job priced above this")
             q.add_argument("--dry-run", action="store_true", help="openrouter: print the request and its price, submit nothing")
@@ -395,8 +398,11 @@ def main(argv):
                                        on_status=lambda s, j: print(f"  {s} ({j})", file=sys.stderr))
         except OR.OpenRouterError as e:
             raise SystemExit(f"promo gen: {e}") from None
-    elif a.cmd in ("image", "video"):
-        meta = generate(a.cmd, a.prompt, a.out, getattr(a, "seconds", 4.0), a.aspect, a.provider, people=getattr(a, "people", False), ref=getattr(a, "ref", None))
+    elif a.cmd == "video":
+        meta = generate(a.cmd, a.prompt, a.out, a.seconds, a.aspect, a.provider, people=a.people, ref=a.ref, first_frame=a.first_frame,
+                        resolution=a.res if a.res != OR.DEFAULT_RES else None)
+    elif a.cmd == "image":
+        meta = generate(a.cmd, a.prompt, a.out, 4.0, a.aspect, a.provider, people=a.people, ref=a.ref)
     if a.cmd in ("image", "video"):
         if a.register:
             from . import footage as FT

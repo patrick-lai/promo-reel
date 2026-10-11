@@ -523,3 +523,11 @@ test("studio: what is sent leads with the plate guard and carries the camera mov
   assert.equal(p.what, "Seedance 1.5 Pro, 480p, 5 s, 16:9, push in, from Wake up, scene 01 start, about $0.06");
   assert.equal(L.studioPayload(st, L.studioChoice(st, { prompt: "x", res: "720p" }), null, 77).flags, "--seed 77");     // a final reuses its draft's seed
 });
+
+test("studio: a subscription model has no per-clip price and says so", () => {
+  const st = studioState();
+  st.models.unshift({ id: "cli:grok", name: "Grok (your subscription)", seconds: [1, 15], resolutions: ["480p"], aspects: ["16:9"], subscription: true, per_second: { "480p|16:9|0": 0 } });
+  const ch = L.studioChoice(st, { model: "cli:grok", prompt: "ink", seconds: 2 });
+  assert.deepEqual([L.studioGo(st, ch).ok, L.studioGo(st, ch).label], [true, "Generate · on your plan"]);
+  assert.match(L.studioPayload(st, ch).what, /on their own subscription$/);
+});

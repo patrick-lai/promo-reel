@@ -31,6 +31,7 @@ PRESETS = [("static", "Static", "Locked-off camera, no camera movement."),
            ("handheld", "Handheld", "Gentle handheld drift with natural micro-shake.")]
 SENTENCE = {k: s for k, _, s in PRESETS}
 STOPPED_S = OR.TIMEOUT_S + 120          # a take still "running" this long after its last update lost its process
+GROK = "cli:grok"                       # the person's own grok login: video on their subscription, nothing billed per take
 
 
 class StudioError(Exception):
@@ -105,6 +106,8 @@ def run(pd, prompt, model=OR.DEFAULT_MODEL, resolution=OR.DEFAULT_RES, seconds=O
     def status(s, jid):
         _update(pd, tid, status="generating" if s in ("pending", "in_progress") else s, job_id=jid)
         ping()
+    if model == GROK:
+        return _run_grok(pd, tid, rel, prompt_text(prompt, preset), seconds, aspect, resolution, start, ping)
     try:
         meta = GV.generate_openrouter(prompt_text(prompt, preset), os.path.join(pd, rel), seconds, aspect, model=model, resolution=resolution,
                                       first_frame=start, audio=audio, max_usd=max_usd, on_status=status, seed=seed)
@@ -115,6 +118,29 @@ def run(pd, prompt, model=OR.DEFAULT_MODEL, resolution=OR.DEFAULT_RES, seconds=O
     _update(pd, tid, status="done", file=rel, cost=meta["cost_usd"], estimate=meta["estimate_usd"], job_id=meta["job_id"])
     ping()
     return next(t for t in load(pd) if t["id"] == tid)
+
+
+def _run_grok(pd, tid, rel, text, seconds, aspect, resolution, start, ping):
+    _update(pd, tid, status="generating", estimate=0, cost=0)
+    ping()
+    try:
+        GV.generate("video", text, os.path.join(pd, rel), seconds, aspect, provider="grok", first_frame=start, resolution=resolution)
+    except (RuntimeError, SystemExit, OSError) as e:          # SystemExit: grok is not logged in here (`promo gen detect`)
+        _update(pd, tid, status="failed", error=f"grok made no video: {str(e)[:300]}")
+        ping()
+        raise StudioError(f"grok made no video: {str(e)[:300]}") from None
+    _update(pd, tid, status="done", file=rel)
+    ping()
+    return next(t for t in load(pd) if t["id"] == tid)
+
+
+def _subscriptions():
+    """Video generators on the person's own logins, as Studio models. Only grok: the codex CLI has an image tool and no video tool."""
+    if not next(p for p in GV.detect() if p["id"] == "grok")["available"]:
+        return []
+    aspects, res = ["16:9", "9:16", "1:1", "3:2", "2:3"], ["480p", "720p"]
+    return [dict(id=GROK, name="Grok (your subscription)", seconds=[1, 15], resolutions=res, aspects=aspects, first_frame=True, audio=False,
+                 price_4s={r: 0 for r in res}, image_input=0, per_second={f"{r}|{a}|0": 0 for r in res for a in aspects}, subscription=True)]
 
 
 def use(pd, tid, asset_id):
@@ -159,19 +185,20 @@ def view(pd, media, frames, now=None):
     except OR.OpenRouterError as e:
         cat, models_error = [], str(e)
     per_s = {m["id"]: _per_second(m) for m in cat}
-    models = [dict(r, per_second=per_s[r["id"]]) for r in OR.price_table(cat)]
+    subs = _subscriptions()
+    models = subs + [dict(r, per_second=per_s[r["id"]]) for r in OR.price_table(cat)]
     labels = {f["id"]: f["label"] for f in frames}
     takes = []
     for t in reversed(load(pd)):
         t = dict(t)
         idle = (now - datetime.datetime.fromisoformat(t["updated"])).total_seconds()
         if t["status"] not in ("done", "failed") and idle > STOPPED_S:
-            t["status"], t["error"] = "stopped", "The run that made this take stopped before OpenRouter answered."
+            t["status"], t["error"] = "stopped", "The run that made this take stopped before the clip came back."
         t["video"] = media(os.path.join(pd, t["file"])) if t.get("file") else None
         t["start_label"] = labels.get(t["start_ref"], os.path.basename(t["start"])) if t.get("start") else None
         takes.append(t)
     plates = [dict(id=a["id"], label=a.get("label") or a["id"]) for a in AP.load(os.path.join(pd, "flow")) if a["kind"] == "video" and a["source"] == "generated"]
     sp = OR.spend()
-    return dict(models=models, models_error=models_error, default_model=OR.DEFAULT_MODEL, guard=GV.NEG, presets=[dict(id=k, label=lb, sentence=s) for k, lb, s in PRESETS],
+    return dict(models=models, models_error=models_error, default_model=GROK if subs else OR.DEFAULT_MODEL, guard=GV.NEG, presets=[dict(id=k, label=lb, sentence=s) for k, lb, s in PRESETS],
                 max_usd=OR.DEFAULT_MAX_USD, account="ready" if "video" in next(p for p in GV.detect() if p["id"] == "openrouter")["verified"] else "unchecked",
                 spend=dict(today=sp["today"], total=sp["total"], cap=OR.daily_cap()), takes=takes, frames=frames, plates=plates)

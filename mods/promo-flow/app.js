@@ -1375,7 +1375,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       onfocus: (e) => { if (S.stCaret != null) e.target.setSelectionRange(S.stCaret, S.stCaret); },
       onkeydown: (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); btn.click(); } } });
     const box = h("section", { class: "card st-compose", "aria-label": "New take" },
-      h("header", { class: "st-h" }, h("b", { text: "New take" }), h("span", { class: "sub", text: "Seedance or Grok Imagine on your OpenRouter account. Backgrounds, transitions and scenery only: never the app itself." })),
+      h("header", { class: "st-h" }, h("b", { text: "New take" }), h("span", { class: "sub", text: "Grok on your own subscription, or Seedance and Grok Imagine on your OpenRouter account. Backgrounds, transitions and scenery only: never the app itself." })),
       h("label", { class: "st-lbl", for: "st-prompt-in", text: "What the clip shows" }), prompt);
     prompt.id = "st-prompt-in";
     box.append(stSeg("Camera", [["", "None"], ...arr(st.presets).map((p) => [p.id, p.label])], S.st.preset || "", (id) => set("preset", id || null), "st-cam"));
@@ -1395,7 +1395,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     if (ch) {
       box.append(h("div", { class: "st-field" }, h("label", { class: "st-lbl", for: "st-model", text: "Model" }),
         h("select", { id: "st-model", class: "st-model", "data-k": "st-model", disabled: S.readonly, onchange: (e) => set("model", e.target.value) },
-          arr(st.models).map((m) => h("option", { value: m.id, selected: m.id === ch.model }, m.name + " · " + (m.price_4s["480p"] != null ? PF.usd(m.price_4s["480p"]) + " per 4 s at 480p" : PF.usd(Object.values(m.price_4s)[0]) + " per 4 s"))))));
+          arr(st.models).map((m) => h("option", { value: m.id, selected: m.id === ch.model }, m.name + " · " + (m.subscription ? "no per-clip cost" : m.price_4s["480p"] != null ? PF.usd(m.price_4s["480p"]) + " per 4 s at 480p" : PF.usd(Object.values(m.price_4s)[0]) + " per 4 s"))))));
       const row = h("div", { class: "st-row" });
       row.append(stSeg("Resolution", ch.m.resolutions.map((r) => [r, r]), ch.res, (v) => set("res", v), "st-res"),
         stSeg("Aspect", ch.aspects.map((a) => [a, a]), ch.aspect, (v) => set("aspect", v), "st-asp"));
@@ -1426,20 +1426,21 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
         h("b", { text: TAKE_WORD[t.status] || t.status }), live ? h("span", { class: "st-clock", "data-at": t.at, text: "0:00" }) : null));
     }
     const short = (arr(st.models).find((m) => m.id === t.model) || {}).name || (t.model || "").split("/").pop();
-    const cost = t.cost != null ? PF.usd(t.cost) : t.estimate != null ? "~" + PF.usd(t.estimate) : "";
+    const m = arr(st.models).find((x) => x.id === t.model);
+    const cost = m && m.subscription ? "Your plan" : t.cost != null ? PF.usd(t.cost) : t.estimate != null ? "~" + PF.usd(t.estimate) : "";
     const plates = arr(st.plates);
     const acts = h("div", { class: "st-tacts" },
       h("button", { type: "button", class: "btn ghost", "data-quiet": "1", "data-k": "st-again-" + t.id, disabled: S.readonly, onclick: () => {
         S.st = { prompt: t.prompt, model: t.model, res: t.resolution, seconds: t.seconds, aspect: t.aspect, audio: t.audio, preset: t.preset, start: arr(st.frames).some((f) => f.id === t.start_ref) ? t.start_ref : null };
         S.stCaret = null; render(true); const p = el.content.querySelector('[data-k="st-prompt"]'); if (p) p.focus();
       } }, ic("refresh"), "Same settings"));
-    const m = arr(st.models).find((x) => x.id === t.model), up = m && t.status === "done" ? m.resolutions[m.resolutions.indexOf(t.resolution) + 1] : null;
+    const up = m && t.status === "done" ? m.resolutions[m.resolutions.indexOf(t.resolution) + 1] : null;
     if (up) {
       /* the reference studio's habit: try at 480p, then pay for the bigger one from the same prompt and seed */
       const fc = PF.studioChoice(st, { prompt: t.prompt, model: t.model, res: up, seconds: t.seconds, aspect: t.aspect, audio: t.audio, preset: t.preset, start: t.start_ref });
       const g = PF.studioGo(st, fc, !canAsk());
       acts.append(h("button", { type: "button", class: "btn ghost", "data-quiet": "1", "data-k": "st-final-" + t.id, disabled: !g.ok || fc.res !== up, title: g.why || "Same prompt and seed as this take, at " + up,
-        onclick: () => send("studio", PF.studioPayload(st, fc, t.start_label, t.seed)) }, ic("spark"), "Final at " + up + (g.price != null ? " \u00b7 ~" + PF.usd(g.price) : "")));
+        onclick: () => send("studio", PF.studioPayload(st, fc, t.start_label, t.seed)) }, ic("spark"), "Final at " + up + (g.price != null && !m.subscription ? " \u00b7 ~" + PF.usd(g.price) : "")));
     }
     if (t.status === "done" && plates.length) {
       const sel = h("select", { class: "st-use", "aria-label": "Use take " + t.id + " as the sample of", "data-k": "st-use-" + t.id, disabled: !canAsk() },
@@ -1451,7 +1452,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       media,
       h("div", { class: "st-tbody" },
         h("div", { class: "chips" }, h("span", { class: "chip", text: short }), h("span", { class: "chip", text: t.resolution + " · " + t.seconds + " s · " + t.aspect }),
-          cost ? h("span", { class: "chip" + (t.cost != null ? " ok" : ""), title: t.cost != null ? "What OpenRouter billed" : "Estimate until OpenRouter reports the cost", text: cost }) : null,
+          cost ? h("span", { class: "chip" + (t.cost != null ? " ok" : ""), title: m && m.subscription ? "Made on your own subscription" : t.cost != null ? "What OpenRouter billed" : "Estimate until OpenRouter reports the cost", text: cost }) : null,
           t.preset ? h("span", { class: "chip", text: (arr(st.presets).find((p) => p.id === t.preset) || {}).label || t.preset }) : null,
           t.start_label ? h("span", { class: "chip", title: "Animated from " + t.start_label, text: "From frame" }) : null,
           arr(t.used_for).map((a) => h("span", { class: "chip accent", text: "Sample of " + ((plates.find((p) => p.id === a) || {}).label || a) }))),

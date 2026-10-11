@@ -60,6 +60,7 @@ def api(monkeypatch, tmp_path):
     monkeypatch.setenv("OPENROUTER_API_KEY", KEY)
     monkeypatch.setattr(OR, "POLL_S", 0)
     monkeypatch.setattr(G, "HOME", tmp_path / "home")
+    monkeypatch.setattr(G, "_file", lambda p: False)            # no grok / codex login, whatever this machine has
     monkeypatch.setattr(G, "probe_media", lambda p: {"width": 854, "height": 480, "duration": 4.0})
     fake = FakeOpenRouter()
     monkeypatch.setattr(OR, "_request", fake)
@@ -193,3 +194,20 @@ def test_a_take_becomes_the_sample_of_a_generated_plate_only(api, proj):
     assert s["path"] == os.path.join("flow", "studio", "t1.mp4") and "$0.05" in s["note"]
     assert F.snapshot(proj)["studio"]["takes"][0]["used_for"] == ["dusk"]
     assert F.main(["--project", proj, "studio", "use", "--take", "t1", "--asset", "tour"]) == 1
+
+
+def test_a_grok_subscription_take_runs_on_the_cli_and_bills_nothing(api, proj, monkeypatch):
+    monkeypatch.setattr(G, "detect", lambda: [dict(id="grok", kind=["image", "video"], available=True, verified=[]),
+                                              dict(id="openrouter", kind=["video"], available=True, verified=[])])
+    asked = {}
+
+    def cli(kind, prompt, out, seconds, aspect, provider, first_frame=None, resolution=None, **kw):
+        asked.update(provider=provider, first_frame=first_frame, seconds=seconds)
+        open(out, "wb").write(b"MP4")
+    monkeypatch.setattr(G, "generate", cli)
+    studio = F.snapshot(proj)["studio"]
+    assert studio["default_model"] == STU.GROK and studio["models"][0]["subscription"]
+    assert F.main(["--project", proj, "studio", "run", "--prompt", "dusk", "--model", STU.GROK, "--seconds", "2", "--start", "A/01/start"]) == 0
+    take = F.snapshot(proj)["studio"]["takes"][0]
+    assert take["status"] == "done" and take["cost"] == 0 and asked["provider"] == "grok" and asked["first_frame"].endswith("01-s.png")
+    assert api.sent == [] and OR.spend()["total"] == 0
