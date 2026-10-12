@@ -726,10 +726,13 @@ def build_parser():
     pl.add_argument("--designed", action="store_true", default=None, help="write the designed-hero composition plan even without stills")
     pl.add_argument("--no-designed", dest="designed", action="store_false", help="plain plan only")
     pl.add_argument("--answer", action="append", metavar="KEY=VALUE", help="a co-spec answer (see `promo cospec`); repeatable")
-    cs = add("cospec", "the (at most five) questions worth asking before the first draft; --answer KEY=VALUE writes them into plan: and re-plans", json_=True)
+    pl.add_argument("--dialect", choices=("ethereal", "kinetic"), help="craft dialect of the designed plan (default: read the prompt; ethereal when it does not say)")
+    pl.add_argument("--default", action="append", metavar="KEY=VALUE", dest="team_default",
+                    help="a team default for this product, e.g. cta='Your AI dev crew, on your Mac.' (used only when nothing else fills the end card; the product owner confirms it)")
+    cs = add("cospec", "the (at most three) questions worth asking before the first draft; --answer KEY=VALUE writes them into plan: and re-plans", json_=True)
     cs.add_argument("name", nargs="?", help="project name or directory")
     cs.add_argument("--dir", help="project directory")
-    cs.add_argument("--answer", action="append", metavar="KEY=VALUE", help="world | features | cta | must_keep | must_not | still_roles")
+    cs.add_argument("--answer", action="append", metavar="KEY=VALUE", help="dialect | cta | promise | audience | world | features | must_keep | must_not | still_roles")
     ds = add("designed", "designed-hero plan: show | apply (write the compiled cinema shots into promo.yaml); `designed eval` runs evals/thin-prompt-designed.yaml", json_=True)
     ds.add_argument("action", choices=("show", "apply"))
     ds.add_argument("name", nargs="?", help="project name or directory")
@@ -1074,10 +1077,12 @@ def main(argv=None):
                 from . import cospec as CS
                 try:
                     answers = CS.parse_pairs(args.answer)
+                    team_defaults = CS.parse_defaults(args.team_default)
                 except ValueError as e:
                     raise SystemExit(str(e))
                 info = gapfill.apply(dest, args.prompt, name=getattr(args, "name", None) or os.path.basename(dest.rstrip(os.sep)),
-                                     stills=args.stills, designed=args.designed, answers=answers)
+                                     stills=args.stills, designed=args.designed, answers=answers,
+                                     dialect=args.dialect, defaults=team_defaults)
                 print(info["summary"])
                 return 0
             if args.cmd == "cospec":

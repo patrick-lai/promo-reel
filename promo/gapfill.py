@@ -65,8 +65,8 @@ def one_idea(prompt):
     return " ".join(words[:10]), source, trimmed
 
 
-def pick_preset(prompt):
-    """(hero|anime-opening|livestream, prompt|default). First explicit keyword wins; otherwise hero."""
+def pick_preset(prompt, skip=()):
+    """(hero|anime-opening|livestream, prompt|default). First explicit keyword wins; otherwise hero. `skip` = keywords to ignore."""
     m = re.search(r"(?i)\b(?:preset|style|format)\s*:\s*(hero|anime-opening|livestream)\b", prompt)
     if m:
         return m.group(1), "prompt"
@@ -74,6 +74,8 @@ def pick_preset(prompt):
     hits = []
     for name, keys in (("anime-opening", _ANIME), ("livestream", _LIVE)):
         for key in keys:
+            if key in skip:
+                continue
             i = low.find(key)
             if i >= 0:
                 hits.append((i, name))
@@ -395,16 +397,18 @@ def write_designed_block(text, broll):
     return text + "\n" + block
 
 
-def apply(dest, prompt, name=None, stills=None, designed=None, answers=None):
+def apply(dest, prompt, name=None, stills=None, designed=None, answers=None, dialect=None, defaults=None):
     """Scaffold `dest` if it has no promo.yaml, then write the fills. Returns {path, plan, summary}.
 
     designed: None = on when the prompt is thin AND stills are supplied (or the file already has a designed plan); True = always;
-    False = never. stills / answers carry over from the file's earlier plan when not given again."""
+    False = never. stills / answers / defaults / dialect carry over from the file's earlier plan when not given again.
+    dialect: 'ethereal' | 'kinetic' | None (read the prompt; ethereal when its words do not say)."""
     from . import cospec as CS
     from . import designed as D
     dest = os.path.abspath(dest)
     path = os.path.join(dest, "promo.yaml")
-    picked, preset_source = pick_preset(prompt)
+    # "kinetic" in a thin prompt with stills names the designed dialect, not the anime-opening preset (which needs a music grid)
+    picked, preset_source = pick_preset(prompt, skip=("kinetic",) if stills and D.is_thin(prompt) else ())
     if not os.path.isfile(path):
         scaffold(dest, name or os.path.basename(dest.rstrip(os.sep)) or "promo", picked)
     text = open(path).read()
@@ -426,16 +430,21 @@ def apply(dest, prompt, name=None, stills=None, designed=None, answers=None):
         stills = [x["path"] for x in prev_des.get("stills") or []]
     merged = dict((prev.get("cospec") or {}).get("answers") or {})
     merged.update({k: v for k, v in (answers or {}).items() if v not in (None, "")})
+    merged_defaults = dict((prev.get("cospec") or {}).get("defaults") or {})
+    merged_defaults.update(defaults or {})
+    if dialect is None and (prev_des.get("dialect") or {}).get("source") == "flag":
+        dialect = prev_des["dialect"]["name"]
     on = designed if designed is not None else bool(prev_des.get("enabled")) or (D.is_thin(prompt) and bool(stills))
     if on:
         trigger = "flag" if designed else ("kept" if prev_des.get("enabled") and designed is None else "thin+stills")
-        des = D.build(prompt, plan, stills, merged, trigger=trigger)
-        problems = D.check_no_invention(des, prompt, merged)
+        des = D.build(prompt, plan, stills, merged, trigger=trigger, dialect=dialect, defaults=merged_defaults)
+        problems = D.check_no_invention(des, prompt, merged, merged_defaults)
         if problems:
             raise SystemExit("designed plan refused (nothing invented is allowed):\n  " + "\n  ".join(problems))
         plan["designed"] = des
         plan["filled"] = plan["filled"] + ["designed"]
-    plan["cospec"] = CS.block(prompt, D.scan_stills(stills) if on else [], merged)
+    plan["cospec"] = CS.block(prompt, D.scan_stills(stills) if on else [], merged, merged_defaults,
+                              dialect=plan["designed"]["dialect"] if on else None)
     text = _maybe_title(text, plan["idea"])
     text = write_plan_block(text, plan)
     text = write_designed_block(text, D.broll_entries(plan["designed"]) if on else [])

@@ -141,6 +141,9 @@ def _overlay_texts(spec):
         for c in s.cfg.get("cards") or []:
             if c.get("text"):
                 out.append((float(s.t0), "card", c.get("size"), str(c["text"]), s.id))
+        for k in s.cfg.get("kinetic_copy") or []:
+            if k.get("text"):
+                out.append((float(s.t0) + float(k.get("at", 0.0)), "kinetic", None, str(k["text"]), s.id))
     return out
 
 

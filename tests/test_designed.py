@@ -36,6 +36,7 @@ def make_stills(d, specs=(("board", (960, 540)), ("review", (960, 540)), ("phone
 
 
 def plan_of(prompt=PROMPT, stills=True, **kw):
+    kw.setdefault("dialect", "kinetic")         # the kinetic-specific tests below; the ethereal default has its own section
     d = tempfile.mkdtemp()
     paths = make_stills(d) if stills is True else (stills or None)
     info = gapfill.apply(os.path.join(d, "p"), prompt, name="t", stills=paths, **kw)
@@ -74,7 +75,7 @@ def test_floating_is_primary_and_fullscreen_needs_real_footage():
     # a real clip may take the hook and one demo moment fullscreen, never more than a quarter of the UI shots
     clip = os.path.join(d, "run.mp4")
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=640x360:rate=10:duration=1", "-pix_fmt", "yuv420p", clip], check=True)
-    info2 = gapfill.apply(os.path.join(d, "q"), PROMPT, name="t", stills=[os.path.join(d, "board.png"), clip])
+    info2 = gapfill.apply(os.path.join(d, "q"), PROMPT, name="t", stills=[os.path.join(d, "board.png"), clip], dialect="kinetic")
     des = info2["plan"]["designed"]
     full = [r for r in des["shots"] if r["framing"] == "fullscreen"]
     ui = [r for r in des["shots"] if r["framing"] != "plate"]
@@ -194,20 +195,28 @@ def test_eval_cases_pass_and_a_tampered_plan_fails():
 
 
 # ---------------------------------------------------------------- co-spec
-def test_cospec_asks_at_most_five_and_only_what_is_open():
+def test_cospec_asks_at_most_three_in_priority_order_and_only_what_is_open():
+    assert cospec.MAX_QUESTIONS == 3
     q = cospec.open_questions("make a promo", [dict(orientation="portrait")])
-    assert 0 < len(q) <= cospec.MAX_QUESTIONS and [x["key"] for x in q][0] == "world"
+    assert [x["key"] for x in q] == ["cta", "audience", "world"], "one phrase = no promise question; the dialect is not ambiguous"
     assert all(x["saves"] and x["default"] for x in q)
-    prompt = "Idea: Ship while you sleep\nfeatures: Queue; Review\ncta: Join the waitlist"
+    assert [x["key"] for x in cospec.open_questions(PROMPT, [])] == ["cta", "promise", "audience"]
+    both = "A calm but punchy kinetic promo for my app. Go to bed, wake up to merged PRs."
+    assert [x["key"] for x in cospec.open_questions(both, [])][0] == "dialect", "ethereal and kinetic words together are the one dialect question"
+    assert "dialect" not in [x["key"] for x in cospec.open_questions(both, [], {"dialect": "kinetic"})]
+    prompt = "Idea: Ship while you sleep\nfeatures: Queue; Review\ncta: Join the waitlist\naudience: indie devs"
     keys = [x["key"] for x in cospec.open_questions(prompt, [])]
-    assert "features" not in keys and "cta" not in keys and "still_roles" not in keys
-    keys = [x["key"] for x in cospec.open_questions(PROMPT, [dict(orientation="landscape")])]
-    assert "world" not in keys, "'bed' already says the world"
-    assert [x["key"] for x in cospec.open_questions("x", [], {"world": "dusk", "cta": "Name only"})] == ["features", "must_keep"]
-    assert len(cospec.open_questions("x", [dict(orientation="square")], limit=99)) == 5
+    assert not {"features", "cta", "audience", "promise", "still_roles"} & set(keys)
+    assert [x["key"] for x in cospec.open_questions("x", [], {"cta": "Name only", "audience": "devs", "world": "dusk"})] == ["features", "must_keep"]
+    assert len(cospec.open_questions("x", [dict(orientation="square")], limit=99)) == 3
     try:
         cospec.parse_pairs(["colour=red"])
         raise AssertionError("an unknown key must be refused")
+    except ValueError:
+        pass
+    try:
+        cospec.parse_defaults(["audience=devs"])
+        raise AssertionError("only the end card has a team default")
     except ValueError:
         pass
 
@@ -218,18 +227,24 @@ def test_cospec_answers_land_in_plan_and_replan():
     out = subprocess.run([sys.executable, "-m", "promo", "cospec", "--dir", dest, "--json"], cwd=ROOT, capture_output=True, text=True)
     assert out.returncode == 0, out.stderr
     open_keys = [q["key"] for q in json.loads(out.stdout)["cospec"]["open"]]
-    assert open_keys == ["features", "cta", "must_keep", "still_roles"]
-    ans = subprocess.run([sys.executable, "-m", "promo", "cospec", "--dir", dest, "--json", "--answer", "features=Queue tasks; Review diffs",
-                          "--answer", "cta=Join the waitlist", "--answer", "still_roles=phone=desktop"], cwd=ROOT, capture_output=True, text=True)
+    assert open_keys == ["cta", "promise", "audience"]
+    ans = subprocess.run([sys.executable, "-m", "promo", "cospec", "--dir", dest, "--json", "--answer", "cta=Join the waitlist",
+                          "--answer", "promise=Wake up to merged PRs", "--answer", "audience=solo developers"], cwd=ROOT, capture_output=True, text=True)
     assert ans.returncode == 0, ans.stderr
     plan = yaml.safe_load(open(info["path"]).read())["plan"]
-    assert plan["cospec"]["answers"]["features"] == "Queue tasks; Review diffs"
-    assert [q["key"] for q in plan["cospec"]["open"]] == ["must_keep"]
+    assert plan["cospec"]["answers"]["cta"] == "Join the waitlist"
+    assert [q["key"] for q in plan["cospec"]["open"]] == ["features", "must_keep", "still_roles"]
     texts = {}
     for c in plan["designed"]["kinetic_cards"]:
         if c["text"]:
             texts.setdefault(c["beat"], []).append(c["text"])
-    assert texts["ask"] == ["Join the waitlist"] and texts["demo"][:2] == ["Queue tasks", "Review diffs"]
+    assert texts["ask"] == ["Join the waitlist"] and " ".join(texts["payoff"]) == "Wake up to merged PRs" and texts["hook"] == ["Go to bed"]
+    feats = subprocess.run([sys.executable, "-m", "promo", "cospec", "--dir", dest, "--json", "--answer", "features=Queue tasks; Review diffs",
+                            "--answer", "still_roles=phone=desktop"], cwd=ROOT, capture_output=True, text=True)
+    assert feats.returncode == 0, feats.stderr
+    plan = yaml.safe_load(open(info["path"]).read())["plan"]
+    demo = [c["text"] for c in plan["designed"]["kinetic_cards"] if c["beat"] == "demo" and c["text"]]
+    assert demo[:2] == ["Queue tasks", "Review diffs"]
     bad = subprocess.run([sys.executable, "-m", "promo", "cospec", "--dir", dest, "--answer", "nonsense=1"], cwd=ROOT, capture_output=True, text=True)
     assert bad.returncode != 0 and "unknown answer" in (bad.stderr + bad.stdout)
     roles = cospec.apply_roles([dict(id="a", orientation="landscape"), dict(id="b", orientation="landscape")], {"still_roles": "b=phone"})
@@ -254,7 +269,7 @@ def test_apply_shots_writes_cinema_shots_the_spec_loads_and_gates_pass():
     spec = load_spec(info["path"], plugins=False)
     assert len(spec.shots) == len(info["plan"]["designed"]["shots"]) and {s.type for s in spec.shots} == {"cinema"}
     gates = {g: (st, m) for g, st, m in designed.gates(spec)}
-    assert set(gates) == {"designed-grounded", "designed-kinetic", "designed-clear", "designed-framing"}
+    assert set(gates) == {"designed-grounded", "designed-kinetic", "designed-clear", "designed-framing", "designed-camera", "designed-pace"}
     assert all(st == "PASS" for st, _ in gates.values()), gates
     phone = [s for s in spec.shots if s.cfg.get("source") == "phone"][0]
     assert 0.3 < CN.panel_aspect(CN.look_of(spec, phone)) < 0.6, "the portrait still gets a device-shaped panel"

@@ -1,40 +1,62 @@
-"""Co-spec: at most five questions, asked only where an answer saves a full re-render.
+"""Co-spec: at most three questions, asked only where an answer saves a full re-render.
 
 A thin prompt can be drafted without asking anything (draft, then iterate). These are the few decisions that are expensive to
-change after the first draft because they invalidate generated plates, the type cards, the panel framing or the end card:
+change after the first draft because they invalidate generated plates, the type cards, the panel framing or the end card. In
+priority order (the first three that are still open are asked, never more):
 
+    dialect     ethereal or kinetic: only when the prompt's words point both ways (the whole cut, plates and grade change)
+    cta         the end card: GitHub, a landing page, or name only (the end card and its destination)
+    promise     the ONE line the cut is built on, when the prompt holds several candidates   (the hook, the payoff and the end card)
+    audience    who the video is for, when the prompt does not say   (which proof leads the demo and the ask)
     world       the backdrop plates' palette / time of day / mood    (re-generates every plate and re-grades the cut)
     features    the 2-3 features the demo proves, in the person's words   (the demo cards, which still goes where, the capture list)
-    cta         the end card: product name, one verb + one real place, or name only   (the end card and the last VO line)
     must_keep   claims that must stay on screen, each with what proves it, and anything never to say   (every card and VO line)
     still_roles which supplied still is a phone / terminal / desktop   (floating vs device framing of those shots)
 
-A question is skipped when the prompt already answers it (a `features:` line, a night -> dawn word for the plates, a `cta:` line)
-or when it does not apply (no stills = no still_roles). Answers are stored under `plan.cospec.answers` and are the only text, besides
-the prompt, the plan may put on screen. `promo cospec --answer key=value` writes them and re-plans.
+A question is skipped when the prompt already answers it (a `features:` line, a night -> dawn word for the plates, a `cta:` line,
+a `dialect:` line, an `audience:` line) or when it does not apply (no stills = no still_roles). Answers are stored under
+`plan.cospec.answers` and are the only text, besides the prompt, the plan may put on screen. A team default
+(`promo plan --default cta="..."`) is stored under `plan.cospec.defaults`: it fills the end card when nothing else does, is marked
+for the product owner to confirm, and is never applied to a product it was not passed for. `promo cospec --answer key=value`
+writes answers and re-plans.
 """
 from __future__ import annotations
 
 import re
 
-MAX_QUESTIONS = 5
+MAX_QUESTIONS = 3
 
 QUESTIONS = (
+    dict(key="dialect",
+         question="Two looks fit this prompt: ethereal (breathable holds, sparse type, pastel plates, music-led) or kinetic (dense cuts, big type, VO-locked)?",
+         saves="re-cutting, re-typesetting and re-generating plates for the whole video",
+         default="ethereal",
+         example="ethereal"),
+    dict(key="cta",
+         question="End card: send people to GitHub, a landing page, or name only? Give the exact words and the real place (a URL is never guessed).",
+         saves="re-rendering the end card and the last voice line",
+         default="the team default CTA if one was passed, else a placeholder card; nothing, including any URL, is invented",
+         example="<Product name>. <verb> <real place>"),
+    dict(key="promise",
+         question="Which ONE line is the promise the whole cut is built on (your words, one of the lines in the prompt)?",
+         saves="rewriting the hook, the payoff and the end card",
+         default="the first line is the hook and the last line is the payoff",
+         example="<one line from the prompt>"),
+    dict(key="audience",
+         question="Who is it for (one line)?",
+         saves="choosing which proof leads the demo and how the end card asks",
+         default="no audience-specific copy; nothing is written for a reader the plan does not know",
+         example="<who watches this>"),
     dict(key="world",
          question="What world should the backdrop plates live in (time of day, palette, mood)? No product imagery, no text, no people.",
          saves="regenerating every plate and re-grading the whole cut",
-         default="the prompt's own mood words if it has any, else a neutral cool-to-warm gradient",
-         example="night sky turning to dawn, deep blue to amber"),
+         default="the prompt's own mood words if it has any, else the dialect's default world",
+         example="pre-dawn sky, powder blue to peach"),
     dict(key="features",
          question="Which 2-3 features should the demo prove, one short line each (your words, separated by ;)?",
          saves="re-cutting the demo, its cards and which still sits on which shot",
          default="no feature cards: the demo shows the supplied stills in order, with a placeholder card waiting for your words",
          example="<feature one>; <feature two>; <feature three>"),
-    dict(key="cta",
-         question="End card: the exact words (product name, one verb, one real destination), or 'name only' if there is no place to send people yet?",
-         saves="re-rendering the end card and the last voice line",
-         default="the end card shows a placeholder card; nothing, including any URL, is invented",
-         example="<Product name>. <verb> <real place>"),
     dict(key="must_keep",
          question="Any claims that must stay on screen (each with what in the footage proves it), and anything we must never say? Use 'claim | proof' lines.",
          saves="rewriting cards and voice lines after a review catches a missing or false claim",
@@ -61,11 +83,25 @@ def _stills_ambiguous(stills):
     return any(s.get("orientation") in ("square", "portrait", "unknown") for s in stills)
 
 
-def open_questions(prompt, stills=None, answers=None, limit=MAX_QUESTIONS):
-    """The questions still worth asking, most expensive-to-redo first, at most `limit` (never more than five)."""
+def _promise_candidates(prompt):
+    from . import designed as D
+    return D.phrases(prompt)
+
+
+def open_questions(prompt, stills=None, answers=None, limit=MAX_QUESTIONS, dialect=None):
+    """The questions still worth asking, most expensive-to-redo first, at most `limit` (never more than three).
+
+    `dialect` is the choice pick_dialect made (its `ambiguous` flag decides whether that question is asked)."""
+    from . import designed as D
     answers = answers or {}
     stills = stills or []
     skip = set(k for k, v in answers.items() if v not in (None, "", []))
+    if not (dialect or D.pick_dialect(prompt, None, answers)).get("ambiguous"):
+        skip.add("dialect")
+    if _has_label(prompt, "audience"):
+        skip.add("audience")
+    if _has_label(prompt, "promise") or len(_promise_candidates(prompt)) < 2:
+        skip.add("promise")
     if _has_label(prompt, "features?"):
         skip.add("features")
     if _has_label(prompt, "cta", "ask", "call to action"):
@@ -108,11 +144,27 @@ def apply_roles(stills, answers):
     return stills
 
 
-def block(prompt, stills, answers):
+def parse_defaults(pairs):
+    """['cta=Your AI dev crew, on your Mac.'] -> {cta: ...}. Only the end card has a team default."""
+    out = {}
+    for p in pairs or []:
+        k, sep, v = str(p).partition("=")
+        k = k.strip()
+        if not sep or k != "cta" or not v.strip():
+            raise ValueError(f"unknown default {p!r}; the only team default is cta=<exact end-card words>")
+        out[k] = v.strip()
+    return out
+
+
+def block(prompt, stills, answers, defaults=None, dialect=None):
     """`plan.cospec`: what was asked, what is answered, what is still open, and what happens if it stays open."""
-    open_q = open_questions(prompt, stills, answers)
+    open_q = open_questions(prompt, stills, answers, dialect=dialect)
+    out_defaults = dict(defaults or {})
     return dict(
         max_questions=MAX_QUESTIONS,
+        defaults=out_defaults,
+        defaults_note=("team defaults: used only for this product because they were passed with --default; the product owner confirms them"
+                       if out_defaults else None),
         answers={k: v for k, v in (answers or {}).items() if v not in (None, "")},
         open=[dict(key=q["key"], question=q["question"], saves=q["saves"], if_unanswered=q["default"]) for q in open_q],
         note="Optional. Draft first, iterate on feedback; answer these only when a wrong guess would cost a full re-render.",

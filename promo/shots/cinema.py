@@ -25,6 +25,8 @@ Spec keys (per shot):
         rim: {alpha: 0.18, width: 1, color}                 1 px warm-white line just OUTSIDE the border
         glow: {alpha: 0.25, scale, blur, lift, warm}        light spill: a blurred, enlarged, lifted, warm copy of the panel behind it
         in: {dur: 0.35, from_scale: 0.97, fade: true}       entrance ease (off by default: cuts stay hard)
+    look.plate_fill: {top, bottom} | [r, g, b]   the base of a shot with no source (default near-black): a designed placeholder world
+    look.backdrop: {fill: {top, bottom}}   a flat or two-tone gradient world instead of the blurred copy (used until a plate exists)
     look.backdrop: {plate, t, blur, dim, warm, parallax}    the world behind the panel. plate = a footage clip id (a still frame at t,
                                 default 0) or an image / video path: a film-world plate (night sky, dawn, a scenic view), blurred and
                                 graded, so panels float in the same world across the film. Without a plate: the dim blur of the
@@ -119,8 +121,21 @@ def backdrop_cfg(look):
     plate = d.get("plate")
     warm = d.get("warm")
     warm = (0.12 if plate else 0.35) if warm is None or warm is True else (0.0 if warm is False else float(warm))
-    return dict(mode=mode, plate=plate, t=float(d.get("t", 0.0) or 0.0), blur=d.get("blur"), dim=d.get("dim"), warm=warm,
+    return dict(mode=mode, plate=plate, fill=d.get("fill"), t=float(d.get("t", 0.0) or 0.0), blur=d.get("blur"), dim=d.get("dim"), warm=warm,
                 parallax=min(max(float(d.get("parallax", 0.35)), 0.0), 1.0))
+
+
+def gradient_img(size, fill):
+    """A vertical top-to-bottom gradient (`{top: [r, g, b], bottom: [r, g, b]}`) or a flat colour ([r, g, b]) as a PIL image."""
+    W, H = size
+    if isinstance(fill, dict):
+        top = np.asarray(fill.get("top", fill.get("bottom", (8, 7, 9))), np.float32)
+        bot = np.asarray(fill.get("bottom", fill.get("top", (8, 7, 9))), np.float32)
+    else:
+        top = bot = np.asarray(fill, np.float32)
+    k = np.linspace(0.0, 1.0, H, dtype=np.float32)[:, None, None]
+    col = top[None, None, :] * (1.0 - k) + bot[None, None, :] * k
+    return Image.fromarray(np.clip(np.broadcast_to(col, (H, W, 3)), 0, 255).astype(np.uint8), "RGB")
 
 
 def has_panel(look):
@@ -409,7 +424,8 @@ def cascade_words(item, t):
     """How many words of a `cascade` line are on at shot-local t (each snaps on `step_s` after the last)."""
     n = len(kinetic_text(item).split())
     step = max(float(item.get("step_s", KINETIC_STEP_S)), 1e-3)
-    return max(0, min(n, int((t - float(item.get("at", 0.0))) / step) + 1))
+    dt = t - float(item.get("at", 0.0))
+    return 0 if dt < -1e-9 else max(0, min(n, int(dt / step + 1e-6) + 1))
 
 
 def mosaic_cfg(shot):
@@ -677,6 +693,8 @@ class Composer:
         d, bc = self.look["dof"], self.bd
         blur = bc["blur"] if bc["blur"] is not None else d["blur"]
         k = bc["parallax"]
+        if bc.get("fill"):                                # a designed placeholder world (no plate yet): a flat or two-tone gradient
+            return gradient_img((W, H), bc["fill"])
         if self.plate is not None:
             dm = (PLATE_DIM if bc["dim"] is None else bc["dim"]) * dim / max(d["dim"], 1e-6)       # pullback lifts via dim
             bd = G.make_backdrop(self.plate, (W, H), blur, dm, d["zoom"], view=G.plate_view(cam, self.cam0, k, (0.5, 0.5, 1.0 / max(d["zoom"], 1.0))))
@@ -691,7 +709,8 @@ class Composer:
     def _picture(self, src, cam, t):
         W, H = self.W, self.H
         if src is None:                                                # dark opening plate (no footage)
-            return G.to_img(G.apply_look_arr(G.to_f(Image.new("RGB", (W, H), (8, 7, 9))), self._plain_look(), self._i, soft=True))
+            base = gradient_img((W, H), self.look["plate_fill"]) if self.look.get("plate_fill") else Image.new("RGB", (W, H), (8, 7, 9))
+            return G.to_img(G.apply_look_arr(G.to_f(base), self._plain_look(), self._i, soft=True))
         if self.panel and self.look["panel"].get("pane3d") not in (None, False):
             # look.panel.pane3d: {...}: the UI as a floating, tilted 3D pane (promo/pane3d.py); the backdrop gets the usual look
             from .. import pane3d as P3

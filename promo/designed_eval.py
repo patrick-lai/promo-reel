@@ -5,7 +5,9 @@
 Runs each case through `promo plan` in a scratch project and asserts, with no model in the loop, that the plan:
   * has the designed composition fields (framing per shot, kinetic cards, plates, length band, spine, type style, montage, needs),
   * makes floating panels the primary framing and keeps fullscreen to real footage and a small share,
-  * asks at most five co-spec questions,
+  * picks the craft dialect the case expects (ethereal unless the words or the flag say kinetic) and follows its rules (ethereal: no
+    fullscreen, long holds, no accelerating recap, no VO; kinetic: fast recap, VO reads the cards),
+  * asks at most three co-spec questions,
   * puts only the person's own words on cards and invents no claim, number, URL, feature or reference asset.
 A model judge (Sonnet) then scores what no assertion can: evals/thin-prompt-designed.md. Cases without real stills get small
 synthetic placeholders (a plan never reads the pixels), so this runs on any box; pass `--stills` to use the real ones.
@@ -41,7 +43,7 @@ def _placeholders(dest, specs):
 def _walk_text(node, out):
     if isinstance(node, dict):
         for k, v in node.items():
-            if k in ("prompt", "reference"):      # the person's own words and the reference's numbers are not output text
+            if k in ("prompt", "reference", "cospec"):      # the person's own words, the reference's numbers and the questions are not output text
                 continue
             _walk_text(v, out)
     elif isinstance(node, (list, tuple)):
@@ -66,6 +68,10 @@ def check_case(plan, case):
     counts = (des.get("framing_hierarchy") or {}).get("counts") or {}
     ui = sum(v for k, v in counts.items() if k != "plate")
     ok("floating-primary", ui and counts.get("floating", 0) > ui / 2, f"floating {counts.get('floating', 0)} of {ui} UI shots")
+    dn = (des.get("dialect") or {}).get("name")
+    if case.get("expect_dialect"):
+        ok("dialect-expected", dn == case["expect_dialect"], f"dialect {dn!r} ({(des.get('dialect') or {}).get('source')}), expected {case['expect_dialect']!r}")
+    ok("dialect-known", dn in D.DIALECT_NAMES, f"dialect is one of {D.DIALECT_NAMES}")
     has_video = any(s.get("kind") == "video" for s in des.get("stills") or [])
     ok("fullscreen-earned", counts.get("fullscreen", 0) == 0 or (has_video and counts["fullscreen"] <= max(2, ui // 4)),
        f"fullscreen {counts.get('fullscreen', 0)} (only real footage, at most a quarter)")
@@ -73,20 +79,39 @@ def check_case(plan, case):
     ok("seconds-add-up", abs(sum(r["seconds"] for r in shots) - plan["length"]["master_s"]) < 0.05,
        f"shots sum to {sum(r['seconds'] for r in shots):.2f}s of {plan['length']['master_s']}s")
     pay = [r["seconds"] for r in shots if r["beat"] == "payoff"]
-    if (des.get("length_band") or {}).get("recap_montage") and len(pay) > 2:
+    if dn == "kinetic" and (des.get("length_band") or {}).get("recap_montage") and len(pay) > 2:
         ok("montage-accelerates", all(a >= b - 1e-6 for a, b in zip(pay, pay[1:])) and pay[0] > pay[-1],
            "recap shots get shorter " + " ".join(f"{x:g}" for x in pay))
+    if dn == "ethereal":
+        secs = sorted(r["seconds"] for r in shots)
+        med = secs[len(secs) // 2]
+        ok("ethereal-fullscreen-none", counts.get("fullscreen", 0) == 0, "no fullscreen app chrome")
+        ok("ethereal-holds", med >= D.DIALECTS["ethereal"]["pacing"]["median_shot_min_s"], f"median shot {med:g}s")
+        ok("ethereal-no-recap-burst", not (des.get("montage") or {}).get("accelerates"), "the payoff holds, no accelerating montage")
+        ok("ethereal-music-led", (des.get("audio") or {}).get("vo") is False and (des.get("audio") or {}).get("music_led") is True, "music-led, no VO")
+        cards = des.get("kinetic_cards") or []
+        ok("ethereal-type", all(not c.get("vo") and c.get("anim") in ("snap", "cascade") for c in cards), "cards snap or cascade; no VO line")
+        ok("ethereal-conflict-noted", any(c.get("id") == "abstracted-ui-vs-rule-1" for c in des.get("conflicts") or []),
+           "the abstracted-UI vs rule 1 question is recorded for the person")
+    for key, want in (case.get("defaults") or {}).items():
+        ok(f"default-{key}", any(c.get("text") and D._norm(want).startswith(D._norm(c["text"])) and c.get("source") == "team-default"
+                                 for c in des.get("kinetic_cards") or []) and any(n["kind"] == "confirm" for n in des.get("needs") or []),
+           f"team default {key} reaches the end card and is flagged for the product owner to confirm")
     cos = plan.get("cospec") or {}
-    ok("cospec-max-5", len(cos.get("open") or []) <= CS.MAX_QUESTIONS, f"{len(cos.get('open') or [])} open questions (max {CS.MAX_QUESTIONS})")
+    ok("cospec-max-3", len(cos.get("open") or []) <= CS.MAX_QUESTIONS == 3, f"{len(cos.get('open') or [])} open questions (max {CS.MAX_QUESTIONS})")
+    if case.get("expect_questions") is not None:
+        got = [q["key"] for q in cos.get("open") or []]
+        ok("cospec-keys", got == case["expect_questions"], f"asks {got}, expected {case['expect_questions']}")
     answers = cos.get("answers") or {}
-    bad = D.check_no_invention(des, plan.get("prompt", ""), answers)
+    defaults = cos.get("defaults") or {}
+    bad = D.check_no_invention(des, plan.get("prompt", ""), answers, defaults)
     ok("no-invented-words", not bad, "; ".join(bad) or "every card is the person's own words; plates are guarded")
     ok("plates-ui-free", all(p.get("ui") is False and D.PLATE_GUARD in p.get("prompt", "") for p in des.get("plates") or []),
        "every plate is ui: false with the no-text / no-UI guard")
     out = []
     _walk_text({k: v for k, v in plan.items() if k != "prompt"}, out)
     blob = " ".join(out).lower()
-    prompt_low = plan.get("prompt", "").lower() + " " + " ".join(str(v) for v in answers.values()).lower()
+    prompt_low = plan.get("prompt", "").lower() + " " + " ".join(str(v) for v in list(answers.values()) + list(defaults.values())).lower()
     leaked = [w for w in case.get("never_in_plan", []) if w.lower() in blob and w.lower() not in prompt_low]
     ok("no-invented-claims", not leaked, f"none of {case.get('never_in_plan', [])} appear" if not leaked else f"found {leaked}")
     ok("no-urls", not D._URL.search(" ".join(c.get("text") or "" for c in des.get("kinetic_cards") or [])), "no URL on any card")
@@ -101,7 +126,8 @@ def check_case(plan, case):
 def run_case(case, stills=None):
     with tempfile.TemporaryDirectory() as d:
         paths = stills or _placeholders(d, [(s["name"], s.get("shape", "landscape")) for s in case["stills"]])
-        info = gapfill.apply(os.path.join(d, "proj"), case["prompt"], name="eval", stills=paths)
+        info = gapfill.apply(os.path.join(d, "proj"), case["prompt"], name="eval", stills=paths, dialect=case.get("dialect"),
+                             defaults=case.get("defaults"), answers=case.get("answers"))
         results = check_case(info["plan"], case)
         # the compiled shots must also load as a real spec
         try:
