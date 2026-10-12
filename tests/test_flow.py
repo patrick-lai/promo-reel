@@ -12,6 +12,7 @@ from promo import brief as BR
 from promo import flow as F
 from promo import flowcheck as FC
 from promo import previews as PV
+from promo import previz as PZ
 from promo import storyboard as SB
 
 INTENT = "Make a 60s promo for Acme Tasks: tell it at night, wake up to merged PRs."
@@ -97,7 +98,14 @@ def test_happy_path_and_gates(pd, tmp_path, sheets):
     with pytest.raises(F.FlowError, match="START and END"):
         F.advance(pd)
     d = board(pd, "A")
-    assert F.advance(pd) == "assets"                                 # no approval at the storyboard: the person comments any time, the plan review is one stop later
+    assert F.advance(pd) == "previz"                                 # no approval at the storyboard: the person comments any time, the plan review is one stop later
+    with pytest.raises(F.FlowError, match="previz scene for story A"):
+        F.advance(pd)                                                # no wireframes yet: nothing skips the directing step
+    PZ.build(PZ.targets(pd)[0])
+    with pytest.raises(F.FlowError, match="previz strip for story A"):
+        F.advance(pd)                                                # a scene without a strip of it is not a look at it
+    PZ.strip(PZ.targets(pd)[0], engine="pil")
+    assert F.advance(pd) == "assets"
     # assets: every scene needs one; UI must be real/mock; mocks block drafts, not planning
     rec = lambda **k: AP.save(os.path.join(pd, "flow"), AP.upsert(AP.load(os.path.join(pd, "flow")), k))  # noqa: E731
     rec(id="ui1", kind="recording", source="generated", scenes=["01"], how="x")
@@ -383,7 +391,7 @@ def test_snapshot_summary_over_stages(pd):
     s = F.snapshot(pd)
     check_summary(s)
     assert s["stage"] == "discover" and s["summary"]["badge"] == "waiting" and s["gate"]["kind"] == "style"
-    assert s["steps"][0]["state"] == "current" and s["summary"]["progress"] == dict(done=0, total=10)
+    assert s["steps"][0]["state"] == "current" and s["summary"]["progress"] == dict(done=0, total=11)
     st = F.load(pd)
     st.update(stage="pick", scripts=[dict(id=i, title="T" + i, logline="L", file="x") for i in "ABC"])
     F.save(pd, st)
@@ -400,7 +408,7 @@ def test_snapshot_summary_over_stages(pd):
     st.update(stage="final", finals=[dict(file=real_file(pd), at="")])
     F.save(pd, st)
     s = F.snapshot(pd)
-    assert s["summary"]["badge"] == "done" and s["summary"]["progress"]["done"] == 10 and all(x["state"] == "done" for x in s["steps"])
+    assert s["summary"]["badge"] == "done" and s["summary"]["progress"]["done"] == 11 and all(x["state"] == "done" for x in s["steps"])
 
 
 def test_snapshot_clips_long_title(pd):
@@ -441,12 +449,12 @@ def test_stale_approval_is_not_done(pd):
     st = F.load(pd)
     st["stage"] = "keyframes"
     F.save(pd, st)
-    assert F.snapshot(pd)["steps"][4]["state"] == "done"
+    assert F.snapshot(pd)["steps"][5]["state"] == "done"
     b = json.load(open(SB.board_path(d)))
     b["title"] = "edited after approval"
     json.dump(b, open(SB.board_path(d), "w"))
     s = F.snapshot(pd)
-    assert s["steps"][4]["state"] == "stale" and s["steps"][4]["stale"] and [x["id"] for x in s["stale_steps"]] == ["assets"]
+    assert s["steps"][5]["state"] == "stale" and s["steps"][5]["stale"] and [x["id"] for x in s["stale_steps"]] == ["assets"]
     assert s["gate"]["gate"] == "assets-approved" and s["gate"]["stale"] and s["gate"]["approve_label"] == "Approve again" and s["gate"]["stage"] == "assets"
     assert s["gate"]["question"] == "Asset plan changed after you approved it. Approve it again?"
     assert s["summary"]["badge"] == "waiting" and s["summary"]["primary"] == "Approve again"
@@ -624,7 +632,7 @@ def test_a_final_whose_file_is_missing_is_not_done(pd):
     st.update(stage="final", finals=[dict(file="/nowhere/final.mp4", at="")])
     F.save(pd, st)
     s = F.snapshot(pd)
-    assert s["summary"]["badge"] != "done" and s["summary"]["progress"]["done"] == 9
+    assert s["summary"]["badge"] != "done" and s["summary"]["progress"]["done"] == 10
     assert [x["state"] for x in s["steps"]][-1] == "current" and not all(x["state"] == "done" for x in s["steps"])
     assert s["checks"][0] == dict(ok=False, text="A final is registered, but its file is missing")
     st["finals"] = [dict(file=real_file(pd), at="")]
