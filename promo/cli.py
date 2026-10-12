@@ -403,6 +403,8 @@ def _run_tracked(spec, args, st, job):
 def do_build(spec, args, job=None):
     from . import reviewgate as RG
     RG.check_build(spec, final=bool(getattr(args, "final", False)), scale=spec.scale)
+    from . import previz as PZ
+    PZ.check_build(spec, look_only=getattr(args, "look", False) is True)
     A.gate(spec)
     errs = spec.validate()
     if errs:
@@ -683,7 +685,8 @@ def _cmd_designed(args, dest, out=None):
         print(_json.dumps(res_out, indent=1) if getattr(args, "json", False) else
               f"wrote {len(res['shots'])} cinema shots to {res['path']}; registered stills: {', '.join(res['registered']) or 'none'}; "
               f"plates ready: {', '.join(res['ready_plates']) or 'none yet (dark plate / blurred copy until `promo gen register`)'}\n"
-              "next: promo preview -p " + res["path"], file=out or sys.stdout)
+              "next: promo previz build && promo previz strip -p " + os.path.dirname(res["path"]) + "   (block out camera, panels and type first; a render needs the strip)\n"
+              "then: promo preview -p " + res["path"], file=out or sys.stdout)
         return 0
     des = (gapfill.existing_plan(open(path).read()) or {}).get("designed")
     if not des:
@@ -821,6 +824,7 @@ def build_parser():
     sub.add_parser("screen-quad", help="track the monitor quad of a generated plate (clip id or file): per-second quads + debug PNG (see `promo screen-quad -h`)")
     sub.add_parser("refs", help="study references for real: add (watch WITH transcript + scaffold DOSSIER.md) | check | show (see `promo refs -h`)")
     sub.add_parser("compare-ref", help="draft vs each reference: sheet rows + metrics incl. speech/LUFS/tempo (see `promo compare-ref -h`)")
+    sub.add_parser("previz", help="directing / wireframe previz (Three.js) before keyframes and renders: build | sync | show | strip | open | cam | panel | type | dur | projection | reset | apply (see `promo previz -h`)")
     sub.add_parser("flow", help="the gated production flow with the person in the loop: init | status | discover | script | council | approve | asset | needs | advance | draft | round | final | revise | board (see `promo flow -h`)")
     sub.add_parser("config", help="user config: `promo config output [home|repo|default|PATH]` (where new videos are saved: outside this repo, on an external drive), `promo config heavy-lock [PATH]`")
     sub.add_parser("projects", help="list the projects in the save location (PROMO_PROJECTS / `promo config output` / <repo>/projects)")
@@ -969,6 +973,14 @@ def _dispatch_heavy(spec, args, c, job=None):
     return None, None, 0
 
 
+def _previz_argv(argv):
+    """(project or None, args after `previz`) when the command is `previz`, allowing the global `-p PROJECT` in front of it; else None."""
+    i, proj = 0, None
+    while i + 1 < len(argv) and argv[i] in ("-p", "--project"):
+        proj, i = argv[i + 1], i + 2
+    return (proj, argv[i + 1:]) if i < len(argv) and argv[i] == "previz" else None
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else list(argv)
     if argv[:1] == ["live2d"]:          # `promo live2d ...` does not need a promo.yaml
@@ -1020,6 +1032,10 @@ def main(argv=None):
         from .lock import heavy_lock
         with heavy_lock("promo compare-ref"):       # ffmpeg frame grabs, cut detection, whisper
             return compare_ref.main(argv[1:])
+    pv = _previz_argv(argv)
+    if pv is not None:                  # `promo previz ...` / `promo -p NAME previz ...`: wireframe directing step (docs/previz.md)
+        from . import previz
+        return previz.main(pv[1], project=pv[0])
     if argv[:1] == ["flow"]:            # `promo flow ...`: the gated production flow (scripts -> storyboard -> assets -> drafts -> council rounds)
         from . import flow
         return flow.main(argv[1:])

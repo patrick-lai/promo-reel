@@ -1073,6 +1073,8 @@ def apply_shots(path, register=True, force=False):
     ready = {p["id"] for p in des.get("plates") or [] if p["id"] in man}
     lib = ((getattr(spec, "raw", None) or {}).get("sfx") or {}).get("library") or {}
     shots = compile_shots(des, ready=ready, sfx=set(lib))
+    from . import previz as PZ
+    previz_notes = PZ.merge_cinema(shots, os.path.dirname(path))         # shots the agent directed in previz carry their camera / panel nudges
     body = yaml.safe_dump({"shots": shots}, sort_keys=False, allow_unicode=True, width=120, default_flow_style=None)
     block = SHOTS_BEGIN + body + SHOTS_END
     if "# promo:designed-shots BEGIN" in text:
@@ -1094,4 +1096,4 @@ def apply_shots(path, register=True, force=False):
     text = sync_timeline(text, plan.get("length", {}).get("master_s", 60), total)
     with open(path, "w") as f:
         f.write(text)
-    return dict(path=path, shots=shots, registered=registered, ready_plates=sorted(ready))
+    return dict(path=path, shots=shots, registered=registered, ready_plates=sorted(ready), previz_notes=previz_notes)
