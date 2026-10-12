@@ -20,7 +20,7 @@ from . import footage as FT
 from .cache import PKG, Stamps, code_hash, digest, file_sig
 from .spec import SpecError, load_spec
 
-QA_ONLY_KEYS = ("named", "contact_at")
+QA_ONLY_KEYS = ("named", "contact_at", "hold")   # `hold: planned` is a QA mark (long-hold exemption), not a picture change
 AUDIO_KEYS = ("audio",)         # shot `audio:` lines only change the clip-audio / events / mix steps, never the rendered picture
 EVENT_KEYS = ("sfx", "label", "notes", "move")      # sound cues and EDL wording: the events / mix / assemble steps, never the picture
 # Built-in types that draw in shot-local time: moving one of these shots along the timeline, length unchanged, does not change a frame of it.
@@ -366,6 +366,8 @@ def _run_tracked(spec, args, st, job):
 
 
 def do_build(spec, args, job=None):
+    from . import reviewgate as RG
+    RG.check_build(spec, final=bool(getattr(args, "final", False)), scale=spec.scale)
     A.gate(spec)
     errs = spec.validate()
     if errs:
@@ -466,7 +468,8 @@ def cmd_footage(spec, args):
     if args.fcmd == "add":
         e = FT.add(spec, args.path, args.id, shots=args.shots, commit=args.commit, capture=args.capture, framing=args.framing, dpr=args.dpr,
                    notes=args.notes, demo=args.demo, captured_at=args.captured_at)
-        return dict(ok=True, clip=e, manifest=FT.manifest_path(spec))
+        fails = [q for q in (e.get("shot_qa") or []) if q.get("status") == "FAIL"]
+        return dict(ok=not fails, clip=e, manifest=FT.manifest_path(spec), shot_qa=e.get("shot_qa") or [])
     if args.fcmd == "scan":
         from . import glitch as GL
         man = FT.load(spec)
@@ -503,6 +506,9 @@ def print_footage(args, r):
         if r["clip"].get("glitches"):
             print(f"WARN {r['clip']['id']}: one-frame paint glitches at frames {', '.join(map(str, r['clip']['glitches'][:12]))}: re-record with "
                   "capture/lib/recorder.mjs (`promo check` fails on them)")
+        for q in r["clip"].get("shot_qa") or []:
+            if q.get("status") != "PASS":
+                print(f"{q['status']} {q['gate']}: {q['msg']}")
 
 
 def cmd_new(args):
@@ -521,15 +527,27 @@ def cmd_new(args):
     shutil.copytree(src, dest, dirs_exist_ok=True)
     style = getattr(args, "style", None) or "hero"
     from . import styles as STY
-    if style not in STY.PRESETS:
+    try:
+        base, ver = STY.split_preset(style)
+    except STY.StyleError as e:
+        raise SystemExit(str(e))
+    if base not in STY.PRESETS:
         raise SystemExit(f"unknown style {style!r}; have {STY.names()}")
-    sdir = os.path.join(root, "templates", "styles", style)
+    if ver not in (None, 1, 2):
+        raise SystemExit(f"unknown preset version {ver}")
+    if ver == 2 and base not in STY.PRESETS_V2:
+        raise SystemExit(f"{base} has no version 2 (locked at v1)")
+    sdir = os.path.join(root, "templates", "styles", base)
     if os.path.isdir(sdir):          # style overlay: promo.yaml (+ assets.yaml, shots docs) for this preset
         shutil.copytree(sdir, dest, dirs_exist_ok=True)
     for f in ("promo.yaml", "assets.yaml", "footage/manifest.yaml", "footage/manifest.md"):
         p = os.path.join(dest, f)
         t = open(p).read().replace("my-promo", name)
         open(p, "w").write(t)
+    if ver == 2:
+        from . import gapfill
+        p = os.path.join(dest, "promo.yaml")
+        open(p, "w").write(gapfill.ensure_style(open(p).read(), base, 2))
     for d in ("media/music", "media/models"):
         os.makedirs(os.path.join(dest, d), exist_ok=True)
     print(f"created {dest} (style {style}): fill footage/manifest.yaml (+ manifest.md), assets.yaml, promo.yaml, then `promo -p {dest}/promo.yaml timeline`")
@@ -537,15 +555,21 @@ def cmd_new(args):
 
 def cmd_styles():
     from . import styles as STY
-    return dict(ok=True, presets={k: dict(v) for k, v in STY.PRESETS.items()})
+    return dict(ok=True, presets={k: dict(v) for k, v in STY.PRESETS.items()},
+                preset_versions={k: ([1, 2] if k in STY.PRESETS_V2 else [1]) for k in STY.PRESETS})
 
 
 def print_styles(r):
+    from . import styles as STY
     for name, p in r["presets"].items():
         print(f"{name:<14} {p['description']}")
         print(f"{'':<14} pacing: {p['pacing']}")
         print(f"{'':<14} transitions: {p['transitions']['allowed']}  checks: {', '.join(p['checks'])}")
-    print("\nscaffold with `promo new <name> --style <preset>`; override any key under style: in promo.yaml")
+        if name in STY.PRESETS_V2:
+            p2 = STY.resolve({"style": {"preset": name, "version": 2}})
+            cr = p2["pacing"].get("cut_rate") or p2["pacing"].get("layout_every_s")
+            print(f"{'':<14} @2: sync={p2['pacing'].get('sync')} strict_beat={p2['pacing'].get('strict_beat', True)} targets={cr}")
+    print("\nscaffold with `promo new <name> --style <preset>`; `preset@2` or style.version: 2 opts into reference-study pacing (docs/PRODUCT-DEFAULTS.md)")
 
 
 def cmd_grid(spec, args):
@@ -571,6 +595,7 @@ def build_parser():
     S = argparse.SUPPRESS
     common.add_argument("-p", "--project", default=S, help="path to promo.yaml (default ./promo.yaml)")
     common.add_argument("--scale", type=float, choices=(0.5, 1, 2), default=S, help="0.5 = 540p draft for review rounds, 1 = 1080p, 2 = 2160p (also PROMO_SCALE)")
+    common.add_argument("--final", action="store_true", default=S, help="signed-off master; required above 540p after `promo plan` (Marketing, Zen, Director)")
     common.add_argument("--force", action="store_true", default=S, help="ignore stamps, redo the step")
     common.add_argument("-v", "--verbose", action="store_true", default=S)
     common.add_argument("--debug", action="store_true", default=S, help="debug overlays (e.g. livestream keep-clear boxes); never for delivery")
@@ -585,7 +610,16 @@ def build_parser():
     n = add("new", "scaffold projects/<name>/ (or --dir)")
     n.add_argument("name")
     n.add_argument("--dir", help="explicit destination directory")
-    n.add_argument("--style", default="hero", help="style preset: hero | anime-opening | livestream | cinematic-story | horizon (see `promo styles`)")
+    n.add_argument("--style", default="hero", help="style preset: hero | anime-opening | livestream | cinematic-story | horizon, or hero@2 (see `promo styles`)")
+    pl = add("plan", "fill a thin prompt into promo.yaml (idea, preset, five beats, length, shot list, capture, hook)")
+    pl.add_argument("name", nargs="?", help="new project name (scaffolded when promo.yaml is missing)")
+    pl.add_argument("--prompt", required=True, help="the user's words, verbatim")
+    pl.add_argument("--dir", help="project directory (default: the save location, or the directory of -p)")
+    add("preview", "540p review render plus one still per shot (never above 540p)")
+    rv = sub.add_parser("review", help="feedback files: round | status (Marketing / Zen / Director, max 3)", parents=[common])
+    rs = rv.add_subparsers(dest="rcmd", required=True)
+    rs.add_parser("round", help="write the next reviews/round-N.md (refuses a 4th)", parents=[common])
+    rs.add_parser("status", help="sign-offs, empty beats, rounds used", parents=[common]).add_argument("--json", action="store_true")
     sub.add_parser("styles", help="list style presets (pacing, band, typography, transitions, checks)", parents=[common]).add_argument("--json", action="store_true")
     add("grid", "bar/beat table of the music grid (timeline.grid) with markers and phrase starts", True)
     add("needs", "the handoff: what promo-reel still needs from the calling agent (footage to capture, plates to generate, human review)", False).add_argument("--json", action="store_true")
@@ -713,6 +747,14 @@ def dispatch(spec, args):
             r = critique.build(spec, out=args.out, reuse_check=args.no_check, video=args.video,
                                log=lambda *a: print(*a, file=sys.stderr))
         return r, critique.print_summary, 0
+    if c == "review":
+        from . import reviewgate as RG
+        if args.rcmd == "round":
+            path = RG.new_round(spec)
+            r = dict(ok=True, file=path, rounds=RG.round_numbers(spec.root), summary=f"wrote {path}")
+        else:
+            r = RG.status(spec)
+        return r, (lambda r_: print(r_.get("summary") or r_)), 0
     if c == "move-cut":
         from . import retime
         try:
@@ -725,7 +767,7 @@ def dispatch(spec, args):
     if c == "grid":
         r = cmd_grid(spec, args)
         return r, print_grid, 0 if r["ok"] else 1
-    if c in ("sfx", "vo", "clip-audio", "music", "mix", "build", "events", "shot", "assemble", "contact"):
+    if c in ("sfx", "vo", "clip-audio", "music", "mix", "build", "events", "shot", "assemble", "contact", "preview"):
         from .lock import heavy_lock
         job = _flow_job(spec, args, c) if c in ("build", "shot") else None
         log = None
@@ -749,6 +791,11 @@ def dispatch(spec, args):
 
 
 def _dispatch_heavy(spec, args, c, job=None):
+    if c in ("build", "shot", "assemble", "preview"):
+        from . import reviewgate as RG
+        if c == "preview":
+            RG.assert_preview_scale(spec)
+        RG.check_build(spec, final=bool(getattr(args, "final", False)) and c != "preview", scale=spec.scale)
     if c in ("sfx", "vo", "clip-audio", "music", "mix", "build", "events", "shot"):
         A.gate(spec)          # licence gate: music/vo_model/sfx must carry licence + source_url
     if c == "shot":
@@ -761,6 +808,16 @@ def _dispatch_heavy(spec, args, c, job=None):
             _run_tracked(spec, args, next(s for s in plan(spec) if s["name"] == f"shot {sid}"), job)
     elif c == "build":
         do_build(spec, args, job)
+    elif c == "preview":
+        from . import reviewgate as RG
+        if not hasattr(args, "shots"):
+            args.shots = None
+        args.final = False
+        do_build(spec, args, job)
+        stills = RG.write_stills(spec)
+        print("preview 540p" + (f": {len(stills)} stills" if stills else ": stills follow the 540p build"))
+        for p in stills:
+            print(f"  {p}")
     elif c in ("sfx", "vo", "clip-audio", "music", "events", "mix", "assemble", "contact"):
         if c == "clip-audio" and not any(st["name"] == c for st in plan(spec)):
             raise SpecError("no shot has an `audio:` key")
@@ -859,6 +916,30 @@ def main(argv=None):
         with (contextlib.redirect_stdout(sys.stderr) if as_json else contextlib.nullcontext()):
             if args.cmd == "new":
                 return cmd_new(args) or 0
+            if args.cmd == "plan":
+                from . import gapfill
+                from . import home as _home
+                try:
+                    if getattr(args, "dir", None):
+                        dest = args.dir
+                    elif getattr(args, "name", None):
+                        dest = args.name if os.sep in args.name else _home.project_dir(args.name)
+                    elif getattr(args, "project", None) and args.project not in (None, "promo.yaml"):
+                        proj = args.project
+                        dest = proj if os.path.isdir(proj) else os.path.dirname(os.path.abspath(proj))
+                    else:
+                        raise SystemExit("promo plan needs a project name, --dir, or -p path/to/promo.yaml")
+                except _home.ConfigError as e:
+                    raise SystemExit(str(e))
+                info = gapfill.apply(dest, args.prompt, name=getattr(args, "name", None) or os.path.basename(dest.rstrip(os.sep)))
+                print(info["summary"])
+                return 0
+            if args.cmd == "preview":
+                if getattr(args, "scale", None) not in (None, 0.5):
+                    raise SystemExit("promo preview is 540p and stills only. Above 540p is `promo build --final` after sign-off.")
+                if getattr(args, "final", False):
+                    raise SystemExit("promo preview does not make a final. It is 540p and stills only.")
+                args.scale = 0.5
             if args.cmd == "styles":
                 r = cmd_styles()
                 if as_json:

@@ -12,6 +12,8 @@ description: Make or update a product promo / demo video from real app footage w
 Start with THE FLOW (below). Everything lives in `<save location>/<name>/` (see `promo config output`; default `projects/`) (promo.yaml, assets.yaml, footage/manifest.yaml, shots.py plugin). Run commands from the repo root:
 `promo -p projects/<name>/promo.yaml <cmd>` (venv python: `python -m promo ...`).
 
+A thin prompt (`make a promo`) is not a spec. Before capture, run `promo plan <name> --prompt "<their words, verbatim>"`. That writes the one idea (≤10 words), preset (`hero` unless they asked for anime-opening or livestream), five beats, 60 s master plus the ~20 s feed and ~30 s feature, a six-column shot list, capture defaults and the hook into `promo.yaml` under `plan:`. Contract: `docs/PRODUCT-DEFAULTS.md` (lessons in `docs/lessons/`). Then `promo preview` (540p and stills only), `promo review status`, and `promo build --final` only after Marketing, Zen and Director have signed `reviews/round-N.md` (three rounds, then Patrick). Do not invent claims, URLs or UI to fill a blank. `promo flow` still has its own five council rounds; this gate is the plan's review file.
+
 ## THE FLOW (default: use it for every new video; the person stays in the loop)
 `promo flow` is a gated state machine (`<project>/flow/flow.json`). It refuses to skip a stage; the person decides four things (style, which scripts go on, the ONE plan review, the draft) and a gate is approved only by their name
 (`approve ... --by NAME`, an agent name is refused; an approval goes stale if the thing approved changes). Start: `promo flow init <name> --intent "<their words, exact>"`

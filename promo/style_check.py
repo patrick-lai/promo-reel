@@ -38,6 +38,18 @@ def run(spec):
     if "no-fx" in checks:
         bad = [s.id for s in spec.shots if any(s.get(k) for k in ("fx_in", "fx_out", "flash", "speed_lines"))]
         out.append(("no-fx", "FAIL" if bad else "PASS", f"flash / speed-line fx not allowed in {preset}: shots {bad}" if bad else "no flashes or speed lines"))
+    # preset @2 (docs/PRODUCT-DEFAULTS.md): cut-rate curve, one planned hold, phrase sync, hero open, talk-show pace
+    from . import pacing as P
+    if "cut-rate" in checks:
+        out.append(P.cut_rate_gate(spec, st))
+    if "planned-hold" in checks:
+        out.append(P.planned_hold_gate(spec, st))
+    if "phrase-sync" in checks:
+        out.append(P.phrase_sync_gate(spec, st))
+    if "hero-open" in checks:
+        out.append(P.hero_open_gate(spec, st))
+    if "talk-pace" in checks:
+        out.append(P.talk_pace_gate(spec, st))
     return out
 
 

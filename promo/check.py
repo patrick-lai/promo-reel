@@ -138,17 +138,19 @@ def run(spec):
     probs = spec.validate()
     rep.add("timeline", "FAIL" if probs else "PASS", "; ".join(probs) if probs else f"{len(spec.shots)} shots contiguous 0..{spec.timeline.beats} beats")
 
-    # 5. beat grid
+    # 5. beat grid. preset @2 with pacing.strict_beat false snaps to phrases instead (docs/PRODUCT-DEFAULTS.md):
+    # an off-beat cut is not a FAIL. Version 1 and legacy specs stay on the beat.
     sub = qa.get("beat_subdivision", 1)
+    loose = ((spec.style or {}).get("pacing") or {}).get("strict_beat") is False
     # the very end may stop off-grid (trimmed to where the music ends, e.g. timeline.beats: 224.76695); every cut stays on the grid
     last = spec.shots[-1] if spec.shots else None
-    bad = [s.id for s in spec.shots if any(abs(b * sub - round(b * sub)) > 1e-9 for b in (s.b0, s.b1)
+    off = [s.id for s in spec.shots if any(abs(b * sub - round(b * sub)) > 1e-9 for b in (s.b0, s.b1)
                                            if not (s is last and b == s.b1 and abs(b - spec.timeline.beats) < 1e-9))]
     expect = round(spec.duration * spec.fps)
     tot = spec.total_frames()
     msgs = []
-    if bad:
-        msgs.append(f"shots off the beat grid: {bad}")
+    if off and not loose:
+        msgs.append(f"shots off the beat grid: {off}")
     if tot != expect:
         msgs.append(f"timeline frames {tot} != duration*fps {expect}")
     for s in spec.shots:
@@ -160,8 +162,16 @@ def run(spec):
                     msgs.append(f"segment {s.id}: {n} frames != {s.n}")
             except Exception as e:  # noqa: BLE001
                 msgs.append(f"segment {s.id}: unreadable ({e})")
-    rep.add("beat-grid", "FAIL" if msgs else "PASS", "; ".join(msgs) if msgs else f"all cuts on beats, {tot} frames, rendered segments match"
-            + (f"; ends off-grid at beat {spec.timeline.beats:g} (tail trimmed to output.duration)" if abs(spec.timeline.beats - round(spec.timeline.beats * sub) / sub) > 1e-9 else ""))
+    tail = f"; ends off-grid at beat {spec.timeline.beats:g} (tail trimmed to output.duration)" if abs(spec.timeline.beats - round(spec.timeline.beats * sub) / sub) > 1e-9 else ""
+    if msgs:
+        grid_msg = "; ".join(msgs)
+    elif loose and off:
+        grid_msg = f"phrase sync (per-beat lock off): cuts off the beat {off}; {tot} frames, rendered segments match" + tail
+    elif loose:
+        grid_msg = f"phrase sync (per-beat lock off); cuts on beats, {tot} frames, rendered segments match" + tail
+    else:
+        grid_msg = f"all cuts on beats, {tot} frames, rendered segments match" + tail
+    rep.add("beat-grid", "FAIL" if msgs else "PASS", grid_msg)
 
     # 2/3/4. per-output checks
     for m in spec.masters:

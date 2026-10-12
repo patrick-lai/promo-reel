@@ -4,7 +4,7 @@ A declarative, agent-runnable pipeline for **product promo videos made from real
 
 - **Agents start here:** [`skills/promo-reel/SKILL.md`](skills/promo-reel/SKILL.md) (short), [`skills/promo-video-route/SKILL.md`](skills/promo-video-route/SKILL.md) (which video model / Higgsfield vs Runway), and [`AGENTS.md`](AGENTS.md) (the full workflow, team rules, and what still needs a human).
 - **Capture handoff:** [`capture/README.md`](capture/README.md) and `projects/<name>/footage/manifest.yaml`.
-- **Starting a project:** [`templates/new-project/`](templates/new-project/) or `promo new <name> --style hero|anime-opening|livestream|horizon|cinematic-story`. Projects are saved where you choose (`promo config output home|repo|default|<folder with {project}/{slug}>`, or the folder button in the promo-flow Stage; by default the gitignored `projects/`), so they can live on an external drive and not in this repo.
+- **Starting a project:** [`templates/new-project/`](templates/new-project/) or `promo new <name> --style hero|anime-opening|livestream|horizon|cinematic-story`. A thin prompt is not a spec: `promo plan <name> --prompt "<their words>"` fills the idea, preset, five beats, length, shot list, capture defaults and hook into `promo.yaml` ([`docs/PRODUCT-DEFAULTS.md`](docs/PRODUCT-DEFAULTS.md)). Projects are saved where you choose (`promo config output home|repo|default|<folder with {project}/{slug}>`, or the folder button in the promo-flow Stage; by default the gitignored `projects/`), so they can live on an external drive and not in this repo.
 
 ## Install
 ```
@@ -35,13 +35,17 @@ tests/                    fast unit tests (.venv/bin/python tests/test_<name>.py
 ## CLI
 ```
 promo new <name> [--style hero|anime-opening|livestream|cinematic-story|horizon]   scaffold projects/<name>/ for a style preset
-promo styles                             list style presets (pacing, band, typography, transitions, checks)
+promo plan <name> --prompt "..." [--dir DIR]   fill a thin prompt into promo.yaml (docs/PRODUCT-DEFAULTS.md)
+promo preview -p <promo.yaml>            540p render + one still per shot (refuses any other scale)
+promo review round|status -p <promo.yaml>   reviews/round-N.md slots for Marketing, Zen, Director (max 3)
+promo styles                             list style presets (pacing, band, typography, transitions, checks; @2 targets)
 promo -p projects/<name>/promo.yaml <cmd>
   status [--json]                        what is up to date, stale or missing, step by step
   assets [--json] | fetch                licence gate | download music/models (sha256-verified)
   footage list|verify [--json]           footage manifest; verify = exists + sha256
   footage add <abs path> --id ID --shots 05 --commit SHA --capture URL --framing ... --dpr 2 [--demo]
-  build [--shots 05 06] [--force]        sfx -> vo -> music -> changed shots -> events -> mix -> assemble -> contact
+  build [--shots 05 06] [--force] [--final]   sfx -> vo -> music -> changed shots -> events -> mix -> assemble -> contact
+                                         `--final` (and anything above 540p) refuses after `promo plan` until every beat is filled and Marketing, Zen and Director have signed the latest reviews/round-N.md
   shot <id...> | sfx | vo | music | events | mix | assemble | contact     individual steps
   timeline [--json]                      shot table: beats, seconds, frames
   grid [--json]                          bar/beat table + markers of the music grid (timeline.grid)
@@ -89,6 +93,8 @@ Builds are **idempotent**. Each step stamps a hash of its inputs (spec subtree, 
 ## Style presets
 `style: {preset: <name>}` in promo.yaml (or `promo new <name> --style <name>`) pulls in a named bundle of editorial
 rules; anything the spec sets under `style:` wins (deep merge). `promo styles` prints them (`promo/styles.py`).
+`hero@2`, `anime-opening@2` and `livestream@2` (or `style.version: 2`) add the reference-study pacing in
+[`docs/PRODUCT-DEFAULTS.md`](docs/PRODUCT-DEFAULTS.md). `promo plan` writes version 2 unless the file already locks `version: 1`. Version 1 stays the default for `promo new` without `@2`.
 
 | Preset | Look | Gates it adds |
 |---|---|---|
@@ -134,7 +140,7 @@ so it may wait for other heavy jobs. Talk-show tests and specs read the hero foo
 | text-edge (WARN) | text or cards clipped by the output frame / crop edge: a `named` box crossing the crop, or, on UI shots, glyph-sized ink touching the left / right footage viewport edge (the anime band, the livestream screen; 32 px corners ignored) at the same spot on >= 2 of 3 sampled frames. More than 3 spots on one edge = a push-in cropping a whole pane, treated as framing. `edges: [top, bottom]` opts in to the stroke test on those edges |
 | empty-frame (WARN) | a UI shot whose largest flat region (blurred blocks, so dotted canvas counts) of one background level, not counting blocks next to content, is over `max_frac` (40 %) of the footage viewport. Scenery captures (`non_ui_capture`: Workshop / Outside views), shots with no footage and `ui: false` shots are skipped |
 | caption-truth (WARN) | a caption / card count claim ('8 TASKS', 'ALL LANDED', '3 AGENTS') disagrees with the claim table it selects from or with the footage manifest notes of the clip on screen, or nothing backs it |
-| long-hold (WARN) | the footage viewport does not change (<= 0.05 % of pixels move > 10 levels at 384 px wide, so typing and badge flips count as change) for longer than `max_s` (hero 3.5 s, anime-opening 2.8 s, livestream 6 s; specs with a `livestream:` block and no preset use livestream). Cards, credits and blank screens are skipped |
+| long-hold (WARN) | the footage viewport does not change (<= 0.05 % of pixels move > 10 levels at 384 px wide, so typing and badge flips count as change) for longer than `max_s` (hero 3.5 s, anime-opening 2.8 s, livestream 6 s; specs with a `livestream:` block and no preset use livestream). Cards, credits and blank screens are skipped. One shot marked `hold: planned` and held 7–12 s is exempt (max one per video) |
 
 | brief (every project with `brief.yaml`) | `brief.yaml` is missing, `intent_verbatim` is empty, a reference has no `why`, a conflict is still `pending` or has no `decided_by`. WARN when not human-confirmed (or edited since). A project without `brief.yaml` WARNs, and FAILs when `style.require_brief: true` |
 | references | a reference listed in the brief has no `reference/<id>/DOSSIER.md`, a `TODO:` remains, a section is empty, contact sheets / transcript.json / audio metrics are missing, an Evidence read box is unticked, or a NOT-transferable item has no `conflicts` entry (`ref: <id>`) |
