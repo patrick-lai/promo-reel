@@ -51,6 +51,9 @@ Spec keys (per shot):
                                 brackets: true | {pad, len, width}   [ ] corner brackets round the text (typography as UI)
                                 anchors: true   a hairline selection box with four square handles round the text
                                 thumb: <clip id | image>   a small rounded real still inline before the text (its pixels only scaled)
+                                anchor: panel-bl   a feature tag grouped with the panel: left-aligned to the panel's left edge, `gap`
+                                      (fraction of the frame height, default 0.012) BELOW its bottom edge (never on the UI), and it floats /
+                                      scales with the panel (entrance, pullback); cx / cy are ignored
     resolve: {kind: mosaic, dur: 0.9, steps: 6, from_blocks: 8, to_blocks: 96, tone: 0.05}   the BACKDROP / plate resolves from a coarse mosaic to
                                 sharp in `steps` hard stages, drawn AFTER grade / bloom / grain so the blocks stay crisp (never the UI panel: its
                                 pixels are only transformed geometrically). Columns go geometrically from_blocks -> to_blocks; `tone` = a per-block
@@ -402,12 +405,22 @@ def _kinetic_measure(spec, item, size, fallback):
     return font, tw, th, ox, oy, thumb, tw + extra, max(th, thumb.height if thumb is not None else 0)
 
 
+def anchored_centre(item, pb, w, h, H):
+    """(cx, cy) in px of a kinetic line with `anchor: panel-bl` under panel box pb, or None when it is not anchored (or no panel)."""
+    if item.get("anchor") != "panel-bl" or not pb:
+        return None
+    return pb[0] + w / 2.0, pb[3] + float(item.get("gap", 0.012)) * H + h / 2.0
+
+
 def kinetic_box(spec, shot, item, size=(1920, 1080), look=None, fallback=None):
     """Settled box [x0, y0, x1, y1] of a kinetic line (text and inline thumb) in output px, measured with the real font."""
     look = look or look_of(spec, shot)
     W, H = size
     _f, _tw, _th, _ox, _oy, _thumb, w, h = _kinetic_measure(spec, item, size, fallback)
     pb = panel_box_of(spec, shot, size)
+    ac = anchored_centre(item, pb, w, h, H)
+    if ac:
+        return [ac[0] - w / 2.0, ac[1] - h / 2.0, ac[0] + w / 2.0, ac[1] + h / 2.0]
     cx = float(item.get("cx", 0.5)) * W
     if item.get("cy") is not None:
         cy = float(item["cy"]) * H
@@ -712,6 +725,11 @@ class Composer:
             layer = layers[min(len(layers), cascade_words(it, t)) - 1] if len(layers) > 1 else layers[0]
             if len(layers) > 1 and cascade_words(it, t) < 1:
                 continue
+            pbt = pb0 = None
+            if it.get("anchor") == "panel-bl" and self.panel:
+                pbt, pb0 = self._box(t)[0], panel_box_of(self.spec, self.shot, (self.W, self.H))
+            kp = (pbt[2] - pbt[0]) / max(pb0[2] - pb0[0], 1e-6) if pbt is not None and pb0 else 1.0
+            s *= kp                                          # an anchored tag zooms with the panel (entrance / pullback)
             w, h = max(1, int(layer.width * s)), max(1, int(layer.height * s))
             im = layer if abs(s - 1.0) < 1e-3 else layer.resize((w, h), Image.BILINEAR)
             if a < 0.999:
@@ -719,6 +737,9 @@ class Composer:
                 im = im.copy()
                 im.putalpha(al)
             cx, cy = (box[0] + box[2]) / 2.0 + dx * self.W, (box[1] + box[3]) / 2.0 + dy * self.H
+            if pbt is not None and pb0:                      # keep the settled offset from the panel's bottom-left corner, scaled with it
+                cx = pbt[0] + (cx - pb0[0]) * kp
+                cy = pbt[3] + (cy - pb0[3]) * kp
             out.paste(im.convert("RGB"), (int(round(cx - w / 2.0)), int(round(cy - h / 2.0))), im.getchannel("A"))
         return out
 

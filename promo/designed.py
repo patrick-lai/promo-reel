@@ -866,6 +866,8 @@ def compile_shots(designed, bpm=None, ready=(), sfx=()):
             item = dict(text=c["text"], at=c["at"], dur=c["dur"], size_pct=c["size_pct"], anim=c["anim"])
             if c.get("from"):
                 item["from"] = c["from"]
+            if c.get("anchor"):                   # a feature tag grouped with the panel (cinema `anchor: panel-bl`)
+                item.update(anchor=c["anchor"], gap=c.get("gap", 0.012))
             if eth:
                 item.update(uppercase=False, outline=False, shadow=False, color=list(TYPE_STYLE_ETHEREAL["fill"]), weight=c.get("weight", "Light"))
                 for k in ("brackets", "anchors"):
@@ -1098,12 +1100,24 @@ def apply_shots(path, register=True, force=False):
     spec = load_spec(path, plugins=False)
     registered = []
     if register:
+        try:
+            known = FT.load(spec)
+        except Exception:  # noqa: BLE001
+            known = {}
         for st in des.get("stills") or []:
             if not st.get("exists") or not os.path.isfile(st["path"]):
                 continue
             uses = [r["id"] for r in des["shots"] if r.get("ui_source") == st["id"]]
-            FT.add(spec, st["path"], st["id"], shots=uses, commit="unknown", capture="supplied by the person (not recorded by promo)",
-                   framing="as supplied", dpr=None, notes="supplied still / clip; confirm it is the real product UI")
+            prov = dict(commit="unknown", capture="supplied by the person (not recorded by promo)", framing="as supplied", dpr=None,
+                        notes="supplied still / clip; confirm it is the real product UI", demo=False, captured_at=None)
+            old = known.get(st["id"]) or {}
+            if old and os.path.abspath(FT.expand_env(str(old.get("path", "")))) == os.path.abspath(st["path"]):
+                # re-registering the same file keeps what `promo footage add` recorded (commit, capture, demo flag ...)
+                dpr = old.get("dpr")
+                prov.update(commit=old.get("app_commit", prov["commit"]), capture=old.get("capture", prov["capture"]),
+                            framing=old.get("framing", prov["framing"]), dpr=None if dpr in (None, "unknown") else dpr,
+                            notes=old.get("notes", prov["notes"]), demo=bool(old.get("demo")), captured_at=old.get("captured_at"))
+            FT.add(spec, st["path"], st["id"], shots=uses, **prov)
             registered.append(st["id"])
         spec._footage = None
     try:
