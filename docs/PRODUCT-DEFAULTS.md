@@ -92,6 +92,14 @@ Locked v1 presets stay as they are. `style.version: 2` or `style.preset: hero@2`
 
 **Beat sync:** snap cuts to **musical phrases** by default; strict per-beat lock is optional (`pacing.strict_beat: true`).
 
+## Thin prompt with stills (designed plan)
+
+When the prompt is thin (at most ~80 words, fewer than three beats written out) and stills or clips are supplied (or `--designed`),
+`promo plan` also writes `plan.designed` and `plan.cospec` (at most three optional questions). The default dialect is **ethereal**;
+`kinetic` when `--dialect`, a `dialect:` line, a co-spec answer or the prompt's words say so. The team default end card
+(`--default cta=...`) fills the end card only when nothing else does and is marked for the product owner to confirm. Every word on a
+card is the person's own; anything missing is listed under `needs`. Contract and rules: `docs/thin-prompt-quality.md`.
+
 ## Review rounds
 
 1. `promo preview` → stills + contact sheets + **540p** only

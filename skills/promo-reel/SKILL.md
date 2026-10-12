@@ -129,6 +129,18 @@ grok, codex/GPT, a person with a recorder. promo-reel only specifies, ingests an
   (`generated-plates`) and WARNs for human review (`generated-review`). Image to video is the Studio's start frame (`--first-frame` on
   `promo gen video`); reference images (style guidance) are not wired, so describe the look in words.
 
+## Thin prompt + stills: the designed plan (`promo plan --stills`)
+A few lines of prompt, two or three real stills and a length is enough. `promo plan NAME --prompt "..." --stills a.png b.png` writes
+`plan.designed`: per-shot framing (floating panel primary, device for context, fullscreen only for real peak action, plate for type),
+kinetic cards (only the person's own words), non-UI plate prompts (`promo gen plan`), the length band and the spine, plus at most
+**three** co-spec questions (`promo cospec`: the dialect only if ambiguous, the end card GitHub vs landing, the one promise, the audience).
+`promo designed apply NAME` compiles it to `cinema` shots; `promo check` adds the `designed-*` gates.
+Two dialects: **ethereal** (default for a thin prompt: breathable holds, micro snaps, sparse type as UI, small panels on pastel plates,
+music-led, no fullscreen, no whip / shake / blur) and **kinetic** (dense cuts, big type locked to the VO, accelerating recap). Pick with
+`--dialect`, a `dialect:` line or the prompt's words. `--default cta="..."` is a team default for the end card, flagged for the product
+owner to confirm. Never invent claims, numbers, URLs or UI; abstraction is done in type, never by drawing UI (an open question for
+Patrick is recorded in `plan.designed.conflicts`). Details, the runbook and the evals: `docs/thin-prompt-quality.md`.
+
 ## Pick a style preset first (do not write your own renderer)
 Every look is a **style preset**: pacing rules, a caption/card band, typography, transitions and the `promo check` gates
 for them. `promo styles` lists them. Scaffold with the one that matches the brief:
