@@ -36,6 +36,10 @@ Presets:
                  beats from a music grid (half beats in bursts, shots >= 0.25 s, median ~1.5 s), petals / bubbles, whiteouts
                  and ink wipes on big cuts (<= 3 flashes/s). Shot type `mv` (promo/shots/mv.py), lyrics in promo/lyrics.py,
                  plates and the look bible via `promo mv`.
+
+Version 2 (`style.version: 2` or `preset: hero@2`) of hero, anime-opening and livestream adds the reference-study
+pacing targets (docs/PRODUCT-DEFAULTS.md): phrase sync by default, cut-rate curves, one planned hold. Version 1 is
+what `PRESETS` holds and stays the default when a spec names a preset with no version.
 """
 from __future__ import annotations
 
@@ -207,6 +211,55 @@ PRESETS = {
 }
 
 
+# Version 2 overlays. Merged on top of the locked v1 preset; they do not change PRESETS itself.
+# Targets: docs/PRODUCT-DEFAULTS.md (reference study). checks_add is appended, not a style key.
+PRESETS_V2 = {
+    "hero": dict(
+        pacing=dict(
+            snap="phrase",
+            sync="phrase",
+            strict_beat=False,
+            cut_rate=dict(overall=[0.35, 0.45], montage=[0.6, 0.8], montage_window=[0.70, 0.87]),
+            promise_by_s=0.5,
+            logo_after_s=8.0,
+            hero_word_frac=[0.08, 0.15],
+            card_hold_s=[2.0, 3.0],
+            max_captions=5,
+            end_card_min_s=6.0,
+            planned_hold=dict(min_s=7.0, max_s=12.0, max_count=1),
+        ),
+        checks_add=["cut-rate", "planned-hold", "phrase-sync", "hero-open"],
+    ),
+    "anime-opening": dict(
+        pacing=dict(
+            sync="phrase",          # bar snap (v1) stays the mechanical grid; phrase sync is the extra WARN
+            cut_rate=dict(early=0.3, peak=1.0, peak_window=[0.45, 0.67], tol=0.35),
+            median_shot_s=[1.2, 1.5],
+            loudness_lufs=-14.0,
+            planned_hold=dict(min_s=7.0, max_s=12.0, max_count=1),
+        ),
+        checks_add=["cut-rate", "planned-hold", "phrase-sync"],
+    ),
+    "livestream": dict(
+        pacing=dict(
+            snap="phrase",
+            sync="phrase",
+            strict_beat=False,
+            layout_every_s=[5.0, 7.0],
+            speaker_turn_max_s=12.0,
+            wpm=[165, 180],
+            jokes_per_100s=[4, 5],
+            bit_by_s=15.0,
+            caption_height_frac=[0.03, 0.04],
+            caption_hold_s=[2.0, 4.5],
+            demo_cue_s=1.0,
+            planned_hold=dict(min_s=7.0, max_s=12.0, max_count=1),
+        ),
+        checks_add=["talk-pace", "planned-hold", "phrase-sync"],
+    ),
+}
+
+
 class StyleError(Exception):
     pass
 
@@ -225,18 +278,59 @@ def deep_merge(base, over):
     return out
 
 
+def split_preset(name):
+    """('hero', None) or ('hero', 2) from `hero` / `hero@2`. The version in the name is optional."""
+    if not name or "@" not in str(name):
+        return name, None
+    base, ver = str(name).rsplit("@", 1)
+    if not ver.isdigit() or int(ver) < 1:
+        raise StyleError(f"bad preset version in {name!r}; use {base}@1 or {base}@2")
+    return base, int(ver)
+
+
+def _versioned(base, ver):
+    """Locked v1 dict, or v1 deep-merged with the @2 overlay. `checks_add` is appended to v1 checks."""
+    if ver == 1:
+        out = copy.deepcopy(PRESETS[base])
+        out["version"] = 1
+        return out
+    if ver != 2 or base not in PRESETS_V2:
+        have = "1 and 2" if base in PRESETS_V2 else "1"
+        raise StyleError(f"unknown preset version {ver} for {base}; have {have}")
+    extra = PRESETS_V2[base]
+    out = deep_merge(PRESETS[base], {k: v for k, v in extra.items() if k != "checks_add"})
+    checks = list(PRESETS[base]["checks"])
+    for c in extra.get("checks_add") or []:
+        if c not in checks:
+            checks.append(c)
+    out["checks"] = checks
+    out["version"] = 2
+    return out
+
+
 def resolve(raw):
     """Resolved style dict for a raw spec: preset defaults deep-merged with the spec's `style:` block.
-    No `style.preset` = legacy behaviour (hero defaults, nothing injected)."""
+    No `style.preset` = legacy behaviour (hero defaults, nothing injected).
+    `preset: hero` is version 1 (locked). `preset: hero@2` or `version: 2` opts into the reference-study pacing."""
     st = (raw or {}).get("style") or {}
     name = st.get("preset")
     if not name:
         return dict(st, preset=None)
-    if name not in PRESETS:
-        raise StyleError(f"unknown style preset {name!r}; have {names()}")
-    over = {k: v for k, v in st.items() if k != "preset"}
-    res = deep_merge(PRESETS[name], over)
-    res["preset"] = name
+    base, tagged = split_preset(name)
+    if base not in PRESETS:
+        raise StyleError(f"unknown style preset {base!r}; have {names()}")
+    ver = st.get("version", tagged)
+    if ver is None:
+        ver = 1
+    try:
+        ver = int(ver)
+    except (TypeError, ValueError):
+        raise StyleError(f"style.version must be 1 or 2, not {ver!r}")
+    preset = _versioned(base, ver)
+    over = {k: v for k, v in st.items() if k not in ("preset", "version")}
+    res = deep_merge(preset, over)
+    res["preset"] = base
+    res["version"] = ver
     if isinstance(res.get("band"), dict):
         res["band"] = layout_band(res["band"])
     return res

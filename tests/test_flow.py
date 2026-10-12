@@ -461,6 +461,11 @@ def test_stale_approval_is_not_done(pd):
 
 
 def test_making_a_planned_asset_real_does_not_ask_for_the_plan_again(pd):
+    from promo import genvideo as G
+    try:
+        G.providers("image", "auto")
+    except SystemExit:
+        pytest.skip("needs an image provider (promo gen detect)")
     at_storyboard(pd)
     AP.save(os.path.join(pd, "flow"), [dict(id="m", kind="image", source="mock", scenes=["01", "02"], how="h")])
     F.make_assets(pd, None, False, "auto")

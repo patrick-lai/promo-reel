@@ -1,0 +1,13 @@
+# Lesson 1: Lead with the reason to keep watching
+
+**The principle.** In the first few seconds a viewer decides one thing: is this for me? The "first 3 seconds" figure is an editors' rule of thumb, not a platform statistic. The number YouTube actually measures is its Intro key moment, the share of viewers still watching at 30 seconds, and its advice is that the opening should deliver what the title and thumbnail promised ([YouTube Help: key moments for audience retention](https://support.google.com/youtube/answer/9314415)). A good hook does three jobs at once: it names the subject, shows a bit of evidence, and starts the promised work. The trap is building up to the interesting thing. The interesting thing is the hook, so put it first.
+
+It works because nobody on a feed owes you attention. They're scrolling, often with the sound off, and a brand name tells them nothing unless they already know you.
+
+**Example.** [Lovable 2.0 is here](https://www.youtube.com/watch?v=xDwR1_vrIg8) (10.7M views when we studied it) puts a typed headline on screen at about 0.5 s, and its logo doesn't land until about 7.9 s. [Introducing Devin](https://www.youtube.com/watch?v=fjHtjT7GO1c) makes its whole claim, "the first AI software engineer", in the first spoken sentence about 5 s in, says "let me show you", and the demo is running by 0:09. Both earn attention before they ask for brand recognition.
+
+**Our own cuts.** Hero v5 is quick on timing: the wordmark is up at 0.15 s and "Your AI dev crew" at 0.4 s. But that's a label, not a promise; a stranger knows the name and the category, not why to care. The talk show v7 is the clearer lesson. Its best line, Mao's "neither of us is going to write the code", doesn't arrive until about 8.5 s, after a 1.5 s sting and Hiyori's 6.8 s welcome. The Lenny podcast in our reference study does the opposite and opens on its strongest soundbites before any introductions. The anime opening gets more leeway, because people who press play on an opening expect a slow cold open and a logo slam.
+
+**For the next commission-ai video.** Before any edit, write the hook as one sentence that a stranger with the sound off would understand, and get it on screen by about 0.5 s; the logo can wait until about 8 s. One option for the hero (not a decision) is to open on the payoff we already have real footage of, all 8 tasks landed overnight, and let the wordmark follow. For the talk show, one option is to move Mao's line to the very top as a cold open, then do the welcome.
+
+**Your exercise.** Pause hero v5 at 3 s (`/workspace/videos/commission-ai-promo/cuts/hero-v5-1080.mp4`) and write one sentence on what a stranger knows by then. Then write one replacement opening line of 8 words or fewer.

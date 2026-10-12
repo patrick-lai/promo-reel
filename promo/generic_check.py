@@ -647,12 +647,21 @@ def frame_gates(spec, rules=None, clipped_named=()):
     if lh.get("on", True):
         runs = static_runs(out, spec, rects, width=lh.get("width", 384), pix_delta=lh.get("pix_delta", 10),
                            max_changed=lh.get("max_changed", 0.0005))
-        long_ = [(sid, d, t) for sid, (d, t) in runs.items() if d > lh["max_s"] + 1e-6]
+        long_, exempt = long_hold_offenders(runs, spec, lh["max_s"])
         top = max(runs.items(), key=lambda x: x[1][0]) if runs else None
+        note = f" (planned hold exempt: {', '.join(sorted(exempt))})" if exempt else ""
         res.append(("long-hold", "WARN" if long_ else "PASS",
-                    "; ".join(f"shot {sid}: footage static for {d:.2f}s from {t:.2f}s (max {lh['max_s']:g}s)" for sid, d, t in long_) if long_
-                    else f"no static hold over {lh['max_s']:g}s (longest: shot {top[0]} {top[1][0]:.2f}s)" if top else "no shots"))
+                    "; ".join(f"shot {sid}: footage static for {d:.2f}s from {t:.2f}s (max {lh['max_s']:g}s)" for sid, d, t in long_) + note if long_
+                    else f"no static hold over {lh['max_s']:g}s{note} (longest: shot {top[0]} {top[1][0]:.2f}s)" if top else "no shots"))
     return res
+
+
+def long_hold_offenders(runs, spec, max_s):
+    """Static runs over max_s, minus the one in-window `hold: planned` shot (docs/PRODUCT-DEFAULTS.md)."""
+    from . import pacing as P
+    exempt = P.exempt_hold_ids(spec)
+    long_ = [(sid, d, t) for sid, (d, t) in runs.items() if d > float(max_s) + 1e-6 and sid not in exempt]
+    return long_, exempt
 
 
 def run(spec, ctx=None):

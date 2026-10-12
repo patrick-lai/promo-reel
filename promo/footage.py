@@ -282,6 +282,11 @@ def add(spec, path, cid, shots=(), commit="unknown", capture="unknown", framing=
         found = GL.scan(real)["glitches"]
         if found:
             entry["glitches"] = [g["frame"] for g in found]
+        try:
+            from . import shotqa
+            entry["shot_qa"] = shotqa.for_clip(spec, real, shots, notes)
+        except Exception as e:  # noqa: BLE001  (a probe glitch must not block registering the take)
+            entry["shot_qa"] = [dict(gate="shot-qa", status="WARN", msg=f"skipped: {e}")]
     clips = load_raw(manifest_path(spec))
     for i, c in enumerate(clips):
         if c.get("id") == cid:
