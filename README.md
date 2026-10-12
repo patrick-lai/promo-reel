@@ -4,7 +4,7 @@ A declarative, agent-runnable pipeline for **product promo videos made from real
 
 - **Agents start here:** [`skills/promo-reel/SKILL.md`](skills/promo-reel/SKILL.md) (short), [`skills/promo-video-route/SKILL.md`](skills/promo-video-route/SKILL.md) (which video model / Higgsfield vs Runway), and [`AGENTS.md`](AGENTS.md) (the full workflow, team rules, and what still needs a human).
 - **Capture handoff:** [`capture/README.md`](capture/README.md) and `projects/<name>/footage/manifest.yaml`.
-- **Starting a project:** [`templates/new-project/`](templates/new-project/) or `promo new <name> --style hero|anime-opening|livestream|horizon|cinematic-story`. A thin prompt is not a spec: `promo plan <name> --prompt "<their words>"` fills the idea, preset, five beats, length, shot list, capture defaults and hook into `promo.yaml` ([`docs/PRODUCT-DEFAULTS.md`](docs/PRODUCT-DEFAULTS.md)). Projects are saved where you choose (`promo config output home|repo|default|<folder with {project}/{slug}>`, or the folder button in the promo-flow Stage; by default the gitignored `projects/`), so they can live on an external drive and not in this repo.
+- **Starting a project:** [`templates/new-project/`](templates/new-project/) or `promo new <name> --style hero|anime-opening|livestream|horizon|cinematic-story|vertical-short`. A thin prompt is not a spec: `promo plan <name> --prompt "<their words>"` fills the idea, preset, five beats, length, shot list, capture defaults and hook into `promo.yaml` ([`docs/PRODUCT-DEFAULTS.md`](docs/PRODUCT-DEFAULTS.md)). `vertical-short@1` is the locked 9:16 format shell (about 6–20 s; default is an 11 s UI zoom), not the 60 s hero. Projects are saved where you choose (`promo config output home|repo|default|<folder with {project}/{slug}>`, or the folder button in the promo-flow Stage; by default the gitignored `projects/`), so they can live on an external drive and not in this repo.
 
 ## Install
 ```
@@ -34,7 +34,7 @@ tests/                    fast unit tests (.venv/bin/python tests/test_<name>.py
 
 ## CLI
 ```
-promo new <name> [--style hero|anime-opening|livestream|cinematic-story|horizon]   scaffold projects/<name>/ for a style preset
+promo new <name> [--style hero|anime-opening|livestream|cinematic-story|horizon|vertical-short]   scaffold projects/<name>/ for a style preset
 promo plan <name> --prompt "..." [--dir DIR]   fill a thin prompt into promo.yaml (docs/PRODUCT-DEFAULTS.md)
 promo preview -p <promo.yaml>            540p render + one still per shot (refuses any other scale)
 promo review round|status -p <promo.yaml>   reviews/round-N.md slots for Marketing, Zen, Director (max 3)
@@ -94,7 +94,7 @@ Builds are **idempotent**. Each step stamps a hash of its inputs (spec subtree, 
 `style: {preset: <name>}` in promo.yaml (or `promo new <name> --style <name>`) pulls in a named bundle of editorial
 rules; anything the spec sets under `style:` wins (deep merge). `promo styles` prints them (`promo/styles.py`).
 `hero@2`, `anime-opening@2` and `livestream@2` (or `style.version: 2`) add the reference-study pacing in
-[`docs/PRODUCT-DEFAULTS.md`](docs/PRODUCT-DEFAULTS.md). `promo plan` writes version 2 unless the file already locks `version: 1`. Version 1 stays the default for `promo new` without `@2`.
+[`docs/PRODUCT-DEFAULTS.md`](docs/PRODUCT-DEFAULTS.md). `promo plan` writes version 2 unless the file already locks `version: 1`, or the preset is `vertical-short` (locked at `@1`; `promo plan` writes version 1 and a short 9:16 shell). Version 1 stays the default for `promo new` without `@2`.
 
 | Preset | Look | Gates it adds |
 |---|---|---|
@@ -102,6 +102,7 @@ rules; anything the spec sets under `style:` wins (deep merge). `promo styles` p
 | `anime-opening` | kinetic title cards on real footage: cuts on bar lines from a music grid (`timeline.grid`), UI shots >= 1 bar, cards >= 1 bar in ONE fixed lower band (`band.frac`, 15 %) that never covers app text, flashes / speed lines only at cuts; shot type `anime` | grid, bar-cuts, shot-hold, card-hold, card-band, card-ui-clear, fx-between, flash-rate, claims, named, markers, placeholders |
 | `livestream` | talk show / livestream composite (shot type `livestream`, Live2D hosts beside the app screen): long holds, chyron band, cuts only | shot-hold (>= 4 s), no-fx + the `livestream-*` gates |
 | `horizon` | Opus-5.5-style horizon film (shot types `horizon`, `dawn`): rapid cuts of real surfaces each framed on a real edge (`anchor`), ONE serif line on the horizon (show-level `horizon_text`) whose words change across cuts, a burst then a hold >= 3 s, a held dawn end card; cuts only | horizon-shot-hold, horizon-cuts, horizon-burst-hold, horizon-text, horizon-text-fit, horizon-edge, horizon-transitions, horizon-dawn, horizon-text-ui, horizon-wordless-open, horizon-sky |
+| `vertical-short` | Locked `@1` X / Shorts shell, 9:16 (1080×1920). Captions only, one idea, Apple-clean motion. Primary: UI zoom, 10–12 s, one real capture, one zoom, one caption; logo never or last 1 s. Also a craft loop (8–15 s) and a 12 s before/after. Quote card and talking head are parked. Format shell only | the base caption and beat gates on the vertical frame |
 
 Claim tables (`claims:`, `promo/claims.py`) pick a card / caption line from the legibility record of the evidence shot,
 so a number on screen can never outrun the frame (`text_from: claims.<table>`; `confirm: <who>` marks provisional copy).

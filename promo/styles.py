@@ -36,10 +36,18 @@ Presets:
                  beats from a music grid (half beats in bursts, shots >= 0.25 s, median ~1.5 s), petals / bubbles, whiteouts
                  and ink wipes on big cuts (<= 3 flashes/s). Shot type `mv` (promo/shots/mv.py), lyrics in promo/lyrics.py,
                  plates and the look bible via `promo mv`.
+  vertical-short locked v1 (`vertical-short` or `vertical-short@1`; there is no @2): a 9:16 X / Shorts format
+                 shell for builders and engineers who care about UI craft. Apple-clean motion, intentional UI zooms,
+                 quiet pacing. Captions only (sound off). Outer length about 6–20 s. The plan default is the primary
+                 shell, UI zoom (10–12 s, one real capture, one zoom, one caption; logo never, or the last 1 s at most).
+                 Secondary is a craft loop (8–15 s). Tertiary is a 12 s before/after. Quote card and talking head are
+                 parked. Shells are format only: no content batch. Opus/Claude-style generative motion is optional,
+                 licensed, and on-brief: never required, never a stand-in for real UI, never a paint-out.
 
 Version 2 (`style.version: 2` or `preset: hero@2`) of hero, anime-opening and livestream adds the reference-study
 pacing targets (docs/PRODUCT-DEFAULTS.md): phrase sync by default, cut-rate curves, one planned hold. Version 1 is
-what `PRESETS` holds and stays the default when a spec names a preset with no version.
+what `PRESETS` holds and stays the default when a spec names a preset with no version. `vertical-short` is locked at
+version 1 and is not in that overlay.
 """
 from __future__ import annotations
 
@@ -208,6 +216,50 @@ PRESETS = {
         checks=["mv-shots", "mv-cuts", "mv-hold", "mv-median", "mv-flashes", "mv-plates", "look-bible", "lyrics", "test-audio"],
         qa=dict(min_caption_hold=0.8, beat_subdivision=2),
     ),
+    # Locked at v1. Not listed in PRESETS_V2: `vertical-short@2` is refused. `shells` are format defaults
+    # (timing, picture, caption, logo), not a content batch. Quote card and talking head stay parked.
+    "vertical-short": dict(
+        description="X / Shorts format shell: 9:16, captions only, one idea. Primary cut is a 10–12 s UI zoom. "
+                    "Apple-clean motion, intentional zooms, quiet pacing. Logo never, or the last second at most.",
+        frame=dict(aspect="9:16", w=1080, h=1920),   # scale 1 deliverable; scale 0.5 is 540x960, scale 2 is 2160x3840
+        taste=dict(
+            audience="Builders and engineers who care about UI craft. Not generic AI news.",
+            visual="Apple-clean motion, intentional UI zooms, quiet pacing.",
+            motion="Optional motion source: Opus/Claude-style generative motion for design, only when licensed and on-brief. "
+                   "Never required. Never a replacement for real app footage, and never a paint-out of real UI.",
+        ),
+        pacing=dict(
+            snap="beat",
+            min_caption_hold_s=2.0,
+            length_s=[6.0, 20.0],       # outer loop; each shell has its own band
+            default_length_s=11.0,      # primary UI zoom, inside 10–12
+            logo_last_s=1.0,
+            one_idea=True,
+            sound_off=True,
+            captions_only=True,
+        ),
+        # Lower-middle of the 1080x1920 frame (canvas units at scale 1). One caption line.
+        caption=dict(cx=540, cy=1560, size=48, max_w=920, zone=dict(x0=64, x1=1016, y0=1460, y1=1720)),
+        typography=dict(font=INTER, weight="SemiBold"),
+        transitions=dict(allowed=["cut"]),
+        checks=["caption-hold", "caption-zone", "beat-grid"],
+        qa=dict(min_caption_hold=2.0, beat_subdivision=1),
+        shells=[
+            dict(id="ui-zoom", rank="primary", label="UI zoom", length_s=[10, 12], default_s=11,
+                 picture="Real screen capture. One deliberate zoom on one control.",
+                 caption="One caption. The line carries the idea with the sound off.",
+                 logo="Never, or the last 1 second at most."),
+            dict(id="craft-loop", rank="secondary", label="Craft loop", length_s=[8, 15], default_s=12,
+                 picture="A UI-detail loop, or licensed generative motion, teaching one interaction. Not a product tour.",
+                 caption="Captions only. The line carries the one interaction with the sound off.",
+                 logo="Never, or the last 1 second at most."),
+            dict(id="before-after", rank="tertiary", label="Before/after polish", length_s=[12, 12], default_s=12,
+                 picture="Two frames of the same UI. One craft change. A diagram is allowed.",
+                 caption="Captions only. One line for the one change, readable with the sound off.",
+                 logo="Never, or the last 1 second at most."),
+        ],
+        parked=["quote card", "talking head"],
+    ),
 }
 
 
@@ -306,6 +358,17 @@ def _versioned(base, ver):
     out["checks"] = checks
     out["version"] = 2
     return out
+
+
+def frame_size(st, scale=1):
+    """Output pixels (w, h) at `scale`. 1920x1080 unless the preset declares `frame` with aspect, w and h.
+
+    `vertical-short` is 1080x1920 at scale 1 (9:16). Other presets, including hero @1 and @2, stay 16:9.
+    """
+    frame = (st or {}).get("frame") or {}
+    if frame.get("aspect") and frame.get("w") and frame.get("h"):
+        return int(int(frame["w"]) * scale), int(int(frame["h"]) * scale)
+    return int(1920 * scale), int(1080 * scale)
 
 
 def resolve(raw):

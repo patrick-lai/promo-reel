@@ -137,7 +137,6 @@ class Spec:
         if sc not in (0.5, 1, 2):
             raise SpecError("scale must be 0.5 (draft, 960x540), 1 or 2")
         self.scale = int(sc) if sc >= 1 else sc          # 0.5 = draft: review rounds render at 540p (render budget rule)
-        self.OW, self.OH = int(1920 * sc), int(1080 * sc)
         paths = raw.get("paths", {})
         self.build = self.resolve(paths.get("build", "build"))
         self.out = self.resolve(paths.get("out", "out"))
@@ -146,6 +145,8 @@ class Spec:
             self.style = styles.resolve(raw)
         except styles.StyleError as e:
             raise SpecError(str(e))
+        # 16:9 (1920x1080 at scale 1) unless the preset declares a frame. vertical-short@1 is 1080x1920.
+        self.OW, self.OH = styles.frame_size(self.style, sc)
         tl = raw.get("timeline", {})
         self.grid = None
         bpm = tl.get("bpm", 98)
