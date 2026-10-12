@@ -230,11 +230,254 @@ def cap_rows(rows, cap):
         if r["beat"] not in seen:
             chosen.append(r)
             seen.add(r["beat"])
+    chosen_ids = {id(r) for r in chosen}
     for r in rows:
         if len(chosen) >= keep_n:
             break
-        if r not in chosen:
+        if id(r) not in chosen_ids:
             chosen.append(r)
+            chosen_ids.add(id(r))
     index = {id(r): i for i, r in enumerate(rows)}
     chosen.sort(key=lambda r: index[id(r)])
     return chosen
+
+
+def _windows_from_edges(edges, duration):
+    edges = [float(x) for x in edges]
+    edges[0] = 0.0
+    edges[-1] = float(duration)
+    return [(SHOT_BEATS[i], edges[i], edges[i + 1]) for i in range(len(SHOT_BEATS))]
+
+
+def beat_windows(preset, duration, pace=None):
+    """(beat, start_s, end_s) across the master.
+
+    Hero keeps the lesson-3 slots (hook 0–4, problem 4–20, demo 20–42, payoff 42–52, ask from 52).
+    Anime-opening follows the @2 peak window (early, then ~1 cut/s between 45–67%). Livestream
+    follows the 5–7 s layout cadence, with the opening bit inside the first ~15 s.
+    """
+    duration = float(duration)
+    pace = pace or {}
+    if preset == "livestream":
+        windows, _counts = _live_plan(duration, pace)
+        return windows
+    if preset == "anime-opening":
+        return _anime_windows(duration, pace)
+    return _hero_windows(duration)
+
+
+def _hero_windows(duration):
+    scale = float(duration) / 60.0
+    edges = [0.0]
+    for _beat, _a, b in HERO_WINDOWS:
+        edges.append(b * scale)
+    return _windows_from_edges(edges, duration)
+
+
+def _anime_windows(duration, pace):
+    """Five beats aligned to the peak cut-rate curve, not the hero slots.
+
+    Hook and problem sit in the early section, demo is the peak window, payoff and ask come down after it.
+    """
+    cr = (pace or {}).get("cut_rate") or {}
+    w0, w1 = [float(x) for x in (cr.get("peak_window") or [0.45, 0.67])]
+    w0 = min(max(w0, 0.08), 0.8)
+    w1 = min(max(w1, w0 + 0.05), 0.95)
+    hook_end = w0 * 0.30
+    payoff_end = w1 + (1.0 - w1) * 0.55
+    return _windows_from_edges([0.0, hook_end * duration, w0 * duration, w1 * duration, payoff_end * duration, duration], duration)
+
+
+def _live_plan(duration, pace):
+    """(windows, per-beat shot counts) on the layout cadence. Fast end of the 5–7 s band, toward the cap."""
+    lo, hi = [float(x) for x in ((pace or {}).get("layout_every_s") or [5.0, 7.0])]
+    lo = max(lo, 0.1)
+    hi = max(hi, lo)
+    bit = float((pace or {}).get("bit_by_s") or 15.0)
+    n_beats = len(SHOT_BEATS)
+    if duration < lo * n_beats - 1e-9:
+        span = duration / n_beats
+        windows, t = [], 0.0
+        for beat in SHOT_BEATS:
+            windows.append((beat, t, t + span))
+            t += span
+        windows[-1] = (windows[-1][0], windows[-1][1], float(duration))
+        return windows, [1] * n_beats
+    n = max(n_beats, int(duration // lo))
+    while duration / n > hi + 1e-6:
+        n += 1
+    step = duration / n
+    hook_n = int(round(min(bit, duration) / step)) if step else 1
+    hook_n = max(1, min(hook_n, n - (n_beats - 1)))
+    rest = n - hook_n
+    slots = n_beats - 1
+    base, extra = divmod(rest, slots)
+    counts = [hook_n] + [base + (1 if i < extra else 0) for i in range(slots)]
+    windows, t = [], 0.0
+    for beat, c in zip(SHOT_BEATS, counts):
+        windows.append((beat, t, t + step * c))
+        t += step * c
+    windows[-1] = (windows[-1][0], windows[-1][1], float(duration))
+    return windows, counts
+
+
+def _rate_count(span, rate, min_s):
+    """How many shots of about `1/rate` seconds fit in `span`, each at least `min_s`."""
+    if span <= 1e-9:
+        return 1
+    target = 1.0 / rate if rate > 1e-9 else span
+    n = max(1, int(span / target + 0.5))
+    if min_s > 1e-9:
+        n = min(n, max(1, int(span / min_s + 1e-9)))
+    return max(1, n)
+
+
+def _hero_counts(windows, pace):
+    """Shot counts inside the hero slots. Overall band at its fast edge; montage on the payoff; end card held."""
+    cr = (pace or {}).get("cut_rate") or {}
+    overall = float((cr.get("overall") or [0.35, 0.45])[1])
+    montage = float((cr.get("montage") or [0.6, 0.8])[1])
+    end_min = float((pace or {}).get("end_card_min_s") or 6.0)
+    card_min = float(((pace or {}).get("card_hold_s") or [2.0, 3.0])[0])
+    montage_min = 1.0 / montage if montage else card_min
+    counts = []
+    for beat, a, b in windows:
+        span = b - a
+        if beat == "ask":
+            n = 1 if span < end_min * 2 - 1e-9 else max(1, int(span // end_min))
+        elif beat == "payoff":
+            n = _rate_count(span, montage, montage_min)
+        else:
+            n = _rate_count(span, overall, card_min)
+        counts.append(n)
+    return counts
+
+
+def _anime_counts(windows, duration, pace):
+    """Early ~0.3 cuts/s, peak ~1.0 inside the peak window, early again after it."""
+    cr = (pace or {}).get("cut_rate") or {}
+    early = float(cr.get("early", 0.3))
+    peak = float(cr.get("peak", 1.0))
+    w0, w1 = [float(x) for x in (cr.get("peak_window") or [0.45, 0.67])]
+    counts = []
+    for _beat, a, b in windows:
+        mid = ((a + b) / 2.0) / duration if duration else 0.0
+        rate = peak if w0 - 1e-9 <= mid < w1 else early
+        target = 1.0 / rate if rate else (b - a)
+        # A little under the target still counts: rounding a short tail up by one shot
+        # lands just below 1/rate and should not be clipped back to a much longer hold.
+        counts.append(_rate_count(b - a, rate, target * 0.75))
+    return counts
+
+
+def _min_shot_s(preset, beat, pace):
+    """Shortest shot the expander may create while pushing a filled beat toward the cap."""
+    pace = pace or {}
+    if preset == "livestream":
+        return float((pace.get("layout_every_s") or [5.0, 7.0])[0])
+    if preset == "anime-opening":
+        cr = pace.get("cut_rate") or {}
+        # demo is the peak window (see _anime_windows); the other beats stay on the early rate
+        rate = float(cr.get("peak", 1.0) if beat == "demo" else cr.get("early", 0.3))
+        if rate <= 0:
+            return 0.5
+        return 1.0 / rate
+    if beat == "ask":
+        return float(pace.get("end_card_min_s") or 6.0)
+    if beat == "payoff":
+        montage = float(((pace.get("cut_rate") or {}).get("montage") or [0.6, 0.8])[1])
+        return 1.0 / montage if montage else 1.0
+    return float((pace.get("card_hold_s") or [2.0, 3.0])[0])
+
+
+def _expand_toward_cap(preset, windows, counts, duration, pace, filled):
+    """Add shots on filled beats until the cap or the preset's shortest legal shot. Never split an empty beat."""
+    cap = max_shots(preset, float(duration), pace)
+    counts = list(counts)
+    beats = [b for b, _a, _b in windows]
+    spans = [b - a for _beat, a, b in windows]
+    filled = set(filled)
+    guard = 0
+    while sum(counts) < cap and guard < 80:
+        guard += 1
+        best = None
+        for i, n in enumerate(counts):
+            if beats[i] not in filled or n < 1:
+                continue
+            nxt = spans[i] / (n + 1)
+            if nxt + 1e-9 < _min_shot_s(preset, beats[i], pace):
+                continue
+            cur = spans[i] / n
+            if best is None or cur > best[0]:
+                best = (cur, i)
+        if best is None:
+            break
+        counts[best[1]] += 1
+    while sum(counts) > cap:
+        i = max(range(len(counts)), key=lambda k: (counts[k], spans[k]))
+        if counts[i] <= 1:
+            break
+        counts[i] -= 1
+    return counts
+
+
+def _split_span(span, n):
+    n = max(1, int(n))
+    if n == 1:
+        return [float(span)]
+    each = float(span) / n
+    return [each] * n
+
+
+def _round_parts(lengths, total):
+    """Round each part to 0.01 s so the parts sum to `total` (largest remainder, cents)."""
+    if not lengths:
+        return []
+    cents = int(round(round(float(total), 2) * 100))
+    raw = [max(0.0, float(s)) for s in lengths]
+    whole = sum(raw)
+    if whole <= 1e-9:
+        base, rem = divmod(cents, len(raw))
+        return [(base + (1 if i < rem else 0)) / 100.0 for i in range(len(raw))]
+    exact = [s / whole * cents for s in raw]
+    alloc = [int(x) for x in exact]
+    left = cents - sum(alloc)
+    order = sorted(range(len(raw)), key=lambda i: (exact[i] - alloc[i], -i), reverse=True)
+    for i in order[:max(0, left)]:
+        alloc[i] += 1
+    return [a / 100.0 for a in alloc]
+
+
+def _retotal(pairs, duration):
+    """Round each row to 0.01 s so the rows still sum to the master."""
+    if not pairs:
+        return []
+    lengths = _round_parts([s for _b, s in pairs], duration)
+    return [(b, s) for (b, _s), s in zip(pairs, lengths)]
+
+
+def plan_shots(preset, duration, pace, filled):
+    """(skeleton, expanded) as lists of (beat, seconds).
+
+    The skeleton is one row per beat (the five-beat structure). Filled beats are then split toward the
+    preset's @2 cut-rate cap, down to that preset's shot-length floor. An empty labelled beat stays one
+    row so the beat line, not this list, is what blocks `--final`.
+    """
+    duration = float(duration)
+    pace = pace or {}
+    filled = set(filled if filled is not None else SHOT_BEATS)
+    if preset == "livestream":
+        windows, counts = _live_plan(duration, pace)
+    elif preset == "anime-opening":
+        windows = _anime_windows(duration, pace)
+        counts = _anime_counts(windows, duration, pace)
+    else:
+        windows = _hero_windows(duration)
+        counts = _hero_counts(windows, pace)
+    counts = [1 if beat not in filled else n for (beat, _a, _b), n in zip(windows, counts)]
+    counts = _expand_toward_cap(preset, windows, counts, duration, pace, filled)
+    skeleton = _retotal([(beat, b - a) for beat, a, b in windows], duration)
+    expanded = []
+    for (beat, seconds), n in zip(skeleton, counts):
+        expanded.extend((beat, length) for length in _round_parts(_split_span(seconds, n), seconds))
+    return skeleton, expanded
