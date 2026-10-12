@@ -15,6 +15,9 @@ Spec keys (per shot):
                                 0.80 wide; w is clamped to 0.94 (ui-protect WARNs above it), cy = centre height (fraction)
     look.panel (depth of the contained panel; ALL of it is drawn outside the panel, the UI pixels are never edited; any block
     may be false):
+        aspect: 0.46            width / height of the panel (default: the output's 16:9); a phone-shaped device panel. `w` stays the
+                                width as a fraction of the frame width. Device bezel = a thick dark `rim` (the bezel is drawn outside
+                                the UI pixels; nothing is drawn on them)
         radius: 22              corner radius in 1920 canvas px (scales with the output), antialiased; 0 / false = square. The
                                 interior of the rounded rect is byte-identical to the camera crop, only the 4 r x r corner blocks
                                 blend with what is behind
@@ -31,6 +34,21 @@ Spec keys (per shot):
     look.backdrop: none + ui: true   full-bleed REAL footage with NO grading of the UI pixels: grade / bloom / grain / vignette are
                                 skipped (protect_ui), only fade_in / fade_out touch the picture; lower_copy / scrim are not drawn on
                                 it (gate copy-clear FAILs copy over full-bleed UI), so use it for a bare hero moment.
+    kinetic_copy: [{text, at, dur, size_pct, cx, cy, anim, from, in_s, uppercase, color, weight, outline, shadow, brackets, anchors, thumb}]
+                                designed-promo type (promo/designed.py). Sized as a percentage of the frame HEIGHT (size_pct, default 11;
+                                the designed gate WARNs outside the dialect's band) and drawn over the backdrop, never on the UI panel
+                                (gate designed-clear). cx / cy = fractions of the frame (default: centred in the margin under the
+                                panel, or the frame centre without one). Words come from the person (gate designed-grounded).
+                                anim: pop | slide (from left|right|up|down) | scale   the kinetic dialect: scale / slide in over in_s
+                                      snap    instantly on at full size, instantly off: zero blur, one frame (ethereal micro snap)
+                                      cascade the words snap on one by one every step_s (0.18)
+                                weight: Light | Regular | Medium | Bold | Black   a named instance of the UI font; unset = the heavy
+                                      blocky fallback sans (kinetic). outline / shadow: false = a clean light face (ethereal).
+                                brackets: true | {pad, len, width}   [ ] corner brackets round the text (typography as UI)
+                                anchors: true   a hairline selection box with four square handles round the text
+                                thumb: <clip id | image>   a small rounded real still inline before the text (its pixels only scaled)
+    resolve: {kind: mosaic, dur: 0.9, steps: 6, from_blocks: 8}   the BACKDROP / plate resolves from a coarse mosaic to sharp in
+                                `steps` hard stages (never the UI panel: its pixels are only transformed geometrically)
     fade_in / fade_out: s       from / to black (also fades the text); eased
     title_bloom: {text, at, dur, size, cy, color, fade}   opening title: glows in out of the dark (serif), then fades; ui: false
                                 shots only. size = multiplier of the 132 px (1920 canvas) title, default 1.0, max 2.0; cy = centre
@@ -148,6 +166,12 @@ def load_plate(spec, ref, t=0.0, max_w=1280):
     return _PLATES[k]
 
 
+def panel_aspect(look):
+    """look.panel.aspect (width / height) for a device-shaped panel (a phone is ~0.46); None = the output's 16:9."""
+    a = (look.get("panel") or {}).get("aspect")
+    return min(max(float(a), 0.3), 2.4) if a else None
+
+
 def pullback_cfg(shot):
     pb = shot.get("pullback")
     if not pb:
@@ -174,7 +198,7 @@ def panel_box_of(spec, shot, size=(1920, 1080), t=0.0):
     if not has_panel(look) or not is_ui(shot):
         return None
     w, cy, _ = panel_params(look, shot, t, max(shot.dur, 1e-6) if hasattr(shot, "dur") else 1.0)
-    return G.panel_box(size, w, cy)
+    return G.panel_box(size, w, cy, panel_aspect(look))
 
 
 def viewport(spec, shot, t=0.0):
@@ -251,6 +275,172 @@ def title_cfg(shot):
 
 def copy_items(shot):
     return [dict(c) for c in (shot.get("lower_copy") or [])]
+
+
+KINETIC_PCT, KINETIC_DEFAULT_PCT = (8.0, 15.0), 11.0
+KINETIC_IN_S = 0.28
+KINETIC_OUT_S = 0.15
+KINETIC_STEP_S = 0.18
+KINETIC_FILL, KINETIC_OUTLINE = (255, 255, 255), (12, 12, 28)
+KINETIC_FONTS = [
+    "/usr/share/fonts/truetype/google/Barlow Condensed/BarlowCondensed-Black.ttf",
+    "/usr/share/fonts/truetype/sand-box/google/Barlow Condensed/BarlowCondensed-Black.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+]
+KINETIC_ANIMS = ("pop", "slide", "scale", "snap", "cascade")
+THUMB_GAP = 0.35
+
+
+def kinetic_items(shot):
+    return [dict(c) for c in (shot.get("kinetic_copy") or [])]
+
+
+def kinetic_text(item):
+    t = " ".join(str(item.get("text", "")).split())
+    return t.upper() if item.get("uppercase", True) else t
+
+
+def kinetic_pct(item):
+    v = item.get("size_pct")
+    return KINETIC_DEFAULT_PCT if v is None else min(max(float(v), 2.0), 30.0)
+
+
+def kinetic_font(spec, px, fallback=None, weight=None):
+    """The blocky fallback sans, or (with `weight`) a named instance of the UI font (Inter): Light / Regular / Medium / Bold / Black."""
+    px = max(6, int(round(px)))
+    k = ("kinetic", fallback if weight else None, weight, px)
+    if weight is None:
+        cands = list((((getattr(spec, "style", None) or {}).get("typography") or {}).get("kinetic_fonts")) or []) + KINETIC_FONTS
+        path = None
+        for p in cands:
+            p = spec.resolve(p) if spec is not None and hasattr(spec, "resolve") else p
+            if os.path.exists(p):
+                path = p
+                break
+        path = path or fallback
+        k = ("kinetic", path, None, px)
+    else:
+        path = fallback
+    if k not in _FONTS:
+        try:
+            f = ImageFont.truetype(path, px) if path else ImageFont.load_default(size=px)
+            names = [weight] if weight else [b"Black", b"ExtraBold", b"Bold"] if path == fallback else []
+            for nm in names:
+                nm = nm.encode() if isinstance(nm, str) else nm
+                try:
+                    f.set_variation_by_name(nm)
+                    break
+                except Exception:  # noqa: BLE001
+                    continue
+            _FONTS[k] = f
+        except Exception:  # noqa: BLE001
+            _FONTS[k] = ImageFont.load_default(size=px)
+    return _FONTS[k]
+
+
+def _kinetic_measure(spec, item, size, fallback):
+    """(font, text w, text h, ox, oy, thumb image | None, total w, total h): the text shrunk to 92 % of the width, plus an inline thumb."""
+    W, H = size
+    px = kinetic_pct(item) / 100.0 * H
+    text = kinetic_text(item)
+    wt = item.get("weight")
+    font = kinetic_font(spec, px, fallback, wt)
+    tw, th, ox, oy = _text_size(font, text)
+    thumb, extra = None, 0.0
+    if item.get("thumb"):
+        base = load_plate(spec, item["thumb"], 0.0, 640)
+        if base is not None:
+            h = max(2, int(round(th * 1.25)))
+            thumb = base.resize((max(2, int(round(h * base.width / base.height))), h), Image.LANCZOS)
+            extra = thumb.width + THUMB_GAP * th
+    if tw + extra > 0.92 * W:
+        k = 0.92 * W / (tw + extra)
+        font = kinetic_font(spec, px * k, fallback, wt)
+        tw, th, ox, oy = _text_size(font, text)
+        if thumb is not None:
+            thumb = thumb.resize((max(2, int(thumb.width * k)), max(2, int(thumb.height * k))), Image.LANCZOS)
+            extra = thumb.width + THUMB_GAP * th
+    return font, tw, th, ox, oy, thumb, tw + extra, max(th, thumb.height if thumb is not None else 0)
+
+
+def kinetic_box(spec, shot, item, size=(1920, 1080), look=None, fallback=None):
+    """Settled box [x0, y0, x1, y1] of a kinetic line (text and inline thumb) in output px, measured with the real font."""
+    look = look or look_of(spec, shot)
+    W, H = size
+    _f, _tw, _th, _ox, _oy, _thumb, w, h = _kinetic_measure(spec, item, size, fallback)
+    pb = panel_box_of(spec, shot, size)
+    cx = float(item.get("cx", 0.5)) * W
+    if item.get("cy") is not None:
+        cy = float(item["cy"]) * H
+    elif pb:
+        cy = (pb[3] + H) / 2.0
+    else:
+        cy = 0.5 * H
+    return [cx - w / 2.0, cy - h / 2.0, cx + w / 2.0, cy + h / 2.0]
+
+
+def kinetic_pose(item, t):
+    """(scale, alpha, dx, dy as fractions of the frame) of a kinetic line at shot-local t: the entrance curve then the exit fade.
+    `snap` and `cascade` are hard cuts (alpha 0 -> 1 in one frame, no scale, no fade)."""
+    at, dur = float(item.get("at", 0.0)), float(item.get("dur", 2.0))
+    kind = item.get("anim", "pop")
+    if kind in ("snap", "cascade"):
+        return 1.0, (1.0 if at <= t < at + dur else 0.0), 0.0, 0.0
+    ins = max(float(item.get("in_s", KINETIC_IN_S)), 1e-3)
+    u = (t - at) / ins
+    if u <= 0 or t > at + dur:
+        return 1.0, 0.0, 0.0, 0.0
+    e = R.ease(min(u, 1.0), "out")
+    a = min(1.0, u * 3.0) * min(1.0, max(0.0, (at + dur - t) / KINETIC_OUT_S))
+    if kind == "slide":
+        d = item.get("from", "left")
+        off = (1.0 - e) * 0.12
+        dx, dy = {"left": (-off, 0.0), "right": (off, 0.0), "up": (0.0, off), "down": (0.0, -off)}.get(d, (-off, 0.0))
+        return 1.0, a, dx, dy
+    if kind == "scale":
+        return 1.5 - 0.5 * e, a, 0.0, 0.0
+    over = 1.12                                    # pop: grow past size, then settle
+    s = 0.6 + (over - 0.6) * e if u < 1.0 else 1.0 + (over - 1.0) * max(0.0, 1.0 - R.ease((t - at - ins) / (ins * 0.8), "out"))
+    return s, a, 0.0, 0.0
+
+
+def cascade_words(item, t):
+    """How many words of a `cascade` line are on at shot-local t (each snaps on `step_s` after the last)."""
+    n = len(kinetic_text(item).split())
+    step = max(float(item.get("step_s", KINETIC_STEP_S)), 1e-3)
+    return max(0, min(n, int((t - float(item.get("at", 0.0))) / step) + 1))
+
+
+def mosaic_cfg(shot):
+    r = shot.get("resolve") if hasattr(shot, "get") else None
+    if not r:
+        return None
+    r = {} if r is True else dict(r)
+    if r.get("kind", "mosaic") != "mosaic":
+        return None
+    return dict(dur=max(float(r.get("dur", 0.9)), 0.05), steps=max(int(r.get("steps", 6)), 2), from_blocks=max(int(r.get("from_blocks", 8)), 2))
+
+
+def mosaic_stage(cfg, t):
+    """Hard stage 0..steps-1 of a mosaic resolve at shot-local t, or None once it is sharp."""
+    u = t / cfg["dur"]
+    if u >= 1.0:
+        return None
+    return max(0, int(u * cfg["steps"]))
+
+
+def mosaic(im, cfg, t):
+    """The image pixelated to a stage of the resolve: blocks double every step from `from_blocks` columns until the image is sharp."""
+    st = mosaic_stage(cfg, t)
+    if st is None:
+        return im
+    w, h = im.size
+    cols = cfg["from_blocks"] * (2 ** st)
+    if cols >= w:
+        return im
+    rows = max(1, round(cols * h / w))
+    return im.resize((cols, rows), Image.BOX).resize((w, h), Image.NEAREST)
 
 
 def copy_text(spec, item):
@@ -377,6 +567,13 @@ class Composer:
             box = copy_box(self.spec, shot, it, (self.W, self.H), self.look, txt)
             self.copies.append((it, _Glyphs(font, txt, 6), (box[0], box[1])))
             self.scrims.append((scrim_cfg(it), (box[1] + box[3]) / 2.0))
+        self.kinetics = []
+        self.mosaic = mosaic_cfg(shot)
+        for it in kinetic_items(shot):
+            box = kinetic_box(self.spec, shot, it, (self.W, self.H), self.look, fb)
+            n = len(kinetic_text(it).split())
+            layers = [self._kinetic_layer(it, upto=k) for k in range(1, n + 1)] if it.get("anim") == "cascade" else [self._kinetic_layer(it)]
+            self.kinetics.append((it, layers, box))
         tc = title_cfg(shot)
         self.title = None
         if tc:
@@ -387,6 +584,71 @@ class Composer:
             self.title = (tc, g, ((self.W - tw) / 2.0, cy - th / 2.0))
 
     # -- pieces
+    def _kinetic_layer(self, item, upto=None):
+        """RGBA of one kinetic line at its settled size (`upto` = the first n words, drawn where the full line puts them)."""
+        text = kinetic_text(item)
+        font, tw, th, ox, oy, thumb, total_w, total_h = _kinetic_measure(self.spec, item, (self.W, self.H), getattr(self.ctx, "font_path", None))
+        outline = item.get("outline", True) is not False
+        shadow_on = item.get("shadow", True) is not False
+        stroke = max(2, int(round(font.size * 0.07))) if outline else 0
+        fp = font.size * 0.45 if (item.get("brackets") or item.get("anchors")) else 0.0
+        pad = int(stroke * 3 + font.size * 0.12 + fp + 4)
+        w, h = int(total_w) + 2 * pad, int(total_h) + 2 * pad
+        fill = tuple(item.get("color", KINETIC_FILL))
+        tx = pad + (total_w - tw)
+        ty = pad + (total_h - th) / 2.0
+        shown = " ".join(text.split()[:upto]) if upto else text
+        layer = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        if shadow_on:
+            sm = Image.new("L", (w, h), 0)
+            ImageDraw.Draw(sm).text((tx - ox, ty - oy), shown, font=font, fill=255, stroke_width=stroke)
+            sm = sm.filter(ImageFilter.GaussianBlur(max(1.0, font.size * 0.05))).point(lambda v: int(v * 0.55))
+            sh = Image.new("RGBA", (w, h), KINETIC_OUTLINE + (0,))
+            sh.putalpha(sm.transform(sm.size, Image.AFFINE, (1, 0, 0, 0, 1, -max(2, font.size * 0.05)), Image.BILINEAR))
+            layer = sh
+        txt = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        d = ImageDraw.Draw(txt)
+        d.text((tx - ox, ty - oy), shown, font=font, fill=fill + (255,), stroke_width=stroke, stroke_fill=KINETIC_OUTLINE + (255,))
+        if thumb is not None:
+            m = Image.new("L", thumb.size, 0)
+            ImageDraw.Draw(m).rounded_rectangle([0, 0, thumb.width - 1, thumb.height - 1], radius=max(2, int(thumb.height * 0.18)), fill=255)
+            txt.paste(thumb, (pad, int(ty + (th - thumb.height) / 2.0)), m)
+        if fp:
+            l, r, tp, bt = pad - fp, pad + total_w + fp, ty - fp * 0.8, ty + th + fp * 0.8
+            lw = max(2, int(round(font.size * 0.035)))
+            if item.get("brackets"):
+                bc = item["brackets"] if isinstance(item["brackets"], dict) else {}
+                ln = float(bc.get("len", font.size * 0.35))
+                lw = max(1, int(bc.get("width", lw)))
+                for x, sgn in ((l, 1), (r, -1)):
+                    d.line([(x, tp), (x, bt)], fill=fill + (255,), width=lw)
+                    d.line([(x, tp), (x + sgn * ln, tp)], fill=fill + (255,), width=lw)
+                    d.line([(x, bt), (x + sgn * ln, bt)], fill=fill + (255,), width=lw)
+            if item.get("anchors"):
+                d.rectangle([l, tp, r, bt], outline=fill + (255,), width=max(1, lw // 2))
+                hs = max(3, int(font.size * 0.12))
+                for x, y in ((l, tp), (r, tp), (l, bt), (r, bt)):
+                    d.rectangle([x - hs, y - hs, x + hs, y + hs], fill=fill + (255,), outline=KINETIC_OUTLINE + (255,), width=1)
+        return Image.alpha_composite(layer, txt)
+
+    def _kinetic(self, out, t):
+        for it, layers, box in self.kinetics:
+            s, a, dx, dy = kinetic_pose(it, t)
+            if a <= 0:
+                continue
+            layer = layers[min(len(layers), cascade_words(it, t)) - 1] if len(layers) > 1 else layers[0]
+            if len(layers) > 1 and cascade_words(it, t) < 1:
+                continue
+            w, h = max(1, int(layer.width * s)), max(1, int(layer.height * s))
+            im = layer if abs(s - 1.0) < 1e-3 else layer.resize((w, h), Image.BILINEAR)
+            if a < 0.999:
+                al = im.getchannel("A").point(lambda v, k=a: int(v * k))
+                im = im.copy()
+                im.putalpha(al)
+            cx, cy = (box[0] + box[2]) / 2.0 + dx * self.W, (box[1] + box[3]) / 2.0 + dy * self.H
+            out.paste(im.convert("RGB"), (int(round(cx - w / 2.0)), int(round(cy - h / 2.0))), im.getchannel("A"))
+        return out
+
     def _plain_look(self):
         """The resolved look without the global-vignette key (that one is applied separately, over everything)."""
         look = dict(self.look)
@@ -406,7 +668,7 @@ class Composer:
         """(panel box in output px, backdrop dim, opacity) at shot-local t: the settled/pullback geometry times the entrance ease."""
         wf, cyf, dim = panel_params(self.look, self.shot, t, self.dur)
         s, op = G.entrance_at(self.entr, t, R.ease)
-        return G.panel_box((self.W, self.H), wf * s, cyf), dim, op
+        return G.panel_box((self.W, self.H), wf * s, cyf, panel_aspect(self.look)), dim, op
 
     def _backdrop(self, src, cam, dim):
         """The world behind the panel: a plate (drifting at `parallax` of the camera) or a dim blurred copy of the UI crop
@@ -434,7 +696,7 @@ class Composer:
             # look.panel.pane3d: {...}: the UI as a floating, tilted 3D pane (promo/pane3d.py); the backdrop gets the usual look
             from .. import pane3d as P3
             wf, cyf, dim = panel_params(self.look, self.shot, t, self.dur)
-            box = G.panel_box((W, H), wf, cyf)
+            box = G.panel_box((W, H), wf, cyf, panel_aspect(self.look))
             pw, ph = box[2] - box[0], box[3] - box[1]
             panel = R.frame_cam(self.ctx, src, *cam, out=(int(pw * 1.4), int(ph * 1.4)))
             bd = self._backdrop_fx(dim)(self._backdrop(src, cam, dim))
@@ -445,9 +707,14 @@ class Composer:
             box, dim, op = self._box(t)
             pw, ph = box[2] - box[0], box[3] - box[1]
             panel = R.frame_cam(self.ctx, src, *cam, out=(pw, ph))
-            return G.dof_backdrop(panel, box, (W, H), panel=self.look["panel"], backdrop=self._backdrop(src, cam, dim),
+            bd = self._backdrop(src, cam, dim)
+            if self.mosaic:                                  # the world resolves from a mosaic; the UI panel is never pixelated
+                bd = mosaic(bd, self.mosaic, t)
+            return G.dof_backdrop(panel, box, (W, H), panel=self.look["panel"], backdrop=bd,
                                   fx=self._backdrop_fx(dim), opacity=op)
         im = R.frame_cam(self.ctx, src, *cam).convert("RGB")
+        if self.mosaic and not self.ui:
+            im = mosaic(im, self.mosaic, t)
         if self.protect:
             return im                                                  # full-bleed UI: no grade / bloom / grain at all
         return G.to_img(G.apply_look_arr(G.to_f(im), self._plain_look(), self._i))
@@ -503,6 +770,7 @@ class Composer:
             out = G.global_vignette(out, self.gvig)
         out = self._title(out, t)
         out = self._copy(out, t)
+        out = self._kinetic(out, t)
         b = black_level(t, self.dur, self.fin, self.fout)
         if b > 0:
             out = G.to_img(G.to_f(out) * (1.0 - b))
@@ -552,7 +820,8 @@ class Cinema(ShotType):
                     move=cfg.get("move", f"slow eased camera, box {max(ws):.2f} -> {min(ws):.2f} of frame width"
                                  + ("; pull-back" if pullback_cfg(shot) else "")),
                     caption=" / ".join(([f"title '{title_cfg(shot)['text']}'"] if title_cfg(shot) else [])
-                                       + [f"'{copy_text(spec, c)}'" for c in copy_items(shot)]) or "none",
+                                       + [f"'{copy_text(spec, c)}'" for c in copy_items(shot)]
+                                       + [f"kinetic '{kinetic_text(c)}'" for c in kinetic_items(shot)]) or "none",
                     notes=(f"{'DoF panel' if comp.panel else 'full-bleed'}; look on {'backdrop only' if comp.protect else 'whole frame'}: "
                            + ", ".join(fx)) + (f"; {cfg['notes']}" if cfg.get("notes") else ""))
 
@@ -565,6 +834,9 @@ class Cinema(ShotType):
         if tc:
             res.append(dict(text=tc["text"], role="label", box=None, t0=float(tc.get("at", 0.5)),
                             t1=float(tc.get("at", 0.5)) + float(tc.get("dur", 3.0))))
+        for it in kinetic_items(shot):
+            res.append(dict(text=kinetic_text(it), role="label", box=None, t0=float(it.get("at", 0.0)),
+                            t1=float(it.get("at", 0.0)) + float(it.get("dur", 2.0))))
         for it in copy_items(shot):
             res.append(dict(text=copy_text(ctx.spec, it), role="label", box=None, t0=float(it.get("at", 0.0)),
                             t1=float(it.get("at", 0.0)) + float(it.get("dur", 3.0))))
