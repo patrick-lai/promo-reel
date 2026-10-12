@@ -132,7 +132,7 @@ No difference / Can't tell; disabled until both sides load) and the agent's choi
 blind comparison, our own player (`player.js`: a mark on the seek bar per note, hover reads it, click edits, drag moves, N or double-click adds one at that
 moment; the storyboard's scenes under the bar, a frame preview on hover, the note shown over the picture as playback passes it, frame steps, J/K/L, loop
 in/out, speed, full screen (in the CommissionAI app, whose web view shows full screen as a blank picture, it fills the window from the top layer instead), `?` lists the keys; the player is kept across repaints so the clip never reloads), the notes list (click seeks; New / Changed /
-Removing until sent), one "Send to the agent" for every unsent change (`PF.noteChange`, `notesView`, `notesUnsettled`: a sent change shows as sent until the
+Removing until sent), one "Send to the agent" in the footer for the unsent changes (the notes block only counts them and offers Discard; `PF.noteChange`, `notesView`, `notesUnsettled`: a sent change shows as sent until the
 published pins carry it), the checks
 with Fixed / Broken / Failing / Not checked (with what it was on the last draft that measured it) / Holds and a Drop button per note
 (`drop` action, `promo flow check retire`), the look pairs, "Let the agent keep working" (30 min / 1 hour / 2 hours, only on the latest draft with checks,

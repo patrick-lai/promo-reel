@@ -2513,13 +2513,12 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   function notesBlock(it, n) {
     const b = noteBox(n), view = notesFor(it, n);
     const live = (f) => { if (S.player && S.player.ref.endsWith("|" + it.id)) f(S.player.api); };
-    const count = b.ops.length, blocked = !canAsk();
+    const count = b.ops.length;
     const STATE = { new: ["New", "warn"], edited: ["Changed", "warn"], removed: ["Removing", "bad"] };
-    const sendBar = count ? h("div", { class: "notes-send", role: "group", "aria-label": "Notes not sent yet" },
-      h("span", { class: "notes-count" }, h("b", { text: String(count) }), count === 1 ? " change not sent yet" : " changes not sent yet"),
-      h("button", { type: "button", class: "btn ghost", "data-quiet": "1", "data-k": "notes-undo", text: "Discard", onclick: () => { b.ops = []; render(true); say("Unsent note changes discarded"); } }),
-      h("button", { type: "button", class: "btn primary", "data-k": "notes-send", disabled: blocked, title: blocked ? "Your last message is still waiting for the agent" : "",
-        onclick: () => send("pins", { draft: n, count, list: PF.notesMessage(b.ops, it.pins), ops: b.ops }) }, ic("send"), "Send to the agent")) : null;
+    /* The unsent changes say so here; the one Send to the agent is in the footer (see footerNotes). */
+    const sendBar = count ? h("div", { class: "notes-send", role: "status", "aria-label": "Notes not sent yet" },
+      h("span", { class: "notes-count" }, h("b", { text: String(count) }), count === 1 ? " change not sent yet. Send from the footer." : " changes not sent yet. Send from the footer."),
+      h("button", { type: "button", class: "btn ghost", "data-quiet": "1", "data-k": "notes-undo", text: "Discard", onclick: () => { b.ops = []; render(true); say("Unsent note changes discarded"); } })) : null;
     return h("section", { class: "pins", "aria-label": "Notes on " + it.label },
       h("div", { class: "pins-h" }, h("button", { type: "button", class: "btn ghost", "data-quiet": "1", "data-k": "pin-" + n, disabled: S.readonly, onclick: () => live((p) => p.addAt()) }, ic("plus"), "Add a note"),
         h("span", { class: "sub", text: "Press N while watching, or double-click the timeline. Hover a mark to read it, click to edit, drag to move." })),
@@ -2715,6 +2714,14 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     return m;
   }
 
+  /* The footer's one Send to the agent for draft notes not sent yet: the first draft with unsent changes, or null when there are none or the footer is composing. */
+  function footerNotes(m) {
+    if (!m || S.compose || m.apStop || !hasDoc() || (m.mode !== "gate" && m.mode !== "work")) return null;
+    const n = Object.keys(S.notes).map(Number).sort((a, b) => a - b).find((k) => S.notes[k].ops.length);
+    const it = n && arr(S.doc.drafts)[n - 1];
+    return it ? { n, it, b: S.notes[n], count: S.notes[n].ops.length } : null;
+  }
+
   function renderGate() {
     const m = gateModel();
     S.cur = m;
@@ -2773,6 +2780,18 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       el.noteLabel.classList.toggle("note-lab", !!titled);
       el.noteHint.textContent = (IS_MAC ? "Cmd" : "Ctrl") + "+Enter to send. Esc to cancel.";
     }
+    /* Unsent draft notes take the footer's main button, so Send is always in reach while the person adds notes on the timeline. Runs last: it owns the button. */
+    const fn = footerNotes(m);
+    if (fn) {
+      el.btn1.hidden = false;
+      el.btn1.dataset.k = "notes-send";
+      el.btn1.textContent = busy ? "Sending" : "Send " + fn.count + (fn.count === 1 ? " change" : " changes") + " to the agent";
+      el.btn1.disabled = busy || !canAsk();
+      el.btn1.classList.remove("soft");
+      el.btn1.removeAttribute("aria-disabled");
+      el.btn1.setAttribute("aria-describedby", "gateNote");
+      note(fn.count + (fn.count === 1 ? " change" : " changes") + " on " + fn.it.label + " not sent yet. " + (canAsk() ? "Send them before you decide." : "Your last message is still waiting for the agent."));
+    } else if (el.btn1.dataset.k === "notes-send") delete el.btn1.dataset.k;
     el.gateErr.hidden = !S.err;
     el.gateErr.textContent = S.err;
     commentChip();
@@ -2819,6 +2838,8 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   });
   el.btn1.addEventListener("click", () => {
     const m = S.cur;
+    const fn = footerNotes(m);
+    if (fn) { if (canAsk() && !S.sending) send("pins", { draft: fn.n, count: fn.count, list: PF.notesMessage(fn.b.ops, fn.it.pins), ops: fn.b.ops }); return; }
     if (!m || (m.mode !== "gate" && m.mode !== "work") || S.sending || S.offline) return;
     if (S.compose) {
       const text = el.note.value.trim().slice(0, MAX_NOTE);
