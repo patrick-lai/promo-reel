@@ -121,6 +121,8 @@ promo plan NAME --prompt "60s promo for my AI coding crew. Go to bed. Wake up to
 promo cospec NAME                     # at most three optional questions; --answer KEY=VALUE re-plans
 promo designed show NAME              # the plan: framing per shot, cards, plates, needs, conflicts
 promo designed apply NAME             # writes cinema shots into promo.yaml (stills registered in the footage manifest)
+promo -p NAME previz build && promo -p NAME previz strip   # wireframe the camera / panels / type / timing, LOOK at previz/strip.png (docs/previz.md)
+promo -p NAME previz cam 03 push --strip   # nudge until it reads (seconds each); `previz apply` carries it into the cinema shots
 promo -p NAME --scale 0.5 build --look   # quick-look stills strip in about 10 s, no music needed
 promo -p NAME strip --out strip.png
 promo -p NAME preview                 # 540p draft + stills + contact sheet (needs a music asset, see the runbook)
@@ -134,6 +136,9 @@ plate exists the preview uses a designed placeholder world (ethereal: a pastel g
 
 ## RUNBOOK: thin-prompt e2e on the box (commission-ai)
 
+Order: plan, cospec, designed apply, **previz strip**, look / strip, gen plates, preview. `promo preview` or a build above the quick look
+refuses without a previz strip of the current scene (`promo previz`, `docs/previz.md`); `promo check` reports `previz-ready`.
+
 Stills live on the shared box under `/workspace/videos/commission-ai-promo/footage/` (not in git). Recipe, also in
 `docs/examples/commission-ai-thin-prompt/run.sh`:
 
@@ -146,6 +151,7 @@ promo plan commission-thin \
 promo cospec commission-thin          # <= 3 questions: end card (GitHub vs landing), the one promise, the audience
 promo cospec commission-thin --answer cta="..." --answer audience="..."   # optional; re-plans
 promo designed apply commission-thin
+promo -p commission-thin previz build && promo -p commission-thin previz strip   # look at previz/strip.png, nudge, re-strip (a render above the quick look needs it)
 promo -p commission-thin --scale 0.5 build --look && promo -p commission-thin strip --out strip.png   # post this first
 promo gen plan -p commission-thin          # plates: make them, `promo gen register`, re-run `designed apply`
 promo -p commission-thin preview           # 540p draft; needs a music asset in assets.yaml (below)
