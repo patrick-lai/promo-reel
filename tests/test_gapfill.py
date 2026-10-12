@@ -113,12 +113,69 @@ def test_labelled_empty_beat_stays_empty():
     with tempfile.TemporaryDirectory() as d:
         info = gapfill.apply(d, "make a promo\nproblem:\n", name="demo")
         assert info["plan"]["beats"]["problem"] == ""
+        problem_rows = [r for r in info["plan"]["shot_list"] if r["beat"] == "problem"]
+        assert len(problem_rows) == 1  # empty beat stays the skeleton row; it is not expanded
+        for beat in ("hook", "demo", "payoff", "ask"):
+            assert any(r["beat"] == beat for r in info["plan"]["shot_list"])
         spec = load_spec(info["path"])
         try:
             reviewgate.check_build(spec, final=True)
             raise AssertionError("empty beats should refuse --final")
         except reviewgate.ReviewError as e:
             assert "empty beats" in str(e) and "problem" in str(e)
+
+
+def _beat_seconds(rows):
+    out = []
+    for beat in BEATS:
+        out.append(round(sum(r["seconds"] for r in rows if r["beat"] == beat), 2))
+    return out
+
+
+def test_thin_hero_expands_the_skeleton_toward_the_cap():
+    with tempfile.TemporaryDirectory() as d:
+        plan = gapfill.apply(d, "make a promo", name="demo")["plan"]
+    skeleton, rows, cap = plan["shot_list_skeleton"], plan["shot_list"], plan["shot_list_cap"]
+    assert [r["beat"] for r in skeleton] == list(BEATS)
+    assert all(list(r) == COLUMNS for r in skeleton + rows)
+    assert len(skeleton) == 5 and len(rows) > len(skeleton)
+    assert len(rows) <= cap and len(rows) >= cap - 2
+    counts = {b: 0 for b in BEATS}
+    for r in rows:
+        counts[r["beat"]] += 1
+        assert len(r["caption"]) <= 35
+        assert set(r) == set(COLUMNS)
+    assert all(counts[b] >= 1 for b in BEATS)
+    assert abs(sum(r["seconds"] for r in rows) - 60) < 0.02
+    assert [round(r["seconds"], 2) for r in skeleton] == [4.0, 16.0, 22.0, 10.0, 8.0]
+    assert "skeleton" in plan["shot_list_note"]
+
+
+def test_anime_and_livestream_timing_differ_from_hero_windows():
+    with tempfile.TemporaryDirectory() as d:
+        hero = gapfill.apply(os.path.join(d, "h"), "make a promo", name="h")["plan"]
+        anime = gapfill.apply(os.path.join(d, "a"), "anime opening of the board", name="a")["plan"]
+        live = gapfill.apply(os.path.join(d, "l"), "talk show about the desk", name="l")["plan"]
+    assert hero["preset"] == "hero" and anime["preset"] == "anime-opening" and live["preset"] == "livestream"
+    hero_w = _beat_seconds(hero["shot_list_skeleton"])
+    anime_w = _beat_seconds(anime["shot_list_skeleton"])
+    live_w = _beat_seconds(live["shot_list_skeleton"])
+    assert hero_w == [4.0, 16.0, 22.0, 10.0, 8.0]
+    assert anime_w != hero_w and live_w != hero_w and anime_w != live_w
+    hero_windows = [4.0, 16.0, 22.0, 10.0, 8.0]
+    assert [r["seconds"] for r in anime["shot_list"]] != hero_windows
+    assert [r["seconds"] for r in live["shot_list"]] != hero_windows
+    for r in live["shot_list"]:
+        assert 5.0 - 1e-6 <= r["seconds"] <= 7.0 + 1e-6
+        assert list(r) == COLUMNS
+    demo = [r["seconds"] for r in anime["shot_list"] if r["beat"] == "demo"]
+    early = [r["seconds"] for r in anime["shot_list"] if r["beat"] in ("hook", "problem")]
+    assert demo and early
+    assert max(demo) < min(early)
+    assert max(demo) <= 1.5
+    assert min(early) >= 2.5
+    ask = [r["seconds"] for r in hero["shot_list"] if r["beat"] == "ask"]
+    assert len(ask) == 1 and ask[0] >= 6.0
 
 
 def test_cap_rows_keeps_every_beat():

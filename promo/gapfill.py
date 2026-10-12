@@ -117,9 +117,14 @@ def _caption(text, n=35):
     return text[: n - 1].rstrip() + "…"
 
 
-def shot_rows(beats, idea, master):
-    """One six-column row per beat, windows scaled from the 60 s hero. No invented UI."""
-    scale = float(master) / 60.0
+def _filled_shot_beats(beats):
+    """Shot-list beat names whose line is non-empty. `ask` is the cta line."""
+    key = {"hook": "hook", "problem": "problem", "demo": "demo", "payoff": "payoff", "ask": "cta"}
+    return {beat for beat, src in key.items() if str((beats or {}).get(src) or "").strip()}
+
+
+def _rows_from_specs(specs, beats, idea):
+    """Six-column rows. Specs are (beat, seconds) in order. No invented UI or product claims."""
     copy = {
         "hook": ("The promise, before any logo", idea, "Clean demo. Cursor hidden. No logo yet."),
         "problem": ("The viewer's situation, then the first real UI", "The pain, not a feature list",
@@ -132,18 +137,33 @@ def shot_rows(beats, idea, master):
     }
     line = {"hook": beats.get("hook"), "problem": beats.get("problem"), "demo": beats.get("demo"),
             "payoff": beats.get("payoff"), "ask": beats.get("cta")}
+    per_beat = {}
+    for beat, _seconds in specs:
+        per_beat[beat] = per_beat.get(beat, 0) + 1
+    seen = {}
     rows = []
-    for beat, a, b in P.HERO_WINDOWS:
+    for beat, seconds in specs:
+        seen[beat] = seen.get(beat, 0) + 1
+        n = per_beat[beat]
         on_screen, notice, app_state = copy[beat]
+        if n > 1:
+            on_screen = f"{on_screen} (cut {seen[beat]} of {n})"
         rows.append(dict(
             beat=beat,
             on_screen=on_screen,
             notice=notice,
             caption=_caption(line.get(beat) or notice),
-            seconds=round((b - a) * scale, 2),
+            seconds=round(float(seconds), 2),
             app_state=app_state,
         ))
     return rows
+
+
+def shot_rows(beats, idea, master, preset, pace):
+    """(skeleton, expanded). Skeleton is one six-column row per beat. Expanded splits filled beats
+    toward the preset @2 cut-rate cap. Empty labelled beats stay a single row."""
+    skeleton, expanded = P.plan_shots(preset, master, pace, _filled_shot_beats(beats))
+    return _rows_from_specs(skeleton, beats, idea), _rows_from_specs(expanded, beats, idea)
 
 
 def pace_of(preset):
@@ -159,7 +179,8 @@ def build_plan(prompt, preset, preset_source):
     master, master_source = master_seconds(prompt)
     pace = pace_of(preset)
     cap = P.max_shots(preset, master, pace)
-    rows = P.cap_rows(shot_rows(beats, idea, master), cap)
+    skeleton, rows = shot_rows(beats, idea, master, preset, pace)
+    rows = P.cap_rows(rows, cap)
     return dict(
         prompt=prompt.strip(),
         idea=idea,
@@ -196,9 +217,12 @@ def build_plan(prompt, preset, preset_source):
             never_paint_ui=True,
             paint_note="Never paint out UI. Reshoot from a clean moment.",
         ),
+        shot_list_skeleton=skeleton,
         shot_list=rows,
         shot_list_cap=cap,
-        shot_list_note=(f"Master {master}s, one row per beat, cap {cap} from the {preset} @2 cut-rate. "
+        shot_list_note=(f"shot_list_skeleton is the five beat rows. shot_list expands that skeleton to {len(rows)} shots "
+                        f"toward the {preset} @2 cut-rate cap of {cap} before capture (master {master}s), "
+                        "stopping at the preset's shot-length band. Empty labelled beats stay one row. "
                         "Also plan the ~20s feed (hook, demo, payoff, ask) and the ~30s feature before capture."),
         review=dict(required=True, max_rounds=RG.MAX_ROUNDS, roles=list(RG.ROLES)),
         filled=["idea", "preset", "beats", "length", "shot_list", "capture", "hook"],
@@ -300,7 +324,8 @@ def summary(plan, path):
         f"  preset: {plan['preset']} @{plan['preset_version']} ({plan['preset_source']})\n"
         f"  beats: {beats}\n"
         f"  length: {plan['length']['master_s']}s master, feed {plan['length']['feed_s']}s, feature {plan['length']['feature_s']}s\n"
-        f"  shot list: {len(plan['shot_list'])} rows (cap {plan['shot_list_cap']}), six columns\n"
+        f"  shot list: {len(plan['shot_list'])} rows from a {len(plan['shot_list_skeleton'])}-row skeleton "
+        f"(cap {plan['shot_list_cap']}), six columns\n"
         f"  capture: {plan['capture']['capture_resolution']} (dpr {plan['capture']['dpr']}), never_paint_ui {plan['capture']['never_paint_ui']}\n"
         f"  hook: promise by {plan['hook']['promise_by_s']}s, logo after {plan['hook']['logo_after_s']}s\n"
         f"  next: edit plan: in that file. `promo preview` is 540p + stills. "
