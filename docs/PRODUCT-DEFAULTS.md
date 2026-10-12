@@ -23,12 +23,13 @@ Patrick's ask (12 Oct 2026): thin user prompts must still produce a full project
 When the prompt is under-specified, fill in this order and write every fill into `promo.yaml` (or the project file) so the user can see and edit it:
 
 1. **One idea** (lesson 2) — ≤10 words. Everything else is evidence for this sentence.
-2. **Format → preset** — `hero` | `anime-opening` | `livestream` (talk show). Pick from prompt keywords; default `hero`.
+2. **Format → preset** — `hero` | `anime-opening` | `livestream` (talk show) | `vertical-short` (locked `@1`, 9:16). Pick from prompt keywords; default `hero`. `vertical-short` does not opt into `@2`.
 3. **Five beats** (lesson 3) — five single lines: hook, problem, demo, payoff, CTA. Refuse `--final` if any beat is empty.
 4. **Length** (lesson 4) — job decides length, not how much footage you have:
    - hero master: **60 s**
    - feed / X / Shorts cut: **~20 s** (hook + demo + payoff + ask)
    - single-feature clip: **~30 s**
+   - `vertical-short@1`: the shell's own band inside about **6–20 s** (UI zoom defaults to 11 s)
    Plan all cuts in the shot list before capture.
 5. **Shot list** (lesson 5) — one row per shot, six columns:
    - beat (hook | problem | demo | payoff | ask)
@@ -37,7 +38,7 @@ When the prompt is under-specified, fill in this order and write every fill into
    - on-screen text
    - length in seconds
    - app state needed
-   Every beat needs ≥1 row. Cap density with the preset cut-rate curve.
+   Every beat needs ≥1 row on a hero, anime, or livestream plan. A `vertical-short` plan keeps the five beat lines and uses the format shell instead (one row, or two for before/after). Cap density with the preset cut-rate curve.
 6. **Capture defaults** (lesson 6) — apply before `footage add`:
    - capture at **2× deliverable** (4K for 1080p)
    - clean demo state (e.g. `?demo=promo`), fixed window, no debug chrome
@@ -67,6 +68,26 @@ Rough 60 s hero slots (from style guide / reference study):
 - Payoff is the **last spoken line** (nothing between payoff and end card)
 - CTA needs one verb + one real destination (waitlist / download / repo). If none exists yet, end card may only name the product — do not invent a URL
 - Problem line must be true viewer pain (not a feature list). An option for one product (not a default): evening spent babysitting agents → sets up a morning-after payoff. Do not copy that line into a project the prompt did not ask for.
+
+## Vertical short (`vertical-short@1`)
+
+Locked at version 1. There is no `@2`. `promo plan` with this preset writes `version: 1` and a **format shell** (timing, picture, one caption, logo rule). It does not write a content batch, and it does not expand a 60 s hero into ~28 shots.
+
+Audience: builders and engineers who care about UI craft. Not generic AI news. Visual language: Apple-clean motion, intentional UI zooms, quiet pacing. Captions only, so the cut reads with the sound off. One idea. Aspect **9:16** (1080×1920 at the 1080 deliverable; capture at 2×, 2160×3840).
+
+Outer length is about **6–20 s**. The shell in use has its own band. Logo or wordmark is omitted, or occupies the **last 1 s at most**.
+
+| Shell | Rank | Length | Picture |
+|---|---|---|---|
+| UI zoom | primary, the plan default | 10–12 s (default 11 s) | Real screen capture. One deliberate zoom on one control. One caption. |
+| Craft loop | secondary | 8–15 s (default 12 s) | A UI-detail loop, or licensed generative motion, teaching one interaction. Not a product tour. |
+| Before/after polish | tertiary | 12 s | Two frames of the same UI. One craft change. A diagram is allowed. |
+
+Quote card and talking head are parked. They are not planned.
+
+Opus/Claude-style generative motion is an optional design source when it is licensed and on-brief. It is never required, it does not replace real app footage, and it never paints out real UI. Capture defaults still apply: 2× deliverable, clean demo state, intentional cursor, one zoom target. Review rounds are unchanged (540p preview, feedback, gated `--final`, max 3).
+
+The five beat lines are still filled, so an empty beat still refuses `--final`. The shot list is the shell (one row for UI zoom and craft loop, two for before/after), not a cut-rate expansion.
 
 ## Pacing targets from reference study (for presets `@2`)
 

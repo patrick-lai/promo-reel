@@ -57,6 +57,9 @@ WARN_RULES = {
     "livestream": dict(
         long_hold=dict(max_s=6.0),                # talk show: long holds are the format; > 6 s of a frozen screen is dead air
     ),
+    "vertical-short": dict(
+        long_hold=dict(max_s=8.0),                # quiet 9:16 holds; a frozen whole short still warns
+    ),
 }
 
 
@@ -78,6 +81,22 @@ def is_livestream(spec):
     return bool(spec.raw.get("livestream"))
 
 
+def canvas_units(spec):
+    """Scale-1 canvas (w, h). 1920x1080 unless the resolved preset declares frame aspect, w and h."""
+    frame = ((getattr(spec, "style", None) or {}).get("frame") or {})
+    if frame.get("aspect") and frame.get("w") and frame.get("h"):
+        return float(frame["w"]), float(frame["h"])
+    return 1920.0, 1080.0
+
+
+def covers_frame(vp, spec):
+    """True when `vp` is the whole canvas. 16:9 full frame stays [0, 0, 1920, 1080]."""
+    w, h = canvas_units(spec)
+    if not vp or len(vp) < 4:
+        return False
+    return [float(v) for v in vp[:4]] == [0.0, 0.0, float(w), float(h)]
+
+
 def viewport(spec, s, t_global=None):
     """Output rect [x0, y0, x1, y1] (1920x1080 units) where the shot's footage is shown."""
     if s.type == "anime":
@@ -96,7 +115,8 @@ def viewport(spec, s, t_global=None):
             return [float(v) for v in b[:4]]
         except Exception:  # noqa: BLE001
             pass
-    return [0.0, 0.0, 1920.0, 1080.0]
+    w, h = canvas_units(spec)
+    return [0.0, 0.0, w, h]
 
 
 def clips_of(spec, s):
@@ -167,7 +187,8 @@ def _measure_clip_named(spec, s, el, t):
     st = sg["t_in"] + (sg["t_out"] - sg["t_in"]) * u
     cam = R.cam_at(resolve_cam_keys(sg["cam"], sg["dur"]), t - acc) if sg.get("cam") else R.cam_at(keys, t)
     fr = N.gray_frame(spec.footage_path(sg.get("source", s.cfg.get("source"))), st)
-    return N.element_px(fr, tuple(cam[:3]), (1920, 1080), el["box"], src_px=el.get("src_px"), thr=el.get("thr", 110)), st
+    cw, ch = canvas_units(spec)
+    return N.element_px(fr, tuple(cam[:3]), (int(cw), int(ch)), el["box"], src_px=el.get("src_px"), thr=el.get("thr", 110)), st
 
 
 def named_clip_gates(spec):
@@ -567,20 +588,22 @@ def changed_fraction(seg, pix_delta=10):
 def static_runs(path, spec, rects, width=384, pix_delta=10, max_changed=0.0005, frames=None):
     """Per footage shot: longest run (s) where the footage viewport does not change frame to frame (no pixel moves
     more than pix_delta levels, beyond max_changed of the viewport). Cards / credits are skipped (a held card is
-    the design). Decodes the output once at width x width*9/16 gray (ffmpeg -threads 2); `frames` = pre-decoded."""
-    W, H = int(width), int(round(width * 9 / 16))
+    the design). Decodes the output once at width x width*(canvas h/w) gray (16:9 stays width*9/16; ffmpeg -threads 2);
+    `frames` = pre-decoded."""
+    cw, ch = canvas_units(spec)
+    W, H = int(width), int(round(int(width) * ch / cw))
     fr = frames
     if fr is None:
       raw = subprocess.check_output(["ffmpeg", "-v", "error", "-threads", "2", "-i", path, "-an", "-vf", f"scale={W}:{H}:flags=area",
                                    "-f", "rawvideo", "-pix_fmt", "gray", "-"])
       fr = np.frombuffer(raw, np.uint8).reshape(-1, H, W).astype(np.float32)
-    k = W / 1920.0
+    k = W / cw
     out = {}
     for s in spec.shots:
         if s.type in ("card", "live2d_credits") or s.cfg.get("placeholder") or not clips_of(spec, s):
             continue                       # cards / credits / blank screens: a held frame is the design, not a stalled clip
         f0, f1 = int(round(s.t0 * spec.fps)), min(len(fr), int(round(s.t1 * spec.fps)))
-        x0, y0, x1, y1 = rects.get(s.id, (0, 0, 1920, 1080))
+        x0, y0, x1, y1 = rects.get(s.id, (0, 0, cw, ch))
         xa, ya, xb, yb = int(x0 * k), int(y0 * k), max(int(x0 * k) + 2, int(x1 * k)), max(int(y0 * k) + 2, int(y1 * k))
         if f1 - f0 < 2:
             out[s.id] = (0.0, s.t0)
@@ -605,6 +628,7 @@ def frame_gates(spec, rules=None, clipped_named=()):
         return res
     te, ef, lh = rules["text_edge"], rules["empty_frame"], rules["long_hold"]
     edge_msgs, empty_msgs, rects = list(clipped_named), [], {}
+    cw, ch = canvas_units(spec)
     measured = []
     for s in spec.shots:
         if s.cfg.get("placeholder"):
@@ -622,14 +646,14 @@ def frame_gates(spec, rules=None, clipped_named=()):
             rad = float((CN.look_of(spec, s).get("panel") or {}).get("radius") or 0.0)
             te_s = {**te, "corner_px": max(int(te.get("corner_px", 0)), int(rad) + 4)}
         for t in sample_times(s, k):
-            g = grab(out, s.t0 + t)
+            g = grab(out, s.t0 + t, W=int(cw), H=int(ch))
             vpt = viewport(spec, s, s.t0 + t)
             if te.get("on", True) and is_ui_shot(spec, s, rules):
                 hits.append(edge_hits(g, vpt, te_s))
             if ef.get("on", True) and is_ui_shot(spec, s, rules):
                 fracs.append((t,) + empty_fraction(g, vpt, ef))
         for e, pos, n in persistent_edges(hits, te):
-            edge_msgs.append(f"shot {s.id} {e} edge: text-like ink cut by the {('panel (panel-cutoff)' if s.type == 'cinema' else 'crop') if list(vp) != [0, 0, 1920, 1080] else 'frame'} edge "
+            edge_msgs.append(f"shot {s.id} {e} edge: text-like ink cut by the {('panel (panel-cutoff)' if s.type == 'cinema' else 'crop') if not covers_frame(vp, spec) else 'frame'} edge "
                              f"on {n}/{len(hits)} sampled frames at {'y' if e in ('left', 'right') else 'x'}~{pos}")
         if fracs:
             med = sorted(f for _, f, _ in fracs)[len(fracs) // 2]

@@ -85,6 +85,15 @@ def test_the_word_kinetic_names_the_dialect_not_the_anime_preset_when_stills_are
     assert gapfill.pick_preset("a kinetic promo")[0] == "anime-opening", "without stills the old keyword still works"
 
 
+def test_vertical_short_keeps_its_shell_and_is_not_switched_to_the_16x9_designed_plan():
+    info, _ = e2e_plan("preset: vertical-short\n" + E2E_PROMPT)
+    plan = info["plan"]
+    assert plan["preset"] == "vertical-short" and plan["preset_version"] == 1 and "designed" not in plan
+    forced, _ = e2e_plan("preset: vertical-short\n" + E2E_PROMPT, designed=True)
+    assert forced["plan"]["preset"] == "vertical-short" and forced["plan"]["designed"]["dialect"]["name"] == "ethereal", "--designed still forces it"
+    assert e2e_plan()[0]["plan"]["preset"] == "hero" and "designed" in e2e_plan()[0]["plan"]
+
+
 # ---------------------------------------------------------------- ethereal defaults from a thin prompt
 def test_ethereal_defaults_from_a_thin_prompt():
     info, d = e2e_plan(extra_stills=[])
