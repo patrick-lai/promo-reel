@@ -35,7 +35,10 @@ A thin prompt (`make a promo`) is not a spec. Before capture, run `promo plan <n
 ### Every draft is held to every note (checks, round brief, blind comparison)
 - **Notes become checks.** After `round start`, turn each thing the person said into `promo flow check add --what "<what must be true>" --scene ID --source feedback --by NAME`
   (a pin from the Stage, `promo flow pin add`, and an overturned choice, `promo flow assume overturn`, already are one). `--kind gate --gate NAME` reads a `promo check` gate;
-  `promo flow look` adds the reference-look check. Only the person retires a check (`check retire ID --why --by NAME`).
+  `promo flow look` adds the reference-look check. Only the person retires a check (`check retire ID --why --by NAME`; the Stage's Drop button sends it).
+  A note that contradicts an older one (a new length, a different music direction) is added with `--replaces c29,c34`: the Stage shows the old one as
+  "may be replaced by", and the person drops it. Mark EVERY check on each new draft, not only the newest notes: a draft starts with none marked, and the
+  Stage shows unmarked ones as "Not checked" (`draft add` and `promo flow status` list them while a round is open).
 - **The round brief.** `flow/rounds/<c>-<n>/BRIEF.md` is rewritten on every change: their words on top, the scoreboard, the drafts that lost, the look, what this
   person said in earlier videos (`promo flow lessons`), recipes that fit (`promo flow recipe list --for ...`; mark one you apply with `recipe use ID`). Every
   maker and reviewer sub-agent reads it FIRST.

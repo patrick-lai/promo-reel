@@ -358,7 +358,7 @@ UICHECK = r"""(async () => {
   }
   if (step === 'review') {
     ok('the draft says what was checked on this very file', /^Checked on this file: 10 passed, 1 warning\. Not checked: vo-script/.test((Q('.verify') || {}).textContent || ''), (Q('.verify') || {}).textContent);
-    ok('the checks list every check with what changed', QA('.ck-list li').length === 6 && /1 fixed · 0 broken · 1 still open/.test(Q('.ck-board .sec-h').textContent), QA('.ck-list li').length + ' ' + Q('.ck-board .sec-h').textContent);
+    ok('the checks list every check with what changed', QA('.ck-list li').length === 6 && /1 fixed · 0 broken · 1 failing · 0 not checked yet/.test(Q('.ck-board .sec-h').textContent), QA('.ck-list li').length + ' ' + Q('.ck-board .sec-h').textContent);
     ok('the hidden control never reaches the person', !QA('.ck-list .ck-what').some((e) => /Klingon|periscope|pizza|dinosaur|opera|audience|Snow falls/.test(e.textContent)));
     ok('the blind comparison is reported', /blind judge preferred draft 3/.test(Q('.judged').textContent));
     ok('the look pairs are shown', QA('.lk-pair').length >= 1);
@@ -374,6 +374,13 @@ UICHECK = r"""(async () => {
     Q('#note').value = 'Use the upbeat guitar track instead'; Q('#note').dispatchEvent(new Event('input')); await wait(100);
     await click('#btnPrimary'); await wait(400);
     ok('the change reaches the agent with the choice it replaces', /action overturn -> \[mod:promo-flow\] Sam wants something else than your choice "Kept the calm piano track/.test(log()), log().slice(0, 300));
+    window.harness.setStage('autopilot'); await wait(400); window.harness.setStage('review'); await wait(900);
+    const ckId = Q('.ck-list li .ck-drop').closest('li').dataset.id;
+    ok('a check that fails on this draft says Failing, not still open', /Failing/.test((Q('.ck-list li[data-change=failing]') || {}).textContent || ''), (Q('.ck-list li[data-change=failing]') || {}).outerHTML);
+    await click('[data-k=drop-' + ckId + ']');
+    ok('Drop asks for an optional reason before anything is sent', !!Q('[data-k=dropwhy-' + ckId + ']') && !/action drop/.test(log()));
+    Q('[data-k=dropwhy-' + ckId + ']').value = 'the "new" note replaces it'; await click('[data-k=dropgo-' + ckId + ']'); await wait(300);
+    ok('a dropped check reaches the agent as a retire', new RegExp('action drop -> \\[mod:promo-flow\\] Sam dropped check ' + ckId + ' .*: the \'new\' note replaces it\\. Run: promo flow check retire ' + ckId + ' --why').test(log()), log().slice(0, 300));
     window.harness.setStage('autopilot'); await wait(400); window.harness.setStage('review'); await wait(900);
     ok('the draft plays in our own player', await until(() => Q('.pfp video') && Q('.pfp video').readyState >= 1, 8000));
     Q('.pfp video').currentTime = 0.5; await wait(200);

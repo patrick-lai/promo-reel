@@ -1,7 +1,7 @@
 {
   "id": "promo-flow",
   "name": "Promo flow",
-  "version": "0.8.2",
+  "version": "0.8.3",
   "protocol": 2,
   "description": "Plan, storyboard and review a produced video with the person in the loop.",
   "entry": "index.html",
@@ -27,6 +27,7 @@
     "ab":     {"message": "[mod:promo-flow] {by} answered the blind pick {pair} ({question}): {label}. Run: promo flow ab pick {pair} --side {side} --by \"{by}\", then publish.", "sent": "Sent your pick"},
     "autopilot": {"message": "[mod:promo-flow] {by} asked you to {op} working on your own ({what}). Run: promo flow autopilot {op} --minutes {minutes} --by \"{by}\" (--minutes only for start). While it runs, work in passes (promo flow autopilot pass begin, then pass end) until it reports done, blocked or out of time, and publish after every pass.", "sent": "Sent your go"},
     "overturn": {"message": "[mod:promo-flow] {by} wants something else than your choice \"{choice}\" ({id}): {text}. Run: promo flow assume overturn {id} --text \"<their words>\" --by \"{by}\", then publish. It becomes a check for the next draft.", "sent": "Sent your change"},
+    "drop":   {"message": "[mod:promo-flow] {by} dropped check {id} (\"{what}\"): {why}. Run: promo flow check retire {id} --why \"{why}\" --by \"{by}\", then publish. Drafts are no longer held to it; do not re-add it.", "sent": "Sent: drop this check"},
     "forget": {"message": "[mod:promo-flow] {by} asked you to forget a remembered note: {text}. Run: promo flow lessons --forget {id} --by \"{by}\", then publish.", "sent": "Sent your request"},
     "podcast": {"message": "[mod:promo-flow] {by} changed the podcast show in the Cast card ({what}): {list}. Run these in the project, in order (here ` ; ` separates them): {ops}. Then publish the new state. Do not approve anything.", "sent": "Sent your request"},
     "edit": {"message": "[mod:promo-flow] {by} edited the video in the Stage's editor ({count} changes after {draft}: {list}). Run: promo flow edit render --by \"{by}\" --file - with these edits on stdin, one per line (here ` ; ` separates them): {ops}. It builds only what changed, checks it and registers the next draft; then publish. Do not approve anything.", "sent": "Sent your edits"},

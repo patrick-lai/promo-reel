@@ -33,7 +33,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
 
   const S = {
     files: [], fileSent: [], fileSend: null, fileErr: "", fileNote: "", fileDrag: false, fv: 0,
-    notes: {}, noteSeq: 0, player: null,
+    notes: {}, noteSeq: 0, player: null, dropCk: null,
     booted: false, held: false, heldTimer: 0, builtAt: 0, previewUntil: 0, version: null, summary: {}, doc: {}, pending: null, offline: false, readonly: false,
     tab: null, userTab: false, stage: null, picks: new Set(), style: null, ownStyle: "", boardIdx: 0, draftSel: null, earlier: false, filter: null, checksOpen: false, assumeOpen: false,
     ref: "", cast: {}, castOpen: false, settingsOpen: false, setSel: null, setText: "", compose: false, composeKind: null, reader: null, sbView: "scenes", cmtPending: 0, cmtTotal: 0, cmtShown: 0, cmtChip: null, docGroup: null, docQ: "", docBase: null, docOpened: new Set(), reqHint: "", sending: null, justSent: null, stall: false, err: "", stale: null, stash: null, updated: false, stepsOpen: false, lastAction: null, title: "", lastBadge: "", noState: false,
@@ -695,7 +695,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     else if (!list.length) sig = "overview|" + JSON.stringify([sliceFor(null, true), gate(), S.style, S.readonly, !!S.pending]);
     else if (S.tab === PF.WIDGET_TAB && !S.reader) sig = "widgets|" + JSON.stringify(sliceFor(S.tab, false)) + S.readonly;
     else if (S.reader) sig = "reader|" + S.reader.key + "|" + JSON.stringify(sliceFor(S.tab, false)) + S.readonly;
-    else sig = S.tab + "|" + (S.tab === PF.FILES_TAB ? S.fv + "|" + !!S.fileSend + S.fileErr + "|" : "") + [...S.picks].join() + "|" + S.style + S.boardIdx + S.draftSel + S.earlier + S.filter + S.readonly + !!S.pending + !!S.justSent + !!S.sending + S.agentWorking + S.sbView + S.docGroup + S.docQ + (S.compose ? S.composeKind : "") + jobRunning()
+    else sig = S.tab + "|" + (S.tab === PF.FILES_TAB ? S.fv + "|" + !!S.fileSend + S.fileErr + "|" : "") + [...S.picks].join() + "|" + S.style + S.boardIdx + S.draftSel + S.earlier + S.filter + S.readonly + !!S.pending + !!S.justSent + !!S.sending + S.agentWorking + S.sbView + S.docGroup + S.docQ + S.dropCk + (S.compose ? S.composeKind : "") + jobRunning()
       + "\u0001" + JSON.stringify(sliceFor(S.tab, true)) + "|" + JSON.stringify([S.doc.pairs, S.doc.assumptions, S.doc.autopilot]);
     if (!force && sig === lastSig) return;
     /* Only the part before \u0001 is the person's own doing; what follows is what the agent published. */
@@ -2535,12 +2535,30 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   function checksBlock(it) {
     const b = it.board;
     if (!b || !b.total) return null;
-    const CH = { fixed: ["Fixed", "ok"], broken: ["Broken", "bad"], open: ["Still open", "warn"], held: ["Holds", ""] };
+    const CH = { fixed: ["Fixed", "ok"], broken: ["Broken", "bad"], failing: ["Failing", "bad"], unchecked: ["Not checked", "warn"], held: ["Holds", ""] };
     const ICON = { pass: "check", fail: "alert", unmeasured: "clock" };
+    const RANK = { broken: 0, failing: 1, unchecked: 2 };
+    const rank = (r) => (r.change in RANK ? RANK[r.change] : 3);
+    const head = b.fixed + " fixed · " + b.broken + " broken · " + b.failing + " failing · " + b.unchecked + " not checked yet";
+    const was = (r) => (r.last && r.last.draft ? (r.last.status === "pass" ? "Passed" : "Failed") + " on draft " + r.last.draft + "; nobody has looked at this draft yet" : "Nobody has looked at this on any draft yet");
     return h("section", { class: "ck-board", "aria-label": "Checks on " + it.label },
-      secH("Checks on this draft", b.total, h("span", { class: "chip " + (b.broken ? "bad" : b.open ? "warn" : "ok"), text: b.fixed + " fixed · " + b.broken + " broken · " + b.open + " still open" })),
-      h("ul", { class: "ck-list" }, arr(b.rows).slice().sort((x, y) => (x.change === "open" ? 0 : x.change === "broken" ? 0 : 1) - (y.change === "open" ? 0 : y.change === "broken" ? 0 : 1)).map((r) => h("li", { "data-status": r.status, "data-change": r.change || "", title: r.status === "unmeasured" ? "Nobody has measured this on this draft yet" : "" }, ic(ICON[r.status] || "clock"),
-        h("span", { class: "ck-what", text: r.what }), r.scene ? h("span", { class: "chip", text: "Scene " + r.scene }) : null, r.change === "held" ? null : h("span", { class: "chip " + (CH[r.change] || ["", ""])[1], text: (CH[r.change] || [r.change])[0] })))));
+      secH("Checks on this draft", b.total, h("span", { class: "chip " + (b.broken || b.failing ? "bad" : b.unchecked ? "warn" : "ok"), text: head })),
+      h("ul", { class: "ck-list" }, arr(b.rows).slice().sort((x, y) => rank(x) - rank(y)).map((r) => h("li", { "data-status": r.status, "data-change": r.change || "", "data-id": r.id, title: r.status === "unmeasured" ? was(r) : "" }, ic(ICON[r.status] || "clock"),
+        h("span", { class: "ck-what", text: r.what }), r.scene ? h("span", { class: "chip", text: "Scene " + r.scene }) : null,
+        r.change === "held" ? null : h("span", { class: "chip " + (CH[r.change] || ["", ""])[1], text: (CH[r.change] || [r.change])[0] }),
+        r.change === "unchecked" && r.last && r.last.draft ? h("span", { class: "ck-was", text: (r.last.status === "pass" ? "passed" : "failed") + " on draft " + r.last.draft }) : null,
+        arr(r.replaced_by).length ? h("span", { class: "ck-was", text: "may be replaced by " + arr(r.replaced_by).join(", ") }) : null,
+        dropCtl(r)))));
+  }
+  function dropCtl(r) {
+    if (S.readonly || r.source === "harness") return null;
+    if (S.dropCk !== r.id) return h("button", { type: "button", class: "btn ghost ck-drop", "data-quiet": "1", "data-k": "drop-" + r.id, disabled: !canAsk(), text: "Drop",
+      title: "This note no longer applies: ask the agent to stop holding drafts to it", onclick: () => { S.dropCk = r.id; render(); const f = el.content.querySelector('[data-k="dropwhy-' + r.id + '"]'); if (f) f.focus(); } });
+    const why = h("input", { type: "text", class: "ck-why", "data-k": "dropwhy-" + r.id, maxlength: "200", placeholder: "Why (optional)", "aria-label": "Why this note no longer applies (optional)",
+      onkeydown: (e) => { if (e.key === "Enter") { e.preventDefault(); go(); } else if (e.key === "Escape") { e.preventDefault(); S.dropCk = null; render(); } } });
+    const go = () => { const w = why.value.trim().replace(/"/g, "'"); S.dropCk = null; send("drop", { id: r.id, what: r.what.slice(0, 160).replace(/"/g, "'"), why: w || "no longer applies (dropped in the Stage)" }); };
+    return h("span", { class: "ck-dropbox" }, why, h("button", { type: "button", class: "btn primary sm", "data-k": "dropgo-" + r.id, disabled: !canAsk(), text: "Drop it", onclick: go }),
+      h("button", { type: "button", class: "btn ghost sm", "data-quiet": "1", "data-k": "dropno-" + r.id, text: "Cancel", onclick: () => { S.dropCk = null; render(); } }));
   }
   function lookBlock(it) {
     const lk = it.look;

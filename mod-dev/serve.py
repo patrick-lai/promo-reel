@@ -196,9 +196,10 @@ def run_action(pd, name, payload):
                         remove=["pin", "remove", o["key"]])[o["op"]]
             if flow.main(["--project", pd, *argv, "--by", BY]) != 0:
                 return {"ok": False, "error": f"promo flow pin {o['op']} failed (see the harness console)", "pending": False}
-    elif name in ("ab", "forget", "overturn", "restore", "autopilot"):
+    elif name in ("ab", "forget", "overturn", "restore", "autopilot", "drop"):
         a = payload
-        argv = dict(ab=["ab", "pick", str(a.get("pair")), "--side", str(a.get("side")), "--by", BY],
+        argv = dict(drop=["check", "retire", str(a.get("id")), "--why", str(a.get("why")), "--by", BY],
+                    ab=["ab", "pick", str(a.get("pair")), "--side", str(a.get("side")), "--by", BY],
                     forget=["lessons", "--forget", str(a.get("id")), "--by", BY],
                     overturn=["assume", "overturn", str(a.get("id")), "--text", str(a.get("text")), "--by", BY],
                     restore=["restore", "--draft", str(a.get("draft")), "--by", BY] + (["--scene", str(a["scene"])] if a.get("scene") else []),

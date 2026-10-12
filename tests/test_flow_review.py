@@ -61,7 +61,7 @@ def test_a_note_becomes_a_check_that_every_later_draft_is_held_to(pd, tmp_path, 
     review_draft(pd)
     close(pd, tmp_path)
     d2 = F.snapshot(pd)["drafts"][1]
-    assert d2["board"]["line"] == "Draft 2: 1 fixed, 0 broken, 0 open" and d2["board"]["rows"][0]["what"].startswith("The ticket count")
+    assert d2["board"]["line"] == "Draft 2: 1 fixed, 0 broken, 0 failing, 0 not checked" and d2["board"]["rows"][0]["what"].startswith("The ticket count")
     assert all("Klingon" not in r["what"] and "periscope" not in r["what"] for d in F.snapshot(pd)["drafts"] for r in d["board"]["rows"])   # the control stays hidden
 
     F.round_start(pd, "warmer music please", by="Pat")
@@ -76,6 +76,37 @@ def test_a_note_becomes_a_check_that_every_later_draft_is_held_to(pd, tmp_path, 
         FC.retire(pd, ticket, "we dropped that scene", "Claude")
     FC.retire(pd, ticket, "we dropped that scene", "Pat")
     assert close(pd, tmp_path)["closed"]
+
+
+def test_an_unmarked_draft_shows_checks_as_not_checked_and_the_next_mark_compares_with_the_last_measured_draft(pd, tmp_path):
+    at_drafts(pd, tmp_path)
+    a = FC.add(pd, "The ticket count reads 8", scene="02")
+    b = FC.add(pd, "The end card names the product", scene="02")
+    FC.mark(pd, a, 1, "pass", "8 at 0:05", "claude")
+    FC.mark(pd, b, 1, "fail", "no name at 0:58", "claude")
+    new_draft(pd, tmp_path)
+    sb = FC.scoreboard(F.load(pd))
+    rows = {r["id"]: r for r in sb["rows"]}
+    assert rows[a]["change"] == rows[b]["change"] == "unchecked" and rows[a]["last"] == dict(status="pass", draft=1)
+    assert sb["line"] == "Draft 2: 0 fixed, 0 broken, 0 failing, 2 not checked" and sb["open"] == 2
+    new_draft(pd, tmp_path)
+    FC.mark(pd, a, 3, "fail", "the count is cut off", "claude")
+    FC.mark(pd, b, 3, "pass", "name on the card", "claude")
+    rows = {r["id"]: r for r in FC.scoreboard(F.load(pd))["rows"]}
+    assert (rows[a]["change"], rows[a]["last"]["draft"]) == ("broken", 1) and (rows[b]["change"], rows[b]["prev"]) == ("fixed", "fail")
+    assert FC.scoreboard(F.load(pd), 3, against=2)["rows"][0]["change"] == "failing"         # an explicit comparison keeps its draft
+
+
+def test_a_note_that_replaces_older_ones_is_only_a_hint_until_the_person_drops_them(pd, tmp_path):
+    at_drafts(pd, tmp_path)
+    old = FC.add(pd, "The video is 40 seconds long")
+    with pytest.raises(F.FlowError, match="no check c9"):
+        FC.add(pd, "The video is about 2 minutes long", replaces=["c9"])
+    new = FC.add(pd, "The video is about 2 minutes long", replaces=[old])
+    row = next(r for r in FC.scoreboard(F.load(pd))["rows"] if r["id"] == old)
+    assert row["replaced_by"] == [new] and not FC.find(F.load(pd), old)["retired"]
+    FC.retire(pd, old, "replaced by the 2 minute note", "Pat")
+    assert [r["id"] for r in FC.scoreboard(F.load(pd))["rows"]] == [new]
 
 
 def test_a_reviewer_family_that_calls_the_control_true_does_not_count_until_it_looks_again(pd, tmp_path, sheets):

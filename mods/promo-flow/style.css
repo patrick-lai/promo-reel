@@ -1321,7 +1321,11 @@ button.jb-tile:hover { border-color: var(--c-accent); }
 @container (max-width: 439px) { .pk-acts { grid-template-columns: 1fr 1fr; } }
 .pick-card.later { border-left-color: var(--c-line); }
 .verify[data-state="warned"] .ic { color: var(--c-warn); }
-.ck-list li[data-change="open"] .ic { color: var(--c-warn); }
+.ck-list li[data-change="unchecked"] .ic { color: var(--c-warn); }
+.ck-list .ck-was { font-size: 12px; color: var(--c-dim); }
+.ck-list .ck-drop { margin-left: auto; }
+.ck-list .ck-dropbox { display: flex; flex: 1 1 100%; gap: 6px; align-items: center; }
+.ck-list .ck-why { flex: 1 1 auto; min-width: 0; }
 @container (max-width: 439px) { .as-list li .btn { margin-left: 0; flex-basis: 100%; justify-content: flex-start; padding-left: 0; } }
 /* final: credits stack on narrow panes */
 @container (max-width: 520px) { .credit { grid-template-columns: minmax(0, 1fr); gap: 2px; } .credit dd { font-size: 12.5px; color: var(--c-dim); } }

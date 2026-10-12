@@ -35,7 +35,7 @@ def _scoreboard_lines(st):
     L_ = [FC.scoreboard(st)["line"] + ".", "", "| check | scene | last draft | change | evidence |", "|---|---|---|---|---|"]
     for x in sb["rows"]:
         L_.append(f"| {x['id']} {x['what']} | {x['scene'] or 'all'} | {x['status']} | {x['change']} | {F._clip(x['why'], 90)} |")
-    L_ += ["", "Mark every judge check on the new draft (`promo flow check mark` / `check marks`), pass or fail with evidence. Unmeasured is not a pass.",
+    L_ += ["", "Mark every judge check on the new draft (`promo flow check mark` / `check marks`), pass or fail with evidence, not only the newest notes: a draft starts with none marked, and unmeasured is not a pass.",
            "Keep what got fixed; restore what broke. A draft that breaks what the reviewed draft got right cannot go to the person."]
     return L_
 
@@ -47,7 +47,7 @@ def _history(pd, st):
         line = f"- Draft {i}" + (f" ({d['note']})" if d.get("note") else "")
         if i > 1:
             sb = FC.scoreboard(st, i)
-            line += f": {sb['fixed']} fixed, {sb['broken']} broken, {sb['open']} open"
+            line += f": {sb['fixed']} fixed, {sb['broken']} broken, {sb['failing']} failing, {sb['unchecked']} not checked"
             broke = [x["what"] for x in sb["rows"] if x["change"] == "broken"]
             if broke:
                 line += f". It broke: {'; '.join(broke)}"

@@ -2,6 +2,7 @@
 and the scoreboard says what each draft fixed, broke or left open.
 
     promo flow check add --what TEXT [--scene ID] [--story A] [--kind judge|gate|look] [--gate NAME] [--source feedback|council|agent] [--by NAME]
+                         [--replaces c3,c7]     a hint that the new note supersedes older ones: the Stage offers the person to drop them
     promo flow check mark ID --draft N --pass|--fail --evidence TEXT --family claude|grok|... [--by LENS]
     promo flow check marks --file F --draft N --family F [--by LENS]     JSON lines {"id", "status": pass|fail, "evidence"} from one reviewer
     promo flow check retire ID --why TEXT --by NAME                       only the person drops a check that came from their words
@@ -61,9 +62,14 @@ def round_key(r):
     return f"{r['cycle']}.{r['n']}"
 
 
-def add(pd, what, scene=None, story=None, kind="judge", gate=None, source="agent", by=None):
-    """A check from the person's note (`source` feedback, pin or assumption, kept for the round that takes it), the council or the agent."""
+def add(pd, what, scene=None, story=None, kind="judge", gate=None, source="agent", by=None, replaces=()):
+    """A check from the person's note (`source` feedback, pin or assumption, kept for the round that takes it), the council or the agent.
+    `replaces` names older checks the new one supersedes: only a hint, the person decides whether to drop them."""
     st = F.load(pd)
+    replaces = [x for x in replaces or () if x]
+    for x in replaces:
+        if find(st, x).get("control"):
+            raise F.FlowError(f"check {x} belongs to the flow and cannot be replaced")
     what = " ".join((what or "").split())
     if not what:
         raise F.FlowError("a check needs --what: the thing a reviewer can see is true or not on the draft")
@@ -81,7 +87,8 @@ def add(pd, what, scene=None, story=None, kind="judge", gate=None, source="agent
     r = F.open_round(st)
     cid = f"c{len(st.setdefault('checks', [])) + 1}"
     st["checks"].append(dict(id=cid, what=what, scene=str(scene) if scene else None, story=story, kind=kind, gate=gate, source=source,
-                             round=round_key(r) if r else None, by=by, created=F.now(), control=False, retired=None))
+                             round=round_key(r) if r else None, by=by, created=F.now(), control=False, retired=None,
+                             **(dict(replaces=replaces) if replaces else {})))
     F.log(st, f"check {cid}: {what}")
     F.save(pd, st)
     if source in PERSON_SOURCES:
@@ -208,23 +215,45 @@ def status(st, c, i):
     return "unmeasured", "nobody has looked yet"
 
 
+def _last_measured(st, c, i):
+    """(status, draft number) of check `c` on the latest draft before index `i` where it was measured; ("unmeasured", None) when no earlier
+    draft measured it (a new note that passes now counts as fixed), ("none", None) on the first draft."""
+    for k in range(i - 1, -1, -1):
+        s = status(st, c, k)[0]
+        if s != "unmeasured":
+            return s, k + 1
+    return ("unmeasured" if i else "none"), None
+
+
 def scoreboard(st, n=None, against=None, control=False):
-    """Draft n (default the latest) against draft `against` (default the one before it): every active check with its status then and now.
-    `change` is fixed (now passes, did not on the earlier draft), broken (passed, now fails), open (fails or is unmeasured now) or held (passed both times)."""
+    """Draft n (default the latest) against draft `against`, or by default against each check's last measured draft (a draft nobody marked
+    does not reset what an earlier one showed). `change` is fixed (now passes, did not before), broken (passed, now fails), failing (fails now),
+    unchecked (not measured on this draft; `last` says what it was when it last was) or held (passes). `open` counts failing + unchecked."""
     n, _ = draft_of(st, n)
     i = n - 1
-    j = (against - 1) if against else i - 1
+    j = (against - 1) if against else None
     rows = []
+    later = {}
+    for c in _active(st):
+        for x in c.get("replaces") or []:
+            later.setdefault(x, []).append(c["id"])
     for c in _active(st, control=control):
         now_, why = status(st, c, i)
-        prev = status(st, c, j)[0] if j >= 0 else "none"
-        change = "fixed" if now_ == "pass" and prev not in ("pass", "none") else "broken" if prev == "pass" and now_ == "fail" else "held" if now_ == "pass" else "open"
-        rows.append(dict(id=c["id"], what=c["what"], scene=c.get("scene"), kind=c["kind"], source=c["source"], round=c.get("round"), status=now_, prev=prev, change=change, why=why))
-    count = {k: sum(1 for r in rows if r["change"] == k) for k in ("fixed", "broken", "open", "held")}
-    parts = [f"{count['fixed']} fixed", f"{count['broken']} broken", f"{count['open']} open"]
+        if j is None:
+            prev, at = _last_measured(st, c, i)
+        else:
+            prev, at = (status(st, c, j)[0], j + 1) if j >= 0 else ("none", None)
+        change = ("fixed" if now_ == "pass" and prev not in ("pass", "none") else "held" if now_ == "pass"
+                  else "broken" if now_ == "fail" and prev == "pass" else "failing" if now_ == "fail" else "unchecked")
+        last = dict(status=prev, draft=at) if at else None
+        rows.append(dict(id=c["id"], what=c["what"], scene=c.get("scene"), kind=c["kind"], source=c["source"], round=c.get("round"), status=now_, prev=prev,
+                         last=last, change=change, why=why, replaced_by=later.get(c["id"], [])))
+    count = {k: sum(1 for r in rows if r["change"] == k) for k in ("fixed", "broken", "failing", "unchecked", "held")}
+    count["open"] = count["failing"] + count["unchecked"]
+    parts = [f"{count['fixed']} fixed", f"{count['broken']} broken", f"{count['failing']} failing", f"{count['unchecked']} not checked"]
     line = f"Draft {n}: " + ", ".join(parts) if rows else f"Draft {n}: no checks yet"
     void = sorted(void_families(st["drafts"][i], st))
-    return dict(draft=n, against=j + 1 if j >= 0 else None, rows=rows, line=line, void=void, **count, total=len(rows),
+    return dict(draft=n, against=against if against else None, rows=rows, line=line, void=void, **count, total=len(rows),
                 passing=sum(1 for r in rows if r["status"] == "pass"))
 
 
@@ -409,7 +438,9 @@ def verify_view(d):
 def board_text(sb):
     L = [sb["line"]]
     for r in sb["rows"]:
-        L.append(f"  {r['id']:<4} {r['status']:<10} {r['change']:<6} {('scene ' + r['scene']) if r['scene'] else 'whole video':<12} {r['what']}  [{r['why']}]")
+        was = f" (was {r['last']['status']} on draft {r['last']['draft']})" if r["change"] == "unchecked" and r.get("last") else ""
+        by = f" (may be replaced by {', '.join(r['replaced_by'])})" if r.get("replaced_by") else ""
+        L.append(f"  {r['id']:<4} {r['status']:<10} {r['change']:<9} {('scene ' + r['scene']) if r['scene'] else 'whole video':<12} {r['what']}  [{r['why']}]{was}{by}")
     if sb["void"]:
         L.append(f"  discarded: marks from {', '.join(sb['void'])} (called the control true)")
     return "\n".join(L)

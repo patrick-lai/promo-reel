@@ -134,7 +134,8 @@ moment; the storyboard's scenes under the bar, a frame preview on hover, the not
 in/out, speed, full screen (in the CommissionAI app, whose web view shows full screen as a blank picture, it fills the window from the top layer instead), `?` lists the keys; the player is kept across repaints so the clip never reloads), the notes list (click seeks; New / Changed /
 Removing until sent), one "Send to the agent" for every unsent change (`PF.noteChange`, `notesView`, `notesUnsettled`: a sent change shows as sent until the
 published pins carry it), the checks
-with Fixed / Broken / Still open / Holds, the look pairs, "Let the agent keep working" (30 min / 1 hour / 2 hours, only on the latest draft with checks,
+with Fixed / Broken / Failing / Not checked (with what it was on the last draft that measured it) / Holds and a Drop button per note
+(`drop` action, `promo flow check retire`), the look pairs, "Let the agent keep working" (30 min / 1 hour / 2 hours, only on the latest draft with checks,
 `PF.canAutopilot`) and on earlier drafts "Go back to this version" (the whole draft asks twice; one scene from a select).
 
 Actions: `pins {draft, count, list, ops}` (every note added, changed or removed since the last send; `list` is the numbered text the agent reads, `ops` the

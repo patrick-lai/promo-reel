@@ -962,7 +962,8 @@ def status(pd):
                 needs=needs(pd, st), picks=st["picks"], gates={k: dict(by=v["by"], at=v["at"], fresh=gate_ok(pd, st, k)) for k, v in st["gates"].items()},
                 docs=[dict(id=d["id"], title=d["title"], kind=d["kind"]) for d in st.get("docs") or []], widgets=[dict(id=w["id"], title=w["title"], place=w["place"]) for w in st.get("widgets") or []], dashboard=os.path.join(fdir(pd), "dashboard.html"),
                 scoreboard=FC.scoreboard(st)["line"] if st["drafts"] else None, lessons=[x["line"] for x in LS.top(st.get("person"))],
-                autopilot=AU.view(st), round_brief=RB.brief_path(pd, open_round(st)) if open_round(st) else None, notes=RB.notes_path(pd))
+                autopilot=AU.view(st), round_brief=RB.brief_path(pd, open_round(st)) if open_round(st) else None, notes=RB.notes_path(pd),
+                round_todo=FC.round_problems(pd, st, open_round(st)) if open_round(st) else [])
 
 
 GATE_PRIMARY = dict(style="Choose style", pick="Pick scripts", approve="Review", draft="Watch draft")
@@ -1501,8 +1502,8 @@ def _draft_extras(pd, st, i):
     lk = d.get("look")
     jp = next((p for p in reversed(st.get("pairs") or []) if p["kind"] == "judge" and p["draft"] == i + 1), None)
     return dict(verify=FC.verify_view(d),
-                board=dict({k: sb[k] for k in ("line", "fixed", "broken", "open", "held", "total", "passing")},
-                           rows=[{k: x[k] for k in ("id", "what", "scene", "status", "change", "source")} for x in sb["rows"]]),
+                board=dict({k: sb[k] for k in ("line", "fixed", "broken", "failing", "unchecked", "held", "total", "passing")},
+                           rows=[{k: x[k] for k in ("id", "what", "scene", "status", "change", "source", "last", "replaced_by")} for x in sb["rows"]]),
                 look=dict(mean=lk["mean"], scenes=[dict(scene=k, d=v["d"], pair=_media(v["pair"]) if i >= len(st["drafts"]) - LOOK_IMAGE_DRAFTS else None)
                                                    for k, v in sorted(lk["scenes"].items())]) if lk else None,
                 pins=[dict(id=p["id"], at_s=p["at_s"], scene=p.get("scene"), text=p["text"], by=p["by"]) for p in st.get("pins") or [] if p["draft"] == i + 1 and not p.get("removed")],
@@ -1563,6 +1564,8 @@ def status_text(s):
         L.append(f"checks: {s['scoreboard']} (promo flow check list)")
     if s.get("round_brief"):
         L.append(f"round brief (every sub-agent reads it first): {s['round_brief']}")
+    for t in s.get("round_todo") or []:
+        L.append(f"  round to-do: {t}")
     if s.get("autopilot"):
         L.append(f"autopilot: {s['autopilot']['line']}")
     if s.get("lessons"):
@@ -1843,7 +1846,9 @@ def _int(x, what):
 
 def _check_cli(pd, a):
     if a.action == "add":
-        print(f"check {FC.add(pd, a.what, a.scene, a.story, a.kind, a.gate, a.source, a.by)} added")
+        rep = [x.strip() for x in (a.replaces or "").split(",") if x.strip()]
+        print(f"check {FC.add(pd, a.what, a.scene, a.story, a.kind, a.gate, a.source, a.by, rep)} added"
+              + (f"; the Stage offers the person to drop {', '.join(rep)}" if rep else ""))
     elif a.action == "mark":
         if a.ok is None or not a.id:
             raise FlowError("check mark ID needs --pass or --fail")
@@ -2103,7 +2108,7 @@ def main(argv=None):
     p.add_argument("--story"); p.add_argument("--kind", default="judge", choices=FC.KINDS); p.add_argument("--gate"); p.add_argument("--source", default="agent", choices=FC.SOURCES)
     p.add_argument("--by"); p.add_argument("--draft", type=int); g = p.add_mutually_exclusive_group(); g.add_argument("--pass", dest="ok", action="store_true", default=None)
     g.add_argument("--fail", dest="ok", action="store_false"); p.add_argument("--evidence"); p.add_argument("--family"); p.add_argument("--file"); p.add_argument("--why")
-    p.add_argument("--json", action="store_true")
+    p.add_argument("--json", action="store_true"); p.add_argument("--replaces", help="older check ids this one supersedes, comma-separated (a hint for the person)")
     p = P("pin"); p.add_argument("action", choices=["add", "edit", "remove"]); p.add_argument("id", nargs="?"); p.add_argument("--draft", type=int); p.add_argument("--at", type=float)
     p.add_argument("--text")
     p.add_argument("--by", required=True); p.add_argument("--scene"); p.add_argument("--story")
@@ -2223,6 +2228,9 @@ def main(argv=None):
             if a.action == "add":
                 n = add_draft(pd, a.file, a.note, a.report)
                 print(f"draft {n} registered; its plan is kept for `promo flow restore --draft {n}`" + ("" if a.report else "; attach its check report with `promo flow draft verify`"))
+                un = FC.scoreboard(load(pd), n)["unchecked"]
+                if un:
+                    print(f"{un} checks to mark on draft {n}: every check, not only the newest notes (`promo flow check list --draft {n}`)")
             else:
                 if not a.report:
                     raise FlowError("draft verify needs --report out/<name>-<tag>-check.json")
