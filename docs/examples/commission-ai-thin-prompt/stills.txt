@@ -1,0 +1,4 @@
+# Stills for the commission-ai thin-prompt e2e (on the shared box, never in git). One path per line.
+/workspace/videos/commission-ai-promo/footage/shot-01-v1-poster.png
+/workspace/videos/commission-ai-promo/footage/shot-06-still-board.png
+/workspace/videos/commission-ai-promo/footage/shot-12-ask-the-reviewer-v1-poster.png

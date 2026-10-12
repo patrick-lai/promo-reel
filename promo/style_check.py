@@ -23,6 +23,8 @@ def run(spec):
         return []
     checks = set(st.get("checks") or [])
     out = []
+    from . import designed as D
+    out += D.gates(spec)
     if preset == "anime-opening":
         out += anime_gates(spec, st, checks)
     if preset == "cinematic-story":

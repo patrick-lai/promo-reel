@@ -131,12 +131,22 @@ def anchored(ctx, cam, src_size, nx, ny):
 
 
 # ---------------- source reading ----------------
+IMAGE_EXT = (".png", ".jpg", ".jpeg", ".webp", ".bmp")
+STILL_FPS, STILL_SECONDS = 30.0, 3600.0
+
+
+def is_image(path):
+    return str(path).lower().endswith(IMAGE_EXT)
+
+
 def probe(path):
     o = subprocess.check_output(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,r_frame_rate",
                                  "-show_entries", "format=duration", "-of", "json", path]).decode()
     j = json.loads(o)
     s = j["streams"][0]
     n, d = s["r_frame_rate"].split("/")
+    if is_image(path):                 # a still is a clip that never ends: held at 30 fps for as long as a shot needs
+        return s["width"], s["height"], STILL_FPS, STILL_SECONDS
     return s["width"], s["height"], float(n) / float(d), float(j["format"]["duration"])
 
 
@@ -164,7 +174,11 @@ class Source:
         self.ended = False
 
     def _open(self, t0):
-        cmd = ["ffmpeg", "-v", "error", "-threads", "2", "-ss", f"{t0:.4f}", "-i", self.path, "-t", f"{self.t_out - t0 + 0.05:.4f}"]
+        if is_image(self.path):
+            cmd = ["ffmpeg", "-v", "error", "-threads", "2", "-loop", "1", "-framerate", f"{STILL_FPS:g}", "-i", self.path,
+                   "-t", f"{max(self.t_out - t0, 0.0) + 0.05:.4f}"]
+        else:
+            cmd = ["ffmpeg", "-v", "error", "-threads", "2", "-ss", f"{t0:.4f}", "-i", self.path, "-t", f"{self.t_out - t0 + 0.05:.4f}"]
         if self.vf:
             cmd += ["-vf", ",".join(self.vf)]
         cmd += ["-f", "rawvideo", "-pix_fmt", "rgb24", "-"]

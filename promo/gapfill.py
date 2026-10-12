@@ -36,6 +36,17 @@ _SCAFFOLD_CAPTION = re.compile(
 )
 
 
+_BRIEF_SENTENCE = re.compile(r"^(?:\d{1,3}\s*(?:s|sec|secs|seconds?)\s+)?(?:promo|video|reel|trailer|film|ad)\b.*\b(?:for|about|of)\b", re.I)
+
+
+def _skip_brief(prompt):
+    """Drop a leading sentence that only briefs the job ("60s promo for my app.") when the prompt goes on to say something."""
+    parts = re.split(r"(?<=[.!?])\s+", prompt.strip(), maxsplit=1)
+    if len(parts) == 2 and parts[1].strip() and _BRIEF_SENTENCE.match(parts[0].strip()):
+        return parts[1].strip()
+    return prompt
+
+
 def one_idea(prompt):
     """(sentence ≤10 words, source prompt|default, trimmed). The sentence is the prompt's own words, or one generic line."""
     m = re.search(r"(?im)^[ \t]*idea\s*:\s*(.+?)\s*$", prompt)
@@ -46,7 +57,7 @@ def one_idea(prompt):
         if quoted and len(quoted.group(1).split()) <= 10:
             text = quoted.group(1).strip()
         else:
-            stripped = _PREFIX.sub("", prompt.strip()).strip(" .")
+            stripped = _PREFIX.sub("", _skip_brief(prompt.strip())).strip(" .")
             text = stripped
             source = "prompt"
     words = (text or "").split()
@@ -58,8 +69,8 @@ def one_idea(prompt):
     return " ".join(words[:10]), source, trimmed
 
 
-def pick_preset(prompt):
-    """(hero|anime-opening|livestream|vertical-short, prompt|default). First explicit keyword wins; otherwise hero."""
+def pick_preset(prompt, skip=()):
+    """(hero|anime-opening|livestream|vertical-short, prompt|default). First explicit keyword wins; otherwise hero. `skip` = keywords to ignore."""
     m = re.search(
         r"(?i)\b(?:preset|style|format)\s*:\s*(vertical-short(?:@1)?|hero|anime-opening|livestream)\b",
         prompt,
@@ -70,6 +81,8 @@ def pick_preset(prompt):
     hits = []
     for name, keys in (("vertical-short", _VERT), ("anime-opening", _ANIME), ("livestream", _LIVE)):
         for key in keys:
+            if key in skip:
+                continue
             i = low.find(key)
             if i >= 0:
                 hits.append((i, name))
@@ -496,6 +509,26 @@ def scaffold(dest, name, preset):
         os.makedirs(os.path.join(dest, d), exist_ok=True)
 
 
+def designed_summary(plan):
+    d = plan.get("designed")
+    if not d:
+        return ""
+    fr = d["framing_hierarchy"]["counts"]
+    ready = sum(1 for c in d["kinetic_cards"] if c["status"] == "ready")
+    lines = [f"\n  designed ({d['trigger']}): {len(d['shots'])} shots, framing "
+             + ", ".join(f"{k} {v}" for k, v in fr.items() if v)
+             + f"; {ready}/{len(d['kinetic_cards'])} kinetic cards have your words; {len(d['plates'])} plates to generate; "
+             f"{len(d['stills'])} stills; band {d['length_band']['class']}"]
+    for n in d["needs"]:
+        lines.append(f"    needs {n['kind']}: {n['why']}")
+    q = plan.get("cospec", {}).get("open") or []
+    if q:
+        lines.append(f"  co-spec ({len(q)} of max {plan['cospec']['max_questions']}, optional): " + " | ".join(x["key"] for x in q)
+                     + "  -> promo cospec")
+    lines.append("  next: promo designed apply -p promo.yaml writes the cinema shots; then promo preview")
+    return "\n".join(lines)
+
+
 def drop_scaffold_caption(text):
     """Drop the 16:9 scaffold caption so a vertical-short preset's 9:16 zone is the one that applies."""
     return _SCAFFOLD_CAPTION.sub("", text, count=1)
@@ -534,14 +567,51 @@ def summary(plan, path):
         f"  next: edit plan: in that file. `promo preview` is 540p + stills. "
         f"`promo build --final` needs every beat and reviews/round-N.md signed by Marketing, Zen and Director.\n"
         f"  defaults: docs/PRODUCT-DEFAULTS.md"
+        + designed_summary(plan)
     )
 
 
-def apply(dest, prompt, name=None):
-    """Scaffold `dest` if it has no promo.yaml, then write the fills. Returns {path, plan, summary}."""
+def existing_plan(text):
+    m = re.search(r"# promo:plan BEGIN[^\n]*\n(.*?)# promo:plan END", text, re.S)
+    if not m:
+        return {}
+    try:
+        return (yaml.safe_load(m.group(1)) or {}).get("plan") or {}
+    except yaml.YAMLError:
+        return {}
+
+
+DESIGNED_BEGIN = "# promo:designed BEGIN (broll plates written by `promo plan`; generate with `promo gen plan`)\n"
+DESIGNED_END = "# promo:designed END\n"
+
+
+def write_designed_block(text, broll):
+    """The plates as a top-level `broll:` between markers. A `broll:` the person wrote themselves is left alone."""
+    body = yaml.safe_dump({"broll": broll}, sort_keys=False, allow_unicode=True, width=100) if broll else ""
+    block = DESIGNED_BEGIN + body + DESIGNED_END if broll else ""
+    if "# promo:designed BEGIN" in text:
+        return re.sub(r"# promo:designed BEGIN.*?# promo:designed END\n?", block, text, count=1, flags=re.S)
+    if not broll:
+        return text
+    if re.search(r"(?m)^broll:", text):
+        return text
+    if not text.endswith("\n"):
+        text += "\n"
+    return text + "\n" + block
+
+
+def apply(dest, prompt, name=None, stills=None, designed=None, answers=None, dialect=None, defaults=None):
+    """Scaffold `dest` if it has no promo.yaml, then write the fills. Returns {path, plan, summary}.
+
+    designed: None = on when the prompt is thin AND stills are supplied (or the file already has a designed plan); True = always;
+    False = never. stills / answers / defaults / dialect carry over from the file's earlier plan when not given again.
+    dialect: 'ethereal' | 'kinetic' | None (read the prompt; ethereal when its words do not say)."""
+    from . import cospec as CS
+    from . import designed as D
     dest = os.path.abspath(dest)
     path = os.path.join(dest, "promo.yaml")
-    picked, preset_source = pick_preset(prompt)
+    # "kinetic" in a thin prompt with stills names the designed dialect, not the anime-opening preset (which needs a music grid)
+    picked, preset_source = pick_preset(prompt, skip=("kinetic",) if stills and D.is_thin(prompt) else ())
     if not os.path.isfile(path):
         scaffold(dest, name or os.path.basename(dest.rstrip(os.sep)) or "promo", picked)
     text = open(path).read()
@@ -560,8 +630,31 @@ def apply(dest, prompt, name=None):
     if preset != "vertical-short" and re.search(r"(?m)^\s*version:\s*1\s*(?:#.*)?$", text):
         plan["preset_version"] = 1
         plan["preset_note"] = "style.version: 1 is locked in this file. Delete that line and re-run promo plan to opt into @2 pacing."
+    prev = existing_plan(text)
+    prev_des = prev.get("designed") or {}
+    if stills is None:
+        stills = [x["path"] for x in prev_des.get("stills") or []]
+    merged = dict((prev.get("cospec") or {}).get("answers") or {})
+    merged.update({k: v for k, v in (answers or {}).items() if v not in (None, "")})
+    merged_defaults = dict((prev.get("cospec") or {}).get("defaults") or {})
+    merged_defaults.update(defaults or {})
+    if dialect is None and (prev_des.get("dialect") or {}).get("source") == "flag":
+        dialect = prev_des["dialect"]["name"]
+    # the designed plan is 16:9 cinema composition: a vertical-short shell is never switched to it automatically (--designed still forces it)
+    on = designed if designed is not None else (preset != "vertical-short" and (bool(prev_des.get("enabled")) or (D.is_thin(prompt) and bool(stills))))
+    if on:
+        trigger = "flag" if designed else ("kept" if prev_des.get("enabled") and designed is None else "thin+stills")
+        des = D.build(prompt, plan, stills, merged, trigger=trigger, dialect=dialect, defaults=merged_defaults)
+        problems = D.check_no_invention(des, prompt, merged, merged_defaults)
+        if problems:
+            raise SystemExit("designed plan refused (nothing invented is allowed):\n  " + "\n  ".join(problems))
+        plan["designed"] = des
+        plan["filled"] = plan["filled"] + ["designed"]
+    plan["cospec"] = CS.block(prompt, D.scan_stills(stills) if on else [], merged, merged_defaults,
+                              dialect=plan["designed"]["dialect"] if on else None)
     text = _maybe_title(text, plan["idea"])
     text = write_plan_block(text, plan)
+    text = write_designed_block(text, D.broll_entries(plan["designed"]) if on else [])
     with open(path, "w") as f:
         f.write(text)
     RG.ensure_round(dest, 1)
