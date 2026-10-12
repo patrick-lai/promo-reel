@@ -1101,8 +1101,13 @@ def _job(pd):
     j = FJ.load(fdir(pd))
     if not j:
         return None
+    now = j.get("now")
+    if now:          # a build's shot being rendered: how far it is and its newest still (start / middle / end, or the quick look's)
+        now = dict(id=now["id"], label=now.get("label"), frac=now.get("frac", 0), which=now.get("which"), look=bool(now.get("look")), at=now.get("at"),
+                   still=_media(now.get("still")))
     return dict(kind=j["kind"], label=j["label"], state=FJ.state(j), done=j["done"], failed=j["failed"], total=j["total"], started=j["started"], updated=j["updated"],
-                finished=j["finished"], waiting=j.get("waiting"), resume=j.get("resume"), active=j["active"], items=[dict(x, path=_media(x["path"])) for x in j["items"]])
+                finished=j["finished"], waiting=j.get("waiting"), resume=j.get("resume"), active=j["active"], items=[dict(x, path=_media(x["path"])) for x in j["items"]],
+                now=now, strip=_media(j.get("strip")))
 
 
 def _job_line(st, job, gate):
@@ -1113,7 +1118,10 @@ def _job_line(st, job, gate):
     many = FJ.NOUN[job["kind"]][1]
     if job["state"] == "running":
         line = f"{job['label']}: {job['done']} of {job['total']} {many} done" + (f", {job['failed']} failed" if job["failed"] else "")
-        line += f". Waiting: {job['waiting'][0].lower()}{job['waiting'][1:]}" if job.get("waiting") else f". Now: {job['active'][0]['label']}" if job["active"] else ""
+        now = job.get("now") if job.get("now") and job["active"] and job["now"]["id"] == job["active"][0]["id"].removeprefix("shot ") else None
+        line += (f". Waiting: {job['waiting'][0].lower()}{job['waiting'][1:]}" if job.get("waiting")
+                 else f". Now: {job['active'][0]['label']}" + (f", {round(now['frac'] * 100)}% drawn" if now and not now["look"] and now["frac"] else "")
+                 if job["active"] else "")
     else:
         line = f"Stopped after {job['done']} of {job['total']} {many}. Ask the agent to carry on"
     return _clip(line + (f". Also open for you: {gate['question']}" if gate else "."), 140)

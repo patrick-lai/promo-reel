@@ -115,6 +115,8 @@ def ensure_podcast_layers(spec, log=print):
                      code_hash(*PODCAST_CODE, extra_files=extra))
         key = f"podcast_{hid}_{spec.OW}"
         if not st.is_fresh(key, dig, [p]):
+            if R.sampling():
+                raise R.NotYet("the hosts are not rendered yet")
             K = spec.scale
             rep = L2.render_host(h["model"], p, wav=wav, partner_wav=partner, duration=spec.duration, fps=spec.fps,
                                  width=int(round(mh["W"] * K)), height=int(round(M["H"] * K)), seed=int(h.get("seed", 11 * (i + 1))), gaze=pd,
@@ -395,7 +397,7 @@ class Podcast(ShotType):
             plate = R.Source(spec.footage_path(comp_.bd["plate"]), t_in, t_in + shot.dur + 0.2)
 
         def f(i, t):
-            frames = [r.next() for r in readers]
+            frames = [r.at(i) for r in readers]
             im = src.frame(src_time(sc, t, hold_in)) if src is not None else None
             pl = plate.frame(float(comp_.bd.get("t_in", 0.0)) + t) if plate is not None else None
             return comp_.frame(t, frames, im, pl)

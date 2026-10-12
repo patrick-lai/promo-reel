@@ -444,12 +444,35 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     if (S.jobEls) return S.jobEls;
     const J = { icon: h("span", { class: "jb-icon", "aria-hidden": "true" }), title: h("div", { class: "jb-title" }), clock: h("div", { class: "jb-sub" }),
       done: h("b"), total: h("span"), fill: h("i"), failFill: h("i", { class: "fail" }), now: h("p", { class: "jb-now" }), grid: h("div", { class: "jb-grid" }), more: h("p", { class: "jb-more" }),
-      note: h("p", { class: "jb-note" }), act: h("div", { class: "jb-act" }), tiles: new Map() };
+      note: h("p", { class: "jb-note" }), act: h("div", { class: "jb-act" }), tiles: new Map(),
+      live: h("figure", { class: "jb-live" }), liveSlot: h("span", { class: "jb-pic" }), liveCap: h("figcaption"),
+      strip: h("figure", { class: "jb-strip" }), stripSlot: h("span", { class: "jb-pic", tabindex: "0", role: "region", "aria-label": "Every scene so far" }), stripCap: h("figcaption", { text: "Every scene so far: start, middle, end" }) };
+    J.live.append(J.liveSlot, J.liveCap);
+    J.strip.append(J.stripSlot, J.stripCap);
     J.bar = h("div", { class: "jb-bar", role: "progressbar", "aria-valuemin": "0" }, J.fill, J.failFill);
     el.job.replaceChildren(h("div", { class: "jb-head" }, J.icon, h("div", { class: "jb-main" }, J.title, J.clock), h("div", { class: "jb-count", "aria-hidden": "true" }, J.done, J.total)),
-      J.bar, J.now, J.grid, J.more, J.note, J.act);
+      J.bar, J.now, J.live, J.strip, J.grid, J.more, J.note, J.act);
     S.jobEls = J;
     return J;
+  }
+  /* Swap a still that changes in place (same slot, new upload): the old picture stays until the new one has loaded, so it never blinks. */
+  function swapStill(slot, r, alt) {
+    if (!r || r.error) { slot.replaceChildren(); delete slot.dataset.mref; return; }
+    if (slot.dataset.mref === r.upload_id) return;
+    slot.dataset.mref = r.upload_id;
+    getMedia(r).then((u) => { if (slot.dataset.mref === r.upload_id) slot.replaceChildren(h("img", { src: u, alt, draggable: "false" })); },
+      () => { delete slot.dataset.mref; slot.replaceChildren(h("span", { class: "jb-pic-bad", text: "Couldn't load this picture. It tries again with the next update." })); });
+  }
+  function renderJobStills(J, v) {
+    const lv = v.live && v.live.still && !v.live.still.error ? v.live : null;
+    J.live.hidden = !lv;
+    if (lv) {
+      const what = lv.look ? "Quick look" : lv.which ? lv.which[0].toUpperCase() + lv.which.slice(1) + " frame" : "Drawing";
+      J.liveCap.replaceChildren(h("b", { text: lv.label }), " · " + what + (lv.look ? ", before it renders" : " · " + lv.pct + "% drawn"));
+      swapStill(J.liveSlot, lv.still, lv.label + ", " + what.toLowerCase());
+    }
+    J.strip.hidden = !(v.strip && !v.strip.error);
+    if (!J.strip.hidden) swapStill(J.stripSlot, v.strip, "Start, middle and end of every scene so far");
   }
   function renderJob() {
     const v = hasDoc() && !isStarting() && !S.readonly ? PF.jobView(S.doc.job, Date.now()) : null;
@@ -458,6 +481,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     if (!v) { el.job.replaceChildren(); S.jobEls = null; S.jobSaid = null; return; }
     const J = jobParts();
     const job = S.doc.job;
+    renderJobStills(J, v);
     const key = JSON.stringify([job.state, job.done, job.failed, job.total, arr(job.items).length, v.tiles.map((t) => t.type + (t.item ? t.item.id : t.n)), S.offline, !!S.pending, !!S.justSent, !!S.sending]);
     if (J.key !== key) {
       const animate = J.tiles.size > 0;

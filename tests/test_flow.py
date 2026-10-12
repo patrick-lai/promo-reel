@@ -1190,7 +1190,7 @@ def test_a_build_reports_each_step_and_the_one_that_failed(pd, tmp_path, monkeyp
     monkeypatch.setattr(FT, "gate", lambda spec_, ids=None: None)
     cli.Stamps(build).write("sfx", "d")                      # unchanged since the last build
     with pytest.raises(RuntimeError):
-        cli.dispatch(spec, SimpleNamespace(cmd="build", shots=None, force=False))
+        cli.dispatch(spec, SimpleNamespace(cmd="build", shots=None, force=False, look=None))
     statuses = [s["summary"]["status"].split(". Also open")[0] for s in published()]
     assert statuses == ["Building the video: 0 of 6 steps done. Now: Checking licences and footage", "Building the video: 1 of 6 steps done. Now: Sound effects",
                         "Building the video: 2 of 6 steps done. Now: Voice-over", "Building the video: 3 of 6 steps done. Now: Shot 01",

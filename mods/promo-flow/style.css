@@ -969,6 +969,15 @@ button.jb-tile:hover { border-color: var(--c-accent); }
 .jb-tile.failed { color: var(--c-warn); border-color: color-mix(in srgb, var(--c-warn) 50%, var(--c-line)); }
 @keyframes sweep { to { transform: translateX(100%); } }
 .jb-more, .jb-note { margin: 8px 0 0; font-size: 12px; color: var(--c-dim); }
+.jb-live, .jb-strip { margin: 10px 0 0; }
+.jb-live[hidden], .jb-strip[hidden] { display: none; }
+.jb-pic { display: block; overflow: hidden; border: 1px solid var(--c-line); border-radius: var(--r-sm); background: var(--c-well); }
+.jb-live .jb-pic { aspect-ratio: 16 / 9; max-width: 560px; }
+.jb-strip .jb-pic { max-height: 420px; overflow-y: auto; }          /* a 26-scene strip scrolls inside the panel instead of pushing the tabs away */
+.jb-pic img { display: block; width: 100%; height: auto; }
+.jb-pic-bad { display: block; padding: 12px; font-size: 12px; color: var(--c-dim); }
+.jb-live figcaption, .jb-strip figcaption { margin-top: 4px; font-size: 12px; color: var(--c-dim); }
+.jb-live figcaption b { color: var(--c-ink); font-weight: 600; }
 .jb-note.warn { color: var(--c-warn); }
 .jb-act { margin-top: 10px; }
 .jb-act .load { min-height: 32px; padding: 0 12px; border: 1px solid var(--c-line); background: var(--c-raised); border-radius: var(--r-md); font-weight: 600; font-size: 12px; cursor: pointer; color: var(--c-ink); }

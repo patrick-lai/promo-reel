@@ -92,6 +92,11 @@ Every path below that says `file` is `{"$file": "<absolute path>"}` (the host tu
                  beats and the panel says "No sign of life" instead of spinning. `waiting` = queued behind another render (the box-wide heavy lock).
                  Build items are the steps (licence and footage checks, sound effects, voice-over, music, each shot with a still from its render, mix,
                  assemble, contact sheet); `skipped` = unchanged since the last build. `resume` is the command that carries a stopped run on.
+                 A build's second item is the quick look (start / middle / end still of every shot that will render, drawn without encoding, ~1 min;
+                 promo/livestills.py). `now: {id, label, frac, which: a|b|c, look, at, still: file} | null` is the shot being drawn and its newest still
+                 (the quick look's, then the render's own as it reaches each third); `strip: file | null` is every scene's three stills in one image
+                 (build/thumbs/strip.jpg). The panel shows the still large with "Shot 07 · Middle frame · 50% drawn" and the strip under it; a new still
+                 wakes the heartbeat at once (at most every 3 s), otherwise it beats every 20 s during a build.
                  The live panel above the tabs shows a spinner, a running clock, the count, a bar, "Making now", and one tile per picture as it lands (failed tiles
                  warn, the ones being made shimmer, one row of the queue), and "Ask the agent to carry on" on a stopped run. A finished run stays 10 minutes.
                  While a run is going, or stopped since the last flow event, `summary.status` is "<label>: N of M done" and `summary.progress` is the run's count,

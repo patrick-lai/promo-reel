@@ -142,6 +142,8 @@ def ensure_host_layers(spec, log=print):
                      [round(float(g), 3) for g in gz], hw, lh, fr_ov, code_hash(*L2D_CODE, extra_files=extra))
         key = f"live2d_{hid}_{spec.OW}"
         if not st.is_fresh(key, dig, [p]):
+            if R.sampling():
+                raise R.NotYet("the hosts are not rendered yet")
             rep = L2.render_host(h["model"], p, wav=wav, partner_wav=partner if c.get("listening_nod", True) else None,
                                  duration=spec.duration, fps=spec.fps, width=hw * spec.scale, height=lh * spec.scale,
                                  seed=int(h.get("seed", 1 + i)), gaze=gz, frame=dict(fr_ov, pad_top=fr_ov["pad_top"] * spec.scale), log=log)
@@ -455,12 +457,19 @@ class LayerReader:
         self.W, self.H = W, H
         self.p = subprocess.Popen(["ffmpeg", "-v", "error", "-threads", "2", "-ss", f"{f0 / fps:.6f}", "-i", path, "-f", "rawvideo", "-pix_fmt", "rgba", "-"],
                                   stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=10 ** 8)
-        self.last = None
+        self.last, self.k = None, 0
 
     def next(self):
         b = self.p.stdout.read(self.W * self.H * 4)
+        self.k += 1
         if len(b) == self.W * self.H * 4:
             self.last = Image.frombuffer("RGBA", (self.W, self.H), b, "raw", "RGBA", 0, 1)
+        return self.last
+
+    def at(self, i):
+        """Frame i from f0, reading past the ones in between (a quick look asks for 0, n/2, n-1); never goes back."""
+        while self.k <= i:
+            self.next()
         return self.last
 
     def close(self):
@@ -533,7 +542,7 @@ class Livestream(ShotType):
             out = bg.copy()
             frames = []
             for r, g in zip(readers, fades):
-                fr = r.next()
+                fr = r.at(i)
                 if fr is not None and g is not None:
                     a = np.asarray(fr).copy()
                     a[..., 3] = (a[..., 3] * g).astype(np.uint8)          # clip to the rounded panel

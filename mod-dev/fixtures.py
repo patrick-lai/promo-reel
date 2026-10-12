@@ -232,17 +232,18 @@ def running_job(pd, made, stopped=False):
 
 
 def building_job(pd):
-    """`promo build` part way through, as the CLI leaves it in a flow project: checks and unchanged sound effects done, voice and music made,
-    three shots rendered (the storyboard frames stand in for their thumbnails), shot 04 rendering now."""
+    """`promo build` part way through, as the CLI leaves it in a flow project: checks, the quick look and unchanged sound effects done, voice and
+    music made, three shots rendered (the storyboard frames stand in for their stills and the scenes strip), shot 04 half drawn now."""
     from promo import cli
     d = os.path.join(pd, "flow", "boards", "A", "frames")
-    names = ["checks", "sfx", "vo", "music"] + [f"shot {i:02d}" for i in range(1, 9)] + ["events", "mix", "assemble", "contact"]
+    names = ["checks", "look", "sfx", "vo", "music"] + [f"shot {i:02d}" for i in range(1, 9)] + ["events", "mix", "assemble", "contact"]
     job = FJ.Job(os.path.join(pd, "flow"), "build", "Building the video", [cli._step_meta(n) for n in names], 1, resume=f"promo -p {pd}/promo.yaml build")
     t0 = datetime.datetime.now().astimezone() - datetime.timedelta(minutes=6)
-    for i, n in enumerate(names[:7]):
+    for i, n in enumerate(names[:8]):
         job.item(n, os.path.join(d, f"{n[5:]}-start.png") if n.startswith("shot") else None, None, skipped=n == "sfx")
         job.d["items"][-1]["at"] = (t0 + datetime.timedelta(seconds=50 * (i + 1))).isoformat(timespec="seconds")
     job.d["started"] = t0.isoformat(timespec="seconds")
+    job.preview(dict(id="04", label="Shot 04", frac=0.5, which="b", look=False, still=os.path.join(d, "04-start.png"), strip=os.path.join(d, "01-start.png")))
     with job.lock:
         job._write()
 

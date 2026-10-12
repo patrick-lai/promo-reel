@@ -146,21 +146,31 @@ class Source:
         W, H, self.fps, self.dur = probe(path)
         self.t_in = max(0.0, t_in)
         self.t_out = min(t_out, self.dur)
-        vf = []
+        self.vf = []
         self.W, self.H = W, H
         if prescale:
-            vf = [f"scale={prescale[0]}:{prescale[1]}:flags=lanczos"]
+            self.vf = [f"scale={prescale[0]}:{prescale[1]}:flags=lanczos"]
             self.W, self.H = prescale
-        cmd = ["ffmpeg", "-v", "error", "-threads", "2", "-ss", f"{self.t_in:.4f}", "-i", path, "-t", f"{self.t_out - self.t_in + 0.05:.4f}"]
-        if vf:
-            cmd += ["-vf", ",".join(vf)]
-        cmd += ["-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
-        self.p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=10 ** 8)
+        self.p = self._open(self.t_in)
         self.idx = -1
         self.cur = None
         self.hist = collections.deque(maxlen=8)
         self.fsize = self.W * self.H * 3
         self.ended = False
+
+    def _open(self, t0):
+        cmd = ["ffmpeg", "-v", "error", "-threads", "2", "-ss", f"{t0:.4f}", "-i", self.path, "-t", f"{self.t_out - t0 + 0.05:.4f}"]
+        if self.vf:
+            cmd += ["-vf", ",".join(self.vf)]
+        cmd += ["-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
+        return subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=10 ** 8)
+
+    def _seek(self, target):
+        """Restart the reader a few frames before `target` (quick look only: three frames of a long take must not decode all of it)."""
+        k = target - self.hist.maxlen + 1
+        self.close()
+        self.p, self.idx, self.ended = self._open(self.t_in + k / self.fps), k - 1, False
+        self.hist.clear()
 
     def _next(self):
         if self.ended:
@@ -175,6 +185,8 @@ class Source:
 
     def frame(self, t, blur=1):
         target = int(round((min(t, self.t_out) - self.t_in) * self.fps))
+        if sampling() and target - self.idx > 2 * self.fps:
+            self._seek(target)
         while self.idx < target:
             if not self._next():
                 break
@@ -356,11 +368,38 @@ class Writer:
         print("wrote", self.path, self.k, "frames", flush=True)
 
 
+PREVIEW = None          # a promo.preview.Stills while a build shows stills of each shot as it renders; None renders exactly as before
+
+
+class Sampled(Exception):
+    """run_shot stopped after the quick-look frames (PREVIEW.sample): no segment was written."""
+
+
+class NotYet(Exception):
+    """A quick look would first have to make something slow (e.g. the Live2D host layers): this shot shows once it is rendered."""
+
+
+def sampling():
+    return bool(PREVIEW and PREVIEW.sample)
+
+
 def run_shot(ctx, shot, frame_fn):
-    """Render `shot.n` frames: frame_fn(i, t) -> PIL image, t = i / fps (shot-local seconds)."""
+    """Render `shot.n` frames: frame_fn(i, t) -> PIL image, t = i / fps (shot-local seconds).
+    With PREVIEW set, its start / middle / end frames are saved as stills on the way; in sample mode only those three are drawn, then Sampled."""
+    pv = PREVIEW
+    picks = pv.picks(shot.n) if pv else {}
+    if pv and pv.sample:
+        for i in sorted(picks):              # increasing: sequential readers (R.Source, Live2D layers) only go forward
+            pv.still(shot, i, frame_fn(i, i / ctx.fps))
+        raise Sampled(shot.id)
     w = Writer(ctx, os.path.join(ctx.seg_dir, f"{shot.id}.mp4"), shot.n)
     for i in range(shot.n):
-        w.write(frame_fn(i, i / ctx.fps))
+        im = frame_fn(i, i / ctx.fps)
+        if i in picks:
+            pv.still(shot, i, im)
+        elif pv and i % ctx.fps == 0:
+            pv.progress(shot, i)
+        w.write(im)
     w.close()
 
 

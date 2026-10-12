@@ -379,6 +379,7 @@
   /* A run writes a heartbeat every minute (promo/flowjob.py HEARTBEAT_S): three missed beats and it is no longer shown as alive. A rendered
      shot can take many minutes, so "slow" (a gentle note, spinner kept) waits longer for builds than for one generated picture. */
   const JOB_ALIVE_S = 180, JOB_SLOW_S = { build: 900 }, JOB_SLOW_DEFAULT_S = 240;
+  const JOB_STILL = { a: "start", b: "middle", c: "end" };
   function jobView(job, now) {
     if (!job || !job.total) return null;
     const t = (iso) => Date.parse(iso);
@@ -403,7 +404,11 @@
     const title = job.state === "running" ? job.label
       : job.state === "done" ? (job.kind === "build" ? "Finished " + n(job.done) + (skipped ? ", " + skipped + " unchanged" : "") : "Made " + n(job.done)) + (job.failed ? ", " + job.failed + " failed" : "")
       : "Stopped after " + job.done + " of " + n(job.total);
-    return { state: job.state, title, done: job.done, failed: job.failed, total: job.total, pct: Math.min(1, job.done / job.total), failPct: Math.min(1, job.failed / job.total), one, many, elapsed, quiet, eta,
+    /* A build shows the shot being drawn: its newest still (start, middle or end; the quick look's until the render reaches it) and how far it is. */
+    const nw = job.state === "running" && job.now && job.now.id ? job.now : null;
+    const live = nw ? { id: nw.id, label: nw.label || "Shot " + nw.id, look: !!nw.look, pct: Math.round(Math.min(1, Math.max(0, nw.frac || 0)) * 100), still: mref(nw.still),
+      which: JOB_STILL[nw.which] || null } : null;
+    return { live, strip: mref(job.strip), state: job.state, title, done: job.done, failed: job.failed, total: job.total, pct: Math.min(1, job.done / job.total), failPct: Math.min(1, job.failed / job.total), one, many, elapsed, quiet, eta,
       alive, stale: job.state === "running" && !alive, staleFor: Math.max(0, (now - t(job.updated)) / 1000), waiting: alive ? job.waiting || null : null,
       slow: alive && !job.waiting && quiet >= (JOB_SLOW_S[job.kind] || JOB_SLOW_DEFAULT_S), resume: job.resume || null, tiles, earlier: Math.max(0, items.length - shown.length) + Math.max(0, finished - items.length),
       moreQueued: job.state === "running" ? queued - queuedShown : 0, active };

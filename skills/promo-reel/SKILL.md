@@ -273,7 +273,11 @@ reference. Structurally prevent that:
    `vo` (or one line), `music` or `mix` (the whole mix): `fx: vintage`, or `{preset: radio, amount: [[0, 1], [35, 0]], hiss: {db: -48}}`
    (amount keyframes in film seconds; `promo fx list` shows each preset's stages). A steady light crackle under everything = `mix: {fx: crackle}`. The character is in the sound itself, the noise stays
    50-60 dB under it. Before you commit to one, `promo fx audition <voice.wav>` renders every preset to compare by ear.
-5. **Build**: `promo build` (idempotent; only changed shots re-render). Iterate on one shot with `promo shot 05`, look with `promo segpeek 05`.
+5. **Build**: `promo build` (idempotent; only changed shots re-render). It starts with a quick look: the start, middle and end of every shot
+   that will render, drawn without encoding (~1 min for a whole cut), then replaces each still with the render's own frame as it gets there
+   (`build/thumbs/<id>-a|b|c.jpg`). `promo strip --out shots/strip.png` puts every scene's three stills in one image: post it in the chat as soon
+   as the quick look lands and again every few scenes, so the person can stop a scene they dislike before the whole draft renders.
+   `promo build --look` draws only the quick look; `--no-look` skips it. Iterate on one shot with `promo shot 05`, look with `promo segpeek 05`.
    Heavy steps (build/shot/sfx/music/mix/assemble/contact/check) take a box-wide lock other heavy jobs on the machine can share (set `PROMO_HEAVY_LOCK` to the same path as e.g. your test gates, or `promo config heavy-lock PATH`; default `/tmp/promo-reel-heavy.lock`)
    themselves (`promo/lock.py`) and wait while another job holds it. Run them niced (`nice -n 10 python -m promo ...`);
    do not wrap them in another `flock` and never SIGCONT a paused render.
@@ -290,7 +294,7 @@ reference. Structurally prevent that:
 - `promo styles`; `promo new <name> --style hero|anime-opening|livestream|podcast`; `promo grid` (bars, beats, markers of `timeline.grid`)
 - `promo podcast script|plan|set|preview|status -p <project>`: a podcast / VTuber show from a script (section above)
 - `promo status [--json]` what is up-to-date / stale / missing; `promo timeline`, `promo assets`, `promo footage list|verify|add`
-- `promo build [--shots 05 06] [--force] [--scale 2]`; `promo shot <id...>`; `promo sfx|vo|music|events|mix|assemble|contact`
+- `promo build [--shots 05 06] [--force] [--scale 2] [--look | --no-look]`; `promo strip [--shots ..] [--out F.png]`; `promo shot <id...>`; `promo sfx|vo|music|events|mix|assemble|contact`
 - `promo fx list | apply IN OUT --preset P [--amount A] [--set stage.param=V] | audition IN [--out DIR]` (radio / tape / vintage / telephone / vinyl / crackle on any file)
 - `promo brief init|show|check|confirm|conflict --project projects/<name>`; `promo refs add|check|show`; `promo compare-ref <draft.mp4> --project projects/<name>` (STEP 0)
 - `promo critique-pack [projects/<name>] [--out DIR] [--no-check] [--video]` (review folder for a reviewer model; holds the lock)

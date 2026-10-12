@@ -13,6 +13,8 @@ import threading
 FILE = "job.json"
 ITEMS_MAX = 48
 HEARTBEAT_S = 60        # a shot can render for minutes: `updated` keeps moving while the process lives, so the Stage can tell slow from dead
+BUILD_BEAT_S = 20       # a build's `now` (which shot, how far) moves on its own, so it is written more often
+STILL_GAP_S = 3         # new stills wake the heartbeat at once, but publish at most this often (a quick look lands dozens a minute)
 NOUN = dict(frames=("image", "images"), samples=("sample", "samples"), build=("step", "steps"), plates=("plate", "plates"))
 
 
@@ -47,21 +49,39 @@ class Job:
     out, so the ones being made right now are the first `workers` unfinished ones, with no start events to track.
     `on_change` (the live publish) runs after every write, under the lock, so two finished items never publish out of order."""
 
-    def __init__(self, fd, kind, label, queue, workers, on_change=None, resume=None):
-        self.fd, self.workers, self.on_change = fd, max(1, workers), on_change
+    def __init__(self, fd, kind, label, queue, workers, on_change=None, resume=None, beat_s=HEARTBEAT_S):
+        self.fd, self.workers, self.on_change, self.beat_s = fd, max(1, workers), on_change, beat_s
         self.queue = list(queue)
         self.lock = threading.Lock()
         self.d = dict(kind=kind, label=label, total=len(self.queue), done=0, failed=0, started=_now(), updated=_now(), finished=None, stopped=False,
-                      pid=os.getpid(), waiting=None, resume=resume, active=[], items=[])
-        self._stop = threading.Event()
+                      pid=os.getpid(), waiting=None, resume=resume, active=[], items=[], now=None, strip=None)
+        self._stop, self._poke = threading.Event(), threading.Event()
         with self.lock:
             self._write()
         threading.Thread(target=self._beat, daemon=True).start()
 
     def _beat(self):
-        while not self._stop.wait(HEARTBEAT_S):
+        while True:
+            poked = self._poke.wait(self.beat_s)
+            self._poke.clear()
+            if self._stop.is_set():
+                return
             with self.lock:
                 self._write()
+            if poked and self._stop.wait(STILL_GAP_S):
+                return
+
+    def preview(self, now):
+        """What the item being made looks like right now: {id, label, frac} and, with a new still, {which, still, strip, look}. Called from the
+        render loop, so it never takes the lock or publishes (a publish can block for minutes): it swaps in a new dict and the heartbeat writes it,
+        woken at once when a still landed."""
+        cur = self.d["now"] if (self.d["now"] or {}).get("id") == now["id"] else {}
+        cur = dict(cur, **{k: v for k, v in now.items() if v is not None}, at=_now())
+        if now.get("strip"):
+            self.d["strip"] = now["strip"]
+        self.d["now"] = cur
+        if now.get("still"):
+            self._poke.set()
 
     def _write(self):
         finished = {x["id"] for x in self.d["items"]}
@@ -80,6 +100,7 @@ class Job:
         meta = next((q for q in self.queue if q["id"] == iid), dict(id=iid, label=iid))
         with self.lock:
             self.d["failed" if error else "done"] += 1
+            self.d["now"] = None                      # the next shot's first still brings it back; a mix step has no picture of its own
             self.d["items"].append(dict(meta, at=_now(), ok=not error, skipped=skipped, path=None if error else path, error=(error or "")[:200] or None))
             del self.d["items"][:-ITEMS_MAX]
             self._write()
@@ -98,6 +119,7 @@ class Job:
             if error and cur:
                 self.d["failed"] += 1
                 self.d["items"].append(dict(cur[0], at=_now(), ok=False, skipped=False, path=None, error=str(error)[:200]))
-            self.d.update(finished=_now(), stopped=stopped, waiting=None)
+            self.d.update(finished=_now(), stopped=stopped, waiting=None, now=None)
             self._write()
         self._stop.set()
+        self._poke.set()

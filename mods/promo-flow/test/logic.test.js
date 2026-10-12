@@ -257,6 +257,21 @@ test("a slow run that still checks in is alive; one that stopped checking in is 
   assert.equal(queued.waiting, "Waiting for another render on this Mac to finish");
   assert.equal(queued.slow, false);
 });
+test("a build shows the shot being drawn: its newest still, how far, and the scenes strip", () => {
+  const still = { $media: { upload_id: "s07b", mime: "image/jpeg" } }, strip = { $media: { upload_id: "strip1", mime: "image/jpeg" } };
+  const b = run({ kind: "build", label: "Building the video", active: [{ id: "shot 07", label: "Shot 07" }], updated: at(5), strip,
+    now: { id: "07", label: "Shot 07", frac: 0.504, which: "b", look: false, still } });
+  const v = L.jobView(b, T0 + 6000);
+  assert.deepEqual(v.live, { id: "07", label: "Shot 07", look: false, pct: 50, still: still.$media, which: "middle" });
+  assert.equal(v.strip.upload_id, "strip1");
+  /* the quick look reads as a look, not as progress; a finished build keeps the strip but no "drawing now" */
+  assert.equal(L.jobView({ ...b, now: { id: "03", frac: 0, which: "c", look: true, still } }, T0 + 6000).live.look, true);
+  const done = L.jobView({ ...b, state: "done", finished: at(5), now: null }, T0 + 6000);
+  assert.equal(done.live, null);
+  assert.equal(done.strip.upload_id, "strip1");
+  /* an older job.json has neither */
+  assert.deepEqual([L.jobView(run({}), T0).live, L.jobView(run({}), T0).strip], [null, null]);
+});
 test("a long run keeps its newest pictures", () => {
   const items = Array.from({ length: 40 }, (_, i) => made(String(i), i));
   const v = L.jobView(run({ total: 100, done: 40, items, active: [{ id: "40", label: "Scene 40" }], updated: at(39) }), T0 + 40000);

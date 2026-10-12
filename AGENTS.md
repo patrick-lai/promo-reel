@@ -83,6 +83,9 @@ promo -p projects/<name>/promo.yaml shot 05 10    # iterate on single shots, the
 promo -p projects/<name>/promo.yaml --scale 2 build   # 3840x2160 master from the same spec
 ```
 Builds are idempotent: each step stamps a hash of its inputs and is skipped when nothing changed. `--force` rebuilds.
+Every build starts with a quick look (start, middle and end still of each shot that will render, no encoding, ~1 min) and refreshes those stills
+as each shot renders. Post `promo strip --out shots/strip.png` to the person when the quick look lands and every few scenes; a scene they dislike
+is fixed before the full render, not after (`promo build --look` = only the quick look).
 
 ## 6. Check (automated gates)
 `promo check` must pass (exit 0) before review. Gates: asset licences + spec lint, footage present + sha256 match (WARN on DPR1 sources pushed >1.5x and on demo-mode footage), duration, resolution/fps/frame count, loudness and true peak per master, every cut on the beat grid, caption hold >= 2 s, captions inside the safe zone, contact sheet generated, no one-frame paint glitches in referenced captures (`footage-glitch`), VO transcribed back and matched word-for-word to the script (skipped with a warning if whisper is not installed), and build freshness. Report: `out/<name>-<tag>-check.json`; `promo check --json` / `promo status --json` print machine-readable results (stdout only, always with `ok`).

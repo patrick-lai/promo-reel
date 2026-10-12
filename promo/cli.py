@@ -311,8 +311,8 @@ def build_steps(spec, args):
 
 
 # ---------------------------------------------------------------- live progress in a promo flow project (flow/job.json, promo/flowjob.py)
-CHECKS = "checks"
-STEP_LABEL = {CHECKS: ("Checking licences and footage", "check"), "sfx": ("Sound effects", "sfx"), "vo": ("Voice-over", "voice"),
+CHECKS, LOOK = "checks", "look"
+STEP_LABEL = {CHECKS: ("Checking licences and footage", "check"), LOOK: ("Quick look at every scene", "image"), "sfx": ("Sound effects", "sfx"), "vo": ("Voice-over", "voice"),
               "clip-audio": ("Sound from the clips", "sfx"), "music": ("Music edit", "music"), "events": ("Sound cues", "sfx"),
               "mix": ("Mixing and mastering", "music"), "assemble": ("Putting the video together", "video"), "contact": ("Contact sheet", "image")}
 
@@ -332,10 +332,13 @@ def _flow_job(spec, args, c):
         return None
     from . import flow as F
     from . import flowjob as FJ
-    steps = build_steps(spec, args) if c == "build" else [st for sid in args.ids for st in plan(spec) if st["name"] == f"shot {sid}"]
+    look = c == "build" and getattr(args, "look", False)
+    steps = [] if look else build_steps(spec, args) if c == "build" else [st for sid in args.ids for st in plan(spec) if st["name"] == f"shot {sid}"]
     cmd = f"promo -p {shlex.quote(spec.path)}" + (f" --scale {spec.scale:g}" if spec.scale != 1 else "") + (" build" if c == "build" else " shot " + " ".join(args.ids))
-    return FJ.Job(fd, "build", "Building the video" if c == "build" else "Rendering shots", [_step_meta(CHECKS)] + [_step_meta(st["name"]) for st in steps], 1,
-                  lambda: F.publish_live(spec.root), resume=cmd)
+    first = [_step_meta(CHECKS)] + ([_step_meta(LOOK)] if c == "build" and getattr(args, "look", False) is not None else [])
+    return FJ.Job(fd, "build", "Quick look at every scene" if look else "Building the video" if c == "build" else "Rendering shots",
+                  first + [_step_meta(st["name"]) for st in steps], 1, lambda: F.publish_live(spec.root), resume=cmd + (" --look" if look else ""),
+                  beat_s=FJ.BUILD_BEAT_S)
 
 
 def _step_picture(spec, st):
@@ -359,8 +362,40 @@ def _step_picture(spec, st):
     return out
 
 
+def will_render(spec, args, st):
+    """Would run_step draw this step's picture? Its skip decisions without their side effects (no stamp rewrite, no link out of the cache)."""
+    if args.force:
+        return True
+    dig = st["dig"]()
+    if is_fresh(Stamps(spec.build), st, dig):
+        return False
+    return not (st.get("seg") and os.path.isfile(_seg_cache(st, dig)[0]))
+
+
+def quick_look(spec, args, steps, job=None):
+    """Start / middle / end stills of every shot this build will render, before any of them is encoded (promo/livestills.py)."""
+    from . import livestills as LV
+    todo = [spec.shot(st["name"][5:]) for st in steps if st["name"].startswith("shot ") and will_render(spec, args, st)]
+    ids = {st["name"][5:] for st in steps if st["name"].startswith("shot ")}
+    t0 = time.time()
+    r = LV.quick_look(spec, todo, ids=ids, on_change=job.preview if job else None)
+    print(f"quick look: {len(r['made'])} of {len(todo)} shots in {time.time() - t0:.0f} s" + (f" -> {r['strip']}" if r["strip"] else ""), flush=True)
+    if job:
+        job.item(LOOK, r["strip"], None, skipped=not todo)
+    return r
+
+
 def _run_tracked(spec, args, st, job):
-    ran = run_step(spec, args, st)
+    from . import livestills as LV
+    from . import render as R
+    prev = R.PREVIEW
+    if st["name"].startswith("shot "):       # start / middle / end stills as the render reaches them
+        ids = set(getattr(args, "shots", None) or getattr(args, "ids", None) or []) or None
+        R.PREVIEW = LV.Stills(spec, ids=ids, on_change=job.preview if job else None)
+    try:
+        ran = run_step(spec, args, st)
+    finally:
+        R.PREVIEW = prev
     if job:
         job.item(st["name"], _step_picture(spec, st), None, skipped=not ran)
 
@@ -375,7 +410,13 @@ def do_build(spec, args, job=None):
     FT.gate(spec, set(args.shots) if args.shots else None)
     if job:
         job.item(CHECKS, None, None)
-    for st in build_steps(spec, args):
+    steps = build_steps(spec, args)
+    look = getattr(args, "look", False)          # False: quick look, then render; True: only the quick look; None: no quick look
+    if look is not None:
+        quick_look(spec, args, steps, job)
+        if look:
+            return
+    for st in steps:
         _run_tracked(spec, args, st, job)
     if args.shots:
         print("partial build (--shots): skipping assemble/contact")
@@ -656,6 +697,9 @@ def build_parser():
     add("contact", "contact sheet")
     b = add("build", "full idempotent build")
     b.add_argument("--shots", nargs="+", help="only (re)render these shots; skips assemble/contact")
+    lk = b.add_mutually_exclusive_group()
+    lk.add_argument("--look", action="store_true", help="only the quick look: start / middle / end stills of every shot that would render, no encoding")
+    lk.add_argument("--no-look", dest="look", action="store_const", const=None, help="skip the quick look before the render")
     add("status", "per-step up-to-date / stale / missing", True)
     add("timeline", "print the shot table", True)
     add("check", "QA gates (exit 1 on FAIL)", True)
@@ -667,6 +711,9 @@ def build_parser():
     pk.add_argument("src")
     pk.add_argument("t", type=float)
     pk.add_argument("box", nargs="*", type=float)
+    stp = add("strip", "one image of every scene's start / middle / end stills from the last build or quick look (post it in the chat)", True)
+    stp.add_argument("--shots", nargs="+", help="only these shots")
+    stp.add_argument("--out", help="write here (.png or .jpg; default build/thumbs/strip.jpg)")
     sp = add("segpeek", "tiles from a rendered segment")
     sp.add_argument("id")
     sp.add_argument("times", nargs="*", type=float)
@@ -740,6 +787,16 @@ def dispatch(spec, args):
         else:
             print(*contact.mpeek(spec, args.out, args.specs))
         return None, None, 0
+    if c == "strip":
+        from . import livestills as LV
+        for sid in args.shots or []:
+            spec.shot(sid)
+        out = LV.compose(spec, set(args.shots) if args.shots else None, out=os.path.abspath(args.out) if args.out else None)
+        if not out:
+            r = dict(ok=False, error="no stills yet: run `promo build` (it starts with a quick look) or `promo build --look`")
+            return r, (lambda r_: print(r_["error"], file=sys.stderr)), 1
+        r = dict(ok=True, path=out, shots={sid: e for sid, e in LV.load_index(spec).items() if not args.shots or sid in args.shots})
+        return r, (lambda r_: print(r_["path"])), 0
     if c == "critique-pack":
         from . import critique
         from .lock import heavy_lock
