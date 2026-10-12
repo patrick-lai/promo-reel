@@ -244,6 +244,11 @@ def run(spec):
     for g, st_, msg in style_check.run(spec):
         rep.add(g, st_, msg)
 
+    # 7a'. previz: a strip of the current directing scene exists (promo/previz.py)
+    from . import previz as PZ
+    for gate, status, msg in PZ.gates(spec):
+        rep.add(gate, status, msg)
+
     # 7b. livestream layout: screen share, chat lines, single side move, keep-clear rectangles
     from . import livestream as LS
     for gate, status, msg in LS.check(spec, ctx):

@@ -22,6 +22,7 @@ from scipy.ndimage import minimum_filter1d
 from scipy.signal import resample_poly
 
 from . import audiofx
+from . import bookends as BK
 from .assets import asset_path, load_manifest
 from .events import events_path
 from .music import music_path
@@ -125,6 +126,9 @@ def run(spec, force=False):
     if len(music) != N:                      # equal for a well-formed spec; pad/trim so a rounded duration still mixes
         music = np.vstack([music, np.zeros((max(0, N - len(music)), 2))])[:N]
     music = audiofx.apply(music, SR, (spec.raw.get("music") or {}).get("fx"), where="music.fx")
+    outro = BK.resolve(spec.raw)["outro"]
+    if outro and spec.raw.get("music"):      # the outro fades music that is still playing: hold the last bars rather than let the bed end early
+        music = BK.extend_tail(music, SR, N)
     sfx = np.zeros((N, 2))
     vo = np.zeros((N, 2))
     lib = spec.raw.get("sfx", {}).get("library", {})
@@ -212,11 +216,18 @@ def run(spec, force=False):
     for nm, x in stems:
         sf.write(os.path.join(sd, f"{nm}.wav"), x.astype(np.float32), SR, subtype="FLOAT")
     out = {}
-    fade = cfg.get("fade_out", 0.03)
+    fo = cfg.get("fade_out")
+    fade, ease = (float(fo.get("s", fo.get("dur", 0.03))), fo.get("ease")) if isinstance(fo, dict) else (None if fo is None else float(fo), None)
+    if outro:                                # the picture's fade (promo/bookends.py): the same length and the same curve
+        fade, ease = fade if fade is not None else outro["fade_s"], ease or outro["ease"]
+    fade = 0.03 if fade is None else fade
     for m in spec.masters:
         y, L, tp = master(mix, SR, m["lufs"], m["ceiling"])
-        f0 = int(round(dur - fade, 6) * SR)
-        y[f0:] *= np.linspace(1, 0, N - f0)[:, None]
+        if ease:
+            y *= BK.fade_out_array(N, SR, fade, ease)[:, None]
+        else:
+            f0 = int(round(dur - fade, 6) * SR)
+            y[f0:] *= np.linspace(1, 0, N - f0)[:, None]
         sf.write(master_path(spec, m["name"]), y.astype(np.float32), SR, subtype="FLOAT")
         out[m["name"]] = dict(lufs=round(float(L), 2), dbtp=round(float(tp), 2))
         print("master", m["name"], out[m["name"]], flush=True)

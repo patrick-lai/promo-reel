@@ -215,7 +215,7 @@ def _applied(**kw):
     return info, load_spec(info["path"], plugins=False)
 
 
-def test_ethereal_shots_compile_slow_linear_pastel_with_resolves_and_no_fullscreen():
+def test_ethereal_shots_compile_slow_eased_pastel_with_resolves_and_no_fullscreen():
     info, spec = _applied()
     des = info["plan"]["designed"]
     shots = designed.compile_shots(des, sfx={"tick", "whoosh"})
@@ -224,7 +224,7 @@ def test_ethereal_shots_compile_slow_linear_pastel_with_resolves_and_no_fullscre
         for k in ("shake", "whip", "blur", "flash", "speed_lines"):
             assert k not in s
         if "cam" in s:
-            assert all(len(k) == 5 and k[4] == "linear" for k in s["cam"][1:]), "slow linear moves only"
+            assert all(len(k) == 5 and k[4] == "smooth" for k in s["cam"][1:]), "slow eased moves only (a settle, a held push), never a constant-rate drift"
         if s["look"].get("backdrop") != "none" or "plate_fill" in s["look"]:
             assert s["look"]["grade"]["saturation"] < 0.9 and s["look"]["vignette"] is False, "soft pastel grade"
         for it in s.get("kinetic_copy", []):
@@ -239,7 +239,8 @@ def test_ethereal_shots_compile_slow_linear_pastel_with_resolves_and_no_fullscre
     assert any(e["sfx"] == "tick" for s in shots for e in s.get("sfx", [])) and any(e["sfx"] == "whoosh" for s in shots for e in s.get("sfx", []))
     quiet = designed.compile_shots(des, sfx=())
     assert not any("sfx" in s for s in quiet), "sfx only when the project's library has them"
-    assert all(abs(s["cam"][-1][3] - s["cam"][0][3]) <= 0.05 for s in shots if "cam" in s), "a floaty dolly, a few percent"
+    assert all(abs(s["cam"][-1][3] - s["cam"][0][3]) <= designed.ETHEREAL_MAX_DRIFT["zoom_per_s"] * 0.8 * (r["seconds"]) + 1e-6
+               for r, s in zip(des["shots"], shots) if "cam" in s), "a floaty dolly under the zoom cap"
     assert not designed.check_no_invention(des, des and info["plan"]["prompt"], {}, {"cta": TEAM_CTA})
     assert {g: s for g, s, _ in designed.gates(spec)} == dict.fromkeys(
         ["designed-grounded", "designed-kinetic", "designed-clear", "designed-framing", "designed-camera", "designed-pace"], "PASS")
@@ -350,7 +351,7 @@ def test_brackets_anchors_and_an_inline_thumb_are_typography_as_ui():
 
 def test_mosaic_resolve_steps_from_coarse_blocks_to_sharp_and_never_touches_the_panel_pixels():
     cfg = CN.mosaic_cfg(dict(resolve=dict(kind="mosaic", dur=0.9, steps=6, from_blocks=8)))
-    assert cfg == dict(dur=0.9, steps=6, from_blocks=8) and CN.mosaic_cfg(dict()) is None
+    assert (cfg["dur"], cfg["steps"], cfg["from_blocks"]) == (0.9, 6, 8) and cfg["to_blocks"] == 96 and CN.mosaic_cfg(dict()) is None
     assert [CN.mosaic_stage(cfg, t) for t in (0.0, 0.16, 0.5, 0.89, 0.9, 2.0)] == [0, 1, 3, 5, None, None]
     rng = np.random.default_rng(3)
     im = Image.fromarray(rng.integers(0, 255, (180, 320, 3), dtype=np.uint8))

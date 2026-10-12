@@ -155,11 +155,12 @@ ETHEREAL_PANEL_FX = dict(
     shadow=dict(on=True, layers=[dict(alpha=0.14, blur=0.006, dy=0.003, spread=0.0), dict(alpha=0.16, blur=0.034, dy=0.022, spread=0.0)]),
     rim=dict(on=True, alpha=0.55, width=1.0, color=[255, 255, 255]),
     glow=False,
+    halo=dict(on=True, alpha=0.30, blur=0.010, spread=0.002, color=[64, 74, 112]),   # a soft cool edge outside the panel: a dark UI needs one on a pale plate
 )
 ETHEREAL_FILL = dict(top=[205, 218, 240], bottom=[246, 226, 216])    # pastel placeholder world until a plate is registered
 ETHEREAL_RESOLVE = dict(kind="mosaic", dur=0.9, steps=6, from_blocks=8)
-ETHEREAL_PUSH = 0.04
-ETHEREAL_MAX_DRIFT = dict(pan_per_s=0.02, zoom_per_s=0.012)    # a floaty dolly, not a move
+ETHEREAL_PUSH = 0.10                                            # a held push: 1.0 -> 0.90 over a hold, eased (a settle, not a constant drift)
+ETHEREAL_MAX_DRIFT = dict(pan_per_s=0.02, zoom_per_s=0.04)    # a floaty dolly, not a move: ~1.0 -> 0.86 over a 5 s hold passes
 KINETIC_MAX_DRIFT = dict(pan_per_s=0.35, zoom_per_s=0.25)
 
 DIALECTS = {
@@ -169,8 +170,8 @@ DIALECTS = {
         pacing=dict(target_shot_s=5.0, end_card_min_s=6.0, cuts_per_s=[0.1, 0.25], median_shot_min_s=3.0, accelerating_recap=False,
                     snaps="type and selection boxes appear in one frame, no blur"),
         type=TYPE_STYLE_ETHEREAL,
-        camera=dict(allowed="locked, or a slow linear push-in / floaty dolly", forbidden=["whip pan", "shake", "heavy motion blur"],
-                    max_drift=ETHEREAL_MAX_DRIFT, ease="linear"),
+        camera=dict(allowed="locked, or a slow eased push-in: a settle, then a held push (never a constant-rate drift)", forbidden=["whip pan", "shake", "heavy motion blur"],
+                    max_drift=ETHEREAL_MAX_DRIFT, ease="smooth"),
         ui=dict(fullscreen=False, primary="small floating panels of the supplied stills, lots of air",
                 abstraction="typography as UI (brackets, selection anchors, an inline thumb of a real still); never drawn or generated app UI",
                 clutter="no fullscreen app chrome"),
@@ -810,8 +811,8 @@ def compile_shots(designed, bpm=None, ready=(), sfx=()):
         drift_end = 0.97 if eth else 0.94
         if eth:        # a floaty dolly stays under the dialect's zoom rate however short the shot
             cap = round(ETHEREAL_MAX_DRIFT["zoom_per_s"] * 0.8 * float(r["seconds"]), 3)
-            push, drift_end = min(push, cap), max(0.97, round(1.0 - cap, 3))
-        ease = ["linear"] if eth else []
+            push, drift_end = min(push, cap), max(0.94, round(1.0 - cap, 3))
+        ease = ["smooth"] if eth else []
         if fr == "plate":
             shot["ui"] = False
             if r.get("plate") in ready:
@@ -841,7 +842,7 @@ def compile_shots(designed, bpm=None, ready=(), sfx=()):
                 elif eth:
                     look["backdrop"] = dict(fill=dict(ETHEREAL_FILL), warm=0.0)
                 base = panels["device"] if fr == "device" else (panels["hero"] if r["beat"] == "demo" else panels["floating"])
-                panel = dict(base, **{"in": dict(dur=0.3, from_scale=0.94, fade=True)})
+                panel = dict(base) if eth else dict(base, **{"in": dict(dur=0.3, from_scale=0.94, fade=True)})   # ethereal cuts are hard
                 if eth:
                     panel.update(copy.deepcopy(ETHEREAL_PANEL_FX))
                 if fr == "device":
@@ -885,6 +886,23 @@ def compile_shots(designed, bpm=None, ready=(), sfx=()):
 
 
 # ---------------------------------------------------------------- promo check
+def spec_raw_bookends(spec):
+    from . import bookends as BK
+    return BK.resolve(getattr(spec, "raw", None))
+
+
+def camera_ease_warnings(spec_shot):
+    """An ethereal push eases (a settle, then a held push). A zoom of more than 3 % at a constant rate reads as Ken Burns."""
+    from .spec import resolve_cam_keys
+    keys = resolve_cam_keys(spec_shot.get("cam") or [], float(spec_shot.dur))
+    out = []
+    for k0, k1 in zip(keys, keys[1:]):
+        kind = str(k1[4]) if len(k1) > 4 else "smooth"
+        if abs(float(k1[3]) - float(k0[3])) > 0.03 and kind == "linear":
+            out.append(f"shot {spec_shot.id} zooms {float(k0[3]):g} -> {float(k1[3]):g} at a constant rate (ease: smooth: a settle, then a held push)")
+    return out
+
+
 def camera_moves(spec_shot):
     """(pan_per_s, zoom_per_s) of the fastest segment of a shot's camera keys (0, 0 for a locked camera)."""
     from .spec import resolve_cam_keys
@@ -957,8 +975,8 @@ def gates(spec):
             out.append(("designed-framing", "WARN" if share > 0.25 or len(full) > len(ui) - len(full) else "PASS",
                         msg + ("; floating panels over plates are the primary framing (fullscreen only for peak action)" if share > 0.25 else "")))
     lim = prof["camera"]["max_drift"]
-    cam_bad, fast = [], []
-    for s in cs:
+    cam_bad, fast, soft = [], [], []
+    for i, s in enumerate(cs):
         pan, zoom = camera_moves(s)
         if pan > lim["pan_per_s"] + 1e-9 or zoom > lim["zoom_per_s"] + 1e-9:
             fast.append(f"shot {s.id} moves {pan:g} pan/s, {zoom:g} zoom/s (limit {lim['pan_per_s']:g} / {lim['zoom_per_s']:g})")
@@ -968,9 +986,22 @@ def gates(spec):
                     cam_bad.append(f"shot {s.id} has {key}")
             if float(s.get("blur") or 0) > 1:
                 cam_bad.append(f"shot {s.id} has shutter blur {s.get('blur')} (ethereal: zero blur)")
+            if i and not s.get("fade_out") and (s.get("fade_in") or ((s.get("look") or {}).get("panel") or {}).get("in")):
+                cam_bad.append(f"shot {s.id} fades or eases in on a cut (ethereal: hard cuts; only the film's first shot floats in)")
+            soft += camera_ease_warnings(s)
+            for c in CN.kinetic_items(s):
+                if c.get("anim", "pop") not in ("snap", "cascade"):
+                    soft.append(f"shot {s.id} {CN.kinetic_text(c)!r} anim {c.get('anim', 'pop')!r}: ethereal type snaps on in one frame (snap | cascade)")
+            pb = CN.pullback_cfg(s)
+            if pb:
+                look = CN.look_of(spec, s)
+                w0 = min(float(look["panel"]["w"]), CN.MAX_PANEL_W)
+                end = CN.pullback_target(pb, w0)
+                if end > 0.85 * w0:
+                    soft.append(f"shot {s.id} pullback ends at {end:.2f} of the frame from {w0:.2f}: under a 15% shrink barely shows (use `w` or `scale`, e.g. scale: 0.7)")
     msgs = cam_bad + fast
-    out.append(("designed-camera", ("FAIL" if eth else "WARN") if msgs else "PASS",
-                "; ".join(msgs) or f"{len(cs)} shots: camera within the {dn} limits ({prof['camera']['allowed']})"))
+    status = ("FAIL" if eth else "WARN") if msgs else ("WARN" if soft else "PASS")
+    out.append(("designed-camera", status, "; ".join(msgs + soft) or f"{len(cs)} shots: camera within the {dn} limits ({prof['camera']['allowed']})"))
     durs = sorted(float(s.dur) for s in cs)
     if durs:
         med = durs[len(durs) // 2] if len(durs) % 2 else (durs[len(durs) // 2 - 1] + durs[len(durs) // 2]) / 2
@@ -983,6 +1014,15 @@ def gates(spec):
             bad_pace.append(f"{rate:.2f} cuts/s > {hi_r:g}")
         if eth and cs and cs[-1].dur < end_card_need(sum(durs)) - 1e-6:
             bad_pace.append(f"end card {cs[-1].dur:.1f}s < {end_card_need(sum(durs)):g}s")
+        ot = (spec_raw_bookends(spec) or {}).get("outro") if eth and cs else None
+        if ot:
+            last = cs[-1]
+            settle = last.dur - ot["fade_s"] - ot["hold_s"]
+            late = [CN.kinetic_text(c) for c in CN.kinetic_items(last)
+                    if float(c.get("at", 0.0)) + (len(CN.kinetic_text(c).split()) - 1) * (CN.KINETIC_STEP_S if c.get("anim") == "cascade" else 0.0) > settle + 1e-6]
+            if settle < 0 or late:
+                bad_pace.append(f"end card must settle {ot['hold_s']:g}s before the {ot['fade_s']:g}s fade-out: " +
+                                (f"it is only {last.dur:.1f}s long" if settle < 0 else f"{late} arrive after {settle:.1f}s"))
         out.append(("designed-pace", "WARN" if bad_pace else "PASS",
                     "; ".join(bad_pace) or f"median shot {med:.2f}s, {rate:.2f} cuts/s ({dn}: {lo_r:g}-{hi_r:g})"))
     return out
@@ -1073,6 +1113,8 @@ def apply_shots(path, register=True, force=False):
     ready = {p["id"] for p in des.get("plates") or [] if p["id"] in man}
     lib = ((getattr(spec, "raw", None) or {}).get("sfx") or {}).get("library") or {}
     shots = compile_shots(des, ready=ready, sfx=set(lib))
+    from . import previz as PZ
+    previz_notes = PZ.merge_cinema(shots, os.path.dirname(path))         # shots the agent directed in previz carry their camera / panel nudges
     body = yaml.safe_dump({"shots": shots}, sort_keys=False, allow_unicode=True, width=120, default_flow_style=None)
     block = SHOTS_BEGIN + body + SHOTS_END
     if "# promo:designed-shots BEGIN" in text:
@@ -1094,4 +1136,4 @@ def apply_shots(path, register=True, force=False):
     text = sync_timeline(text, plan.get("length", {}).get("master_s", 60), total)
     with open(path, "w") as f:
         f.write(text)
-    return dict(path=path, shots=shots, registered=registered, ready_plates=sorted(ready))
+    return dict(path=path, shots=shots, registered=registered, ready_plates=sorted(ready), previz_notes=previz_notes)

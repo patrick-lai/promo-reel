@@ -1,0 +1,28 @@
+{
+ "schema": "promo-previz@1",
+ "source": {"kind": "manual", "ref": "templates/previz/sample (hand-written; copy it to <project>/previz/scene.json)"},
+ "frame": {"aspect": [1920, 1080], "fps": 30},
+ "projection": "persp",
+ "stills": {},
+ "limits": {"dialect": "ethereal", "strict": true, "pan_per_s": 0.02, "zoom_per_s": 0.012},
+ "shots": [
+  {"id": "01", "beat": "hook", "t0": 0.0, "dur": 5.0, "framing": "plate", "ui": false,
+   "camera": {"mode": "push", "keys": [{"t": 0.0, "cx": 0.5, "cy": 0.5, "w": 1.0}, {"t": 5.0, "cx": 0.5, "cy": 0.5, "w": 0.96, "ease": "linear"}]},
+   "plate": {"id": "plate-a", "ui": false}, "panels": [],
+   "type": [{"id": "c1", "text": "Go to bed", "at": 0.5, "dur": 4.0, "size_pct": 7.0, "cx": 0.5, "cy": 0.5, "brackets": true}],
+   "notes": "hook: the first words over a quiet plate, no UI"},
+  {"id": "02", "beat": "demo", "t0": 5.0, "dur": 5.0, "framing": "floating", "ui": true,
+   "camera": {"mode": "parallax", "projection": "persp", "keys": [{"t": 0.0, "cx": 0.48, "cy": 0.5, "w": 0.92}, {"t": 5.0, "cx": 0.52, "cy": 0.5, "w": 0.92, "ease": "linear"}]},
+   "plate": {"id": "plate-b", "ui": false},
+   "panels": [{"id": "ui-1", "kind": "floating", "cx": 0.5, "cy": 0.4, "w": 0.52, "aspect": 1.7778, "z": 0.0, "label": "a supplied still goes here (never drawn)"},
+              {"id": "ui-2", "kind": "device", "cx": 0.78, "cy": 0.5, "w": 0.16, "aspect": 0.5, "z": 0.18, "label": "phone, in front for parallax"}],
+   "type": [{"id": "c2", "text": "Wake up to merged PRs", "at": 0.3, "dur": 4.5, "size_pct": 6.0, "cx": 0.5, "cy": 0.84}],
+   "notes": "a floating panel with a device in front: the lateral drift shows the depth"},
+  {"id": "03", "beat": "ask", "t0": 10.0, "dur": 6.0, "framing": "plate", "ui": false,
+   "camera": {"mode": "locked", "keys": [{"t": 0.0, "cx": 0.5, "cy": 0.5, "w": 1.0}]},
+   "plate": {"id": "plate-end", "ui": false}, "panels": [],
+   "type": [{"id": "c3", "text": "End card words", "at": 0.0, "dur": 6.0, "size_pct": 8.0, "cx": 0.5, "cy": 0.5}],
+   "notes": "held end card"}
+ ],
+ "overrides": {}
+}

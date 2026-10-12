@@ -77,6 +77,24 @@ slide | scale`, `weight`, `outline` / `shadow` flags, `brackets`, `anchors`, `th
 `look.plate_fill` and `look.backdrop.fill` (a pastel placeholder world until a plate is registered); `panel.aspect` for device panels.
 Images are sources (`render.probe` / `Source` treat a still as a never-ending clip).
 
+## How the ethereal dialect renders (hard snaps, eased holds, bookends)
+
+- **Hard.** Type and selection boxes (`snap`, `cascade`) are alpha 0 or 1 in one frame, no scale, no blur. A cut is a cut: ethereal panels have no
+  entrance fade or scale (`look.panel.in` is left out), so frame 0 of a shot is its settled picture. `promo check` (`designed-camera`) FAILs a
+  panel / `fade_in` on a cut and WARNs on a type anim that is not `snap` / `cascade`.
+- **Mosaic.** `resolve: {kind: mosaic}` pixelates the backdrop after the grade, bloom and grain (bloom used to blur the blocks away), also on a
+  plate shot with no footage, in geometric steps `from_blocks -> to_blocks` with a fading per-block `tone`; the UI panel is never touched.
+- **Pullback.** `pullback: {w | scale, until}`: `w` is the end width, `scale` a fraction of the start; with neither it ends at 72 % (it used to
+  default to 0.62, wider than a 0.58 hero panel, so it grew). A pullback that shrinks under 15 % is a `designed-camera` WARN.
+- **Camera.** A hold is eased (`smooth`: a settle, then a held push), not a constant-rate drift. Caps: 0.04 zoom/s (a 1.0 -> 0.86 push over 5 s passes),
+  0.02 pan/s; whip, shake, flash and shutter blur stay FAIL; a linear zoom over 3 % is a WARN.
+- **Edge.** `look.panel.halo: {alpha, blur, spread, color}` is a soft coloured edge outside the panel silhouette (on by default in ethereal: a dark
+  UI against a pale plate). It is composited before the panel is pasted: not one UI pixel changes.
+- **Bookends** (`promo/bookends.py`; `output: {intro: {...}, outro: {...}}`, `style: {bookends: ...}` or the dialect default; `false` = none).
+  Ethereal: the first shot floats in over 1.1 s (ease-out cubic, from black, the panel rising 3 % and growing from 0.94); the last shot holds
+  1.5 s settled, then picture AND music fade over 1.8 s on the same ease-in-out curve. The music bed is extended (last bars repeated) if it ends
+  early, so the tail is faded, never cut. `designed-pace` WARNs if the end card is too short or its type arrives after the settle point.
+
 ## Co-spec: at most three questions
 
 A thin prompt is drafted without asking (draft, then iterate). `promo cospec` lists the few decisions that would cost a full
@@ -121,6 +139,8 @@ promo plan NAME --prompt "60s promo for my AI coding crew. Go to bed. Wake up to
 promo cospec NAME                     # at most three optional questions; --answer KEY=VALUE re-plans
 promo designed show NAME              # the plan: framing per shot, cards, plates, needs, conflicts
 promo designed apply NAME             # writes cinema shots into promo.yaml (stills registered in the footage manifest)
+promo -p NAME previz build && promo -p NAME previz strip   # wireframe the camera / panels / type / timing, LOOK at previz/strip.png (docs/previz.md)
+promo -p NAME previz cam 03 push --strip   # nudge until it reads (seconds each); `previz apply` carries it into the cinema shots
 promo -p NAME --scale 0.5 build --look   # quick-look stills strip in about 10 s, no music needed
 promo -p NAME strip --out strip.png
 promo -p NAME preview                 # 540p draft + stills + contact sheet (needs a music asset, see the runbook)
@@ -134,6 +154,9 @@ plate exists the preview uses a designed placeholder world (ethereal: a pastel g
 
 ## RUNBOOK: thin-prompt e2e on the box (commission-ai)
 
+Order: plan, cospec, designed apply, **previz strip**, look / strip, gen plates, preview. `promo preview` or a build above the quick look
+refuses without a previz strip of the current scene (`promo previz`, `docs/previz.md`); `promo check` reports `previz-ready`.
+
 Stills live on the shared box under `/workspace/videos/commission-ai-promo/footage/` (not in git). Recipe, also in
 `docs/examples/commission-ai-thin-prompt/run.sh`:
 
@@ -146,6 +169,7 @@ promo plan commission-thin \
 promo cospec commission-thin          # <= 3 questions: end card (GitHub vs landing), the one promise, the audience
 promo cospec commission-thin --answer cta="..." --answer audience="..."   # optional; re-plans
 promo designed apply commission-thin
+promo -p commission-thin previz build && promo -p commission-thin previz strip   # look at previz/strip.png, nudge, re-strip (a render above the quick look needs it)
 promo -p commission-thin --scale 0.5 build --look && promo -p commission-thin strip --out strip.png   # post this first
 promo gen plan -p commission-thin          # plates: make them, `promo gen register`, re-run `designed apply`
 promo -p commission-thin preview           # 540p draft; needs a music asset in assets.yaml (below)

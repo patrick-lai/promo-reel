@@ -386,7 +386,7 @@ def panel_fx_cfg(panel):
         v = p.get(k)
         return dict(v) if enabled(v) and isinstance(v, dict) else None
     sh = blk("shadow")
-    return dict(radius=float(p.get("radius") or 0.0), shadow=sh, rim=blk("rim"), glow=blk("glow"), entrance=entrance_cfg(p))
+    return dict(radius=float(p.get("radius") or 0.0), shadow=sh, rim=blk("rim"), glow=blk("glow"), halo=blk("halo"), entrance=entrance_cfg(p))
 
 
 def entrance_cfg(panel):
@@ -395,16 +395,29 @@ def entrance_cfg(panel):
         return None
     e = {} if e is True else dict(e)
     return dict(dur=max(float(e.get("dur", 0.35)), 1e-3), from_scale=min(max(float(e.get("from_scale", 0.97)), 0.5), 1.0),
-                fade=bool(e.get("fade", True)))
+                fade=bool(e.get("fade", True)), ease=e.get("ease"), rise=min(max(float(e.get("rise", 0.0) or 0.0), 0.0), 0.2))
 
 
 def entrance_at(cfg, t, ease=None):
-    """(scale, opacity) of the panel at shot-local t for an `in` config (None -> (1, 1)). Smoothstep ease."""
+    """(scale, opacity) of the panel at shot-local t for an `in` config (None -> (1, 1)). Smoothstep ease unless the config names
+    one (`ease: out` = ease-out cubic, the float-in of the film's intro)."""
     if not cfg:
         return 1.0, 1.0
     u = min(max(t / cfg["dur"], 0.0), 1.0)
-    e = u * u * (3 - 2 * u) if ease is None else ease(u)
+    if cfg.get("ease"):
+        from .bookends import curve
+        e = curve(u, cfg["ease"])
+    else:
+        e = u * u * (3 - 2 * u) if ease is None else ease(u)
     return cfg["from_scale"] + (1.0 - cfg["from_scale"]) * e, (e if cfg["fade"] else 1.0)
+
+
+def entrance_rise(cfg, t):
+    """Vertical offset (fraction of the frame height, positive = lower than settled) of a floating-in panel at shot-local t."""
+    if not cfg or not cfg.get("rise"):
+        return 0.0
+    from .bookends import curve
+    return cfg["rise"] * (1.0 - curve(min(max(t / cfg["dur"], 0.0), 1.0), cfg.get("ease") or "out"))
 
 
 def _shadow_layers(a, box, r, cfg, W):
@@ -451,6 +464,19 @@ def _glow(a, panel_arr, box, r, cfg, W):
     al = float(cfg.get("alpha", 0.25))
     sl = a[ry0:ry1, rx0:rx1]
     sl[...] = sl * (1.0 - al * m) + al * p
+
+
+def _halo(a, box, r, cfg, W):
+    """A soft coloured edge / glow around the panel on the BACKDROP only: the panel's rounded rectangle grown by `spread`, blurred, mixed
+    toward `color` by `alpha`. It is composited before the panel is pasted, so nothing of it exists inside the panel silhouette (the
+    UI pixels are never touched). Gives a dark panel an edge against a pale plate (a cool dark halo) or a dark one against night (light)."""
+    blur_px, spread = float(cfg.get("blur", 0.012)) * W, float(cfg.get("spread", 0.002)) * W
+    reg = _region(box, 3 * blur_px + spread + 2, (W, a.shape[0]))
+    m = _blurred_rr(reg, box, r, blur_px, 0.0, spread)
+    col = np.asarray(cfg.get("color", (70, 80, 120)), np.float32).reshape(1, 1, 3) / 255.0
+    w = (float(cfg.get("alpha", 0.35)) * m)[..., None]
+    sl = a[reg[1]:reg[3], reg[0]:reg[2]]
+    sl[...] = sl * (1.0 - w) + col * w
 
 
 def _rim(a, box, r, cfg, d):
@@ -508,6 +534,8 @@ def dof_backdrop(frame, panel_box_, out_size=None, blur=0.022, dim=0.40, zoom=1.
     if cfg["shadow"]:
         _shadow_layers(a, box, r, cfg["shadow"], W)
     pan_arr = np.asarray(pan, np.float32) / 255.0
+    if cfg["halo"]:
+        _halo(a, box, r, cfg["halo"], W)
     if cfg["glow"]:
         _glow(a, pan_arr, box, r, cfg["glow"], W)
     if cfg["rim"]:

@@ -24,7 +24,9 @@ Spec keys (per shot):
         shadow: {layers: [{alpha, blur, dy, spread}, ...]}   two soft layers (tight + wide), fractions of the frame width
         rim: {alpha: 0.18, width: 1, color}                 1 px warm-white line just OUTSIDE the border
         glow: {alpha: 0.25, scale, blur, lift, warm}        light spill: a blurred, enlarged, lifted, warm copy of the panel behind it
-        in: {dur: 0.35, from_scale: 0.97, fade: true}       entrance ease (off by default: cuts stay hard)
+        halo: {alpha: 0.3, blur: 0.010, spread: 0.002, color}   a soft coloured edge OUTSIDE the silhouette (a dark UI on a pale plate); off by default
+        in: {dur: 0.35, from_scale: 0.97, fade: true, ease: out, rise: 0.03}   entrance ease (off by default: cuts stay hard); `ease` out = cubic,
+                                `rise` = floats up from that fraction of the height. The film's first shot gets one from `intro` (promo/bookends.py)
     look.plate_fill: {top, bottom} | [r, g, b]   the base of a shot with no source (default near-black): a designed placeholder world
     look.backdrop: {fill: {top, bottom}}   a flat or two-tone gradient world instead of the blurred copy (used until a plate exists)
     look.backdrop: {plate, t, blur, dim, warm, parallax}    the world behind the panel. plate = a footage clip id (a still frame at t,
@@ -49,9 +51,13 @@ Spec keys (per shot):
                                 brackets: true | {pad, len, width}   [ ] corner brackets round the text (typography as UI)
                                 anchors: true   a hairline selection box with four square handles round the text
                                 thumb: <clip id | image>   a small rounded real still inline before the text (its pixels only scaled)
-    resolve: {kind: mosaic, dur: 0.9, steps: 6, from_blocks: 8}   the BACKDROP / plate resolves from a coarse mosaic to sharp in
-                                `steps` hard stages (never the UI panel: its pixels are only transformed geometrically)
-    fade_in / fade_out: s       from / to black (also fades the text); eased
+    resolve: {kind: mosaic, dur: 0.9, steps: 6, from_blocks: 8, to_blocks: 96, tone: 0.05}   the BACKDROP / plate resolves from a coarse mosaic to
+                                sharp in `steps` hard stages, drawn AFTER grade / bloom / grain so the blocks stay crisp (never the UI panel: its
+                                pixels are only transformed geometrically). Columns go geometrically from_blocks -> to_blocks; `tone` = a per-block
+                                brightness offset that fades out over the steps, so a smooth pastel world still reads as blocks
+    fade_in / fade_out: s       from / to black (also fades the text); eased (smootherstep, or `fade_in_ease` / `fade_out_ease`: out | inout | in | linear).
+                                With an `intro` / `outro` (promo/bookends.py, ethereal by default) the film's first shot floats in and its last shot
+                                holds, then fades to black together with the music; an explicit key on the shot wins
     title_bloom: {text, at, dur, size, cy, color, fade}   opening title: glows in out of the dark (serif), then fades; ui: false
                                 shots only. size = multiplier of the 132 px (1920 canvas) title, default 1.0, max 2.0; cy = centre
                                 height as a fraction of the frame (0.5)
@@ -62,8 +68,9 @@ Spec keys (per shot):
                                 soft dark gradient band (height in canvas px, centred on the line) drawn on the BACKDROP only,
                                 restored over the UI panel box so UI pixels are never darkened, and not drawn at all on
                                 full-bleed UI shots
-    pullback: true | {w, cy, start, dim_to}   end wide hold: the panel shrinks (the world is revealed) while the camera
-                                widens (set cam keys to end on w ~ 1.0)
+    pullback: true | {w | scale, cy, start, until, ease, dim_to}   end wide hold: the panel shrinks (the world is revealed) while the camera
+                                widens (set cam keys to end on w ~ 1.0). `w` = end width (fraction of the frame), `scale` = end width as a
+                                fraction of the start (0.4 = 40 %), neither = 72 % of the start; reached `until` s before the shot ends
     blur: N                     shutter blur (frames averaged), usually 1
 Layout is resolution independent (all sizes are in 1920x1080 canvas units, scaled by OW / 1920).
 """
@@ -74,6 +81,7 @@ import os
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
+from .. import bookends as BK
 from .. import claims as C
 from .. import grade as G
 from .. import render as R
@@ -187,12 +195,27 @@ def panel_aspect(look):
     return min(max(float(a), 0.3), 2.4) if a else None
 
 
+PULLBACK_DEFAULT_SHRINK = 0.72            # a pullback with no target ends at this fraction of the panel's own width
+PULLBACK_KEYS = ("w", "scale", "cy", "start", "dim_to", "ease", "until")
+
+
 def pullback_cfg(shot):
+    """`pullback: true | {w | scale, cy, start, until, ease, dim_to}`. `w` = the panel's end width (fraction of the frame), `scale` = its end
+    width as a fraction of the width it starts at (0.4 = shrinks to 40 %); neither = PULLBACK_DEFAULT_SHRINK. It starts at `start` (fraction
+    of the shot), is there `until` seconds before the shot ends (the settle), and eases in-out unless `ease` says otherwise."""
     pb = shot.get("pullback")
     if not pb:
         return None
     pb = {} if pb is True else dict(pb)
-    return dict(w=pb.get("w", 0.62), cy=pb.get("cy", 0.5), start=pb.get("start", 0.15), dim_to=pb.get("dim_to"))
+    return dict(w=pb.get("w"), scale=pb.get("scale"), cy=pb.get("cy", 0.5), start=pb.get("start", 0.15), dim_to=pb.get("dim_to"),
+                ease=pb.get("ease", "inout"), until=max(float(pb.get("until", 0.0) or 0.0), 0.0))
+
+
+def pullback_target(pb, w0):
+    """The panel's end width (fraction of the frame) of a pullback that starts at width w0."""
+    if pb.get("w") is not None:
+        return float(pb["w"])
+    return float(w0) * (float(pb["scale"]) if pb.get("scale") is not None else PULLBACK_DEFAULT_SHRINK)
 
 
 def panel_params(look, shot, t, dur):
@@ -201,8 +224,8 @@ def panel_params(look, shot, t, dur):
     pb = pullback_cfg(shot)
     if pb:
         s = pb["start"] * dur
-        p = R.ease((t - s) / max(dur - s, 1e-6))
-        w, cy = w + (pb["w"] - w) * p, cy + (pb["cy"] - cy) * p
+        p = BK.curve((t - s) / max(dur - pb["until"] - s, 1e-6), pb["ease"])
+        w, cy = w + (pullback_target(pb, w) - w) * p, cy + (pb["cy"] - cy) * p
         dim = dim + ((pb["dim_to"] if pb["dim_to"] is not None else min(dim * 1.3, 1.0)) - dim) * p
     return w, cy, dim
 
@@ -428,6 +451,10 @@ def cascade_words(item, t):
     return 0 if dt < -1e-9 else max(0, min(n, int(dt / step + 1e-6) + 1))
 
 
+MOSAIC_MAX_BLOCKS = 96                    # the last coarse stage still has this many columns, so every hard step reads as a step
+MOSAIC_TONE = 0.05                        # per-block tone offset at the first stage (fraction of full scale), fading to 0: smooth worlds show their blocks
+
+
 def mosaic_cfg(shot):
     r = shot.get("resolve") if hasattr(shot, "get") else None
     if not r:
@@ -435,7 +462,9 @@ def mosaic_cfg(shot):
     r = {} if r is True else dict(r)
     if r.get("kind", "mosaic") != "mosaic":
         return None
-    return dict(dur=max(float(r.get("dur", 0.9)), 0.05), steps=max(int(r.get("steps", 6)), 2), from_blocks=max(int(r.get("from_blocks", 8)), 2))
+    steps, fb = max(int(r.get("steps", 6)), 2), max(int(r.get("from_blocks", 8)), 2)
+    to = max(int(r.get("to_blocks", min(fb * 2 ** (steps - 1), MOSAIC_MAX_BLOCKS))), fb + 1)
+    return dict(dur=max(float(r.get("dur", 0.9)), 0.05), steps=steps, from_blocks=fb, to_blocks=to, tone=max(float(r.get("tone", MOSAIC_TONE)), 0.0))
 
 
 def mosaic_stage(cfg, t):
@@ -446,17 +475,32 @@ def mosaic_stage(cfg, t):
     return max(0, int(u * cfg["steps"]))
 
 
+def mosaic_cols(cfg, stage):
+    """Block columns at a stage: geometric from `from_blocks` to `to_blocks`, so every step is a similar visible change (a doubling
+    series spends its last steps on blocks too small to see)."""
+    k = stage / max(cfg["steps"] - 1, 1)
+    return max(2, int(round(cfg["from_blocks"] * (cfg["to_blocks"] / cfg["from_blocks"]) ** k)))
+
+
 def mosaic(im, cfg, t):
-    """The image pixelated to a stage of the resolve: blocks double every step from `from_blocks` columns until the image is sharp."""
+    """The image pixelated to a hard stage of the resolve (nearest-neighbour blocks, no smoothing between them). Each block also gets a
+    small fixed tone offset that fades out across the stages, so a smooth pastel world reads as blocks, not as a banded gradient."""
     st = mosaic_stage(cfg, t)
     if st is None:
         return im
     w, h = im.size
-    cols = cfg["from_blocks"] * (2 ** st)
+    cols = mosaic_cols(cfg, st)
     if cols >= w:
         return im
     rows = max(1, round(cols * h / w))
-    return im.resize((cols, rows), Image.BOX).resize((w, h), Image.NEAREST)
+    small = im.convert("RGB").resize((cols, rows), Image.BOX)
+    if cfg.get("tone"):
+        yy, xx = np.mgrid[0:rows, 0:cols]
+        n = (((xx * 73856093) ^ (yy * 19349663) ^ (cols * 83492791)) % 2048) / 1023.5 - 1.0         # fixed per block and stage, in [-1, 1]
+        amp = cfg["tone"] * 255.0 * (1.0 - st / cfg["steps"])
+        a = np.asarray(small, np.float32) + (n * amp)[..., None]
+        small = Image.fromarray(np.clip(a + 0.5, 0, 255).astype(np.uint8), "RGB")
+    return small.resize((w, h), Image.NEAREST)
 
 
 def copy_text(spec, item):
@@ -541,13 +585,14 @@ def _blend(out, mask, xy, color, alpha, glow=None, shadow=0.0):
     return out
 
 
-def black_level(t, dur, fin, fout):
-    """0 = picture, 1 = black: eased fade in from black over `fin` s, fade out to black over the last `fout` s."""
+def black_level(t, dur, fin, fout, fin_ease=None, fout_ease=None):
+    """0 = picture, 1 = black: eased fade in from black over `fin` s, fade out to black over the last `fout` s. The eases are
+    promo/bookends.py curves (`out` = ease-out cubic, `inout` = smootherstep); unset = the preset's smootherstep."""
     b = 0.0
     if fin:
-        b = max(b, 1.0 - R.ease(t / fin))
+        b = max(b, 1.0 - (BK.curve(t / fin, fin_ease) if fin_ease else R.ease(t / fin)))
     if fout:
-        b = max(b, 1.0 - R.ease((dur - t) / fout))
+        b = max(b, 1.0 - (BK.fade_gain(t, dur, fout, fout_ease) if fout_ease else R.ease((dur - t) / fout)))
     return b
 
 
@@ -574,6 +619,18 @@ class Composer:
             self.bd = backdrop_cfg({**self.look, "backdrop": {**(b0 if isinstance(b0, dict) else {}), "plate": None}})
         self.dur = shot.dur
         self.fin, self.fout = float(shot.get("fade_in", 0) or 0), float(shot.get("fade_out", 0) or 0)
+        self.fin_ease, self.fout_ease = shot.get("fade_in_ease"), shot.get("fade_out_ease")
+        bk = BK.resolve(getattr(self.spec, "raw", None))
+        film = getattr(self.spec, "duration", None)
+        if bk["intro"] and getattr(shot, "f0", None) == 0:                 # the film's first shot floats in; later cuts stay hard
+            it = bk["intro"]
+            self.fin, self.fin_ease = (self.fin, self.fin_ease) if self.fin else (min(it["dur"], self.dur), it["ease"])
+            if self.entr is None and self.panel:
+                self.entr = G.entrance_cfg(dict(**{"in": dict(dur=it["dur"], from_scale=it.get("from_scale", 0.94), fade=False,
+                                                              ease=it["ease"], rise=it.get("rise", 0.0))}))
+        if bk["outro"] and film and shot.t1 >= float(film) - 1e-6:           # the last shot settles, then picture and music fade together
+            ot = bk["outro"]
+            self.fout, self.fout_ease = (self.fout, self.fout_ease) if self.fout else (min(ot["fade_s"], self.dur), ot["ease"])
         self.gvig = float((self.look.get("vignette") or {}).get("global", 0.0) or 0.0) if isinstance(self.look.get("vignette"), dict) else 0.0
         fb = getattr(ctx, "font_path", None)
         self.copies, self.scrims = [], []
@@ -684,7 +741,7 @@ class Composer:
         """(panel box in output px, backdrop dim, opacity) at shot-local t: the settled/pullback geometry times the entrance ease."""
         wf, cyf, dim = panel_params(self.look, self.shot, t, self.dur)
         s, op = G.entrance_at(self.entr, t, R.ease)
-        return G.panel_box((self.W, self.H), wf * s, cyf, panel_aspect(self.look)), dim, op
+        return G.panel_box((self.W, self.H), wf * s, cyf + G.entrance_rise(self.entr, t), panel_aspect(self.look)), dim, op
 
     def _backdrop(self, src, cam, dim):
         """The world behind the panel: a plate (drifting at `parallax` of the camera) or a dim blurred copy of the UI crop
@@ -710,7 +767,8 @@ class Composer:
         W, H = self.W, self.H
         if src is None:                                                # dark opening plate (no footage)
             base = gradient_img((W, H), self.look["plate_fill"]) if self.look.get("plate_fill") else Image.new("RGB", (W, H), (8, 7, 9))
-            return G.to_img(G.apply_look_arr(G.to_f(base), self._plain_look(), self._i, soft=True))
+            out = G.to_img(G.apply_look_arr(G.to_f(base), self._plain_look(), self._i, soft=True))
+            return mosaic(out, self.mosaic, t) if self.mosaic else out
         if self.panel and self.look["panel"].get("pane3d") not in (None, False):
             # look.panel.pane3d: {...}: the UI as a floating, tilted 3D pane (promo/pane3d.py); the backdrop gets the usual look
             from .. import pane3d as P3
@@ -727,16 +785,16 @@ class Composer:
             pw, ph = box[2] - box[0], box[3] - box[1]
             panel = R.frame_cam(self.ctx, src, *cam, out=(pw, ph))
             bd = self._backdrop(src, cam, dim)
-            if self.mosaic:                                  # the world resolves from a mosaic; the UI panel is never pixelated
-                bd = mosaic(bd, self.mosaic, t)
-            return G.dof_backdrop(panel, box, (W, H), panel=self.look["panel"], backdrop=bd,
-                                  fx=self._backdrop_fx(dim), opacity=op)
+            fx = self._backdrop_fx(dim)
+            if self.mosaic:                                  # the world resolves from a mosaic AFTER the grade / bloom / grain (bloom would blur the
+                fx0 = fx                                     # block edges away); the panel is pasted after, so its pixels are never pixelated
+                fx = lambda b, f=fx0: mosaic(f(b), self.mosaic, t)   # noqa: E731
+            return G.dof_backdrop(panel, box, (W, H), panel=self.look["panel"], backdrop=bd, fx=fx, opacity=op)
         im = R.frame_cam(self.ctx, src, *cam).convert("RGB")
-        if self.mosaic and not self.ui:
-            im = mosaic(im, self.mosaic, t)
         if self.protect:
             return im                                                  # full-bleed UI: no grade / bloom / grain at all
-        return G.to_img(G.apply_look_arr(G.to_f(im), self._plain_look(), self._i))
+        out = G.to_img(G.apply_look_arr(G.to_f(im), self._plain_look(), self._i))
+        return mosaic(out, self.mosaic, t) if self.mosaic and not self.ui else out
 
     def _title(self, out, t):
         if not self.title:
@@ -790,7 +848,7 @@ class Composer:
         out = self._title(out, t)
         out = self._copy(out, t)
         out = self._kinetic(out, t)
-        b = black_level(t, self.dur, self.fin, self.fout)
+        b = black_level(t, self.dur, self.fin, self.fout, self.fin_ease, self.fout_ease)
         if b > 0:
             out = G.to_img(G.to_f(out) * (1.0 - b))
         return out

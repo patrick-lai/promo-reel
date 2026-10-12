@@ -121,8 +121,14 @@ When the prompt is thin (at most ~80 words, fewer than three beats written out) 
 (`--default cta=...`) fills the end card only when nothing else does and is marked for the product owner to confirm. Every word on a
 card is the person's own; anything missing is listed under `needs`. Contract and rules: `docs/thin-prompt-quality.md`.
 
+After `promo designed apply`, run `promo previz build && promo previz strip` (wireframes of camera, panels, type boxes and timing,
+`docs/previz.md`) and look at the strip before the quick look and `promo preview`. Order: plan, cospec, designed apply, previz strip, look / strip,
+gen plates, preview. `promo preview` and builds above the quick look refuse without a strip of the current scene; `promo check` adds `previz-ready`
+(WARN on a 540p preview, FAIL above it).
+
 ## Review rounds
 
+0. `promo previz strip` → wireframe strip of the current scene (needed before the preview; WARN in `promo check` on a 540p preview without it)
 1. `promo preview` → stills + contact sheets + **540p** only
 2. One feedback file per round (`reviews/round-N.md`); Marketing / Zen / Director each one list + `signed-off:`
 3. `promo build --final` refuses without all three sign-offs; anything >540p requires `--final`

@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>/*PREVIZ_TITLE*/</title>
+<style>
+:root{--bg:#14161b;--panel:#1c1f26;--line:#2d313b;--ink:#e6e8ee;--mute:#8d93a3;--acc:#58c8e6}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:13px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+#app{display:flex;flex-direction:column;height:100%}
+#top{display:flex;gap:14px;align-items:baseline;padding:8px 14px;border-bottom:1px solid var(--line);color:var(--mute)}
+#top b{color:var(--ink);font-weight:600}
+#stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;position:relative}
+#wrap{position:relative;line-height:0}
+#view{display:block}
+#guides{position:absolute;inset:0;pointer-events:none}
+#safe{position:absolute;inset:5%;border:1px dashed rgba(150,156,170,.45)}
+#cross{position:absolute;left:50%;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;border:1px solid rgba(150,156,170,.45);border-radius:50%}
+#bar{display:flex;flex-direction:column;gap:6px;padding:10px 14px;border-top:1px solid var(--line);background:var(--panel)}
+#row{display:flex;align-items:center;gap:12px}
+#row input[type=range]{flex:1;accent-color:var(--acc)}
+button{background:#262a33;color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:4px 12px;font:inherit;cursor:pointer}
+button:hover{border-color:var(--acc)}
+#time{font:12px ui-monospace,Menlo,monospace;min-width:130px;color:var(--mute)}
+#chips{display:flex;gap:2px;height:22px}
+.chip{flex:1 1 auto;display:flex;align-items:center;justify-content:center;font-size:11px;color:#0d0f13;border-radius:3px;cursor:pointer;overflow:hidden;opacity:.55;min-width:14px}
+.chip.on{opacity:1;outline:1px solid #fff}
+#info{font:12px ui-monospace,Menlo,monospace;color:var(--mute);white-space:pre-wrap}
+#help{color:var(--mute);font-size:12px}
+#err{display:none;padding:30px;font-size:16px}
+body.strip #top,body.strip #bar{display:none}
+body.strip #stage{display:block}
+#stripc{display:none}
+body.strip #stripc{display:block}
+body.strip #wrap{display:none}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="top"><b>previz</b><span id="name"></span><span id="hash"></span><span id="proj"></span></div>
+  <div id="stage"><div id="wrap"><canvas id="view"></canvas><div id="guides"><div id="safe"></div><div id="cross"></div></div></div><canvas id="stripc"></canvas><div id="err"></div></div>
+  <div id="bar">
+    <div id="chips"></div>
+    <div id="row"><button id="play" title="Space">Play</button><input id="scrub" type="range" min="0" max="1" step="0.01" value="0"><span id="time"></span></div>
+    <div id="info"></div>
+    <div id="help">Space play &middot; &larr; &rarr; frame (Shift: second) &middot; [ ] shot &middot; O ortho / perspective &middot; S supplied stills &middot; G guides &middot; wireframes only: nothing here is product UI</div>
+  </div>
+</div>
+<script>/*THREE*/</script>
+<script>/*SCENE*/</script>
+<script>/*VIEWER*/</script>
+</body>
+</html>

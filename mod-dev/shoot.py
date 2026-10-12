@@ -25,7 +25,7 @@ sys.path.insert(0, HERE)
 import serve  # noqa: E402
 
 CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-STAGES = ["discover", "scripts", "pick", "storyboard", "assets", "keyframes", "confirm", "drafts", "review", "autopilot", "final", "edit", "podcast", "mv-edit"]
+STAGES = ["discover", "scripts", "pick", "storyboard", "previz", "assets", "keyframes", "confirm", "drafts", "review", "autopilot", "final", "edit", "podcast", "mv-edit"]
 WIDTHS = [(380, 780), (520, 900), (900, 900), (1100, 900)]
 
 

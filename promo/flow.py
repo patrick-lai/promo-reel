@@ -1,8 +1,9 @@
 """The gated production flow: the person stays in the loop at every step, the council checks intent at every round.
 
-    discover -> scripts -> pick -> storyboard -> assets -> keyframes -> confirm -> drafts -> review (<= 5 rounds) -> final
-                (3+, council   (human)  (start+end    (every asset    (the rest)   (human)   (first    (council: intent + web
-                 spars 1-2x)            frames/scene)  shown, mocks ok)                        drafts)   research each round)
+    discover -> scripts -> pick -> storyboard -> previz -> assets -> keyframes -> confirm -> drafts -> review (<= 5 rounds) -> final
+                (3+, council   (human)  (start+end    (wireframes: (every asset    (the rest)   (human)   (first    (council: intent + web
+                 spars 1-2x)            frames/scene)  camera, panels, shown, mocks ok)                        drafts)   research each round)
+                                                       type; promo previz)
 
 State lives in `<project>/flow/flow.json` (+ scripts/, boards/, council/, rounds/, assets.json, dashboard.html). Gates are HUMAN approvals
 (`promo flow approve <gate> --by NAME`, an agent name is refused, same rule as `promo brief confirm`) and go stale when the thing approved
@@ -83,6 +84,7 @@ from . import lessons as LS
 from . import openrouter as OR
 from . import plandocs as PD
 from . import previews as PV
+from . import previz as PZ
 from . import roundbrief as RB
 from . import scout as SC
 from . import share as SH
@@ -93,8 +95,10 @@ from . import widgets as WG
 from .compare_ref import CompareError
 from .home import resolve as _resolve
 
-STAGES = ["discover", "scripts", "pick", "storyboard", "assets", "keyframes", "confirm", "drafts", "review", "final"]
-LABEL = dict(discover="Style & references", scripts="Scripts", pick="Pick stories", storyboard="Storyboard", assets="Asset plan",
+# `previz` sits right after the storyboard (its start / end frames are what the scenes are blocked out from) and before the assets: the ONE plan review
+# then covers storyboard + previz strip + assets, and a changed previz scene makes the plan approval stale like any other change to the plan.
+STAGES = ["discover", "scripts", "pick", "storyboard", "previz", "assets", "keyframes", "confirm", "drafts", "review", "final"]
+LABEL = dict(discover="Style & references", scripts="Scripts", pick="Pick stories", storyboard="Storyboard", previz="Previz / wireframe", assets="Asset plan",
              keyframes="Keyframes", confirm="Final confirmation", drafts="First drafts", review="Review rounds", final="Final")
 # The person decides four things: the style, which scripts go on, the plan (storyboard + assets + the go for drafts, ONE approval at `assets`), the draft.
 # The storyboard and confirm stages have no gate of their own: the person comments on scenes whenever they like and an open comment blocks the plan.
@@ -267,7 +271,7 @@ def gate_hash(pd, st, gate):
     if gate == "assets-approved":
         # What was planned (which assets, for which scenes, how), not how far making them has got: swapping a mock for the real file must not ask the person again.
         planned = sorted((a["id"], a.get("kind"), tuple(a.get("scenes") or []), a.get("how")) for a in AP.load(f))
-        return hashlib.sha256(("".join(_sha(p) for p in bj) + json.dumps(planned)).encode()).hexdigest()[:12]
+        return hashlib.sha256(("".join(_sha(p) for p in bj) + json.dumps(planned) + PZ.plan_hash(pd, st["picks"])).encode()).hexdigest()[:12]
     if gate == "draft-approved":
         return hashlib.sha256(json.dumps(st["drafts"][-1:]).encode()).hexdigest()[:12]
     return ""
@@ -346,6 +350,8 @@ def checks(pd, st, stage=None):
             R.append((not mi, f"board {sid}: every scene has its START and END frame image" + (f" ({len(mi)} missing)" if mi else "")))
         n_open = len(open_scene_notes(st))
         R.append((not n_open, f"{n_open} scene {'comment' if n_open == 1 else 'comments'} still open: answer in the scene, then `promo flow scene resolve STORY SCENE --note N --text \"what changed\"`" if n_open else "every scene comment is answered"))
+    elif stage == "previz":
+        R += previz_checks(pd, st)
     elif stage == "assets":
         plan = AP.load(f)
         pr = AP.problems(plan, scene_ids(pd, st), pd)
@@ -356,6 +362,7 @@ def checks(pd, st, stage=None):
         R.append((not n_open, f"{n_open} scene {'comment' if n_open == 1 else 'comments'} still open: answer in the scene, then `promo flow scene resolve STORY SCENE --note N --text \"what changed\"`" if n_open else "every scene comment is answered"))
         R.append((gate_ok(pd, st, "assets-approved"), "the person approved the plan: storyboard, assets and the go for drafts (`approve assets-approved --by NAME`)"))
     elif stage == "keyframes":
+        R += previz_checks(pd, st, strip_only=True)
         mi = [m for sid, b, d in boards(pd, st) for m in SB.missing(b, d, ("start", "end", "frames"))]
         R.append((not mi, f"all keyframes generated ({len(mi)} missing)"))
         pr = AP.problems(AP.load(f), scene_ids(pd, st), pd, final=True)
@@ -370,6 +377,32 @@ def checks(pd, st, stage=None):
         R.append((gate_ok(pd, st, "draft-approved"), "the person approved the draft (`approve draft-approved --by NAME`)"))
     elif stage == "final":
         R.append((bool(st["finals"]), "final output registered (`promo flow final add FILE`)"))
+    return R
+
+
+def previz_checks(pd, st, strip_only=False, plain=False):
+    """[(ok, text)]: every picked storyboard (or the designed plan) is blocked out in previz and a strip exists for the CURRENT scene.
+    `plain` words the same conditions for the person (no commands)."""
+    ps = PZ.status(pd, st["picks"])
+    if not ps["targets"]:
+        return [(False, "Nothing to block out yet" if plain else "previz has something to block out: " + (ps["problems"][0] if ps["problems"] else "a storyboard"))]
+    R = []
+    for t in ps["targets"]:
+        who = f"story {t['key']}" if t["key"] else "the plan"
+        cmd = "promo previz build" + (f" --story {t['key']}" if t["key"] else "")
+        if not strip_only:
+            built = bool(t["scene"] and not t["errors"] and not t["behind"])
+            if plain:
+                R.append((built, f"Layout of {who} is blocked out" if built else f"Layout of {who} is not blocked out yet"))
+            else:
+                why = "" if built else (f": {t['errors'][0]}" if t["errors"] else ": scene is behind its storyboard, `promo previz sync`" if t["behind"] else f": `{cmd}`")
+                R.append((built, f"previz scene for {who} is built and in step with its source{why}"))
+        ok = t["strip"] == "ok" and not t["behind"]
+        if plain:
+            R.append((ok, f"Wireframe strip of {who} is up to date" if ok else f"Wireframe strip of {who} still to make"))
+        else:
+            left = "" if ok else {"missing": ": no strip yet, `promo previz strip`", "stale": ": the strip is of an older scene, `promo previz strip`"}.get(t["strip"], ": `promo previz strip`")
+            R.append((ok, f"previz strip for {who} is current for its scene (look at it, nudge, re-strip)" + left))
     return R
 
 
@@ -890,7 +923,7 @@ def needs(pd, st=None):
     st = st or load(pd)
     out = []
     for sid, b, d in boards(pd, st):
-        which = ("start", "end") if STAGES.index(st["stage"]) <= STAGES.index("storyboard") else ("start", "end", "frames")
+        which = ("start", "end") if STAGES.index(st["stage"]) <= STAGES.index("previz") else ("start", "end", "frames")
         for m in SB.missing(b, d, which):
             out.append(dict(kind="keyframe", story=sid, scene=m["scene"], which=m["which"], out=m["image"], prompt=m["prompt"]))
     for a in AP.load(fdir(pd)):
@@ -945,8 +978,9 @@ def hints(pd, st):
         discover="Ask the person what style they want and for any reference videos/material (the published Stage state carries the question); record both with `promo flow discover --style ... --ref URL | --no-refs`. Study references with `promo refs add`.",
         scripts=f"Read what this person said in earlier videos (`promo flow lessons`), then write {MIN_SCRIPTS}+ scripts with different angles (any length: `script add --file -` then `script append` for the next parts; the Stage reads them page by page); run the council (evals/council-flow.md, scripts lens set) 1-2 rounds and record with `promo flow council scripts`; `promo flow script add`. Then ask which to progress.",
         pick="Ask which script(s) to progress (multi-select); record the answer with `approve scripts-picked --picks ... --by NAME`.",
-        storyboard="Per picked story build the board with `promo flow story` + `scene add` (or write flow/boards/<id>/board.json); a denser board on request (`promo flow density --every 5`); then `promo flow frames` MAKES every scene's START and END frame as a real image (a text slate does not count); for every app scene put in the REAL screen (`promo flow scout add`, or `scout miss --why`); `promo flow board`, SHOW the page. There is NO approval here: when the frames are real and no scene comment is open, `advance` at once and go on to the assets (the person can comment on any scene any time; answer each, then carry on).",
-        assets="List every asset (screenshots, pictures, recordings, music, voice, sfx) with `promo flow asset add`, then `promo flow asset make` so each has a real sample to look at or hear (a placeholder is not a preview), publish. This is the person's ONE plan review (storyboard + assets + the go for drafts): they approve once or comment; after `approve assets-approved` run keyframes, confirm and drafts without asking again.",
+        storyboard="Per picked story build the board with `promo flow story` + `scene add` (or write flow/boards/<id>/board.json); a denser board on request (`promo flow density --every 5`); then `promo flow frames` MAKES every scene's START and END frame as a real image (a text slate does not count); for every app scene put in the REAL screen (`promo flow scout add`, or `scout miss --why`); `promo flow board`, SHOW the page. There is NO approval here: when the frames are real and no scene comment is open, `advance` at once and go on to the previz wireframes (the person can comment on any scene any time; answer each, then carry on).",
+        previz="Block the story out as wireframes before any keyframe or render: `promo previz build` (a Three.js scene from the storyboard, one shot per scene), `promo previz strip` and LOOK at the PNG: is the camera doing something on purpose, does each panel sit where the eye lands, is the type clear of the real UI, does every shot read? Nudge cheaply (`promo previz cam|panel|type|dur ... --strip`, seconds each) until it does, then `advance`. Wire boxes and supplied stills only: nothing here is product UI. A storyboard change needs `promo previz sync` (your nudges are kept) and a new strip.",
+        assets="List every asset (screenshots, pictures, recordings, music, voice, sfx) with `promo flow asset add`, then `promo flow asset make` so each has a real sample to look at or hear (a placeholder is not a preview), publish. This is the person's ONE plan review (storyboard + previz strip + assets + the go for drafts): they approve once or comment; after `approve assets-approved` run keyframes, confirm and drafts without asking again.",
         keyframes="Make the remaining keyframes (`promo flow make`) and replace every mock and sample with the real file (`promo flow needs`), then advance.",
         confirm="No question here: the plan approval already was the go. `advance` and build the drafts.",
         drafts="Build the first drafts (promo build, draft encode), register with `promo flow draft add`, advance, SHOW them.",
@@ -1051,6 +1085,8 @@ def plain_checks(pd, st, stage=None):
             R.append((not pr, f"Story {sid} is complete" if not pr else f"Story {sid}: {pr[0]}"))
         _, miss = _all_frames(pd, st, ("start", "end"))
         R.append((not miss, "Every scene has its start and end frame" if not miss else f"{miss} {'frame' if miss == 1 else 'frames'} not made yet"))
+    elif stage == "previz":
+        R += previz_checks(pd, st, plain=True)
     elif stage == "assets":
         pr = AP.problems(AP.load(f), scene_ids(pd, st), pd)
         R.append((not pr, "Every scene has its assets planned" if not pr else pr[0][0].upper() + pr[0][1:]))
@@ -1711,6 +1747,10 @@ def make_frames(pd, story, scene, which, force, provider, jobs, limit=None, live
     bds = [b for b in boards(pd, st) if not story or b[0] == story]
     if not bds:
         raise FlowError(f"no board{' ' + story if story else ''} to make frames for")
+    if "frames" in which and STAGES.index(st["stage"]) >= STAGES.index("keyframes"):
+        bad = [t for ok, t in previz_checks(pd, st, strip_only=True) if not ok]
+        if bad:
+            raise FlowError("the keyframes wait for the previz: " + "; ".join(bad))
     look = (st.get("discover") or {}).get("style") or ""
     n = len(PV.frame_targets(bds, scene, which, force)[:limit])
     print(f"making {n} frames with the generator CLI ({jobs} at a time, ~25 s each)")

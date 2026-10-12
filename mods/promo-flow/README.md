@@ -31,7 +31,7 @@ Media arrive as Blobs on request, by upload id, only for tiles near the viewport
 Every path below that says `file` is `{"$file": "<absolute path>"}` (the host turns it into `{"$media": {upload_id, name, mime, size}}`, or `{"$media": null, "$error": "..."}`); a missing file is `null`.
 
     summary    {title<=80, status<=140, badge: working|waiting|done|attention, progress: {done, total: 10}, primary?<=24}
-    title, intent, stage (discover|scripts|pick|storyboard|assets|keyframes|confirm|drafts|review|final), stage_label, stage_since (ISO, last flow log entry), cycle, rounds_used, rounds_max
+    title, intent, stage (discover|scripts|pick|storyboard|previz|assets|keyframes|confirm|drafts|review|final), stage_label, stage_since (ISO, last flow log entry), cycle, rounds_used, rounds_max
     steps      [{id, label, state: done|current|todo|stale, stale}]  (10, one per stage; `stale` = its approval no longer matches what was approved; never `done` then)
     stale_steps [{id, gate, label}]                            approvals that went stale; the mod shows "Approved earlier, but <step> changed since."
     style      {style, preset: hero|horizon|anime-opening|podcast|null, refs[], no_refs} | null
@@ -220,7 +220,7 @@ Actions: `edit {draft, count, list, ops}`, `edit_preview {where, range, count, o
 
 The harness plays the host: mounts the mod into its page in a shadow root like CommissionAI does, puts a stand-in Mic button in the dictate slot, switch stage, dark/light, pane width (380 / 520 / 900),
 offline, readonly, reduce motion, hold state (loading), media failures, a new version arriving mid-edit (with or without the step changing), and the bridge log with the rendered action messages.
-Stages: the ten flow stages plus `edit` (a small real project for the editor: four clips, voice, music, sounds, one unbuilt shot, a suggestion, an earlier project), `autopilot` (a run in progress), `starting`, `storyboard-partial`, `plan` (17 documents, one of 12 000 words), `dense` (frames every 5 s), `assets-error`, `stale-approval`, `long-content`, `review-maxed`.
+Stages: the eleven flow stages plus `edit` (a small real project for the editor: four clips, voice, music, sounds, one unbuilt shot, a suggestion, an earlier project), `autopilot` (a run in progress), `starting`, `storyboard-partial`, `plan` (17 documents, one of 12 000 words), `dense` (frames every 5 s), `assets-error`, `stale-approval`, `long-content`, `review-maxed`.
     .venv/bin/python mod-dev/shoot.py --check [--only edit]   # interaction checks in headless Chrome: reader paging, find, contents, requests, cadence, escaping, the editor
 
 **Read full script** (Scripts and Pick) opens the script in a dialog over the pane: the cards and the footer decision stay behind it (inert), Esc or the close button returns focus to the link; the Plan tab's documents still open in the tab.
