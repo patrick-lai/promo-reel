@@ -11,7 +11,7 @@
   const LIGHT = { "--ink": "#1c1a16", "--dim": "#6b665c", "--well": "#f4f2ed", "--raised": "#ffffff", "--accent": "#b4531f", "--line": "#e2ded3", "--radius": "12px", "--font": 'ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif' };
   const DARK = { "--ink": "#ece8df", "--dim": "#9d978a", "--well": "#15130f", "--raised": "#1f1c17", "--accent": "#e58c55", "--line": "#35312a", "--radius": "12px", "--font": LIGHT["--font"] };
   const H = { stage: q.get("stage") || (MOD === "promo-projects" ? "picker" : "discover"), dark: q.get("dark") === "1", width: +q.get("w") || 520, offline: false, readonly: false, reduce: false, hold: false, noPending: false, mediaErr: false, slow: false,
-    version: 1, pending: null, stages: [], docs: {}, manifest: null, ready: false };
+    version: 1, pending: null, open: [], stages: [], docs: {}, manifest: null, ready: false };
 
   const log = (t) => { const d = document.createElement("div"); d.textContent = new Date().toTimeString().slice(0, 8) + "  " + t; $("log").prepend(d); if ($("log").children.length > 80) $("log").lastChild.remove(); };
   const post = (m) => mod && mod.receive(m);
@@ -25,7 +25,7 @@
     if (!H.ready || H.hold) return;
     const d = await stageDoc(H.stage);
     $("ver").textContent = H.version;
-    post({ type: "state", version: H.version, updated_at: new Date().toISOString(), summary: d.summary, state: d.state, pending: H.pending, offline: H.offline, readonly: H.readonly });
+    post({ type: "state", version: H.version, updated_at: new Date().toISOString(), summary: d.summary, state: d.state, pending: H.pending, open_actions: H.open, offline: H.offline, readonly: H.readonly });
   }
   const tokens = () => (H.dark ? DARK : LIGHT);
   const sendInit = () => post({ type: "init", protocol: 1, dark: H.dark, tokens: tokens(), reduceMotion: H.reduce });
@@ -44,6 +44,7 @@
     }
     if (H.readonly) { post({ type: "result", id: m.id, ok: false, error: "This thread is archived" }); return log("action REJECTED 409 archived"); }
     log("action " + m.name + " -> " + render(a.message, { ...m.payload, by }).slice(0, 400));
+    H.open = [...H.open, { name: m.name, at: new Date().toISOString(), by, label: a.sent || "Sent your answer" }];
     if (isLive(H.stage)) {
       const r = await (await fetch("/api/action", { method: "POST", body: JSON.stringify({ name: m.name, payload: m.payload }) })).json();
       log("live " + m.name + (r.ok ? " ok: " + (r.message || "ran the flow command") : " REFUSED: " + r.error));
@@ -122,7 +123,7 @@
     for (const b of $("widths").children) b.setAttribute("aria-pressed", String(+b.dataset.w === H.width));
     for (const b of $("stages").children) b.setAttribute("aria-pressed", String(b.dataset.id === H.stage));
   }
-  function setStage(id) { H.stage = id; H.pending = null; H.version++; paintControls(); sendState(); }
+  function setStage(id) { H.stage = id; H.pending = null; H.open = []; H.version++; paintControls(); sendState(); }
 
   async function boot() {
     if (q.get("bare")) document.body.classList.add("bare");
@@ -138,8 +139,8 @@
     $("reduce").onchange = (e) => { H.reduce = e.target.checked; sendInit(); };
     $("bump").onclick = () => { H.version++; sendState(); log("version -> " + H.version); };
     if (isLive(H.stage)) setInterval(() => { H.version++; sendState(); }, 15000);
-    $("bumpGate").onclick = () => { const i = H.stages.findIndex((s) => s.id === H.stage); H.stage = H.stages[Math.min(i + 1, 9)].id; H.version++; paintControls(); sendState(); log("step changed under the person -> " + H.stage); };
-    $("respond").onclick = () => { const i = H.stages.findIndex((s) => s.id === H.stage); H.pending = null; H.stage = H.stages[Math.min(i + 1, 9)].id; H.version++; paintControls(); sendState(); };
+    $("bumpGate").onclick = () => { const i = H.stages.findIndex((s) => s.id === H.stage); H.open = []; H.stage = H.stages[Math.min(i + 1, 9)].id; H.version++; paintControls(); sendState(); log("step changed under the person -> " + H.stage); };
+    $("respond").onclick = () => { const i = H.stages.findIndex((s) => s.id === H.stage); H.pending = null; H.open = []; H.stage = H.stages[Math.min(i + 1, 9)].id; H.version++; paintControls(); sendState(); };
     if (q.get("offline")) { H.offline = true; $("offline").checked = true; }
     if (q.get("readonly")) { H.readonly = true; $("readonly").checked = true; }
     if (q.get("reduce")) { H.reduce = true; $("reduce").checked = true; }

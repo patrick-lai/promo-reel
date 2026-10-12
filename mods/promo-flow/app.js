@@ -2884,8 +2884,12 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     const key = hasDoc() ? gateKey() : null;
     const gateChanged = prevKey != null && key != null && prevKey !== key;
     if (S.pending) { if (S.justSent) S.justSent.saw = true; if (!S.stallTimer || S.stall === false) { /* keep timer */ } }
+    /* The host keeps each answer open until the agent has read it, so a reloaded Stage still says it was sent instead of asking again. */
+    const open = arr(m.open_actions);
+    if (open.length && !S.justSent && !S.sending && key != null) { S.justSent = { key, name: open[open.length - 1].name, saw: false, held: true }; startStall(); }
+    else if (open.length && S.justSent) S.justSent.held = true;
     if (S.justSent) {
-      const cleared = (key != null && key !== S.justSent.key) || (S.justSent.saw && !S.pending);
+      const cleared = (key != null && key !== S.justSent.key) || (S.justSent.saw && !S.pending) || (S.justSent.held && !open.length);
       if (cleared) { S.justSent = null; clearTimeout(S.stallTimer); S.stall = false; }
     }
     if (S.justSent && S.justSent.name === "settings" && hasSettings() && !PF.outputDirty(S.doc.settings.output, S.setSel, S.setText)) { S.justSent = null; clearTimeout(S.stallTimer); S.stall = false; }
