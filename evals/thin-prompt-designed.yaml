@@ -1,0 +1,22 @@
+# Thin-prompt eval cases for `promo designed eval` (promo/designed_eval.py). A case is what a person types plus the stills they attach.
+# `stills` are placeholders when no real files are passed (a plan never reads pixels); `shape` decides device vs floating framing.
+# `never_in_plan`: words the plan must not contain unless the prompt or an answer already said them (invented features, numbers, URLs,
+# benchmarks, and the reference's own assets).
+cases:
+  - id: ai-coding-crew
+    prompt: "60s promo for my AI coding crew app. Go to bed, wake up to merged PRs."
+    stills:
+      - {name: board, shape: landscape}
+      - {name: review, shape: landscape}
+      - {name: phone, shape: portrait}
+    cards_include: ["Go to bed", "merged PRs"]
+    never_in_plan: ["24/7", "benchmark", "10x", "faster", "free", "secure", "enterprise", "integrates", "github", "slack", "http", "www.", ".com",
+                    "smash", "clash", "sdk", "multiplayer", "%"]
+
+  - id: note-app-teaser
+    prompt: "30s teaser for a note app. It never forgets. Two screenshots attached."
+    stills:
+      - {name: editor, shape: landscape}
+      - {name: sidebar, shape: square}
+    cards_include: ["It never forgets"]
+    never_in_plan: ["24/7", "benchmark", "ai-powered", "sync", "offline", "encrypted", "http", "www.", ".com", "smash", "clash", "%"]

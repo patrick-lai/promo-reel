@@ -631,6 +631,72 @@ def print_grid(r):
         print(f"{b['bar']:>4} {b['beat']:>5} {b['t']:8.3f}  {'*' if b['phrase'] else ' ':^6}  {', '.join(b['markers'])}")
 
 
+def _cmd_cospec(args, dest, out=None):
+    import json as _json
+
+    from . import cospec as CS
+    from . import designed as D
+    from . import gapfill
+    path = os.path.join(os.path.abspath(dest), "promo.yaml")
+    if not os.path.isfile(path):
+        raise SystemExit(f"no promo.yaml in {dest}: run `promo plan <name> --prompt ...` first")
+    plan = gapfill.existing_plan(open(path).read())
+    if not plan:
+        raise SystemExit("no plan: block in that promo.yaml: run `promo plan` first")
+    try:
+        answers = CS.parse_pairs(args.answer)
+    except ValueError as e:
+        raise SystemExit(str(e))
+    if answers:
+        gapfill.apply(dest, plan["prompt"], answers=answers)
+        plan = gapfill.existing_plan(open(path).read())
+    cos = plan.get("cospec") or {}
+    if getattr(args, "json", False):
+        print(_json.dumps(dict(ok=True, cospec=cos, answered=sorted(cos.get("answers") or {})), indent=1), file=out or sys.stdout)
+        return 0
+    if answers:
+        print("answered: " + ", ".join(sorted(answers)) + " (plan re-written)")
+    open_q = cos.get("open") or []
+    if not open_q:
+        print("nothing left worth asking; draft with `promo designed apply` then `promo preview`")
+    for i, q in enumerate(open_q, 1):
+        print(f"{i}. [{q['key']}] {q['question']}\n   saves: {q['saves']}\n   if unanswered: {q['if_unanswered']}")
+    if open_q:
+        print(f"(optional, max {cos.get('max_questions', CS.MAX_QUESTIONS)}) answer with: promo cospec {dest} --answer KEY=VALUE ...")
+    return 0
+
+
+def _cmd_designed(args, dest, out=None):
+    import json as _json
+
+    from . import designed as D
+    from . import gapfill
+    path = os.path.join(os.path.abspath(dest), "promo.yaml")
+    if not os.path.isfile(path):
+        raise SystemExit(f"no promo.yaml in {dest}: run `promo plan <name> --prompt ... --stills ...` first")
+    if args.action == "apply":
+        res = D.apply_shots(path, register=not getattr(args, "no_register", False), force=getattr(args, "force", False))
+        res_out = dict(ok=True, path=res["path"], shots=len(res["shots"]), registered=res["registered"], ready_plates=res["ready_plates"])
+        print(_json.dumps(res_out, indent=1) if getattr(args, "json", False) else
+              f"wrote {len(res['shots'])} cinema shots to {res['path']}; registered stills: {', '.join(res['registered']) or 'none'}; "
+              f"plates ready: {', '.join(res['ready_plates']) or 'none yet (dark plate / blurred copy until `promo gen register`)'}\n"
+              "next: promo preview -p " + res["path"], file=out or sys.stdout)
+        return 0
+    des = (gapfill.existing_plan(open(path).read()) or {}).get("designed")
+    if not des:
+        raise SystemExit("no plan.designed in that file")
+    if getattr(args, "json", False):
+        print(_json.dumps(dict(ok=True, designed=des), indent=1), file=out or sys.stdout)
+        return 0
+    print(f"designed plan ({des['trigger']}): band {des['length_band']['class']}, framing {des['framing_hierarchy']['counts']}")
+    for r in des["shots"]:
+        cards = ", ".join(c["text"] or "(needs copy)" for c in des["kinetic_cards"] if c["id"] in r["cards"])
+        print(f"  {r['id']} {r['beat']:<7} {r['seconds']:>5.2f}s {r['framing']:<10} src={r['ui_source'] or '-':<14} plate={r['plate'] or '-':<9} {cards}")
+    for n in des["needs"]:
+        print(f"  needs {n['kind']}: {n['why']}")
+    return 0
+
+
 def build_parser():
     common = argparse.ArgumentParser(add_help=False)
     S = argparse.SUPPRESS
@@ -656,6 +722,19 @@ def build_parser():
     pl.add_argument("name", nargs="?", help="new project name (scaffolded when promo.yaml is missing)")
     pl.add_argument("--prompt", required=True, help="the user's words, verbatim")
     pl.add_argument("--dir", help="project directory (default: the save location, or the directory of -p)")
+    pl.add_argument("--stills", nargs="+", metavar="FILE", help="the real UI stills / clips you are supplying (png, jpg, mp4, mov); with a thin prompt they switch on the designed-hero composition plan")
+    pl.add_argument("--designed", action="store_true", default=None, help="write the designed-hero composition plan even without stills")
+    pl.add_argument("--no-designed", dest="designed", action="store_false", help="plain plan only")
+    pl.add_argument("--answer", action="append", metavar="KEY=VALUE", help="a co-spec answer (see `promo cospec`); repeatable")
+    cs = add("cospec", "the (at most five) questions worth asking before the first draft; --answer KEY=VALUE writes them into plan: and re-plans", json_=True)
+    cs.add_argument("name", nargs="?", help="project name or directory")
+    cs.add_argument("--dir", help="project directory")
+    cs.add_argument("--answer", action="append", metavar="KEY=VALUE", help="world | features | cta | must_keep | must_not | still_roles")
+    ds = add("designed", "designed-hero plan: show | apply (write the compiled cinema shots into promo.yaml); `designed eval` runs evals/thin-prompt-designed.yaml", json_=True)
+    ds.add_argument("action", choices=("show", "apply"))
+    ds.add_argument("name", nargs="?", help="project name or directory")
+    ds.add_argument("--dir", help="project directory")
+    ds.add_argument("--no-register", action="store_true", help="apply: do not register the supplied stills in the footage manifest")
     add("preview", "540p review render plus one still per shot (never above 540p)")
     rv = sub.add_parser("review", help="feedback files: round | status (Marketing / Zen / Director, max 3)", parents=[common])
     rs = rv.add_subparsers(dest="rcmd", required=True)
@@ -947,6 +1026,9 @@ def main(argv=None):
         for p in home.list_projects():
             print(f"  {p['name']:<28} brief={'yes' if p['brief'] else 'no ':<3} rounds={p['rounds']}  {p['path']}")
         return 0
+    if argv[:2] == ["designed", "eval"]:     # `promo designed eval [--case F] [--stills ...]`: thin prompt -> designed plan assertions (evals/thin-prompt-designed.md)
+        from . import designed_eval
+        return designed_eval.main(argv[2:])
     if argv[:1] == ["podcast"]:         # `promo podcast script|plan|set|preview|status -p PROJECT`: a podcast / VTuber show from a script
         from . import podcast_cli
         return podcast_cli.main(argv[1:])
@@ -973,7 +1055,7 @@ def main(argv=None):
         with (contextlib.redirect_stdout(sys.stderr) if as_json else contextlib.nullcontext()):
             if args.cmd == "new":
                 return cmd_new(args) or 0
-            if args.cmd == "plan":
+            if args.cmd in ("plan", "cospec", "designed"):
                 from . import gapfill
                 from . import home as _home
                 try:
@@ -985,12 +1067,23 @@ def main(argv=None):
                         proj = args.project
                         dest = proj if os.path.isdir(proj) else os.path.dirname(os.path.abspath(proj))
                     else:
-                        raise SystemExit("promo plan needs a project name, --dir, or -p path/to/promo.yaml")
+                        raise SystemExit(f"promo {args.cmd} needs a project name, --dir, or -p path/to/promo.yaml")
                 except _home.ConfigError as e:
                     raise SystemExit(str(e))
-                info = gapfill.apply(dest, args.prompt, name=getattr(args, "name", None) or os.path.basename(dest.rstrip(os.sep)))
+            if args.cmd == "plan":
+                from . import cospec as CS
+                try:
+                    answers = CS.parse_pairs(args.answer)
+                except ValueError as e:
+                    raise SystemExit(str(e))
+                info = gapfill.apply(dest, args.prompt, name=getattr(args, "name", None) or os.path.basename(dest.rstrip(os.sep)),
+                                     stills=args.stills, designed=args.designed, answers=answers)
                 print(info["summary"])
                 return 0
+            if args.cmd == "cospec":
+                return _cmd_cospec(args, dest, real_out)
+            if args.cmd == "designed":
+                return _cmd_designed(args, dest, real_out)
             if args.cmd == "preview":
                 if getattr(args, "scale", None) not in (None, 0.5):
                     raise SystemExit("promo preview is 540p and stills only. Above 540p is `promo build --final` after sign-off.")
