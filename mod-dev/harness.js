@@ -10,7 +10,7 @@
   const mine = (id) => (MOD === "promo-projects") === id.startsWith("picker");
   const LIGHT = { "--ink": "#1c1a16", "--dim": "#6b665c", "--well": "#f4f2ed", "--raised": "#ffffff", "--accent": "#b4531f", "--line": "#e2ded3", "--radius": "12px", "--font": 'ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif' };
   const DARK = { "--ink": "#ece8df", "--dim": "#9d978a", "--well": "#15130f", "--raised": "#1f1c17", "--accent": "#e58c55", "--line": "#35312a", "--radius": "12px", "--font": LIGHT["--font"] };
-  const H = { stage: q.get("stage") || (MOD === "promo-projects" ? "picker" : "discover"), dark: q.get("dark") === "1", width: +q.get("w") || 520, offline: false, readonly: false, reduce: false, hold: false, noPending: false, mediaErr: false, slow: false,
+  const H = { stage: q.get("stage") || (MOD === "promo-projects" ? "picker" : "discover"), dark: q.get("dark") === "1", width: +q.get("w") || 520, offline: false, readonly: false, reduce: false, hold: false, noPending: false, agentWorking: !!q.get("working"), mediaErr: false, slow: false,
     version: 1, pending: null, open: [], stages: [], docs: {}, manifest: null, ready: false };
 
   const log = (t) => { const d = document.createElement("div"); d.textContent = new Date().toTimeString().slice(0, 8) + "  " + t; $("log").prepend(d); if ($("log").children.length > 80) $("log").lastChild.remove(); };
@@ -25,7 +25,7 @@
     if (!H.ready || H.hold) return;
     const d = await stageDoc(H.stage);
     $("ver").textContent = H.version;
-    post({ type: "state", version: H.version, updated_at: new Date().toISOString(), summary: d.summary, state: d.state, pending: H.pending, open_actions: H.open, offline: H.offline, readonly: H.readonly });
+    post({ type: "state", version: H.version, updated_at: new Date().toISOString(), summary: d.summary, state: d.state, pending: H.pending, open_actions: H.open, agent_working: H.agentWorking, offline: H.offline, readonly: H.readonly });
   }
   const tokens = () => (H.dark ? DARK : LIGHT);
   const sendInit = () => post({ type: "init", protocol: 1, dark: H.dark, tokens: tokens(), reduceMotion: H.reduce });
@@ -135,7 +135,7 @@
     [...$("widths").children].forEach((b, i) => { b.dataset.w = [380, 520, 900][i]; });
     $("dark").onclick = () => { H.dark = !H.dark; paintControls(); post({ type: "theme", dark: H.dark, tokens: tokens() }); };
     $("reload").onclick = load;
-    for (const [id, key] of [["offline", "offline"], ["readonly", "readonly"], ["hold", "hold"], ["mediaErr", "mediaErr"], ["slow", "slow"], ["noPending", "noPending"]]) $(id).onchange = (e) => { H[key] = e.target.checked; H.version += key === "hold" ? 0 : 0; sendState(); };
+    for (const [id, key] of [["offline", "offline"], ["readonly", "readonly"], ["hold", "hold"], ["mediaErr", "mediaErr"], ["slow", "slow"], ["noPending", "noPending"], ["agentWorking", "agentWorking"]]) $(id).onchange = (e) => { H[key] = e.target.checked; H.version += key === "hold" ? 0 : 0; sendState(); };
     $("reduce").onchange = (e) => { H.reduce = e.target.checked; sendInit(); };
     $("bump").onclick = () => { H.version++; sendState(); log("version -> " + H.version); };
     if (isLive(H.stage)) setInterval(() => { H.version++; sendState(); }, 15000);

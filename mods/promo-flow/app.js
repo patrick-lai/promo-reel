@@ -319,10 +319,10 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     const sm = S.summary || {};
     const trimTail = (t) => (t || "").replace(/\s*Now:.*$/s, "");
     const noAlso = (t) => (t || "").replace(/\s*Also open for you:.*$/s, "");
-    el.stateLine.textContent = noConn ? "No answer from the host yet." : S.readonly ? "Archived. Read only." : isStarting() ? "Setting up your video." : S.justSent || S.pending ? "Sent. Waiting for the agent to pick it up." : (S.doc && S.doc.job && S.doc.job.state === "stopped" ? (noAlso(sm.status).match(/^[^.]*\./) || [noAlso(sm.status)])[0] : sm.badge === "waiting" ? noAlso(sm.status) : trimTail(noAlso(sm.status))) || "";
+    el.stateLine.textContent = noConn ? "No answer from the host yet." : S.readonly ? "Archived. Read only." : isStarting() ? "Setting up your video." : S.justSent || S.pending ? "Sent. Waiting for the agent to pick it up." : S.agentWorking && sm.badge === "waiting" ? "The agent is still working. This step is yours once it hands over." : (S.doc && S.doc.job && S.doc.job.state === "stopped" ? (noAlso(sm.status).match(/^[^.]*\./) || [noAlso(sm.status)])[0] : sm.badge === "waiting" ? noAlso(sm.status) : trimTail(noAlso(sm.status))) || "";
     /* Once the person has sent their answer the ball is with the agent, whatever the last summary says: never show "Your turn" with nothing left to do. */
     const sent = !!(S.pending || S.justSent || S.sending);
-    const badge = noConn ? "attention" : isStarting() || ((sent || jobRunning() || apLive()) && sm.badge === "waiting") ? "working" : BADGE_TEXT[sm.badge] ? sm.badge : "working";
+    const badge = noConn ? "attention" : isStarting() || ((sent || jobRunning() || apLive() || S.agentWorking) && sm.badge === "waiting") ? "working" : BADGE_TEXT[sm.badge] ? sm.badge : "working";
     const pend = hasDoc() && badge === "waiting" ? PF.forYou(S.doc).pairs.length : 0;
     const bt = noConn ? "Not connected" : S.readonly ? "Read only" : BADGE_TEXT[badge] + (pend ? " \u00b7 " + pend + (pend === 1 ? " pick" : " picks") : "");
     el.badge.dataset.badge = S.readonly && !noConn ? "readonly" : badge;
@@ -671,7 +671,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     else if (!list.length) sig = "overview|" + JSON.stringify([sliceFor(null, true), gate(), S.style, S.readonly, !!S.pending]);
     else if (S.tab === PF.WIDGET_TAB && !S.reader) sig = "widgets|" + JSON.stringify(sliceFor(S.tab, false)) + S.readonly;
     else if (S.reader) sig = "reader|" + S.reader.key + "|" + JSON.stringify(sliceFor(S.tab, false)) + S.readonly;
-    else sig = S.tab + "|" + (S.tab === PF.FILES_TAB ? S.fv + "|" + !!S.fileSend + S.fileErr + "|" : "") + [...S.picks].join() + "|" + S.style + S.boardIdx + S.draftSel + S.earlier + S.filter + S.readonly + !!S.pending + !!S.justSent + !!S.sending + S.sbView + S.docGroup + S.docQ + (S.compose ? S.composeKind : "") + jobRunning()
+    else sig = S.tab + "|" + (S.tab === PF.FILES_TAB ? S.fv + "|" + !!S.fileSend + S.fileErr + "|" : "") + [...S.picks].join() + "|" + S.style + S.boardIdx + S.draftSel + S.earlier + S.filter + S.readonly + !!S.pending + !!S.justSent + !!S.sending + S.agentWorking + S.sbView + S.docGroup + S.docQ + (S.compose ? S.composeKind : "") + jobRunning()
       + "\u0001" + JSON.stringify(sliceFor(S.tab, true)) + "|" + JSON.stringify([S.doc.pairs, S.doc.assumptions, S.doc.autopilot]);
     if (!force && sig === lastSig) return;
     /* Only the part before \u0001 is the person's own doing; what follows is what the agent published. */
@@ -894,6 +894,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     if (S.readonly) return "This project is archived, so picks are read only.";
     if (S.offline) return "The host can't be reached. You can answer again when it is back.";
     if (S.pending || S.justSent || S.sending) return pickBusy(p) ? "" : "Your last answer is still waiting for the agent to pick it up. You can answer again when it has.";
+    if (S.agentWorking) return "The agent is still working. Pick when it hands over to you.";
     if (!p.ready) return "One of the two options could not be loaded, so this pick can't be answered yet.";
     return "";
   }
@@ -2667,6 +2668,8 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     else if (jv0 && m.mode === "gate" && !S.compose && (PF.previewRule(d, g && g.gate) || PF.missingRule(d, g && g.gate))) { m.makeRest = true; m.primary = "Make the remaining " + Math.max(0, jv0.total - jv0.done) + " " + (jv0.total - jv0.done === 1 ? jv0.one : jv0.many); m.primaryDisabled = false; m.note = "Make the rest to carry on" + (m.reviewStory ? ", then open story " + m.reviewStory.board + "." : "."); m.reviewStory = null; m.reviewTab = null; }
     const pend = hasDoc() && m.mode === "gate" && m.g && m.g.kind === "draft" ? PF.forYou(d).pairs.length : 0;
     if (pend && !m.carryOn && !m.apStop && !m.makeRest) { m.pendPick = true; m.note = "Pick an end card to approve, or send feedback" + (m.round && m.max ? " (round " + m.round + " of " + m.max + ")" : "") + "."; }
+    /* A gate the agent published mid-turn is not the person's yet: they can look, but decide only once its turn has ended. */
+    if (S.agentWorking && m.mode === "gate" && !m.apStop) { m.primaryDisabled = true; m.reviewTab = null; m.pendPick = false; m.carryOn = null; m.makeRest = false; m.note = "The agent is still working. Look around; decide when it hands over to you."; }
     return m;
   }
 
@@ -2877,6 +2880,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     const cc = PF.commentCount(S.doc);
     S.cmtPending = Math.max(0, S.cmtPending - Math.max(0, cc.total - S.cmtTotal)); S.cmtTotal = cc.total;
     S.pending = m.pending || null;
+    S.agentWorking = !!m.agent_working;
     S.offline = !!m.offline;
     S.readonly = !!m.readonly;
     S.noState = false;
