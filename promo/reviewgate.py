@@ -24,12 +24,18 @@ class ReviewError(SpecError):
     pass
 
 
+def _raw(spec):
+    """A loaded spec has `raw`. A caller that only hands dispatch a stand-in (flow's build reporter) does not, and is not a planned project."""
+    raw = getattr(spec, "raw", None)
+    return raw if isinstance(raw, dict) else {}
+
+
 def _plan(spec):
-    return spec.raw.get("plan") or {}
+    return _raw(spec).get("plan") or {}
 
 
 def review_on(spec):
-    review = spec.raw.get("review") or _plan(spec).get("review") or {}
+    review = _raw(spec).get("review") or _plan(spec).get("review") or {}
     return bool(review.get("required"))
 
 

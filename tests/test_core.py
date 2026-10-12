@@ -199,6 +199,8 @@ def _cli_json(*argv):
 
 
 def test_status_and_other_json_parse():
+    if not os.path.isfile(EXAMPLE):
+        raise FileNotFoundError(EXAMPLE)          # conftest turns the missing-example sentinel into a skip
     rc, st = _cli_json("status", "--json")
     assert isinstance(st["ok"], bool) and {s["step"] for s in st["steps"]} >= {"assets", "footage", "sfx", "music", "shot 01", "events", "mix", "assemble", "contact"}
     assert all(s["status"] in ("up-to-date", "stale", "missing") for s in st["steps"])

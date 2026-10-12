@@ -203,6 +203,13 @@ def test_hero_v2_scaffold_gates_do_not_raise():
         assert gates["hero-open"][0] == "WARN" and "end card" in gates["hero-open"][1]
 
 
+def test_review_gate_ignores_a_spec_without_a_plan():
+    from types import SimpleNamespace
+    spec = SimpleNamespace(scale=1)
+    assert reviewgate.review_on(spec) is False
+    assert reviewgate.check_build(spec, final=False, scale=1) is None
+
+
 def test_review_gate_signoff_scale_and_three_rounds():
     with tempfile.TemporaryDirectory() as d:
         info = gapfill.apply(d, "make a promo", name="demo")
