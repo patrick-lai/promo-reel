@@ -30,6 +30,10 @@ _PREFIX = re.compile(
 )
 _ANIME = ("anime-opening", "anime opening", "kinetic", "anime")
 _LIVE = ("livestream", "live-stream", "live stream", "talk show", "talk-show", "talkshow", "chyron")
+_VERT = ("vertical-short", "vertical short")
+_SCAFFOLD_CAPTION = re.compile(
+    r"(?m)^  caption: \{cx: 960, cy: 905, size: 32, max_w: 608, zone: \{x0: 656, x1: 1264, y0: 860, y1: 950\}\}.*\n"
+)
 
 
 def one_idea(prompt):
@@ -55,13 +59,16 @@ def one_idea(prompt):
 
 
 def pick_preset(prompt):
-    """(hero|anime-opening|livestream, prompt|default). First explicit keyword wins; otherwise hero."""
-    m = re.search(r"(?i)\b(?:preset|style|format)\s*:\s*(hero|anime-opening|livestream)\b", prompt)
+    """(hero|anime-opening|livestream|vertical-short, prompt|default). First explicit keyword wins; otherwise hero."""
+    m = re.search(
+        r"(?i)\b(?:preset|style|format)\s*:\s*(vertical-short(?:@1)?|hero|anime-opening|livestream)\b",
+        prompt,
+    )
     if m:
-        return m.group(1), "prompt"
+        return m.group(1).lower().split("@", 1)[0], "prompt"
     low = prompt.lower()
     hits = []
-    for name, keys in (("anime-opening", _ANIME), ("livestream", _LIVE)):
+    for name, keys in (("vertical-short", _VERT), ("anime-opening", _ANIME), ("livestream", _LIVE)):
         for key in keys:
             i = low.find(key)
             if i >= 0:
@@ -166,6 +173,177 @@ def shot_rows(beats, idea, master, preset, pace):
     return _rows_from_specs(skeleton, beats, idea), _rows_from_specs(expanded, beats, idea)
 
 
+def _shell_id(text):
+    key = re.sub(r"[\s/]+", "-", text.strip().lower())
+    return {"ui-zoom": "ui-zoom", "craft-loop": "craft-loop", "before-after": "before-after"}.get(key, "ui-zoom")
+
+
+def _vertical_catalog():
+    preset = STY.PRESETS["vertical-short"]
+    return {s["id"]: s for s in preset["shells"]}, list(preset["parked"]), preset
+
+
+def pick_shell(prompt):
+    """(shell id, prompt|default, parked labels mentioned). Quote card and talking head stay parked."""
+    low = prompt.lower()
+    _shells, parked_names, _preset = _vertical_catalog()
+    parked = [name for name in parked_names if name in low or name.replace(" ", "-") in low]
+    m = re.search(
+        r"(?i)\b(?:shell|template)\s*:\s*(ui-zoom|ui zoom|craft-loop|craft loop|before-after|before/after|before after)\b",
+        prompt,
+    )
+    if m:
+        return _shell_id(m.group(1)), "prompt", parked
+    hits = []
+    for sid, keys in (
+        ("before-after", ("before/after", "before-after", "before after")),
+        ("craft-loop", ("craft loop", "craft-loop")),
+        ("ui-zoom", ("ui zoom", "ui-zoom")),
+    ):
+        for key in keys:
+            i = low.find(key)
+            if i >= 0:
+                hits.append((i, sid))
+                break
+    if not hits:
+        return "ui-zoom", "default", parked
+    hits.sort()
+    return hits[0][1], "prompt", parked
+
+
+def _vertical_seconds(prompt, shell):
+    """(seconds, source, clamped_from or None) inside that shell's band."""
+    lo, hi = (int(x) for x in shell["length_s"])
+    default = int(shell["default_s"])
+    m = re.search(r"(?i)\b(\d{1,3})\s*(?:s|sec|secs|second|seconds)\b", prompt)
+    if not m:
+        return default, "default", None
+    n = int(m.group(1))
+    if lo <= n <= hi:
+        return n, "prompt", None
+    return (hi if n > hi else lo), "preset", n
+
+
+def _shell_rows(shell_id, idea, master):
+    """Format-shell rows only. One caption (the idea). No logo shot. No product claims."""
+    line = _caption(idea)
+    if shell_id == "before-after":
+        a, b = P._round_parts([float(master) / 2.0, float(master) / 2.0], master)
+        return [
+            dict(beat="hook", on_screen="The same UI, before the one craft change.", notice="The control as it is",
+                 caption=line, seconds=a,
+                 app_state="Real UI, or a diagram of that same UI. No logo. Never paint out UI."),
+            dict(beat="payoff", on_screen="The same UI, after one craft change.", notice="The one change",
+                 caption=line, seconds=b,
+                 app_state="Same UI, one change. A diagram is allowed. No logo. Never paint out UI."),
+        ]
+    if shell_id == "craft-loop":
+        return [dict(
+            beat="demo",
+            on_screen="One interaction, looped. UI detail, or licensed generative motion.",
+            notice="The one interaction. Not a product tour.",
+            caption=line, seconds=round(float(master), 2),
+            app_state="Captions only. Generative motion only when licensed and on-brief. Never paint out real UI. No logo.",
+        )]
+    return [dict(
+        beat="demo",
+        on_screen="Real screen capture. One deliberate zoom on one control.",
+        notice="That one control",
+        caption=line, seconds=round(float(master), 2),
+        app_state="Clean demo. One zoom. Cursor only if the click is the point. Captions only. No logo. Never paint out UI.",
+    )]
+
+
+def _vertical_plan(prompt, preset, preset_source):
+    """Format shell for vertical-short@1. Not the 60 s hero expansion, and not a content batch."""
+    idea, idea_source, trimmed = one_idea(prompt)
+    beats, beat_sources = fill_beats(prompt, idea)
+    shells, parked_names, src = _vertical_catalog()
+    shell_id, shell_source, parked_hit = pick_shell(prompt)
+    shell = shells[shell_id]
+    master, master_source, clamped_from = _vertical_seconds(prompt, shell)
+    lo, hi = (int(x) for x in shell["length_s"])
+    outer = src["pacing"]["length_s"]
+    rows = _shell_rows(shell_id, idea, master)
+    taste = dict(src["taste"])
+    length = dict(
+        master_s=master,
+        master_source=master_source,
+        min_s=int(outer[0]),
+        max_s=int(outer[1]),
+        shell_min_s=lo,
+        shell_max_s=hi,
+        aspect="9:16",
+        frame=[1080, 1920],
+        feed_s=master,
+        feature_s=master,
+        cuts=[],
+        note=("Format shell only. The outer loop is %g–%gs; this %s shell is %d–%ds. "
+              "Not a 60s hero, and not a 20s feed cut." % (float(outer[0]), float(outer[1]), shell["label"], lo, hi)),
+    )
+    if clamped_from is not None:
+        length["clamped_from_s"] = clamped_from
+        length["note"] += " The prompt asked for %ds; this shell allows %d–%ds, so the plan uses %ds." % (
+            clamped_from, lo, hi, master)
+    return dict(
+        prompt=prompt.strip(),
+        idea=idea,
+        idea_source=idea_source,
+        idea_trimmed=bool(trimmed),
+        preset=preset,
+        preset_version=1,
+        preset_source=preset_source,
+        beats=beats,
+        beat_sources=beat_sources,
+        shell=dict(id=shell_id, rank=shell["rank"], label=shell["label"], source=shell_source),
+        shells=dict(
+            primary="ui-zoom",
+            selected=shell_id,
+            options=list(src["shells"]),
+            parked=parked_names,
+            parked_request=parked_hit,
+            note="Format shells only. No content batch. Quote card and talking head are parked.",
+        ),
+        taste=taste,
+        length=length,
+        hook=dict(
+            promise_by_s=0.5,
+            logo_after_s=round(max(0.0, float(master) - 1.0), 2),
+            logo_last_s=1,
+            logo="omit",
+            sound_off=True,
+            captions_only=True,
+            open_on="One caption carries the idea with the sound off. No logo, or a wordmark in the last second at most.",
+        ),
+        capture=dict(
+            dpr=2,
+            deliverable=1080,
+            aspect="9:16",
+            frame=[1080, 1920],
+            capture_resolution="2160x3840",
+            demo_state="?demo=promo",
+            demo_note="Example clean state. Confirm the product's real demo mode before capture.",
+            cursor="only when the click is the point; pause before the click; no circling",
+            zoom="one deliberate zoom on one control",
+            never_paint_ui=True,
+            paint_note="Never paint out UI. Reshoot from a clean moment.",
+            sound="captions-only",
+        ),
+        shot_list_skeleton=rows,
+        shot_list=rows,
+        shot_list_cap=len(rows),
+        shot_list_note=(
+            "Format shell for %s (%s): %d row(s), %gs, one caption, no logo shot. "
+            "The five beat lines stay in beats. This is not the 60s hero expansion. "
+            "Content templates are not filled in."
+            % (shell["label"], shell_id, len(rows), master)
+        ),
+        review=dict(required=True, max_rounds=RG.MAX_ROUNDS, roles=list(RG.ROLES)),
+        filled=["idea", "preset", "beats", "length", "shot_list", "capture", "hook", "shell", "taste"],
+        defaults="docs/PRODUCT-DEFAULTS.md",
+    )
+
+
 def pace_of(preset):
     try:
         return STY.resolve({"style": {"preset": preset, "version": 2}}).get("pacing") or {}
@@ -174,6 +352,8 @@ def pace_of(preset):
 
 
 def build_plan(prompt, preset, preset_source):
+    if preset == "vertical-short":
+        return _vertical_plan(prompt, preset, preset_source)
     idea, idea_source, trimmed = one_idea(prompt)
     beats, beat_sources = fill_beats(prompt, idea)
     master, master_source = master_seconds(prompt)
@@ -316,18 +496,41 @@ def scaffold(dest, name, preset):
         os.makedirs(os.path.join(dest, d), exist_ok=True)
 
 
+def drop_scaffold_caption(text):
+    """Drop the 16:9 scaffold caption so a vertical-short preset's 9:16 zone is the one that applies."""
+    return _SCAFFOLD_CAPTION.sub("", text, count=1)
+
+
 def summary(plan, path):
     beats = " | ".join(f"{k}: {plan['beats'][k]}" for k in ("hook", "problem", "demo", "payoff", "cta"))
+    if plan.get("preset") == "vertical-short":
+        length = plan["length"]
+        length_line = (
+            f"  length: {length['master_s']}s {plan['shell']['label']} "
+            f"(shell {length['shell_min_s']:g}–{length['shell_max_s']:g}s, "
+            f"loop {length['min_s']:g}–{length['max_s']:g}s), "
+            f"{length['aspect']} {length['frame'][0]}x{length['frame'][1]}\n"
+        )
+        hook_line = (
+            f"  hook: captions only, promise by {plan['hook']['promise_by_s']}s, "
+            f"logo {plan['hook']['logo']} (last {plan['hook']['logo_last_s']:g}s max)\n"
+        )
+    else:
+        length_line = (
+            f"  length: {plan['length']['master_s']}s master, feed {plan['length']['feed_s']}s, "
+            f"feature {plan['length']['feature_s']}s\n"
+        )
+        hook_line = f"  hook: promise by {plan['hook']['promise_by_s']}s, logo after {plan['hook']['logo_after_s']}s\n"
     return (
         f"filled {path}\n"
         f"  idea ({len(plan['idea'].split())} words, {plan['idea_source']}): {plan['idea']}\n"
         f"  preset: {plan['preset']} @{plan['preset_version']} ({plan['preset_source']})\n"
         f"  beats: {beats}\n"
-        f"  length: {plan['length']['master_s']}s master, feed {plan['length']['feed_s']}s, feature {plan['length']['feature_s']}s\n"
+        f"{length_line}"
         f"  shot list: {len(plan['shot_list'])} rows from a {len(plan['shot_list_skeleton'])}-row skeleton "
         f"(cap {plan['shot_list_cap']}), six columns\n"
         f"  capture: {plan['capture']['capture_resolution']} (dpr {plan['capture']['dpr']}), never_paint_ui {plan['capture']['never_paint_ui']}\n"
-        f"  hook: promise by {plan['hook']['promise_by_s']}s, logo after {plan['hook']['logo_after_s']}s\n"
+        f"{hook_line}"
         f"  next: edit plan: in that file. `promo preview` is 540p + stills. "
         f"`promo build --final` needs every beat and reviews/round-N.md signed by Marketing, Zen and Director.\n"
         f"  defaults: docs/PRODUCT-DEFAULTS.md"
@@ -348,10 +551,13 @@ def apply(dest, prompt, name=None):
         preset_source = "file"
     elif have:
         preset_source = preset_source if preset_source == "prompt" else "file"
-    text = ensure_style(text, preset, 2)
+    text = ensure_style(text, preset, 1 if preset == "vertical-short" else 2)
+    if preset == "vertical-short":
+        text = drop_scaffold_caption(text)
     plan = build_plan(prompt, preset, preset_source)
-    # a locked `version: 1` was left in place; say so on the plan the human edits
-    if re.search(r"(?m)^\s*version:\s*1\s*(?:#.*)?$", text):
+    # a locked `version: 1` on a preset that has @2 was left in place; say so on the plan the human edits.
+    # vertical-short@1 is the only version, so that note does not apply.
+    if preset != "vertical-short" and re.search(r"(?m)^\s*version:\s*1\s*(?:#.*)?$", text):
         plan["preset_version"] = 1
         plan["preset_note"] = "style.version: 1 is locked in this file. Delete that line and re-run promo plan to opt into @2 pacing."
     text = _maybe_title(text, plan["idea"])

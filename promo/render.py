@@ -29,14 +29,16 @@ class RenderContext:
     caption: dict = field(default_factory=lambda: dict(cx=960, cy=905, size=32, max_w=608, zone=dict(x0=656, x1=1264, y0=860, y1=950)))
     spec: object = None                      # the Spec (for plates / path resolution), optional
     seg_dir: str = "."
+    base_w: int = 1920                       # scale-1 canvas; vertical-short@1 sets 1080x1920 via from_spec
+    base_h: int = 1080
 
     @property
     def OW(self):
-        return int(1920 * self.K)
+        return int(self.base_w * self.K)
 
     @property
     def OH(self):
-        return int(1080 * self.K)
+        return int(self.base_h * self.K)
 
     def with_scale(self, k):
         c = RenderContext(**{**self.__dict__})
@@ -56,8 +58,11 @@ class RenderContext:
             if p and os.path.exists(spec.resolve(p)):
                 path = spec.resolve(p)
                 break
+        from .styles import frame_size
+        bw, bh = frame_size(st, 1)
         return cls(K=spec.scale, fps=spec.fps, font_path=path or spec.resolve(fnt.get("path") or DEFAULT_FONT),
-                   font_fallbacks=fnt.get("fallbacks", []), caption=cap, spec=spec, seg_dir=spec.segs_dir)
+                   font_fallbacks=fnt.get("fallbacks", []), caption=cap, spec=spec, seg_dir=spec.segs_dir,
+                   base_w=bw, base_h=bh)
 
     def font(self, size, weight=b"SemiBold"):
         if isinstance(weight, str):

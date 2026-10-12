@@ -334,6 +334,95 @@ def test_cli_plan_preview_and_final():
         assert final.returncode != 0 and "signed off" in (final.stderr + final.stdout)
 
 
+def test_vertical_short_plan_is_a_9_16_shell():
+    from promo.render import RenderContext
+    from promo.spec import Spec
+
+    before = copy.deepcopy(styles.PRESETS["hero"])
+    with tempfile.TemporaryDirectory() as d:
+        hero = gapfill.apply(os.path.join(d, "h"), "make a promo", name="h")
+        info = gapfill.apply(os.path.join(d, "v"), "preset: vertical-short\nmake a clip", name="v")
+        plan = info["plan"]
+        text = open(info["path"]).read()
+        spec = load_spec(info["path"])
+        hero_spec = load_spec(hero["path"])
+        half = Spec(info["path"], spec.raw, scale=0.5)
+        vert_ctx = RenderContext.from_spec(spec)
+        hero_ctx = RenderContext.from_spec(hero_spec)
+    total = sum(r["seconds"] for r in plan["shot_list"])
+    assert plan["preset"] == "vertical-short" and plan["preset_version"] == 1
+    assert plan["shell"]["id"] == "ui-zoom" and plan["shell"]["rank"] == "primary"
+    assert plan["length"]["master_s"] == 11 and abs(total - 11) < 0.02
+    assert 10 <= total <= 12
+    assert 6 <= plan["length"]["min_s"] and plan["length"]["max_s"] <= 20
+    assert len(plan["shot_list"]) <= 2
+    assert len(hero["plan"]["shot_list"]) >= 20
+    assert len(plan["shot_list"]) * 4 <= len(hero["plan"]["shot_list"])
+    assert len({r["caption"] for r in plan["shot_list"]}) == 1
+    assert all(list(r) == COLUMNS for r in plan["shot_list"])
+    assert all(len(r["caption"]) <= 35 for r in plan["shot_list"])
+    assert plan["hook"]["logo"] == "omit" and plan["hook"]["logo_last_s"] == 1
+    assert plan["hook"]["captions_only"] is True and plan["capture"]["sound"] == "captions-only"
+    assert plan["capture"]["dpr"] == 2 and plan["capture"]["capture_resolution"] == "2160x3840"
+    assert plan["capture"]["never_paint_ui"] is True and plan["capture"]["aspect"] == "9:16"
+    assert plan["review"]["max_rounds"] == 3
+    for key in ("hook", "problem", "demo", "payoff", "cta"):
+        assert str(plan["beats"][key]).strip()
+    ids = [s["id"] for s in plan["shells"]["options"]]
+    assert ids == ["ui-zoom", "craft-loop", "before-after"]
+    assert plan["shells"]["parked"] == ["quote card", "talking head"]
+    assert plan["shells"]["parked_request"] == []
+    assert "Builders and engineers" in plan["taste"]["audience"]
+    assert "UI craft" in plan["taste"]["audience"]
+    assert "Apple-clean" in plan["taste"]["visual"]
+    assert "licensed" in plan["taste"]["motion"] and "Never required" in plan["taste"]["motion"]
+    assert "paint-out" in plan["taste"]["motion"]
+    assert re.search(r"(?m)^\s*preset:\s*vertical-short\s*$", text)
+    assert re.search(r"(?m)^\s*version:\s*1\s*$", text)
+    assert "opt into @2" not in text
+    assert spec.style["version"] == 1 and spec.style["frame"]["aspect"] == "9:16"
+    assert spec.style["caption"]["cx"] == 540
+    assert (spec.OW, spec.OH) == (1080, 1920)
+    assert abs(spec.OW / spec.OH - 9 / 16) < 1e-9
+    assert (half.OW, half.OH) == (540, 960)
+    assert (vert_ctx.OW, vert_ctx.OH) == (1080, 1920)
+    assert (hero_spec.OW, hero_spec.OH) == (1920, 1080)
+    assert (hero_ctx.OW, hero_ctx.OH) == (1920, 1080)
+    assert "vertical-short" not in styles.PRESETS_V2
+    assert styles.PRESETS["hero"] == before
+    assert styles.PRESETS["vertical-short"]["pacing"]["length_s"] == [6.0, 20.0]
+    assert styles.PRESETS["vertical-short"]["pacing"]["logo_last_s"] == 1.0
+    try:
+        styles.resolve({"style": {"preset": "vertical-short@2"}})
+        raise AssertionError("vertical-short@2")
+    except StyleError:
+        pass
+    v1 = styles.resolve({"style": {"preset": "vertical-short@1"}})
+    assert v1["version"] == 1 and v1["frame"]["w"] == 1080 and v1["frame"]["h"] == 1920
+
+
+def test_vertical_short_shells_stay_inside_their_bands():
+    with tempfile.TemporaryDirectory() as d:
+        zoom = gapfill.apply(os.path.join(d, "z"), "preset: vertical-short\n60 seconds", name="z")["plan"]
+        craft = gapfill.apply(os.path.join(d, "c"), "preset: vertical-short\ncraft loop\n15 seconds", name="c")["plan"]
+        polish = gapfill.apply(os.path.join(d, "b"), "shell: before-after\npreset: vertical-short", name="b")["plan"]
+        parked = gapfill.apply(os.path.join(d, "p"), "preset: vertical-short\na talking head", name="p")["plan"]
+    assert zoom["shell"]["id"] == "ui-zoom" and zoom["length"]["master_s"] == 12
+    assert zoom["length"]["clamped_from_s"] == 60
+    assert sum(r["seconds"] for r in zoom["shot_list"]) == 12
+    assert craft["shell"]["id"] == "craft-loop" and craft["length"]["master_s"] == 15
+    assert 8 <= craft["length"]["master_s"] <= 15
+    assert len(craft["shot_list"]) == 1
+    assert "product tour" in craft["shot_list"][0]["notice"]
+    assert polish["shell"]["id"] == "before-after" and polish["length"]["master_s"] == 12
+    assert [r["seconds"] for r in polish["shot_list"]] == [6.0, 6.0]
+    assert polish["shot_list"][0]["caption"] == polish["shot_list"][1]["caption"]
+    assert any("diagram" in r["app_state"].lower() for r in polish["shot_list"])
+    assert parked["shell"]["id"] == "ui-zoom"
+    assert parked["shells"]["parked_request"] == ["talking head"]
+    assert len(parked["shot_list"]) == 1
+
+
 if __name__ == "__main__":
     fails = 0
     for k, v in list(globals().items()):

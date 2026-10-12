@@ -585,10 +585,13 @@ def cmd_new(args):
         p = os.path.join(dest, f)
         t = open(p).read().replace("my-promo", name)
         open(p, "w").write(t)
-    if ver == 2:
+    if ver == 2 or base == "vertical-short":
         from . import gapfill
         p = os.path.join(dest, "promo.yaml")
-        open(p, "w").write(gapfill.ensure_style(open(p).read(), base, 2))
+        written = gapfill.ensure_style(open(p).read(), base, 2 if ver == 2 else 1)
+        if base == "vertical-short":
+            written = gapfill.drop_scaffold_caption(written)
+        open(p, "w").write(written)
     for d in ("media/music", "media/models"):
         os.makedirs(os.path.join(dest, d), exist_ok=True)
     print(f"created {dest} (style {style}): fill footage/manifest.yaml (+ manifest.md), assets.yaml, promo.yaml, then `promo -p {dest}/promo.yaml timeline`")
@@ -651,7 +654,7 @@ def build_parser():
     n = add("new", "scaffold projects/<name>/ (or --dir)")
     n.add_argument("name")
     n.add_argument("--dir", help="explicit destination directory")
-    n.add_argument("--style", default="hero", help="style preset: hero | anime-opening | livestream | cinematic-story | horizon, or hero@2 (see `promo styles`)")
+    n.add_argument("--style", default="hero", help="style preset: hero | anime-opening | livestream | cinematic-story | horizon | vertical-short, or hero@2 (see `promo styles`)")
     pl = add("plan", "fill a thin prompt into promo.yaml (idea, preset, five beats, length, shot list, capture, hook)")
     pl.add_argument("name", nargs="?", help="new project name (scaffolded when promo.yaml is missing)")
     pl.add_argument("--prompt", required=True, help="the user's words, verbatim")
