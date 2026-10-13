@@ -79,6 +79,8 @@ def detect() -> list[dict]:
                     login=bool(os.environ.get("XAI_API_KEY")), how="XAI_API_KEY"))
     out.append(dict(id="openrouter", kind=["video"], tool="openrouter" if OR.has_key() else None, login=OR.has_key(),
                     how=f"OPENROUTER_API_KEY: Seedance / Grok Imagine, pay per job (default {OR.DEFAULT_MODEL} {OR.DEFAULT_RES} {OR.DEFAULT_SECONDS} s); `promo gen models` for prices"))
+    if os.environ.get("PROMO_GEN_STUB") == "1":
+        out.append(dict(id="stub", kind=["image", "video"], tool="stub", login=True, how="PROMO_GEN_STUB=1: a labelled placeholder in a second, no model (UI work, tests)"))
     for p in out:
         p["available"] = bool(p["tool"] and p["login"]) and p["tool"] != "api"      # openai/xai adapters are not wired yet (key seen, not usable)
         p["verified"] = sorted(state.get(p["id"], {}).get("ok", []))
@@ -107,6 +109,8 @@ def _mark_ok(provider, kind):
 
 def providers(kind: str, provider: str = "auto") -> list[dict]:
     ps = [p for p in detect() if p["available"] and kind in p["kind"]]
+    if os.environ.get("PROMO_GEN_STUB") == "1":
+        ps = [p for p in ps if p["id"] == "stub"]                       # a stubbed run never reaches a real generator
     ps = [p for p in ps if p["id"] == provider] if provider != "auto" else [p for p in ps if p["id"] != "openrouter"]     # auto never spends money
     if not ps:
         raise SystemExit(f"no available provider for {kind} (provider={provider}); run `promo gen detect`")
@@ -254,6 +258,9 @@ def requests(spec) -> list[dict]:
 
 def _run_provider(p: dict, text: str, out_p: Path, timeout: int) -> str:
     """Run one provider; returns '' when it wrote `out_p`, else why it did not."""
+    if p["id"] == "stub":
+        _stub(text, out_p)
+        return ""
     t0 = time.time()
     r = subprocess.run(argv_for(p, text), cwd=str(out_p.parent), capture_output=True, text=True, timeout=timeout)
     if not out_p.exists() and p["id"] == "codex":
@@ -268,6 +275,21 @@ def _run_provider(p: dict, text: str, out_p: Path, timeout: int) -> str:
     if out_p.exists():
         return ""
     return f"{p['id']} produced no file at {out_p} (exit {r.returncode}): {(r.stdout or r.stderr)[-400:]}"
+
+
+def _stub(text: str, out_p: Path):
+    """A placeholder the size of a real frame, its hue from the prompt so different prompts look different on the board."""
+    from PIL import Image, ImageDraw
+    h = hashlib.sha256(text.encode()).digest()
+    im = Image.new("RGB", (1280, 720), (h[0] // 2, h[1] // 2, 60 + h[2] // 3))
+    ImageDraw.Draw(im).text((40, 640), "STUB " + out_p.stem.lstrip("."), fill=(235, 235, 235))
+    if out_p.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp"):
+        im.save(out_p)
+        return
+    png = out_p.with_suffix(".stub.png")
+    im.save(png)
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-loop", "1", "-i", str(png), "-t", "2", "-r", "24", "-pix_fmt", "yuv420p", str(out_p)], check=True)
+    png.unlink()
 
 
 def generate_openrouter(prompt: str, out: str, seconds: float = OR.DEFAULT_SECONDS, aspect: str = "16:9", people: bool = False,

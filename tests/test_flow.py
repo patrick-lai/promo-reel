@@ -42,6 +42,15 @@ def write(p, txt):
     open(p, "w").write(txt)
 
 
+def test_the_stage_shows_how_a_script_starts_and_ends_and_the_history_in_words(pd):
+    F.add_script(pd, "A", "Night run", "One request at night", text="- Opens on a desk\n- The agents work\n- [ ] check the chime\n- Ends on [merged work](https://x.dev)\n- Timing note: hold 2 s\n")
+    s = F.snapshot(pd)
+    a = s["scripts"][0]
+    assert (a["beats"], a["beat_count"]) == (["Opens on a desk", "Ends on merged work"], 3)
+    assert "Wrote script A" in [x["text"] for x in s["activity"]]
+    assert not any("->" in x["text"] for x in s["activity"])
+
+
 def board(pd, sid, make_imgs=True):
     d = os.path.join(pd, "flow", "boards", sid)
     b = dict(story=sid, title="T" + sid, logline="L", scenes=[scene("01", 0, 4), scene("02", 4, 9, caption="8 tasks")])
@@ -202,7 +211,7 @@ def test_a_registered_draft_is_the_decision_with_approve_and_feedback(pd, tmp_pa
     F.add_draft(pd, dr)
     s = F.snapshot(pd)
     assert s["gate"]["kind"] == "draft" and s["gate"]["gate"] == "draft-approved" and s["gate"]["stage"] == "drafts"
-    assert s["gate"]["approve_label"] == "Approve" and s["gate"]["changes_label"] == "Feedback and iterate"
+    assert s["gate"]["approve_label"] == "Approve" and s["gate"]["changes_label"] == "Ask for changes"
     assert s["summary"]["badge"] == "waiting" and s["summary"]["primary"] == "Watch draft"
     assert F.round_start(pd, "the hook is slow") == 1 and F.load(pd)["stage"] == "review"      # feedback at drafts starts review
     st = F.load(pd)
@@ -523,7 +532,7 @@ def test_plain_sentences(pd, tmp_path):
     F.save(pd, st)
     s = F.snapshot(pd)
     assert s["summary"]["status"] == "Three scripts are drafted and being reviewed"
-    assert [c["text"] for c in s["checks"]] == ["Three scripts drafted", "Scripts not reviewed by the council yet"]
+    assert [c["text"] for c in s["checks"]] == ["Three scripts drafted", "Reviewers are checking the scripts"]
     st.update(stage="drafts")
     F.save(pd, st)
     assert F.snapshot(pd)["summary"]["status"] == "Waiting for the first draft."
@@ -551,7 +560,7 @@ def test_beats_and_draft_numbering(pd, tmp_path):
     sf = str(tmp_path / "s.md")
     write(sf, "# Script A\n\nIntro text.\n\n1. Night, the laptop is the only light\n2. One sentence typed\n3. third beat\n")
     F.add_script(pd, "A", "TA", "L", sf)
-    assert F.snapshot(pd)["scripts"][0]["beats"] == ["Night, the laptop is the only light", "One sentence typed"]
+    assert F.snapshot(pd)["scripts"][0]["beats"] == ["Night, the laptop is the only light", "third beat"]          # how it opens and how it ends
     st = F.load(pd)
     st.update(stage="review", drafts=[dict(file="/x/draft-%d.mp4" % i, at="", cycle=1) for i in (1, 2, 3)])
     st["rounds"] = [dict(cycle=1, n=1, feedback="f", started="", drafts_at_start=1, closed=dict(verdict="YES", dir="rounds/x")),

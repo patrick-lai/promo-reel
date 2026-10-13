@@ -98,8 +98,8 @@ from .home import resolve as _resolve
 # `previz` sits right after the storyboard (its start / end frames are what the scenes are blocked out from) and before the assets: the ONE plan review
 # then covers storyboard + previz strip + assets, and a changed previz scene makes the plan approval stale like any other change to the plan.
 STAGES = ["discover", "scripts", "pick", "storyboard", "previz", "assets", "keyframes", "confirm", "drafts", "review", "final"]
-LABEL = dict(discover="Style & references", scripts="Scripts", pick="Pick stories", storyboard="Storyboard", previz="Previz / wireframe", assets="Asset plan",
-             keyframes="Keyframes", confirm="Final confirmation", drafts="First drafts", review="Review rounds", final="Final")
+LABEL = dict(discover="Style & references", scripts="Scripts", pick="Pick scripts", storyboard="Storyboard", previz="Rough layout", assets="Asset plan",
+             keyframes="Frames & recordings", confirm="Ready check", drafts="First drafts", review="Review rounds", final="Final")
 # The person decides four things: the style, which scripts go on, the plan (storyboard + assets + the go for drafts, ONE approval at `assets`), the draft.
 # The storyboard and confirm stages have no gate of their own: the person comments on scenes whenever they like and an open comment blocks the plan.
 GATE_OF = dict(pick="scripts-picked", assets="assets-approved", review="draft-approved")
@@ -210,9 +210,30 @@ def _note(pd, text, kind, done=False):
         pass
 
 
+GATE_WORD = {"scripts-picked": "the scripts", "assets-approved": "the plan", "draft-approved": "the draft"}
+MILESTONE = [(re.compile(r"advance -> (\w+)$"), lambda m: f"Moved on to {LABEL.get(m[1], m[1])}"),
+             (re.compile(r"approved ([\w-]+) by (.+)$"), lambda m: f"{m[2]} approved {GATE_WORD.get(m[1], 'a step')}"),
+             (re.compile(r"autopilot (\d+) min started by (.+)$"), lambda m: f"{m[2]} let the agent work on its own for {m[1]} min"),
+             (re.compile(r"council (\w+) #\d+$"), lambda m: f"Reviewers checked the {m[1]}"),
+             (re.compile(r"script (\w+)( \(more added\))?$"), lambda m: f"Wrote script {m[1]}"),
+             (re.compile(r"recommend (\w+)$"), lambda m: f"Recommended script {m[1]}"),
+             (re.compile(r"draft \S+$"), lambda m: "Added a new draft"),
+             (re.compile(r"round [\d.]+ start$"), lambda m: "Started a round of changes"),
+             (re.compile(r"discover$"), lambda m: "Recorded your style")]
+
+
+def _milestone(what):
+    """The flow log is written for agents ("advance -> previz"); the Stage shows the person the same event in words."""
+    for rx, say in MILESTONE:
+        m = rx.match(what)
+        if m:
+            return say(m)
+    return what
+
+
 def _activity(st):
     """History dots, oldest first: the agent's notes plus the flow's own milestones (stage moves, approvals, drafts, rounds)."""
-    out = [dict(at=x["at"], text=x["what"], kind="milestone", done=True) for x in st.get("log") or [] if x["what"] != "init"]
+    out = [dict(at=x["at"], text=_milestone(x["what"]), kind="milestone", done=True) for x in st.get("log") or [] if x["what"] != "init"]
     out += [dict(at=x["at"], text=x["text"], kind=x.get("kind", "other"), done=bool(x.get("done"))) for x in st.get("activity") or []]
     out.sort(key=lambda x: x["at"])
     return out[-ACTIVITY_MAX:]
@@ -951,19 +972,19 @@ def ask(pd, st):
         return dict(header="Style", multiSelect=False, question=q, options=[dict(label=o["label"] + (" (Recommended)" if o["recommended"] else ""), description=o["description"])
                                                                           for o in style_options(st, 4)])
     if stage == "scripts" and ok:
-        return dict(header="Scripts", multiSelect=True, question="Which script(s) should go to storyboards?",
+        return dict(header="Scripts", multiSelect=True, question="Which scripts should we storyboard?",
                     options=_script_options(st))
     if stage == "assets" and not gate_ok(pd, st, "assets-approved") and all(o for o, t in checks(pd, st) if "approved" not in t):
-        return dict(header="Plan", multiSelect=False, question="Storyboard and assets look right? Approve the plan and the agent builds the first draft. Comment on anything you want changed first.",
-                    options=[dict(label="Approve the plan", description="storyboard, assets and the go for drafts, in one"), dict(label="Changes", description="comment on a scene or an asset")])
+        return dict(header="Plan", multiSelect=False, question="Happy with the storyboard and assets? Approve, and the agent records the app, then makes the first draft.",
+                    options=[dict(label="Approve and start drafts", description="storyboard, assets and the go for drafts, in one"), dict(label="Changes", description="comment on a scene or an asset")])
     # A registered draft is the decision, whether the flow has formally entered `review` yet or not: the buttons come with the video.
     if (stage == "drafts" and ok) or (stage == "review" and open_round(st) is None):
         n = len(cycle_rounds(st))
-        q = f"All {MAX_ROUNDS} rounds are used. Approve the draft, or restate the direction." if n >= MAX_ROUNDS else "Watched the draft? Approve it, or send feedback."
+        q = f"All {MAX_ROUNDS} rounds are used. Approve the draft, or restate the direction." if n >= MAX_ROUNDS else "Watched the draft? Approve it, or ask for changes."
         return dict(header="Draft", multiSelect=False, question=q,
-                    options=[dict(label="Approve", description="submit as final"), dict(label="Feedback and iterate", description="tell me what to change; the council checks intent first")])
+                    options=[dict(label="Approve", description="use this as the final video (nothing is published)"), dict(label="Ask for changes", description="tell me what to change; the agent checks it against your request first")])
     if stage == "final":
-        return dict(header="Final", multiSelect=False, question="Final is in. Want more changes?", options=[dict(label="Done", description="stop here"), dict(label="More feedback", description="council reviews again")])
+        return dict(header="Final", multiSelect=False, question="Final is in. Want more changes?", options=[dict(label="Done", description="stop here"), dict(label="More feedback", description="the agent makes another round")])
     return None
 
 
@@ -1004,6 +1025,8 @@ GATE_PRIMARY = dict(style="Choose style", pick="Pick scripts", approve="Review",
 GATE_CARD = {"assets-approved": "Review the plan"}
 MAX_PICKS = 2
 NUM = {1: "One", 2: "Two", 3: "Three", 4: "Four", 5: "Five", 6: "Six", 7: "Seven", 8: "Eight", 9: "Nine"}
+NOT_BEAT = re.compile(r"^\[[ xX]\]|^[\w ]{0,24}\bnotes?:", re.I)          # checklists and side notes are lists too, but not beats
+MD_LINK = re.compile(r"\[([^\]]+)\]\([^)]*\)")
 BEAT_RE = re.compile(r"^\s*(?:[-*]|\d+[.)])\s+(.*\S)")
 
 
@@ -1021,16 +1044,16 @@ def _gate(pd, st):
     if past:
         x = past[0]
         return dict(gate=x["gate"], kind="approve", question=f"{x['label']} changed after you approved it. Approve it again?", approve_label="Approve again",
-                    changes_label="Add changes", options=[], stale=True, stage=x["id"])
+                    changes_label="Ask for changes", options=[], stale=True, stage=x["id"])
     if stage == "pick" and a is None and st["scripts"] and not gate_ok(pd, st, "scripts-picked"):
-        a = dict(question="Which script(s) should go to storyboards?", options=_script_options(st))
+        a = dict(question="Which scripts should we storyboard?", options=_script_options(st))
     if stage in ("scripts", "pick") and a is not None:
-        return dict(gate="scripts-picked", kind="pick", question=a["question"], approve_label="Continue", changes_label="Add changes", options=a["options"],
+        return dict(gate="scripts-picked", kind="pick", question=a["question"], approve_label="Continue", changes_label="Ask for changes", options=a["options"],
                     picks_min=1, picks_max=MAX_PICKS, stage=stage)
     kinds = dict(discover=("style", "style"), assets=("assets-approved", "approve"), drafts=("draft-approved", "draft"), review=("draft-approved", "draft"))
     if a is None or stage not in kinds:
         return None
-    labels = dict(style=("Use this style", "Describe another"), approve=("Approve the plan", "Add changes"), draft=("Approve", "Feedback and iterate"))
+    labels = dict(style=("Use this style", "Describe another"), approve=("Approve and start drafts", "Ask for changes"), draft=("Approve", "Ask for changes"))
     g, k = kinds[stage]
     out = dict(gate=g, kind=k, question=a["question"], approve_label=labels[k][0], changes_label=labels[k][1], options=style_options(st) if k == "style" else [], stage=stage)
     if any(x["id"] == stage for x in stale):
@@ -1038,6 +1061,17 @@ def _gate(pd, st):
         if k in ("approve", "confirm"):
             out["approve_label"] = "Approve again"
     return out
+
+
+def _previz(pd, st):
+    """[{story, strip}]: the wireframe strip of each picked story, which the plan approval covers, so the person sees it before approving."""
+    if STAGES.index(st["stage"]) < STAGES.index("previz"):
+        return []
+    try:
+        ts = PZ.targets(pd, st["picks"])
+    except PZ.PrevizError:          # nothing blocked out yet: no strip to show
+        return []
+    return [dict(story=t.key, strip=_media(t.strip_png)) for t in ts]
 
 
 def _media(path):
@@ -1074,7 +1108,7 @@ def plain_checks(pd, st, stage=None):
     elif stage == "scripts":
         k = len(st["councils"].get("scripts", []))
         R += [(n >= MIN_SCRIPTS, f"{n} of {MIN_SCRIPTS} scripts drafted" if n < MIN_SCRIPTS else f"{NUM.get(n, n)} scripts drafted"),
-              (k >= 1, "Scripts reviewed by the council" if k else "Scripts not reviewed by the council yet")]
+              (k >= 1, "Scripts checked by the reviewers" if k else "Reviewers are checking the scripts")]
     elif stage == "pick":
         R.append((gate_ok(pd, st, "scripts-picked"), "You picked the stories to take forward" if gate_ok(pd, st, "scripts-picked") else "You pick the stories to take forward"))
     elif stage == "storyboard":
@@ -1125,7 +1159,7 @@ def _status(pd, st, pc):
     if stage == "review" and r:
         return f"Round {r['n']} is in progress: applying your feedback."
     bad = [t for ok, t in pc if not ok]
-    return bad[0] if bad else f"{LABEL[stage]} is done. Moving on."
+    return bad[0] if bad else f"The agent is finishing this step: {LABEL[stage]}."
 
 
 def _finished(st, stale):
@@ -1186,7 +1220,7 @@ def _summary(pd, st, gate, pc, rounds_used, job=None):
             status = _clip(("Done: " if last.get("done") else "Now: ") + last["text"], 140)
         cap = [x for x in AP.load(os.path.join(pd, "flow")) if x.get("kind") in ("recording", "screenshot") and AP.state(x, pd) in ("mock", "todo")] if stage == "keyframes" else []
         if cap:
-            status = f"Recording {len(cap)} {'clip' if len(cap) == 1 else 'clips'} from the real app (the agent captures them)."
+            status = f"Recording {len(cap)} {'clip' if len(cap) == 1 else 'clips'} from the real app (the agent captures {'it' if len(cap) == 1 else 'them'})."
     ap = AU.view(st)
     if ap and ap["state"] == "running" and not finished:
         status, badge = _clip(ap["line"], 140), "working"
@@ -1199,17 +1233,12 @@ def _summary(pd, st, gate, pc, rounds_used, job=None):
 
 
 def _beats(path):
-    out = []
+    """(the opening and the closing beat, how many beats there are): the card shows how the script starts and ends."""
     try:
-        for line in open(path).read().splitlines():
-            m = BEAT_RE.match(line)
-            if m:
-                out.append(_clip(m.group(1), 140))
-            if len(out) == 2:
-                break
+        out = [m.group(1) for m in map(BEAT_RE.match, open(path).read().splitlines()) if m and not NOT_BEAT.match(m.group(1))]
     except OSError:
-        pass
-    return out
+        return [], 0
+    return [_clip(MD_LINK.sub(r"\1", x), 140) for x in (out[:1] + out[-1:] if len(out) > 1 else out)], len(out)
 
 
 def _keyframe_label(boards_, n):
@@ -1382,7 +1411,8 @@ def snapshot(pd):
     for s in st["scripts"]:
         sp = os.path.join(f, s["file"])
         text = _read(sp)
-        scripts.append(dict(id=s["id"], title=s["title"], logline=s["logline"], picked=s["id"] in picks, verdict=None, recommended=rec["why"] if rec.get("id") == s["id"] else None, beats=_beats(sp), words=PD.words(text),
+        beats, beat_count = _beats(sp)
+        scripts.append(dict(id=s["id"], title=s["title"], logline=s["logline"], picked=s["id"] in picks, verdict=None, recommended=rec["why"] if rec.get("id") == s["id"] else None, beats=beats, beat_count=beat_count, words=PD.words(text),
                             headings=PD.headings(text, 40), **_text_body(sp)))
     bl = []
     bds = boards(pd, st)
@@ -1454,7 +1484,7 @@ def snapshot(pd):
                 stale_steps=stale,
                 style=(st.get("discover") or {}) and dict(style=st["discover"].get("style"), preset=style_preset(st["discover"].get("style")), refs=st["discover"].get("refs", []),
                                                           no_refs=st["discover"].get("no_refs", False)) or None,
-                podcast=_podcast(pd), scripts=scripts, docs=docs, widgets=_widgets(pd, st), councils=councils, boards=bl, assets=assets, to_make=to_make, drafts=drafts, finals=finals, rounds=rounds,
+                previz=_previz(pd, st), podcast=_podcast(pd), scripts=scripts, docs=docs, widgets=_widgets(pd, st), councils=councils, boards=bl, assets=assets, to_make=to_make, drafts=drafts, finals=finals, rounds=rounds,
                 share=dict(destinations=[dict(id=d, label=SH.LABEL[d], note=SH.NOTE[d], in_place=d == "artifacts") for d in SH.available(st)]),
                 checks=[dict(ok=o, text=t) for o, t in pc], gate=gate, activity=_activity(st), job=job,
                 settings=dict(output=home.output_info(place["project"], place["repo"]), saved_in=os.path.abspath(pd)),
@@ -1762,7 +1792,7 @@ def make_frames(pd, story, scene, which, force, provider, jobs, limit=None, live
     made, failed = _tracked(pd, "frames", "Generating storyboard images", jobs, live, meta,
                             lambda start: PV.make_frames(bds, look, scene, which, force, provider, jobs, limit, job=start),
                             f"promo flow --project {shlex.quote(os.path.abspath(pd))} frames")
-    _note(pd, f"Drew {len(made)} storyboard frames" + (f", {len(failed)} failed" if failed else ""), "render", True)
+    _note(pd, f"Drew {len(made)} storyboard {'frame' if len(made) == 1 else 'frames'}" + (f", {len(failed)} failed" if failed else ""), "render", True)
     return _report("frames", made, failed)
 
 
@@ -1775,7 +1805,7 @@ def make_assets(pd, ids, force, provider, jobs=3, live=False):
     made, failed = _tracked(pd, "samples", "Making asset samples", jobs, live, lambda a: dict(id=a["id"], label=_asset_label(a), asset_kind=a["kind"]),
                             lambda start: PV.make_samples(plan, pd, boards(pd, st), ids, force, provider, jobs=jobs, job=start),
                             f"promo flow --project {shlex.quote(os.path.abspath(pd))} asset make")
-    _note(pd, f"Made {len(made)} asset samples" + (f", {len(failed)} failed" if failed else ""), "voice", True)
+    _note(pd, f"Made {len(made)} asset {'sample' if len(made) == 1 else 'samples'}" + (f", {len(failed)} failed" if failed else ""), "voice", True)
     return _report("asset samples", made, failed)
 
 

@@ -144,13 +144,13 @@ def result(p):
     done = set(got) == {"1", "2"}
     vals = list(got.values())
     if not done:
-        line = f"Blind comparison of draft {p['draft']} with draft {p['against']}: {len(got)} of 2 orders judged"
+        line = f"Comparing draft {p['draft']} with draft {p['against']} without labels: {len(got)} of 2 looks done"
         return dict(done=False, winner=None, tie=False, line=line)
     if vals[0] == vals[1] and isinstance(vals[0], int):
-        return dict(done=True, winner=vals[0], tie=False, line=f"A blind judge preferred draft {vals[0]} in both orders")
+        return dict(done=True, winner=vals[0], tie=False, line=f"Shown both drafts without labels, a reviewer model preferred draft {vals[0]} both times")
     if vals == ["tie", "tie"]:
-        return dict(done=True, winner=None, tie=True, line=f"A blind judge saw drafts {p['draft']} and {p['against']} as equal in both orders")
-    return dict(done=True, winner=None, tie=False, line="The two orders of the blind comparison disagree, so it decides nothing")
+        return dict(done=True, winner=None, tie=True, line=f"Shown both drafts without labels, a reviewer model saw drafts {p['draft']} and {p['against']} as equal both times")
+    return dict(done=True, winner=None, tie=False, line="The reviewer model's two looks without labels disagree, so the comparison decides nothing")
 
 
 def latest_judged(st, n, against):

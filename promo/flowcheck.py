@@ -31,6 +31,9 @@ CONTROLS = ("A submarine periscope rises out of the desk", "The caption is writt
             "The voice-over is sung as an opera aria", "Snow falls inside the app window")
 
 
+GATE_WORDS = {"vo-script": "voice-over against the script"}      # the person reads the line; the gate ids and reasons stay in `skipped`
+
+
 def _active(st, control=True):
     """Checks that count now. A control belongs to its round only: the next round gets a new one, so old ones never pile up on later drafts."""
     last = round_key(st["rounds"][-1]) if st["rounds"] else None
@@ -427,10 +430,10 @@ def verify_view(d):
     failed = [r for r in rows if r["status"] == "FAIL"]
     warned = [r for r in rows if r["status"] == "WARN" and not r["msg"].startswith("skipped")]
     passed = [r for r in rows if r["status"] == "PASS"]
-    line = f"Checked on this file: {len(passed)} passed"
+    line = f"Automatic checks on this file: {len(passed)} passed"
     line += f", {len(warned)} {'warning' if len(warned) == 1 else 'warnings'}" if warned else ""
     line += f", {len(failed)} failed" if failed else ""
-    line += ". Not checked: " + "; ".join(f"{s['gate']} ({s['why']})" for s in skipped) if skipped else "."
+    line += ". Not checked on this computer: " + ", ".join(GATE_WORDS.get(s["gate"], s["gate"].replace("-", " ")) for s in skipped) + "." if skipped else "."
     return dict(state="failed" if failed else "checked", line=line, passed=len(passed), warned=len(warned), failed=len(failed), skipped=skipped,
                 failures=[dict(gate=r["gate"], msg=r["msg"]) for r in failed])
 

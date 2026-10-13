@@ -522,7 +522,7 @@
       const sugs = arr(edit.suggestions).filter((x) => !x.kept && !hidden.has(x.id));
       if (sugs.length) parts.push(h("section", { class: "ed-sugs", "aria-label": "Suggestions from the agent" }, h("h4", { text: "From the agent" }), sugs.map((x) => {
         let bad = null; try { derive(PF.editParse(x.text)); } catch (er) { bad = er.message; }
-        return h("div", { class: "ed-sug", "data-sid": x.id, "data-on": trying === x.id ? "1" : null }, h("b", { text: x.note }), h("pre", { text: x.text }), bad ? h("p", { class: "ed-err", text: bad }) : null,
+        return h("div", { class: "ed-sug", "data-sid": x.id, "data-on": trying === x.id ? "1" : null }, h("b", { text: x.note }), h("details", { class: "ed-sug-ops" }, h("summary", { text: "Exact edit" }), h("pre", { text: x.text })), bad ? h("p", { class: "ed-err", text: bad }) : null,
           h("div", { class: "ed-acts" },
             h("button", { type: "button", class: "btn ghost sm", "data-k": "sug-try:" + x.id, "aria-pressed": String(trying === x.id), disabled: !!bad, onclick: () => { trying = trying === x.id ? null : x.id; rebuild(); paint(); } }, trying === x.id ? "Stop trying" : "Try it"),
             h("button", { type: "button", class: "btn primary sm", "data-k": "sug-keep:" + x.id, disabled: !!bad || readonly, onclick: () => keepSug(x) }, "Keep"),
@@ -581,7 +581,7 @@
       const refs = h("div", { class: "ed-refs" }, arr(b.refs).filter((r) => r.file).map((r) => { const im = h("img", { alt: r.role + " reference", loading: "lazy" }); urlOf(r.file).then((u) => { im.src = u; }, () => im.remove()); return h("figure", null, im, h("figcaption", { text: r.role })); }));
       const ask = h("textarea", { rows: "2", maxlength: "600", placeholder: "Change the look of the whole video…", "data-k": "ins-bible-ask", disabled: readonly });
       const send = h("button", { type: "button", class: "btn ghost sm", "data-k": "ins-bible-send", disabled: readonly || (o.canSend && !o.canSend()), onclick: () => { const t = ask.value.trim(); if (t && o.onBible && o.onBible(t) !== false) ask.value = ""; } }, ic("comment"), "Send to the agent");
-      return h("section", { class: "ed-bible", "aria-label": "Look bible" }, h("h4", null, "Look bible", b.id ? h("small", { text: " · " + b.id }) : null),
+      return h("section", { class: "ed-bible", "aria-label": "Look bible" }, h("h4", { title: b.id || null }, "Look bible"),
         h("div", { class: "ed-pal", "aria-label": "Palette" }, arr(b.palette).map((c) => h("i", { style: "background:" + c, title: c }))), refs,
         b.prompt ? h("details", null, h("summary", { text: "The look, in words" }), h("p", { class: "sub ed-bprompt", text: b.prompt })) : null,
         h("p", { class: "sub", text: "Every plate is drawn from this. Changing it makes the plates drawn before stale; the agent asks before redrawing them." }), ask, send);

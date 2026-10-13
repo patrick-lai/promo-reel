@@ -26,6 +26,15 @@ def test_pick_prefers_verified_and_fails_cleanly(monkeypatch):
         G.pick("video", "codex")
 
 
+def test_stub_draws_a_placeholder_and_never_reaches_a_real_generator(monkeypatch, tmp_path):
+    monkeypatch.setattr(G, "HOME", tmp_path)
+    monkeypatch.setenv("PROMO_GEN_STUB", "1")
+    assert [p["id"] for p in G.providers("image")] == ["stub"]
+    out = tmp_path / "frame.png"
+    meta = G.generate("image", "a calm desk at night", str(out), guard=G.STORYBOARD)
+    assert meta["provider"] == "stub" and out.is_file()
+
+
 def test_prompt_forbids_ui_and_text():
     t = G.prompt_for("video", "macro of lace", Path("/x/a.mp4"), 4, "16:9")
     assert "no text" in t.lower() and "no user-interface" in t.lower() and "/x/a.mp4" in t

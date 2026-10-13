@@ -133,7 +133,7 @@ def test_blind_comparison_counts_only_agreeing_orders_and_stops_a_worse_draft(pd
     with pytest.raises(F.FlowError, match="the new draft is worse"):
         close(pd, tmp_path)
     AB.judge(pd, jid, "2", "insufficient", family="claude")
-    assert AB.result(AB.pair(F.load(pd), jid))["line"].startswith("The two orders")      # insufficient is not a tie and decides nothing
+    assert AB.result(AB.pair(F.load(pd), jid))["line"].endswith("disagree, so the comparison decides nothing")      # insufficient is not a tie and decides nothing
     assert close(pd, tmp_path)["closed"]
 
 
@@ -243,7 +243,7 @@ def test_a_check_report_attaches_only_to_the_file_it_measured(pd, tmp_path):
         FC.verify(pd, 1, str(tmp_path / "junk.json"))
     assert F.snapshot(pd)["drafts"][0]["verify"]["line"] == "Not checked on this file yet."
     line = FC.verify(pd, 1, report(tmp_path, [F.load(pd)["drafts"][0]["sha"]], rows))["line"]
-    assert line == "Checked on this file: 2 passed, 1 warning. Not checked: vo-script (faster-whisper not installed)"
+    assert line == "Automatic checks on this file: 2 passed, 1 warning. Not checked on this computer: voice-over against the script."
     FC.add(pd, "Loudness is on target", kind="gate", gate="loudness")
     FC.add(pd, "The voice-over reads back word for word", kind="gate", gate="vo-script")
     assert [r["status"] for r in FC.scoreboard(F.load(pd))["rows"]] == ["pass", "unmeasured"]       # a skipped gate is not a pass

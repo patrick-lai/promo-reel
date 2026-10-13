@@ -35,13 +35,14 @@ Every path below that says `file` is `{"$file": "<absolute path>"}` (the host tu
     steps      [{id, label, state: done|current|todo|stale, stale}]  (10, one per stage; `stale` = its approval no longer matches what was approved; never `done` then)
     stale_steps [{id, gate, label}]                            approvals that went stale; the mod shows "Approved earlier, but <step> changed since."
     style      {style, preset: hero|horizon|anime-opening|podcast|null, refs[], no_refs} | null
+    previz     [{story, strip: file}]   the wireframe strip of each picked story (`promo previz strip`), from the previz step on: the Storyboard tab shows it, since the plan approval covers it
     podcast    {title, tag, layout, frame, edge, subtitles, names, backdrop, lines, script, planned, preview_fresh, preview_at,
                 hosts [{id, name, model, color, place {anchor, size, x?, y?}, voice {engine, voice, ...}, portrait: file, moods: file, voice_sample: file, voice_label, sample_text}],
                 shots [{id, layout, focus}], layouts {overlay|boxed|two-shot|speaker: file}, layouts_list, frames_list, edges_list, sizes, anchors} | null
                  a podcast / VTuber show (promo.yaml has a `podcast:` block; promo/podcast_cli.py status). The files are real renders from
                  `promo podcast preview --layouts` (portraits, mood sheets, a voice sample per host, one still per layout); preview_fresh = made from
                  the current promo.yaml. The Cast card (Overview, Plan, Storyboard) shows them and queues `promo podcast set ...` changes.
-    scripts    [{id, title, logline, picked, verdict, recommended: why|null, beats[<=2], words, headings[{level,title}<=40], body: text|null, body_note}]   recommended = the agent's one pick (`promo flow recommend ID --why TEXT`): a "Recommended" pill on the card, the reason in its tooltip (hover or keyboard focus); beats = first two list items of the script file; body = the whole script (markdown)
+    scripts    [{id, title, logline, picked, verdict, recommended: why|null, beats[<=2], beat_count, words, headings[{level,title}<=40], body: text|null, body_note}]   recommended = the agent's one pick (`promo flow recommend ID --why TEXT`): a "Recommended" pill on the card, the reason in its tooltip (hover or keyboard focus); beats = the first and last list items of the script file, beat_count = how many there are; body = the whole script (markdown)
     docs       [{id, title, kind, kind_label, group, story|null, summary, updated, source: agent|template, words, headings[<=40], preview, body: text|null, body_note}]   the Plan tab: planning documents the agent added with `promo flow doc ...`
                  kinds: script treatment shotlist direction edit audio capture schedule deliverables risks research review notes; groups: Script Direction Edit Audio Capture Delivery Notes
     widgets    [{id, title, kind: blocks|html, place: workbench|scripts|storyboard|assets|plan|draft, span 1-12, height: s|m|l|xl|auto, order, summary, updated, blocks: [block]|null, html: text|null,
@@ -50,8 +51,8 @@ Every path below that says `file` is `{"$file": "<absolute path>"}` (the host tu
     boards     [{id, title, logline, aspect, duration_s, density: every_s|null, scenes: [{id, beat, start_s, end_s, action, caption, voice, sound, camera, proof,
                  notes: [{id, text, by, answer: text|null}] (comments on the scene; open until answered), source: real|generated|mock|other, generated, start: {label, path: file|null, prompt}, end: {...}, frames: [{label, path, prompt, t, auto}]}]}]
                  The frames are storyboard stills, not footage. One function derives the scene chip and the timeline mark: for source=real, "Captured" only when every real asset covering the scene is ready and its file loads
-                 (screenshots alone read "Captured stills", never green); any mock reads "Mock in plan"; any to-make or missing file, or no asset, reads "To capture";
-                 "Generated plate" for generated; no chip for `other` (a scene with no `source` is `other`, never real). Legend: "All real assets ready"
+                 (screenshots alone read "Real screenshots", never green); any mock reads "Stand-in"; any to-make or missing file, or no asset, reads "To capture";
+                 "AI-made" for generated; no chip for `other` (a scene with no `source` is `other`, never real). Legend: "All real assets ready"
     assets     [{id, label, kind, source, state: ready|mock|todo, scenes[] (only ids that exist in a board), how, licence, note, path: file|null, sample: file|null, sample_note}]
                  `sample` is what `promo flow asset make` made so the person can look at / hear the asset before it exists (image, ~7 s mp4, mp3): the tile plays it labelled SAMPLE and the
                  state stays mock / to make. The storyboard has no gate (the person comments on scenes any time; an open comment blocks the plan). The plan approval at the assets gate stays disabled while any asset has nothing to look at, and

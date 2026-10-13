@@ -16,9 +16,9 @@ test("a script or document reads from its inline text; a missing or too-long one
   assert.equal(L.textFileName("Full script: Wake up to merged PRs"), "full-script-wake-up-to-merged-prs.md");
 });
 
-test("real scene covered by a mock asset is Mock in plan, never Captured", () => {
+test("real scene covered by a mock asset is Stand-in, never Captured", () => {
   const as = [asset("a", "recording", "real", "ready", ["03"]), asset("b", "recording", "real", "mock", ["03"])];
-  assert.equal(L.sceneStatus(scene("03", "real"), as).label, "Mock in plan");
+  assert.equal(L.sceneStatus(scene("03", "real"), as).label, "Stand-in");
   assert.equal(L.sceneStatus(scene("03", "real"), as).cls, "mock");
 });
 test("real scene: no real asset, a todo or a missing file read To capture", () => {
@@ -38,10 +38,10 @@ test("audio assets do not change what a scene looks like", () => {
   assert.equal(L.sceneStatus(scene("01", "real"), as).label, "Captured");
 });
 test("generated scene: unmade plate, mock, or ready", () => {
-  assert.equal(L.sceneStatus(scene("04", "generated"), [asset("p", "video", "generated", "todo", ["04"])]).label, "Plate to generate");
-  assert.equal(L.sceneStatus(scene("08", "generated"), [asset("c", "image", "generated", "mock", ["08"])]).label, "Mock in plan");
-  assert.equal(L.sceneStatus(scene("08", "generated"), [asset("c", "image", "generated", "mock", ["08"]), asset("p", "video", "generated", "todo", ["08"])]).label, "Plate to generate");
-  assert.equal(L.sceneStatus(scene("01", "generated"), [asset("p", "image", "generated", "ready", ["01"])]).label, "Generated plate");
+  assert.equal(L.sceneStatus(scene("04", "generated"), [asset("p", "video", "generated", "todo", ["04"])]).label, "AI shot to make");
+  assert.equal(L.sceneStatus(scene("08", "generated"), [asset("c", "image", "generated", "mock", ["08"])]).label, "Stand-in");
+  assert.equal(L.sceneStatus(scene("08", "generated"), [asset("c", "image", "generated", "mock", ["08"]), asset("p", "video", "generated", "todo", ["08"])]).label, "AI shot to make");
+  assert.equal(L.sceneStatus(scene("01", "generated"), [asset("p", "image", "generated", "ready", ["01"])]).label, "AI-made");
 });
 test("scene with an unmade keyframe is a dashed mark whatever its label", () => {
   const s = { id: "01", source: "generated", start: { path: ok("s") }, end: { path: null } };

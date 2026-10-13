@@ -229,7 +229,7 @@ def test_check_module_runs_the_previz_gate():
 def test_previz_sits_between_storyboard_and_assets():
     i = F.STAGES.index
     assert i("storyboard") + 1 == i("previz") and i("previz") + 1 == i("assets") < i("keyframes")
-    assert F.LABEL["previz"] == "Previz / wireframe"
+    assert F.LABEL["previz"] == "Rough layout"
 
 
 # ---------------------------------------------------------------- previz -> cinema

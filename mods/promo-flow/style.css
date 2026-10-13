@@ -785,7 +785,7 @@ button.fr:hover { border-color: var(--c-accent); }
 .dt.done { background: var(--dc, var(--c-dim)); }
 .dt.empty { border: 1px dashed var(--c-line); }
 .dt.live { animation: pulse 1.2s ease-in-out infinite; }
-.k-capture { --dc: var(--c-accent); } .k-render { --dc: var(--c-ok); } .k-voice { --dc: var(--c-warn); } .k-music { --dc: var(--c-bad); }
+.k-capture { --dc: var(--c-accent); } .k-render { --dc: var(--c-ok); } .k-voice { --dc: var(--c-warn); } .k-music { --dc: color-mix(in srgb, var(--c-accent) 50%, var(--c-ok)); }
 .k-check { --dc: color-mix(in srgb, var(--c-ink) 70%, transparent); } .k-plan { --dc: color-mix(in srgb, var(--c-accent) 50%, var(--c-ok)); }
 .k-other, .k-milestone { --dc: var(--c-dim); }
 .k-milestone { opacity: .55; }
@@ -1420,9 +1420,8 @@ button.jb-tile:hover { border-color: var(--c-accent); }
 .rounds-col .pk-acts .btn { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
 /* round 4, pass E asks */
-/* review 900: the rounds column is not a scroll box (it clipped the strip and the round cards); the pick previews stack full width there */
+/* review 900: the rounds column is not a scroll box (it clipped the strip and the round cards); the pick previews stay side by side so Left and Right read as places */
 .draft-grid .rounds-col { max-height: none; overflow: visible; padding-right: 0; }
-.rounds-col .pk-row { grid-template-columns: minmax(0, 1fr); }
 .rounds-col .pk-box { width: 100%; }
 .rounds-col .pk-box .pk-media { width: 100%; }
 .rounds-col .pk-acts { grid-template-columns: 1fr 1fr; }
@@ -1541,7 +1540,6 @@ button.jb-tile:hover { border-color: var(--c-accent); }
 .jb-tile.skip { opacity: 1; }
 .wk-legend { display: grid; grid-template-columns: repeat(3, minmax(0, max-content)); gap: 4px 14px; }
 .pick-card.later { opacity: .7; }
-.tab.cut { visibility: hidden; }
 
 /* final-set asks */
 /* the fade above the gate uses the pane's ground (the token it named did not exist) */
@@ -2242,3 +2240,23 @@ h1 { font-size: 16px; }
 .ed-bible textarea{width:100%;resize:vertical;font:13px/1.4 var(--c-font)}
 .ed-addlyr .ed-row{display:flex;gap:6px}
 .ed-addlyr input{flex:1;min-width:0}
+
+/* beginner pass (13 Oct 2026): the style ring sits beside the title, never on the sketch it describes */
+.choice.style .t .box { position: static; flex: none; background: transparent; border: 2px solid var(--c-dim); box-shadow: none; }
+.choice.style:has(input:checked) .t .box { background: var(--c-accent); border-color: var(--c-accent); }
+.choice.style .t { flex-wrap: nowrap; align-items: center; }
+/* a tab the strip cuts is faded, so the strip reads as one you can scroll */
+.tab.cut { opacity: .35; }
+/* an off primary is plainly off, whatever the gate is doing */
+.btn.primary:disabled, .gate[data-busy="1"] .btn.primary:disabled { background: transparent; border-color: var(--c-line); color: var(--c-dim); opacity: 1; }
+/* the one item on the checklist that is the person's own */
+.checks li.you { color: var(--c-ink); font-weight: 600; }
+.checks li.you .tick { border-color: var(--c-accent); }
+.ck-st { flex: none; }
+.pz-card > summary { font-weight: 650; cursor: pointer; }
+.pz-card .pz-img { margin-top: 8px; border-radius: var(--r-sm); overflow: hidden; background: var(--c-well); min-height: 60px; }
+.pz-card .pz-img img { display: block; width: 100%; height: auto; }
+.ed-sug-ops > summary { font-size: 12px; color: var(--c-dim); cursor: pointer; }
+.ed-bible .btn, .ed-addlyr .btn { display: inline-flex; align-items: center; gap: 6px; justify-self: start; }
+.ck-st { min-width: 76px; justify-content: center; }
+.beats li.more-beats::before { content: none; }

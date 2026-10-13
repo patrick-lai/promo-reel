@@ -190,7 +190,7 @@ SCENECHECK = """(async () => {
   const tab = document.getElementById('tab-storyboard');
   if (!tab) return [];
   tab.click(); await wait(300);
-  const map = { 'Captured': 'k-real', 'Captured stills': 'k-stills', 'Mock in plan': 'k-mock', 'To capture': 'k-todo', 'Generated plate': 'k-gen', 'Plate to generate': 'k-todo' };
+  const map = { 'Captured': 'k-real', 'Real screenshots': 'k-stills', 'Stand-in': 'k-mock', 'To capture': 'k-todo', 'AI-made': 'k-gen', 'AI shot to make': 'k-todo' };
   const out = [];
   for (const b of document.querySelectorAll('.tl button')) {
     const sc = document.querySelector('[data-sid="' + b.dataset.sid + '"].scene, details[data-sid="' + b.dataset.sid + '"]');
@@ -357,10 +357,10 @@ UICHECK = r"""(async () => {
     ok('a new cadence is a message to the agent', /action density -> \[mod:promo-flow\] Sam wants storyboard frames every 2 seconds for story A\. Run: promo flow density --story A --every 2/.test(log()), log().slice(0, 300));
   }
   if (step === 'review') {
-    ok('the draft says what was checked on this very file', /^Checked on this file: 10 passed, 1 warning\. Not checked: vo-script/.test((Q('.verify') || {}).textContent || ''), (Q('.verify') || {}).textContent);
-    ok('the checks list every check with what changed', QA('.ck-list li').length === 6 && /1 fixed · 0 broken · 1 failing · 0 not checked yet/.test(Q('.ck-board .sec-h').textContent), QA('.ck-list li').length + ' ' + Q('.ck-board .sec-h').textContent);
+    ok('the draft says what was checked on this very file', /^Automatic checks on this file: 10 passed, 1 warning\. Not checked on this computer: voice-over against the script/.test((Q('.verify') || {}).textContent || ''), (Q('.verify') || {}).textContent);
+    ok('the checks list every check with what changed', QA('.ck-list li').length === 6 && /5 of 6 OK · 1 still to fix/.test(Q('.ck-board .sec-h').textContent), QA('.ck-list li').length + ' ' + Q('.ck-board .sec-h').textContent);
     ok('the hidden control never reaches the person', !QA('.ck-list .ck-what').some((e) => /Klingon|periscope|pizza|dinosaur|opera|audience|Snow falls/.test(e.textContent)));
-    ok('the blind comparison is reported', /blind judge preferred draft 3/.test(Q('.judged').textContent));
+    ok('the blind comparison is reported', /reviewer model preferred draft 3/.test(Q('.judged').textContent));
     ok('the look pairs are shown', QA('.lk-pair').length >= 1);
     ok('the latest draft offers to keep working alone', !!Q('[data-k=ap-60]'));
     await click('[data-k=pk-p1-left]');
@@ -376,7 +376,7 @@ UICHECK = r"""(async () => {
     ok('the change reaches the agent with the choice it replaces', /action overturn -> \[mod:promo-flow\] Sam wants something else than your choice "Kept the calm piano track/.test(log()), log().slice(0, 300));
     window.harness.setStage('autopilot'); await wait(400); window.harness.setStage('review'); await wait(900);
     const ckId = Q('.ck-list li .ck-drop').closest('li').dataset.id;
-    ok('a check that fails on this draft says Failing, not still open', /Failing/.test((Q('.ck-list li[data-change=failing]') || {}).textContent || ''), (Q('.ck-list li[data-change=failing]') || {}).outerHTML);
+    ok('a check that fails on this draft says Still to fix, not still open', /Still to fix/.test((Q('.ck-list li[data-change=failing]') || {}).textContent || ''), (Q('.ck-list li[data-change=failing]') || {}).outerHTML);
     await click('[data-k=drop-' + ckId + ']');
     ok('Drop asks for an optional reason before anything is sent', !!Q('[data-k=dropwhy-' + ckId + ']') && !/action drop/.test(log()));
     Q('[data-k=dropwhy-' + ckId + ']').value = 'the "new" note replaces it'; await click('[data-k=dropgo-' + ckId + ']'); await wait(300);
@@ -484,7 +484,7 @@ UICHECK = r"""(async () => {
   if (step === 'edit') {
     ok('the Edit tab opens by itself at the drafts stage', Q('#tab-edit') && Q('#tab-edit').getAttribute('aria-selected') === 'true', (Q('.tab[aria-selected=true]') || {}).id);
     ok('the editor is there', await until(() => QA('.ed-clip').length === 4), QA('.ed-clip').length);
-    ok('the draft is a milestone: the stepper is Draft, Review, Final', QA('#stepper li').length === 3 && /^Production/.test(Q('#stepNo').textContent), QA('#stepper li').length + ' ' + Q('#stepNo').textContent);
+    ok('the draft is a milestone: the stepper is Draft, Review, Final', QA('#stepper li').length === 3 && /^Plan done/.test(Q('#stepNo').textContent), QA('#stepper li').length + ' ' + Q('#stepNo').textContent);
     ok('the planning tabs give way to the editor', !Q('#tab-scripts') && !Q('#tab-storyboard') && !Q('#tab-assets') && !!Q('#tab-draft'), QA('.tab').map((t) => t.dataset.tab).join());
     ok('the agent\'s preview clip is in the inspector', !!Q('.ed-pv[data-pv="p1"] video'));
     ok('the bin lists this video\'s footage, music, voice and sounds', QA('.ed-item').length >= 10 && ['footage', 'music', 'voice', 'sfx', 'draft'].every((k) => Q('.ed-item[data-kind="' + k + '"]')), QA('.ed-item').length);
@@ -639,7 +639,8 @@ UICHECK = r"""(async () => {
     Q('[data-k=rd-close]').click(); await wait(300);
     ok('Close closes it', Q('#modal').hidden);
     ok('before sending, the pick gate is the person\'s turn', badge() === 'Your turn', badge());
-    Q('.choice input').click(); await wait(200);
+    const recBox = QA('.choice').find((c) => c.querySelector('.rec-pill'));
+    ok('the recommended script comes ticked, so one click goes on', !!recBox && recBox.querySelector('input').checked && !Q('#btnPrimary').disabled, recBox && recBox.querySelector('input').checked);
     await click('#btnPrimary');
     await until(() => /Sent/.test(Q('#gateNote').textContent));
     ok('after sending the picks the badge is not Your turn', badge() === 'With the agent', badge());
@@ -687,9 +688,12 @@ def main():
     ap.add_argument("--w", type=int, default=520)
     ap.add_argument("--h", type=int, default=1100)
     ap.add_argument("--dark", action="store_true")
+    ap.add_argument("--parts", action="store_true", help="close-ups: every part of each stage (header, tabs, footer, each card, the first items of each grid) as its own 2x PNG for a design review")
     a = ap.parse_args()
     if a.base:
         return live(a)
+    if a.parts:
+        return parts(a)
     only = [x for x in a.only.split(",") if x]
     files = [x for x in a.files.split(",") if x]
     if not files:
@@ -746,6 +750,53 @@ def main():
 
 
 SETTLED = "!document.querySelector('.content .sk:not(.skbar)') && !document.querySelector('.content [aria-busy]')"
+
+
+PARTS = """(() => {
+  const root = window.harness.root, out = [], seen = new Set();
+  const add = (name, n) => {
+    if (!n || seen.has(n) || n.hidden) return;
+    const r = n.getBoundingClientRect();
+    if (r.width < 40 || r.height < 16) return;
+    seen.add(n);
+    out.push({ name, x: r.left, y: r.top + window.scrollY, w: r.width, h: Math.min(r.height, 1400) });
+  };
+  for (const [name, sel] of [['header', '#top'], ['job', '#job'], ['working', '#working'], ['banners', '#banners'], ['tabs', '#tabs'], ['footer', '#gate']]) add(name, root.querySelector(sel));
+  const box = root.querySelector('#content .pane > .stack') || root.querySelector('#content .pane') || root.querySelector('#content');
+  [...(box ? box.children : [])].slice(0, 14).forEach((n, i) => {
+    const grid = n.matches('.scenes, .choices, .gallery, .asset-group, .draft-grid') ? n : null;
+    const items = grid ? [...(grid.querySelector('.gallery') || grid).children].slice(0, 2) : [];
+    if (items.length) items.forEach((x, j) => add('content-' + String(i).padStart(2, '0') + '-' + (n.className.split(' ')[0] || 'grid') + '-' + j, x));
+    else add('content-' + String(i).padStart(2, '0') + '-' + ((n.className || n.tagName).split(' ')[0] || 'part'), n);
+  });
+  return out;
+})()"""
+
+
+def parts(a):
+    """Close-ups for a council that looks at one part at a time: each stage at pane width `--w` in a tall viewport, every part clipped at 2x."""
+    only = [x for x in a.only.split(",") if x]
+    os.makedirs(a.out, exist_ok=True)
+    srv, _, base = serve.start(0)
+    sh = Shooter(base)
+    made = []
+    try:
+        for st in STAGES:
+            if only and st not in only:
+                continue
+            sh.open(st, a.w, 3000, a.dark)
+            sh.ws.call("Emulation.setDeviceMetricsOverride", width=a.w, height=3000, deviceScaleFactor=2, mobile=False)
+            time.sleep(0.6)
+            for pt in sh.js(PARTS) or []:
+                p = os.path.join(a.out, f"{STAGES.index(st) + 1:02d}-{st}-{pt['name']}.png")
+                r = sh.ws.call("Page.captureScreenshot", format="png", captureBeyondViewport=True, clip=dict(x=pt["x"], y=pt["y"], width=pt["w"], height=pt["h"], scale=1))
+                with open(p, "wb") as f:
+                    f.write(base64.b64decode(r["data"]))
+                made.append(p)
+    finally:
+        sh.close()
+        srv.shutdown()
+    print(f"{len(made)} close-ups in {a.out}")
 
 
 def live(a):

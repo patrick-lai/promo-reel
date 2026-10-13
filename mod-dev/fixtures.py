@@ -33,6 +33,7 @@ from promo import flowcheck as FC  # noqa: E402
 from promo import flowjob as FJ  # noqa: E402
 from promo import home  # noqa: E402
 from promo import previews as PV  # noqa: E402
+from promo import previz as PZ  # noqa: E402
 from promo import scout as SC  # noqa: E402
 from promo import share as SH  # noqa: E402
 from promo import openrouter as OR  # noqa: E402
@@ -880,6 +881,11 @@ def _build(tmp):
     snap("storyboard-partial")
     for fp in frames:
         os.rename(fp + ".bak", fp)
+    assert F.advance(pd) == "previz"
+    for t in PZ.targets(pd):
+        PZ.build(t)
+        PZ.strip(t, engine="pil")
+    snap("previz")
     F.advance(pd)
     gen_assets(pd, "plan")
     snap("assets")
@@ -1010,7 +1016,7 @@ def _build(tmp):
     F.add_final(pd, fin)
     uploaded(pd, "final", 1, "artifacts")
     snap("final")
-    order = ["discover", "scripts", "pick", "storyboard", "storyboard-notes", "assets", "keyframes", "confirm", "drafts", "review", "autopilot", "final",
+    order = ["discover", "scripts", "pick", "storyboard", "storyboard-notes", "previz", "assets", "keyframes", "confirm", "drafts", "review", "autopilot", "final",
              "generating", "generating-stopped", "building", "storyboard-partial", "plan", "widgets", "dense", "studio", "studio-ready", "assets-error", "stale-approval", "long-content", "foryou-many", "review-maxed"]
     res = {k: out[k] for k in order}
     res["starting"] = {}

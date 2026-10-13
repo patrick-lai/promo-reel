@@ -26,9 +26,9 @@
 
   /* Footage status of one scene, read by BOTH the chip and the timeline mark.
      Only visual assets (screenshot, image, recording, video) count: a mock or missing music/voice/sfx file does not change what a scene looks like.
-     real:      no real asset, or any covering visual asset to make / missing  -> To capture;  any mock -> Mock in plan;
-                else Captured (screenshots and images alone: Captured stills, never footage)
-     generated: any covering visual asset to make / missing -> Plate to generate; any mock -> Mock in plan; else Generated plate */
+     real:      no real asset, or any covering visual asset to make / missing  -> To capture;  any mock -> Stand-in;
+                else Captured (screenshots and images alone: Real screenshots, never footage)
+     generated: any covering visual asset to make / missing -> AI shot to make; any mock -> Stand-in; else AI-made */
   function sceneStatus(s, assets) {
     const made = !!(s.start && mref(s.start.path)) && !!(s.end && mref(s.end.path));
     const id = String(s.id);
@@ -39,14 +39,14 @@
     if (s.source === "real") {
       const real = cov.filter((a) => a.source === "real");
       if (!real.length || bad) { kind = "todo"; label = "To capture"; }
-      else if (mock) { kind = "mock"; label = "Mock in plan"; }
-      else if (real.every((a) => a.kind === "screenshot" || a.kind === "image")) { kind = "stills"; label = "Captured stills"; }
+      else if (mock) { kind = "mock"; label = "Stand-in"; }
+      else if (real.every((a) => a.kind === "screenshot" || a.kind === "image")) { kind = "stills"; label = "Real screenshots"; }
       else { kind = "real"; label = "Captured"; }
     } else if (s.source === "generated") {
-      if (bad) { kind = "todo"; label = "Plate to generate"; }
-      else if (mock) { kind = "mock"; label = "Mock in plan"; }
-      else { kind = "gen"; label = "Generated plate"; }
-    } else if (s.source === "mock") { kind = "mock"; label = "Mock in plan"; }
+      if (bad) { kind = "todo"; label = "AI shot to make"; }
+      else if (mock) { kind = "mock"; label = "Stand-in"; }
+      else { kind = "gen"; label = "AI-made"; }
+    } else if (s.source === "mock") { kind = "mock"; label = "Stand-in"; }
     else return { kind: "other", label: "", cls: made ? "none" : "todo" };
     return { kind, label, cls: made ? kind : "todo" };
   }

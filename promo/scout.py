@@ -67,7 +67,7 @@ def add(pd, story, scene, file, which="both", url=None):
         s.setdefault(w, {})["image"] = rel
     s.pop("scout_miss", None)
     BE._save(d, b)
-    F.note(pd, f"Real screen for scene {scene}" + (f" from {url}" if url else ""), "capture", True)
+    F.note(pd, f"Captured the real app screen for scene {scene}", "capture", True)
 
 
 def miss(pd, story, scene, why):
