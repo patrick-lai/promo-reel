@@ -2,7 +2,7 @@
 
 x-muted-hook  text on screen within the first 2.0 s (autoplay is muted)       WARN
 x-safe-zone   no caption / text box in the bottom 15 % of the frame (player UI) FAIL
-x-export      16:9, H.264 + AAC, 1080p for a final; -14 LUFS +/-1.5           FAIL format / WARN loudness
+x-export      16:9/1:1/4:5, H.264 + AAC, 1080p for a final; -14 LUFS +/-1.5           FAIL format / WARN loudness
 x-soft-open   music 0-2 s at least 3 LU under 2-4 s (fade-in under the hook)    WARN
 """
 import os
@@ -60,14 +60,14 @@ def gates(spec, ctx):
     a = next((x for x in j["streams"] if x["codec_type"] == "audio"), {})
     w, h = v.get("width", 0), v.get("height", 0)
     probs = []
-    if not h or abs(w / h - 16 / 9) > 0.01:
-        probs.append(f"{w}x{h} is not 16:9")
+    if not h or not any(abs(w / h - r) <= 0.01 for r in (16 / 9, 1.0, 4 / 5)):
+        probs.append(f"{w}x{h} is not 16:9, 1:1 or 4:5")
     if v.get("codec_name") != "h264":
         probs.append(f"video {v.get('codec_name')} (want h264)")
     if a.get("codec_name") != "aac":
         probs.append(f"audio {a.get('codec_name')} (want aac)")
-    if spec.scale >= 1 and h != 1080:
-        probs.append(f"final is {h}p (want 1080p)")
+    if spec.scale >= 1 and min(w, h) != 1080:
+        probs.append(f"final short side is {min(w, h)}px (want 1080)")
     L, _tp = loudness(out)
     lw = L is None or abs(L - LUFS) > LUFS_TOL
     msg = f"{w}x{h} {v.get('codec_name')}/{a.get('codec_name')}, {L} LUFS (want {LUFS}±{LUFS_TOL})"
