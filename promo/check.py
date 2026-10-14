@@ -264,6 +264,11 @@ def run(spec):
     for gate, status, msg in GC.run(spec, ctx):
         rep.add(gate, status, msg)
 
+    # 7c'. opt-in platform gates (`platform: x` in promo.yaml, promo/x_check.py)
+    from . import x_check as XC
+    for gate, status, msg in XC.gates(spec, ctx):
+        rep.add(gate, status, msg)
+
     # 7d. project-level: the locked brief, reference dossiers, intent review of the newest round (promo/brief.py, promo/refs.py)
     from . import brief as BRIEF
     for gate, status, msg in BRIEF.gates(spec):
