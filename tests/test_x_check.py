@@ -16,7 +16,7 @@ def _spec(tmp, platform="x", scale=0.5):
 
 def _stub(mp, items, h=540, codec="h264", lufs=-14.2, windows=(-30.0, -20.0)):
     mp.setattr(X, "_boxes", lambda spec, ctx: iter(items))
-    mp.setattr(CK, "ffprobe_json", lambda *a: {"streams": [dict(codec_type="video", width=h * 16 // 9, height=h, codec_name=codec),
+    mp.setattr(CK, "ffprobe_json", lambda *a: {"streams": [dict(codec_type="video", width=h * 16 // 9, height=h, codec_name=codec, pix_fmt="yuv420p"),
                                                           dict(codec_type="audio", codec_name="aac")]})
     mp.setattr(CK, "loudness", lambda p: (lufs, -1.5))
     w = iter(windows)

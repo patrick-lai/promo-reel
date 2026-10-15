@@ -62,6 +62,10 @@ def gates(spec, ctx):
     probs = []
     if not h or not any(abs(w / h - r) <= 0.01 for r in (16 / 9, 1.0, 4 / 5)):
         probs.append(f"{w}x{h} is not 16:9, 1:1 or 4:5")
+    if v.get("pix_fmt") != "yuv420p":
+        probs.append(f"pix_fmt {v.get('pix_fmt')} (want yuv420p)")
+    if w % 2 or h % 2:
+        probs.append(f"{w}x{h} has an odd dimension")
     if v.get("codec_name") != "h264":
         probs.append(f"video {v.get('codec_name')} (want h264)")
     if a.get("codec_name") != "aac":
