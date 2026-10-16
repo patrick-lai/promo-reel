@@ -39,7 +39,7 @@ If neither connector is available, fall back to `promo gen detect` and the grok 
 
 ## Pick the model
 
-Read `promo gen plan --json` first. Use its guard-prefixed prompt. Target: 4 s, 16:9, ≥720p (register upscales to 1080p).
+Read `promo gen plan --json` first. Use its `prompt` as-is (a plain plate is guard-prefixed; a staged shot is already the full skeleton). Skip any row whose `blocked` is set until `promo gen approve` clears it. Target: 4 s, 16:9, ≥720p (register upscales to 1080p).
 
 Name the model in the tool call. Do not let the connector auto-pick a flagship (Veo, Seedance Pro, Aleph) for a texture plate.
 
