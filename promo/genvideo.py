@@ -2,12 +2,18 @@
 
 Architecture: the CALLING AGENT generates, promo-reel specifies, ingests and gates.
     promo gen plan [-p promo.yaml] [--json]    the open requests (`broll:` entries whose file is missing): id, kind, target path, seconds,
-                                               aspect, min size and the full guard-prefixed prompt. Fulfil each with ANY tool you have
-                                               (your own image/video tool, `grok -p`, `codex exec`, a human) and write the file to `out`.
-    promo gen register FILE -p promo.yaml --id ID [--provider P --prompt TEXT --shots 03 04] [--watermark br]
+                                               aspect, min size and the prompt to send. A plain plate gets the guard-prefixed line. A staged
+                                               entry (`stage: character|prop|location|shot`) gets that stage's template; a one-line shot is
+                                               expanded into the shot skeleton. A later stage is `blocked` until every earlier stage is
+                                               registered and approved.
+    promo gen prompt "line" --stage shot --ref identity=hero:a woman in a striped sweater
+                                               print the terse line and the expanded prompt. Calls nothing.
+    promo gen approve ID -p promo.yaml         lock one registered reference. Shots stay blocked until the character, prop and location
+                                               stages they depend on are approved.
+    promo gen register FILE -p promo.yaml --id ID [--provider P --prompt TEXT --shots 03 04] [--watermark br] [--stage character]
                                                ingest a supplied file: probe, optional corner-watermark crop + 1080p upscale (raw kept),
                                                sidecar `.gen.json`, footage-manifest entry with `generated:`; prints the next steps.
-    promo gen detect [--json]                  which built-in runners this box has (grok / codex CLI logins, API keys), as a hint to agents.
+    promo gen detect [--json]                  which built-in runners this box has (grok / codex CLI logins), as a hint to agents.
     promo gen models | spend [--json]          OpenRouter video (Seedance, Grok Imagine): models with prices, and the spend ledger (promo/openrouter.py)
   Optional built-in runner (fallback when the agent has no generation tool of its own; headless one-shot, no auto-approve flags):
     promo gen image|video "prompt" --out F [--provider auto] [--register promo.yaml --id ID]     promo gen plan --run
@@ -59,6 +65,313 @@ REF_ROLES = {
 STORYBOARD = ("This is a STORYBOARD STILL for planning, not final footage: one clean, believable concept frame. If it shows software, draw a plausible generic "
               "app window; no real brand logos, no watermarks, only short legible labels. ")
 
+# A generated spot that has to hold a person, an object or a place across shots. Order is the pipeline: each stage may tag only
+# earlier stages, and nothing in a later stage runs until the earlier ones are registered and approved.
+STAGES = ("character", "prop", "location", "shot")
+_SCOPE_STAGE = {"identity": "character", "product": "prop", "prop": "prop", "geography": "location"}
+SHOT_NEGATIVE = (
+    "no cuts, no jump cuts, no fades, no dissolves, no reset between beats, no beats out of order, "
+    "no lighting inherited from any reference image, no studio backdrop carried in from a reference, "
+    "no extra people, no duplicated characters, no on-screen text, no captions, no subtitles, no watermarks, "
+    "no logos, no user-interface, no beauty filter, no plastic or waxy skin, no style drift"
+)
+
+
+def canonical_scope(name) -> str | None:
+    n = str(name or "").strip().lower()
+    if n == "location":
+        return "geography"
+    return n if n in _SCOPE_STAGE else None
+
+
+def parse_scoped(ref) -> list[dict]:
+    """Scoped tags only: identity, product, prop, geography (location is an alias). Legacy roles stay in `parse_refs`."""
+    items = [ref] if isinstance(ref, str) else list(ref or [])
+    out = []
+    for r in items:
+        if isinstance(r, dict):
+            scope = canonical_scope(r.get("scope"))
+            if not scope:
+                continue
+            out.append(dict(id=str(r.get("id") or "ref"), scope=scope, desc=str(r.get("desc") or r.get("prompt") or "").strip(),
+                            file=r.get("file")))
+            continue
+        if isinstance(r, (tuple, list)) and len(r) >= 2 and canonical_scope(r[0]):
+            out.append(dict(id=str(r[1]), scope=canonical_scope(r[0]), desc=str(r[2]).strip() if len(r) > 2 else "", file=None))
+            continue
+        role, sep, rest = str(r).partition("=")
+        scope = canonical_scope(role) if sep else None
+        if not scope:
+            continue
+        ident, _, desc = rest.partition(":")
+        ident = ident.strip()
+        file = ident if ("/" in ident or ident.lower().endswith((".png", ".jpg", ".jpeg", ".webp"))) else None
+        out.append(dict(id=Path(ident).stem if file else ident, scope=scope, desc=desc.strip(), file=file))
+    return out
+
+
+def bind_refs(refs, descriptions=None, files=None) -> list[dict]:
+    """Fill each tag from the earlier stage's own prompt and, once that file exists, its path."""
+    descriptions, files = descriptions or {}, files or {}
+    bound = []
+    for r in parse_scoped(refs):
+        file = r.get("file") or files.get(r["id"])
+        if file and not Path(str(file)).expanduser().exists():
+            file = None
+        bound.append(dict(id=r["id"], scope=r["scope"], desc=r["desc"] or descriptions.get(r["id"], ""),
+                          file=str(file) if file else None))
+    return bound
+
+
+def _scope_line(scope: str, desc: str, file: str | None) -> str:
+    desc = (desc or "as shown in the reference").strip().rstrip(".")
+    lock = "100% matches the reference."
+    where = f" Reference file: {file}." if file else ""
+    if scope == "identity":
+        return (f"IDENTITY ONLY: {desc}. {lock} Take only the person and the clothes, never the studio lighting. "
+                f"Ignore its backdrop and layout.{where}")
+    if scope == "product":
+        return f"PRODUCT ONLY: {desc}. {lock} Take its shape, finish and colour 100%. Ignore its background.{where}"
+    if scope == "prop":
+        return f"PROP ONLY: {desc}. {lock} Take the object and its materials 100%. Ignore its background and its lighting.{where}"
+    return (f"LOCATION ONLY: {desc}. Geography and materials only. {lock} "
+            f"Do NOT take framing, do NOT take lighting, do NOT take any people from it.{where}")
+
+
+def reference_block(refs: list[dict]) -> str:
+    lines = [f"@{r['id']} — {_scope_line(r['scope'], r.get('desc') or '', r.get('file'))}" for r in refs]
+    tail = ""
+    if any(r["scope"] == "identity" for r in refs):
+        tail = ("\n\nTake from every character reference ONLY the person or the animal and their clothes — "
+                "never the studio lighting and never the backdrop.")
+    return "\n\n".join(lines) + tail
+
+
+def _as_list(v) -> list[str]:
+    if not v:
+        return []
+    if isinstance(v, str):
+        return [v.strip()] if v.strip() else []
+    return [str(x).strip() for x in v if str(x).strip()]
+
+
+def _beat_lines(prompt: str, beats, seconds: float) -> list[str]:
+    if not beats:
+        return [f"0.0–{seconds:g}s — {prompt.strip()}"]
+    out = []
+    for b in beats:
+        if isinstance(b, dict):
+            out.append(f"{b.get('t') or b.get('at')} — {b.get('text') or b.get('do') or ''}".strip())
+        else:
+            out.append(str(b).strip())
+    return [x for x in out if x]
+
+
+def _guard_for(stage, refs, people: bool, guard) -> str:
+    if guard is not None:
+        return GUARDS.get(guard, guard) or ""
+    if stage == "character" or (stage == "shot" and (people or any(r["scope"] == "identity" for r in refs))):
+        return NEG_PEOPLE
+    return NEG
+
+
+def _with_lock(text: str) -> str:
+    if "100% matches the reference" in text:
+        return text
+    return text.rstrip() + "\n\n100% matches the reference."
+
+
+def character_sheet(prompt: str) -> str:
+    """Four-panel identity sheet. The wardrobe is only what `prompt` already says."""
+    return (
+        "A professional photoreal character reference sheet on one image, a collage of EXACTLY FOUR PANELS on a clean seamless "
+        "light grey studio backdrop, soft even editorial lighting, consistent across every panel. THE SAME PERSON IN EVERY PANEL: "
+        "identity locked, identical build, identical clothing, identical proportions. 100% matches the reference.\n\n"
+        f"THE CHARACTER: {prompt.strip()}\n\n"
+        "PANEL 1 — FULL LENGTH, FRONT: framed from the base of the neck down to the feet. The head and face are completely outside the frame.\n"
+        "PANEL 2 — FULL LENGTH, FROM BEHIND: the same crop, head outside the frame.\n"
+        "PANEL 3 — FACE, CLOSE-UP: head and shoulders, straight into the lens.\n"
+        "PANEL 4 — FACE, IN STRICT SIDE PROFILE: head and shoulders.\n\n"
+        "STYLE: photorealistic editorial photography, full-frame camera with a fast prime lens, soft even light, true colour, fine film grain. Neutral, unstylised.\n\n"
+        "NEGATIVE: no fifth panel, no extra panels, no head or face in the two full-length panels, no text, no logos, no captions, "
+        "no watermarks, no beauty filter, no airbrushing, no changing identity between panels, no changing clothing between panels, "
+        "no props beyond what the character description names, no style drift."
+    )
+
+
+def _sentence(prompt: str) -> str:
+    text = (prompt or "").strip()
+    if not text:
+        return ""
+    text = text[0].upper() + text[1:]
+    return text if text[-1] in ".!?" else text + "."
+
+
+def prop_still(prompt: str) -> str:
+    return (
+        "A reference still of one prop or product, square-on, on a seamless light grey backdrop, soft even studio light, sharp. "
+        f"{_sentence(prompt)} 100% matches the reference. Nothing else in the frame.\n\n"
+        "NEGATIVE: no people, no hands unless the description names them, no extra objects, no background scene, no text, no logos, "
+        "no watermarks, no style drift."
+    )
+
+
+def location_still(prompt: str) -> str:
+    return (
+        "A location reference photograph. Geography and materials only. "
+        f"{_sentence(prompt)} 100% matches the reference. Empty of people. Neutral documentary daylight so a later shot can relight it. "
+        "No readable signage.\n\n"
+        "NEGATIVE: no people, no figures, no text, no logos, no watermarks, no stylised grade, no props that are not part of the place, no style drift."
+    )
+
+
+def shot_skeleton(prompt: str, *, seconds: float, aspect: str, refs: list[dict], beats, camera, optics, rules, positive, negative, audio) -> str:
+    """One shot prompt: active references, a timed beat list, optics, camera, hard rules, positive constraints, negative, audio."""
+    beat_lines = _beat_lines(prompt, beats, seconds)
+    order = " ".join(f"{i}. {b}" for i, b in enumerate(beat_lines, 1))
+    hard = _as_list(rules) or [
+        "Only the people named in the active references appear.",
+        "Do not take lighting, backdrop or layout from any reference still.",
+        "Never reset the action, the wardrobe or the geography between beats.",
+    ]
+    pos = [
+        "The order of beats is fixed and must not be swapped.",
+        "Continuity across cuts: never reset. Same people, same clothes, same geography, same lighting direction, continuous action from the first frame to the last.",
+        *_as_list(positive),
+    ]
+    neg = SHOT_NEGATIVE if not _as_list(negative) else SHOT_NEGATIVE + ", " + ", ".join(_as_list(negative))
+    aud = (audio or "").strip() or "NO MUSIC. Real recorded sound only, matched to what is on screen. No dialogue unless the scene context names a line."
+    opt = (optics or "").strip() or "Standard normal lens, zero distortion. The lens never changes during the take."
+    cam = (camera or "").strip() or "One continuous camera. It never cuts and never resets."
+    refs_txt = reference_block(refs) if refs else "None. Describe only what the scene context names."
+    return (
+        f"SCENE CONTEXT\n\n{prompt.strip()}\n\n"
+        f"ACTIVE REFERENCES\n\n{refs_txt}\n\n"
+        f"FORMAT: one continuous take, {seconds:g} seconds, aspect ratio {aspect}. No cuts. Continuity across cuts: never reset. "
+        f"The order of beats is fixed.\n\n"
+        f"THE ACTION — {seconds:g} SECONDS, EVERY BEAT MANDATORY\n\n" + "\n\n".join(beat_lines) + "\n\n"
+        f"OPTICS\n\n{opt}\n\n"
+        f"CAMERA\n\n{cam}\n\n"
+        f"HARD RULES\n\n" + "\n".join(f"- {r}" for r in hard) + "\n\n"
+        f"POSITIVE CONSTRAINTS\n\n" + "\n".join(f"- {p}" for p in pos) + f"\n\nBeat order: {order}\n\n"
+        f"NEGATIVE\n\n{neg}.\n\n"
+        f"AUDIO\n\n{aud}"
+    )
+
+
+def _already_rich(prompt: str) -> bool:
+    folded = prompt.upper()
+    return "ACTIVE REFERENCES" in folded and "NEGATIVE" in folded
+
+
+def compose(prompt: str, *, stage: str | None = None, kind: str = "image", seconds: float = 8, aspect: str = "16:9",
+            people: bool = False, refs=None, beats=None, camera=None, optics=None, rules=None, positive=None,
+            negative=None, audio=None, guard: str | None = None, descriptions: dict | None = None, files: dict | None = None) -> str:
+    """The text a generator should see for one stage. A terse line is expanded; a prompt that already has the skeleton is kept.
+    No stage: the caller's words, unchanged (the plate guard is `prompt_for`'s job)."""
+    if stage not in STAGES:
+        return (prompt or "").strip()
+    scoped = bind_refs(refs, descriptions, files)
+    text = (prompt or "").strip()
+    g = _guard_for(stage, scoped, people, guard)
+    if stage == "shot" and _already_rich(text):
+        body = text if "100% matches the reference" in text or not scoped else text.rstrip() + "\n\n" + reference_block(scoped)
+    elif stage == "character":
+        body = text if "PANEL 1" in text.upper() else character_sheet(text)
+        body = _with_lock(body)
+    elif stage == "prop":
+        body = text if "100% matches the reference" in text else prop_still(text)
+        if scoped:
+            body = "ACTIVE REFERENCES\n\n" + reference_block(scoped) + "\n\n" + body
+    elif stage == "location":
+        body = text if "geography and materials only" in text.lower() else location_still(text)
+        body = _with_lock(body)
+        if scoped:
+            body = "ACTIVE REFERENCES\n\n" + reference_block(scoped) + "\n\n" + body
+    else:
+        body = shot_skeleton(text, seconds=seconds, aspect=aspect, refs=scoped, beats=beats, camera=camera, optics=optics,
+                             rules=rules, positive=positive, negative=negative, audio=audio)
+    if g and g.strip() not in body:
+        return f"{g.rstrip()}\n\n{body}"
+    return body
+
+
+def _manifest(spec) -> dict:
+    from . import footage as FT
+    try:
+        return FT.load(spec)
+    except Exception:
+        return {}
+
+
+def is_approved(man, cid: str) -> bool:
+    c = (man or {}).get(cid) or {}
+    path = c.get("path")
+    if not path or not Path(path).exists():
+        return False
+    g = c.get("generated") or {}
+    return bool(g.get("approved") or c.get("approved"))
+
+
+def _wait(stage: str, entry: dict, man: dict) -> str:
+    cid, got = entry["id"], entry.get("stage")
+    clip = man.get(cid) or {}
+    if clip.get("generated") and not (clip.get("generated") or {}).get("approved"):
+        return f"stage {stage} waits on {got} {cid}: `promo gen approve {cid}`"
+    if clip and not clip.get("generated") and not clip.get("approved"):
+        return f"stage {stage} waits on {got} {cid}: `promo gen approve {cid}`"
+    return f"stage {stage} waits on {got} {cid}: generate it, `promo gen register` it, then `promo gen approve {cid}`"
+
+
+def block_reason(spec, entry, man=None) -> str | None:
+    """Why this staged entry must not be generated yet. Plain plates (no `stage`) are never blocked."""
+    stage = entry.get("stage")
+    if stage not in STAGES:
+        return None
+    if man is None:
+        man = _manifest(spec)
+    idx = STAGES.index(stage)
+    earlier = set(STAGES[:idx])
+    entries = broll_entries(spec)
+    by_id = {b["id"]: b for b in entries}
+    for r in parse_scoped(entry.get("refs")):
+        target = by_id.get(r["id"])
+        if target is None:
+            return f"{entry.get('id')} tags @{r['id']}, which is not a broll id"
+        got = target.get("stage")
+        if got not in earlier:
+            return f"{entry.get('id')} tags @{r['id']} ({got}); a {stage} may only tag earlier stages"
+        if got != _SCOPE_STAGE[r["scope"]]:
+            return f"{entry.get('id')} tags @{r['id']} as {r['scope']}; that id is a {got}"
+    for b in entries:
+        if b.get("stage") in earlier and b["id"] != entry.get("id") and not is_approved(man, b["id"]):
+            return _wait(stage, b, man)
+    return None
+
+
+def approve(spec, cid: str) -> dict:
+    """Lock one registered clip so later stages may consume it. Idempotent."""
+    from . import footage as FT
+    man = FT.load(spec)
+    if cid not in man:
+        raise SystemExit(f"{cid} is not in the footage manifest")
+    clips = FT.load_raw(FT.manifest_path(spec))
+    for c in clips:
+        if c.get("id") != cid:
+            continue
+        if c.get("generated"):
+            c["generated"] = dict(c["generated"], approved=True, approved_at=time.strftime("%Y-%m-%dT%H:%M:%S"))
+        else:
+            c["approved"] = True
+        break
+    FT.save(spec, clips)
+    side = Path(str(man[cid]["path"]) + ".gen.json")
+    if side.is_file():
+        meta = json.loads(side.read_text())
+        meta["approved"] = True
+        side.write_text(json.dumps(meta, indent=1))
+    return dict(id=cid, approved=True)
+
 
 def _file(p):
     return Path(p).expanduser().exists()
@@ -73,16 +386,12 @@ def detect() -> list[dict]:
                     login=_file("~/.grok/auth.json"), how="grok CLI (grok.com login), headless: grok -p <prompt>"))
     out.append(dict(id="codex", kind=["image"], tool=shutil.which("codex"),
                     login=_file("~/.codex/auth.json"), how="codex CLI (ChatGPT login), headless: codex exec <prompt>; image tool, files land in ~/.codex/generated_images"))
-    out.append(dict(id="openai-api", kind=["image", "video"], tool="api" if os.environ.get("OPENAI_API_KEY") else None,
-                    login=bool(os.environ.get("OPENAI_API_KEY")), how="OPENAI_API_KEY (images/videos endpoints); key validity not probed"))
-    out.append(dict(id="xai-api", kind=["image", "video"], tool="api" if os.environ.get("XAI_API_KEY") else None,
-                    login=bool(os.environ.get("XAI_API_KEY")), how="XAI_API_KEY"))
     out.append(dict(id="openrouter", kind=["video"], tool="openrouter" if OR.has_key() else None, login=OR.has_key(),
                     how=f"OPENROUTER_API_KEY: Seedance / Grok Imagine, pay per job (default {OR.DEFAULT_MODEL} {OR.DEFAULT_RES} {OR.DEFAULT_SECONDS} s); `promo gen models` for prices"))
     if os.environ.get("PROMO_GEN_STUB") == "1":
         out.append(dict(id="stub", kind=["image", "video"], tool="stub", login=True, how="PROMO_GEN_STUB=1: a labelled placeholder in a second, no model (UI work, tests)"))
     for p in out:
-        p["available"] = bool(p["tool"] and p["login"]) and p["tool"] != "api"      # openai/xai adapters are not wired yet (key seen, not usable)
+        p["available"] = bool(p["tool"] and p["login"])
         p["verified"] = sorted(state.get(p["id"], {}).get("ok", []))
     return out
 
@@ -138,9 +447,25 @@ def parse_refs(ref) -> list[tuple[str, str]]:
     return out
 
 
+def _tool_wrap(kind: str, body: str, out: Path, seconds: float, aspect: str, first_frame, resolution) -> str:
+    if kind == "video":
+        tool = (f"Use your image_to_video tool on {first_frame}" + (f" with resolution_name {resolution}" if resolution else "")
+                + f" and duration {6 if seconds <= 6 else 10}. ") if first_frame else (
+            f"Generate a {seconds:g} second {aspect} VIDEO{' at ' + resolution if resolution else ''} using your video generation tool. ")
+        return f"{tool}{body} Copy the resulting video file unmodified (no trimming, no re-encoding) to {out} (mp4) and print only that path."
+    return f"Generate one {aspect} IMAGE using your image generation tool. {body} Save the image to {out} (png) and print only that path."
+
+
 def prompt_for(kind: str, prompt: str, out: Path, seconds: float, aspect: str, people: bool = False, ref=None, guard: str | None = None,
-               first_frame=None, resolution: str | None = None) -> str:
-    """`guard`: free text, or a GUARDS name (plate / people / illustrated). `first_frame` is the `keyframe` reference role."""
+               first_frame=None, resolution: str | None = None, stage: str | None = None, beats=None, camera=None, optics=None,
+               rules=None, positive=None, negative=None, audio=None, descriptions=None, files=None) -> str:
+    """`guard`: free text, or a GUARDS name (plate / people / illustrated). `first_frame` is the `keyframe` reference role.
+    `stage` expands a terse line into that stage's template; the plate path (no stage) is unchanged."""
+    if stage in STAGES:
+        body = compose(prompt, stage=stage, kind=kind, seconds=seconds, aspect=aspect, people=people, refs=ref, beats=beats,
+                       camera=camera, optics=optics, rules=rules, positive=positive, negative=negative, audio=audio, guard=guard,
+                       descriptions=descriptions, files=files)
+        return _tool_wrap(kind, body, out, seconds, aspect, first_frame, resolution)
     g = GUARDS.get(guard, guard) if guard is not None else (NEG_PEOPLE if people else NEG)
     base = f"{g}{prompt.strip()} "
     refs = parse_refs(ref)
@@ -164,7 +489,7 @@ def argv_for(provider: dict, text: str) -> list[str]:
         return ["grok", "-p", text]
     if provider["id"] == "codex":
         return ["codex", "exec", "--skip-git-repo-check", "-s", "workspace-write", text]
-    raise SystemExit(f"{provider['id']}: API adapters are not wired yet; use the grok or codex CLI")
+    raise SystemExit(f"{provider['id']}: no headless command; use the grok or codex CLI")
 
 
 def sha256(path) -> str:
@@ -204,7 +529,7 @@ def strip_watermark(path: Path, kind: str, keep: float = 0.9) -> str | None:
 
 
 def register(spec, file: str, cid: str, provider: str = "agent", prompt: str = "", shots=(), kind: str | None = None,
-             watermark: str | None = None, aspect: str = "16:9") -> dict:
+             watermark: str | None = None, aspect: str = "16:9", stage: str | None = None) -> dict:
     """Ingest an asset the calling agent produced: optional watermark crop, sidecar, footage-manifest entry (`generated:`)."""
     from . import footage as FT
     f = Path(file).expanduser().resolve()
@@ -215,10 +540,15 @@ def register(spec, file: str, cid: str, provider: str = "agent", prompt: str = "
     info = probe_media(f)
     meta = dict(generated=True, kind=kind, provider=provider, prompt=prompt, aspect=aspect, watermark_cropped=wm, sha256=sha256(f),
                 at=time.strftime("%Y-%m-%dT%H:%M:%S"), **info)
+    generated = {k: meta[k] for k in ("provider", "kind", "prompt", "at", "sha256")}
+    if stage in STAGES:
+        generated["stage"] = stage
+        generated["approved"] = False
+        meta["stage"] = stage
+        meta["approved"] = False
     Path(str(f) + ".gen.json").write_text(json.dumps(meta, indent=1))
     e = FT.add(spec, str(f), cid, shots=list(shots), capture=f"generated by {provider}", framing="generated plate, text-free, UI-free",
-               dpr=1, notes=f"AI-generated plate: {prompt[:200]}",
-               generated={k: meta[k] for k in ("provider", "kind", "prompt", "at", "sha256")})
+               dpr=1, notes=f"AI-generated plate: {prompt[:200]}", generated=generated)
     meta["registered"] = e["id"]
     meta["next"] = (f"reference it as `source: {cid}` (or `still: {cid}`) on a shot with `ui: false`; `promo check` gates generated-plates; "
                     "a human reviews generated plates before publishing")
@@ -230,28 +560,45 @@ def register_existing(spec, file: str, cid: str, shots=()) -> dict:
     from . import footage as FT
     f = Path(file).resolve()
     meta = json.loads(Path(str(f) + ".gen.json").read_text())
+    generated = {k: meta.get(k) for k in ("provider", "kind", "prompt", "at", "sha256", "bible")}
+    if meta.get("stage") in STAGES:
+        generated["stage"] = meta["stage"]
+        generated["approved"] = bool(meta.get("approved"))
     return FT.add(spec, str(f), cid, shots=list(shots), capture=f"generated by {meta.get('provider')}", framing="generated plate, text-free, UI-free",
-                  dpr=1, notes=f"AI-generated plate: {meta.get('prompt', '')[:200]}",
-                  generated={k: meta.get(k) for k in ("provider", "kind", "prompt", "at", "sha256", "bible")})
+                  dpr=1, notes=f"AI-generated plate: {meta.get('prompt', '')[:200]}", generated=generated)
+
+
+def _shot_fields(b) -> dict:
+    return {k: b.get(k) for k in ("refs", "beats", "camera", "optics", "rules", "positive", "negative", "audio") if b.get(k) is not None}
 
 
 def requests(spec) -> list[dict]:
-    """Open generation requests from `broll:` with everything an agent needs to fulfil them with any tool."""
+    """Open generation requests from `broll:` with everything an agent needs to fulfil them with any tool.
+    Staged entries carry the expanded prompt and `blocked` until earlier stages are approved."""
+    man = _manifest(spec)
+    entries = broll_entries(spec)
+    descriptions = {b["id"]: (b.get("prompt") or "").strip() for b in entries}
+    files = {cid: c["path"] for cid, c in man.items() if c.get("path") and Path(c["path"]).exists()}
     rows = []
-    from . import footage as FT
-    try:
-        man = FT.load(spec)
-    except Exception:
-        man = {}
-    for b in broll_entries(spec):
+    for b in entries:
         kind = b["kind"]
         if b["id"] in man and Path(man[b["id"]]["path"]).exists():       # already registered (possibly generated for another project)
             b["out"] = man[b["id"]]["path"]
-        sec = float(b.get("seconds", 4.0))
+        stage = b.get("stage") if b.get("stage") in STAGES else None
+        sec = float(b.get("seconds", 8.0 if stage == "shot" else 4.0))
         asp = b.get("aspect", "16:9")
+        fields = _shot_fields(b)
+        if stage:
+            prompt = compose(b["prompt"], stage=stage, kind=kind, seconds=sec, aspect=asp, refs=b.get("refs"), beats=b.get("beats"),
+                             camera=b.get("camera"), optics=b.get("optics"), rules=b.get("rules"), positive=b.get("positive"),
+                             negative=b.get("negative"), audio=b.get("audio"), descriptions=descriptions, files=files)
+        else:
+            prompt = prompt_for(kind, b["prompt"], Path(b["out"]), sec, asp)
+        blocked = block_reason(spec, b, man)
         rows.append(dict(id=b["id"], kind=kind, out=b["out"], exists=Path(b["out"]).exists(), seconds=sec if kind == "video" else None,
                          aspect=asp, min_size="1920x1080 preferred (720p is cropped/upscaled on register)",
-                         prompt=prompt_for(kind, b["prompt"], Path(b["out"]), sec, asp), raw_prompt=b["prompt"],
+                         prompt=prompt, raw_prompt=b["prompt"], stage=stage, blocked=blocked, provider=b.get("provider", "auto"),
+                         model=b.get("model"), resolution=b.get("resolution"), **fields,
                          then=f"promo gen register {b['out']} -p <promo.yaml> --id {b['id']} --prompt \"...\" --shots <ids>"))
     return rows
 
@@ -294,13 +641,16 @@ def _stub(text: str, out_p: Path):
 
 def generate_openrouter(prompt: str, out: str, seconds: float = OR.DEFAULT_SECONDS, aspect: str = "16:9", people: bool = False,
                         model: str = OR.DEFAULT_MODEL, resolution: str = OR.DEFAULT_RES, first_frame=None, audio: bool = False,
-                        max_usd: float = OR.DEFAULT_MAX_USD, on_status=None, seed: int | None = None, last_frame=None) -> dict:
-    """A video plate through OpenRouter (Seedance, Grok Imagine): the plate guard leads the prompt; the sidecar keeps the model, the job id and the real cost."""
+                        max_usd: float = OR.DEFAULT_MAX_USD, on_status=None, seed: int | None = None, last_frame=None,
+                        guarded: bool = True) -> dict:
+    """A video plate through OpenRouter (Seedance, Grok Imagine). The plate guard leads a raw prompt; a prompt `compose` already
+    guarded (`guarded=False`) is sent as-is. The sidecar keeps the model, the job id and the real cost."""
     m = OR.model(model)
     if OR.is_edit(m):
         raise OR.OpenRouterError(f"{m['name']} edits a clip; restyle a take instead (promo flow studio restyle)")
     OR.check_params(m, int(seconds), resolution, aspect)
-    body = OR.body_for(m, (NEG_PEOPLE if people else NEG) + prompt.strip(), int(seconds), resolution, aspect, first_frame, audio, seed, last_frame)
+    text = ((NEG_PEOPLE if people else NEG) + prompt.strip()) if guarded else prompt
+    body = OR.body_for(m, text, int(seconds), resolution, aspect, first_frame, audio, seed, last_frame)
     return openrouter_send(body, out, max_usd, on_status, prompt=prompt)
 
 
@@ -321,11 +671,16 @@ def openrouter_send(body: dict, out: str, max_usd: float = OR.DEFAULT_MAX_USD, o
 
 
 def generate(kind: str, prompt: str, out: str, seconds: float = 4.0, aspect: str = "16:9", provider: str = "auto",
-             timeout: int = 900, people: bool = False, ref=None, guard: str | None = None, first_frame=None, resolution: str | None = None, extra=None) -> dict:
-    """`guard` replaces the plate guard (no UI, no text) for callers that need another look, e.g. STORYBOARD stills; their corner logo is the caller's to crop."""
+             timeout: int = 900, people: bool = False, ref=None, guard: str | None = None, first_frame=None, resolution: str | None = None, extra=None,
+             stage: str | None = None, beats=None, camera=None, optics=None, rules=None, positive=None, negative=None, audio=None,
+             descriptions=None, files=None) -> dict:
+    """`guard` replaces the plate guard (no UI, no text) for callers that need another look, e.g. STORYBOARD stills; their corner logo is the caller's to crop.
+    `stage` sends the expanded template instead of the one-line plate prompt."""
     out_p = Path(out).expanduser().resolve()
     out_p.parent.mkdir(parents=True, exist_ok=True)
-    text = prompt_for(kind, prompt, out_p, seconds, aspect, people, ref, guard, first_frame=first_frame, resolution=resolution)
+    text = prompt_for(kind, prompt, out_p, seconds, aspect, people, ref, guard, first_frame=first_frame, resolution=resolution,
+                      stage=stage, beats=beats, camera=camera, optics=optics, rules=rules, positive=positive, negative=negative, audio=audio,
+                      descriptions=descriptions, files=files)
     why = []
     for p in providers(kind, provider):
         err = _run_provider(p, text, out_p, timeout)
@@ -335,9 +690,17 @@ def generate(kind: str, prompt: str, out: str, seconds: float = 4.0, aspect: str
     else:
         raise RuntimeError("; ".join(why))
     wm = strip_watermark(out_p, kind) if p["id"] == "grok" and guard in (None, "plate", "people", "illustrated") else None
-    meta = dict(generated=True, kind=kind, watermark_cropped=wm, provider=p["id"], prompt=prompt, seconds=seconds if kind == "video" else None, aspect=aspect,
-                refs=[dict(role=r, file=f) for r, f in parse_refs(ref)], guard=guard,
-                sha256=sha256(out_p), at=time.strftime("%Y-%m-%dT%H:%M:%S"), **probe_media(out_p), **(extra or {}))
+    sent = compose(prompt, stage=stage, kind=kind, seconds=seconds, aspect=aspect, people=people, refs=ref, beats=beats, camera=camera,
+                   optics=optics, rules=rules, positive=positive, negative=negative, audio=audio, guard=guard, descriptions=descriptions,
+                   files=files) if stage in STAGES else prompt
+    scoped = bind_refs(ref, descriptions, files) if stage in STAGES else []
+    recorded = [dict(id=r["id"], scope=r["scope"], file=r["file"]) for r in scoped] or [dict(role=r, file=f) for r, f in parse_refs(ref)]
+    meta = dict(generated=True, kind=kind, watermark_cropped=wm, provider=p["id"], prompt=sent, seconds=seconds if kind == "video" else None, aspect=aspect,
+                refs=recorded, guard=guard, sha256=sha256(out_p), at=time.strftime("%Y-%m-%dT%H:%M:%S"), **probe_media(out_p), **(extra or {}))
+    if stage in STAGES:
+        meta["stage"] = stage
+        meta["approved"] = False
+        meta["raw_prompt"] = prompt
     Path(str(out_p) + ".gen.json").write_text(json.dumps(meta, indent=1))
     _mark_ok(p["id"], kind)
     return meta
@@ -345,7 +708,8 @@ def generate(kind: str, prompt: str, out: str, seconds: float = 4.0, aspect: str
 
 # ---------------------------------------------------------------- spec side: `broll:` plan + the plate gate
 def broll_entries(spec) -> list[dict]:
-    """promo.yaml `broll: [{id, kind: video|image, prompt, seconds, aspect, provider, out}]` (out defaults to media/gen/<id>.mp4|png);
+    """promo.yaml `broll:` entries (out defaults to media/gen/<id>.mp4|png). A plain plate is `{id, kind, prompt, seconds, aspect}`.
+    A staged spot adds `stage: character|prop|location|shot` and, on a shot, `refs`, `beats`, `camera`, `optics` and the other skeleton fields.
     `provider: openrouter` entries may add `model` and `resolution`."""
     res = []
     for b in spec.raw.get("broll") or []:
@@ -358,17 +722,31 @@ def broll_entries(spec) -> list[dict]:
 
 
 def plan(spec, run=False):
+    """Same rows as `requests`. `--run` generates only entries that are missing and not blocked.
+    A staged run sends the same prompt `requests` shows: earlier stages' own words and files, not a second paraphrase."""
+    queued = requests(spec)
+    descriptions = {q["id"]: q["raw_prompt"] for q in queued}
+    files = {cid: c["path"] for cid, c in _manifest(spec).items() if c.get("path") and Path(c["path"]).exists()}
     rows = []
-    for b in broll_entries(spec):
-        have = Path(b["out"]).exists()
-        row = dict(id=b["id"], kind=b["kind"], out=b["out"], exists=have, ran=False)
-        if not have and run and b.get("provider") == "openrouter":
-            row["meta"] = generate_openrouter(b["prompt"], b["out"], b.get("seconds", OR.DEFAULT_SECONDS), b.get("aspect", "16:9"),
-                                              model=b.get("model", OR.DEFAULT_MODEL), resolution=b.get("resolution", OR.DEFAULT_RES))
-            row["ran"] = True
-        elif not have and run:
-            row["meta"] = generate(b["kind"], b["prompt"], b["out"], b.get("seconds", 4.0), b.get("aspect", "16:9"), b.get("provider", "auto"))
-            row["ran"] = True
+    for q in queued:
+        row = dict(id=q["id"], kind=q["kind"], out=q["out"], exists=q["exists"], ran=False, blocked=q.get("blocked"), stage=q.get("stage"))
+        if run and not q["exists"]:
+            if q.get("blocked"):
+                row["error"] = q["blocked"]
+            elif q.get("provider") == "openrouter":
+                row["meta"] = generate_openrouter(q["prompt"] if q.get("stage") else q["raw_prompt"], q["out"],
+                                                  q.get("seconds") or OR.DEFAULT_SECONDS, q.get("aspect") or "16:9",
+                                                  model=q.get("model") or OR.DEFAULT_MODEL, resolution=q.get("resolution") or OR.DEFAULT_RES,
+                                                  guarded=not q.get("stage"))
+                row["ran"] = True
+                row["exists"] = True
+            else:
+                row["meta"] = generate(q["kind"], q["raw_prompt"], q["out"], q.get("seconds") or 4.0, q.get("aspect") or "16:9",
+                                       q.get("provider") or "auto", stage=q.get("stage"), ref=q.get("refs"), beats=q.get("beats"),
+                                       camera=q.get("camera"), optics=q.get("optics"), rules=q.get("rules"), positive=q.get("positive"),
+                                       negative=q.get("negative"), audio=q.get("audio"), descriptions=descriptions, files=files)
+                row["ran"] = True
+                row["exists"] = True
         rows.append(row)
     return rows
 
@@ -413,6 +791,23 @@ def plate_gate(spec) -> list[tuple[str, str, str]]:
     return out
 
 
+def _stage_args(q, default_stage=None):
+    q.add_argument("--stage", choices=STAGES, default=default_stage, help="character, then prop, then location, then shot")
+    q.add_argument("--ref", action="append", help="SCOPE=ID[:description] (identity|product|prop|geography) or ROLE=FILE (character|style|keyframe|identity|set)")
+    q.add_argument("--beat", action="append", dest="beats", help="one timed beat, repeatable; the order is fixed")
+    q.add_argument("--camera")
+    q.add_argument("--optics")
+    q.add_argument("--rule", action="append", dest="rules")
+    q.add_argument("--positive", action="append")
+    q.add_argument("--negative", action="append", dest="negatives")
+    q.add_argument("--sound", dest="line_audio", help="AUDIO section: real recorded sound")
+
+
+def _stage_kwargs(a) -> dict:
+    return dict(stage=a.stage, refs=a.ref, beats=a.beats, camera=a.camera, optics=a.optics, rules=a.rules,
+                positive=a.positive, negative=a.negatives, audio=a.line_audio)
+
+
 def main(argv):
     import argparse
     ap = argparse.ArgumentParser(prog="promo gen", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -427,12 +822,12 @@ def main(argv):
         q.add_argument("--out", required=True)
         q.add_argument("--provider", default="auto")
         q.add_argument("--aspect", default="16:9")
-        q.add_argument("--ref", action="append", help="reference image, ROLE=FILE with ROLE in character|style|keyframe|identity|set (repeat); a bare FILE = identity, then set")
         q.add_argument("--guard", choices=sorted(GUARDS), help="content guard (default plate; people with --people; illustrated for anime-mv characters)")
         q.add_argument("--people", action="store_true", help="the scene may contain people (live-action film); text/logo/UI-on-screen guard stays on")
         q.add_argument("--register", metavar="PROJECT_YAML", help="add the file to that project's footage manifest (generated: ...)")
         q.add_argument("--id", help="clip id for --register (default: file stem)")
         q.add_argument("--shots", nargs="*", default=[], help="shot ids that will use it")
+        _stage_args(q)
         if k == "video":
             q.add_argument("--seconds", type=float, default=4.0)
             q.add_argument("--model", default=OR.DEFAULT_MODEL, help="openrouter: model id (`promo gen models`)")
@@ -441,7 +836,14 @@ def main(argv):
             q.add_argument("--last-frame", help="image the clip ends on (openrouter models that list last_frame, e.g. Seedance 2.5)")
             q.add_argument("--audio", action="store_true", help="openrouter: let the model make sound too (Seedance only; dearer on some models)")
             q.add_argument("--max-usd", type=float, default=OR.DEFAULT_MAX_USD, help="openrouter: refuse a job priced above this")
-            q.add_argument("--dry-run", action="store_true", help="openrouter: print the request and its price, submit nothing")
+            q.add_argument("--dry-run", action="store_true", help="print the prompt and, for openrouter, its price; submit nothing")
+    pr = sub.add_parser("prompt", help="print a terse line and the expanded prompt; calls nothing")
+    pr.add_argument("prompt")
+    pr.add_argument("--seconds", type=float, default=8)
+    pr.add_argument("--aspect", default="16:9")
+    pr.add_argument("--people", action="store_true")
+    pr.add_argument("--json", action="store_true")
+    _stage_args(pr, default_stage="shot")
     pl = sub.add_parser("plan")
     pl.add_argument("-p", "--project", default="promo.yaml")
     pl.add_argument("--run", action="store_true", help="built-in runner: generate the missing ones with the grok/codex CLI (default: only list the requests)")
@@ -454,7 +856,11 @@ def main(argv):
     rg.add_argument("--prompt", default="")
     rg.add_argument("--shots", nargs="*", default=[])
     rg.add_argument("--kind", choices=["image", "video"])
+    rg.add_argument("--stage", choices=STAGES)
     rg.add_argument("--watermark", choices=["br"], help="crop a bottom-right corner logo (Grok) and upscale to 1080p")
+    ok = sub.add_parser("approve", help="lock a registered reference so later stages may use it")
+    ok.add_argument("id")
+    ok.add_argument("-p", "--project", default="promo.yaml")
     a = ap.parse_args(argv)
     if a.cmd == "detect":
         ps = detect()
@@ -476,36 +882,56 @@ def main(argv):
         sp = OR.spend()
         print(json.dumps(sp, indent=1) if a.json else f"OpenRouter today ${sp['today']:.2f} of ${OR.daily_cap():.2f} cap, all time ${sp['total']:.2f}, {len(sp['jobs'])} jobs")
         return 0
+    if a.cmd == "prompt":
+        after = compose(a.prompt, kind="video", seconds=a.seconds, aspect=a.aspect, people=a.people, **_stage_kwargs(a))
+        if a.json:
+            print(json.dumps(dict(before=a.prompt, after=after), indent=1))
+        else:
+            print("BEFORE\n" + a.prompt + "\n\nAFTER\n" + after)
+        return 0
+    if a.cmd == "video" and getattr(a, "dry_run", False) and a.provider != "openrouter":
+        after = compose(a.prompt, kind="video", seconds=a.seconds, aspect=a.aspect, people=a.people, guard=a.guard, **_stage_kwargs(a)) if a.stage else prompt_for(
+            "video", a.prompt, Path(a.out), a.seconds, a.aspect, a.people, a.ref, a.guard, first_frame=a.first_frame)
+        print("BEFORE\n" + a.prompt + "\n\nAFTER\n" + after)
+        return 0
     if a.cmd == "video" and a.provider == "openrouter":
         try:
+            fields = _stage_kwargs(a)
+            composed = compose(a.prompt, kind="video", seconds=a.seconds, aspect=a.aspect, people=a.people, guard=a.guard, **fields) if a.stage else None
             if a.dry_run:
                 m = OR.model(a.model)
                 OR.check_params(m, int(a.seconds), a.res, a.aspect)
-                body = OR.body_for(m, NEG + a.prompt, a.seconds, a.res, a.aspect, a.first_frame, a.audio, last_frame=a.last_frame)
-                print(json.dumps(dict(request=body, estimate_usd=OR.price_of(m, body)), indent=1))
+                text = composed if composed is not None else NEG + a.prompt
+                body = OR.body_for(m, text, a.seconds, a.res, a.aspect, a.first_frame, a.audio, last_frame=a.last_frame)
+                print(json.dumps(dict(before=a.prompt, after=text, request=body, estimate_usd=OR.price_of(m, body)), indent=1))
                 return 0
-            meta = generate_openrouter(a.prompt, a.out, int(a.seconds), a.aspect, a.people, a.model, a.res, a.first_frame, a.audio, a.max_usd,
-                                       on_status=lambda s, j: print(f"  {s} ({j})", file=sys.stderr), last_frame=a.last_frame)
+            meta = generate_openrouter(composed or a.prompt, a.out, int(a.seconds), a.aspect, a.people, a.model, a.res, a.first_frame, a.audio, a.max_usd,
+                                       on_status=lambda s, j: print(f"  {s} ({j})", file=sys.stderr), last_frame=a.last_frame, guarded=composed is None)
         except OR.OpenRouterError as e:
             raise SystemExit(f"promo gen: {e}") from None
     elif a.cmd == "video":
         meta = generate(a.cmd, a.prompt, a.out, a.seconds, a.aspect, a.provider, people=a.people, ref=a.ref, first_frame=a.first_frame,
-                        resolution=a.res if a.res != OR.DEFAULT_RES else None, guard=a.guard)
+                        resolution=a.res if a.res != OR.DEFAULT_RES else None, guard=a.guard, beats=a.beats, camera=a.camera, optics=a.optics,
+                        rules=a.rules, positive=a.positive, negative=a.negatives, audio=a.line_audio, stage=a.stage)
     elif a.cmd == "image":
-        meta = generate(a.cmd, a.prompt, a.out, 4.0, a.aspect, a.provider, people=a.people, ref=a.ref, guard=a.guard)
+        meta = generate(a.cmd, a.prompt, a.out, 4.0, a.aspect, a.provider, people=a.people, ref=a.ref, guard=a.guard, beats=a.beats,
+                        camera=a.camera, optics=a.optics, rules=a.rules, positive=a.positive, negative=a.negatives, audio=a.line_audio, stage=a.stage)
     if a.cmd in ("image", "video"):
         if a.register:
             from . import footage as FT
             from .spec import load_spec as _ls
+            generated = {k: meta[k] for k in ("provider", "kind", "prompt", "at", "sha256", "stage", "approved") if k in meta}
             e = FT.add(_ls(a.register), a.out, a.id or Path(a.out).stem, shots=a.shots, capture=f"promo gen {a.cmd} ({meta['provider']})",
-                       framing="generated plate, text-free, UI-free", dpr=1, notes=f"AI-generated: {a.prompt[:200]}",
-                       generated={k: meta[k] for k in ("provider", "kind", "prompt", "at", "sha256") if k in meta})
+                       framing="generated plate, text-free, UI-free", dpr=1, notes=f"AI-generated: {a.prompt[:200]}", generated=generated)
             meta["registered"] = e["id"]
         print(json.dumps(meta, indent=1))
         return 0
     from .spec import load_spec
+    if a.cmd == "approve":
+        print(json.dumps(approve(load_spec(a.project), a.id), indent=1))
+        return 0
     if a.cmd == "register":
-        print(json.dumps(register(load_spec(a.project), a.file, a.id, a.provider, a.prompt, a.shots, a.kind, a.watermark), indent=1))
+        print(json.dumps(register(load_spec(a.project), a.file, a.id, a.provider, a.prompt, a.shots, a.kind, a.watermark, stage=a.stage), indent=1))
         return 0
     if a.cmd == "plan" and not a.run:
         rq = requests(load_spec(a.project))
@@ -513,8 +939,17 @@ def main(argv):
             print(json.dumps(rq, indent=1))
         else:
             for r in rq:
-                print(f"{r['id']:<20} {r['kind']:<6} {'exists' if r['exists'] else 'OPEN  '}  {r['out']}\n    prompt: {r['prompt']}")
+                state = "exists" if r["exists"] else ("BLOCKED" if r.get("blocked") else "OPEN")
+                print(f"{r['id']:<20} {r['kind']:<6} {state:<8} {r['out']}")
+                if r.get("blocked"):
+                    print(f"    {r['blocked']}")
+                if r.get("stage"):
+                    print(f"    before: {r['raw_prompt']}")
+                print(f"    prompt: {r['prompt']}")
         return 0
     for r in plan(load_spec(a.project), a.run):
-        print(f"{r['id']:<20} {r['kind']:<6} {'exists' if r['exists'] else ('generated' if r['ran'] else 'MISSING')}  {r['out']}")
+        state = "exists" if r["exists"] and not r["ran"] else ("generated" if r["ran"] else ("BLOCKED" if r.get("blocked") else "MISSING"))
+        print(f"{r['id']:<20} {r['kind']:<6} {state:<10} {r['out']}")
+        if r.get("error"):
+            print(f"    {r['error']}")
     return 0

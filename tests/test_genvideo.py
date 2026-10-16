@@ -11,9 +11,9 @@ from promo import genvideo as G
 def test_detect_shape(monkeypatch, tmp_path):
     monkeypatch.setattr(G, "HOME", tmp_path)
     monkeypatch.setenv("OPENAI_API_KEY", "x")
+    monkeypatch.setenv("XAI_API_KEY", "x")
     ps = {p["id"]: p for p in G.detect()}
-    assert set(ps) == {"grok", "codex", "openai-api", "xai-api", "openrouter"}
-    assert not ps["openai-api"]["available"]          # API adapter not wired: never auto-picked
+    assert set(ps) == {"grok", "codex", "openrouter"}   # unwired API adapters are not advertised
 
 
 def test_pick_prefers_verified_and_fails_cleanly(monkeypatch):
@@ -149,3 +149,125 @@ def test_own_likeness_only_in_avatar_overlay_with_consent(monkeypatch):
     assert gate({"me": plate, "real": real}, avatar)["generated-plates"] == "FAIL"
     as_picture = shot("02", {"source": "me", "ui": False})
     assert gate({"me": me}, as_picture)["generated-plates"] == "FAIL"
+
+
+def _staged(tmp_path):
+    import yaml
+    from promo.spec import load_spec
+    proj = tmp_path / "p"
+    (proj / "footage").mkdir(parents=True)
+    raw = dict(project=dict(name="t"), output=dict(name="t", resolution=1080, fps=30, duration=1), footage="footage/manifest.yaml",
+               broll=[
+                   dict(id="hero", stage="character", kind="image", prompt="a woman in a striped sweater"),
+                   dict(id="phone", stage="prop", kind="image", prompt="a burgundy phone with a triple camera"),
+                   dict(id="plaza", stage="location", kind="image", prompt="a pale granite plaza with a glass cube"),
+                   dict(id="walk", stage="shot", kind="video", seconds=8, aspect="4:3",
+                        prompt="she strides across the empty plaza, phone in both hands, never breaking pace",
+                        refs=[dict(id="hero", scope="identity"), dict(id="phone", scope="product"), dict(id="plaza", scope="geography")],
+                        beats=["0.0-1.6s tight on the phone, already walking", "1.6-8.0s full figure, pace unchanged"],
+                        camera="one backward dolly at chest height", optics="47 degree field of view, normal lens, zero distortion"),
+               ], shots=[])
+    (proj / "promo.yaml").write_text(yaml.safe_dump(raw, sort_keys=False))
+    return load_spec(str(proj / "promo.yaml"))
+
+
+def test_terse_shot_expands_into_one_skeleton():
+    raw = "she strides across the empty plaza, phone in both hands, never breaking pace"
+    after = G.compose(raw, stage="shot", seconds=8, aspect="4:3", refs=[
+        "identity=hero:early-20s woman in a striped sweater",
+        "product=phone:a burgundy phone with a triple camera",
+        "geography=plaza:a pale granite plaza with a glass cube",
+    ], beats=["0.0-1.6s tight on the phone, already walking", "1.6-8.0s full figure, pace unchanged"],
+                      camera="one backward dolly at chest height", optics="47 degree field of view, normal lens, zero distortion",
+                      audio="footsteps on stone, no music")
+    assert after.index("SCENE CONTEXT") < after.index(raw)
+    assert "IDENTITY ONLY" in after and "100% matches the reference" in after
+    assert "never the studio lighting" in after and "Geography and materials only" in after and "PRODUCT ONLY" in after
+    assert "never reset" in after.lower() and "order of beats is fixed" in after.lower()
+    assert after.index("0.0-1.6s") < after.index("1.6-8.0s")
+    assert "footsteps on stone, no music" in after
+    for header in ("ACTIVE REFERENCES", "THE ACTION", "OPTICS", "CAMERA", "HARD RULES", "POSITIVE CONSTRAINTS", "NEGATIVE", "AUDIO"):
+        assert header in after
+    assert after.count("ACTIVE REFERENCES") == 1
+    assert "loafers" not in after and "pearl" not in after
+
+
+def test_terse_character_sheet_does_not_invent_a_wardrobe():
+    after = G.compose("a woman in a striped sweater", stage="character")
+    assert "EXACTLY FOUR PANELS" in after and "PANEL 1" in after and "striped sweater" in after
+    assert "100% matches the reference" in after and "no text" in after.lower()
+    assert "loafers" not in after and "navy" not in after and "pearl" not in after
+
+
+def test_a_rich_shot_prompt_is_not_wrapped_again():
+    rich = ("SCENE CONTEXT\n\nhello\n\nACTIVE REFERENCES\n\n@a — IDENTITY ONLY: a woman. 100% matches the reference.\n\n"
+            "NEGATIVE\n\nnone")
+    after = G.compose(rich, stage="shot", refs=["identity=a:a woman"])
+    assert after.count("ACTIVE REFERENCES") == 1
+    assert after.count("100% matches the reference") == 1
+
+
+def test_plain_plate_is_not_expanded_into_the_skeleton():
+    t = G.prompt_for("video", "night sky", Path("/x/a.mp4"), 4, "16:9")
+    assert "ACTIVE REFERENCES" not in t and "SCENE CONTEXT" not in t and "no text" in t.lower()
+
+
+def test_stages_lock_references_before_a_shot_and_keep_their_words(tmp_path, monkeypatch):
+    from promo import footage as FT
+    from promo import needs
+    spec = _staged(tmp_path)
+    rq = {r["id"]: r for r in G.requests(spec)}
+    assert rq["hero"]["blocked"] is None and rq["walk"]["blocked"]
+    assert "approve hero" in rq["walk"]["blocked"]
+    prompt = rq["walk"]["prompt"]
+    assert rq["walk"]["raw_prompt"] in prompt
+    assert "a woman in a striped sweater" in prompt and "a burgundy phone with a triple camera" in prompt
+    assert "a pale granite plaza with a glass cube" in prompt
+    walk_need = next(x for x in needs.collect(spec) if x["id"] == "walk")
+    assert "approve hero" in walk_need["then"] and "--id walk" not in walk_need["then"]
+    phone = next(b for b in G.broll_entries(spec) if b["id"] == "phone")
+    phone["refs"] = [dict(id="plaza", scope="geography")]
+    assert "earlier stages" in G.block_reason(spec, phone, {})
+    walk = next(b for b in G.broll_entries(spec) if b["id"] == "walk")
+    tagged = dict(walk, refs=[dict(id="hero", scope="product")])
+    assert "as product" in G.block_reason(spec, tagged, {})
+
+    made = []
+
+    def fake_generate(kind, prompt, out, *a, **k):
+        made.append(k.get("stage"))
+        Path(out).parent.mkdir(parents=True, exist_ok=True)
+        Path(out).write_bytes(b"x")
+        return dict(provider="stub", kind=kind)
+
+    monkeypatch.setattr(G, "generate", fake_generate)
+    ran = {r["id"]: r for r in G.plan(spec, run=True)}
+    assert ran["hero"]["ran"] is True and made == ["character"]
+    assert ran["phone"]["ran"] is False and "approve hero" in ran["phone"]["error"]
+    assert ran["plaza"]["ran"] is False and ran["walk"]["ran"] is False and ran["walk"]["error"]
+
+    monkeypatch.setattr(FT, "probe_media", lambda p: ("64x36", None))
+    monkeypatch.setattr(G, "probe_media", lambda p: {"width": 64, "height": 36})
+    for cid, stage in (("hero", "character"), ("phone", "prop"), ("plaza", "location")):
+        src = tmp_path / f"{cid}.png"
+        src.write_bytes(b"png")
+        G.register(spec, str(src), cid, prompt=rq[cid]["raw_prompt"], kind="image", stage=stage)
+        assert G.block_reason(spec, walk)  # still short of an approval
+        G.approve(spec, cid)
+    assert G.block_reason(spec, walk) is None
+    ready = {r["id"]: r for r in G.requests(spec)}["walk"]["prompt"]
+    assert "Reference file:" in ready and "100% matches the reference" in ready
+
+    sent = {}
+
+    def fake_shot(kind, prompt, out, *a, **k):
+        sent["prompt"] = prompt
+        sent.update(k)
+        Path(out).parent.mkdir(parents=True, exist_ok=True)
+        Path(out).write_bytes(b"x")
+        return dict(provider="stub", kind=kind)
+
+    monkeypatch.setattr(G, "generate", fake_shot)
+    assert {r["id"]: r["ran"] for r in G.plan(spec, run=True)}["walk"] is True
+    assert sent["descriptions"]["hero"] == "a woman in a striped sweater"
+    assert sent["files"]["hero"].endswith("hero.png")
