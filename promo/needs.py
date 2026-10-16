@@ -7,7 +7,8 @@ Request kinds (each has `then`: the exact command that ingests the answer):
   capture    a clip the spec references that is missing/stale in the footage manifest, or a `placeholder:` slate. REAL app footage only:
              the agent records it (capture/README.md); ask the app owner only for access it lacks; register with `promo footage add`.
   generate   a `broll:` entry whose file does not exist: a text-free, UI-free plate (background, transition, texture). Make it with any
-             image/video tool, then `promo gen register`. Never for app UI.
+             image/video tool, then `promo gen register`. Never for app UI. A staged entry with `blocked` set is waiting on an earlier
+             stage (character, then prop, then location, then shot): `promo gen approve` that stage before generating the later one.
   review     (HUMAN) generated plates in use; nothing to produce, someone must look.
 """
 from __future__ import annotations
@@ -32,9 +33,10 @@ def collect(spec) -> list[dict]:
                               then=f"register the take, then replace `placeholder:` on shot {s.id} with `source: <clip id>` + `cam:`"))
     for q in G.requests(spec):
         if not q["exists"]:
+            blocked = q.get("blocked")
             needs.append(dict(kind="generate", id=q["id"], media=q["kind"], out=q["out"], seconds=q["seconds"], aspect=q["aspect"],
-                              prompt=q["prompt"], why="broll entry has no file",
-                              then=f"promo -p {p} gen register {q['out']} --id {q['id']} --prompt '<raw prompt>' --provider <who made it> --shots <ids>"))
+                              prompt=q["raw_prompt"] if blocked else q["prompt"], blocked=blocked, why=blocked or "broll entry has no file",
+                              then=(blocked or f"promo -p {p} gen register {q['out']} --id {q['id']} --prompt '<raw prompt>' --provider <who made it> --shots <ids>")))
     man = FT.load(spec) if FT.os.path.exists(FT.manifest_path(spec)) else {}
     gen = sorted(cid for cid, c in man.items() if c.get("generated") and FT.referenced(spec).get(cid))
     if gen:
