@@ -8,7 +8,4 @@ stages: [previz]
 hints: [previz, wireframe]
 companions: []
 copy:
-  max_words_per_line: 6
-  max_lines: 2
-  tagline: false
-  voiceover: false
+  inherit: primary  # placeholder text must match the primary skill's real line lengths

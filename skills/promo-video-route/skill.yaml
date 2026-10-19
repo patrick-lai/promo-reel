@@ -9,7 +9,4 @@ stages: [plates]
 hints: [plate, plates, b-roll, background, higgsfield, runway]
 companions: []
 copy:
-  max_words_per_line: 6
-  max_lines: 2
-  tagline: false
-  voiceover: false
+  max_lines: 0  # plates never carry copy
