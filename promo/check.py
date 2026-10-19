@@ -264,6 +264,11 @@ def run(spec):
     for gate, status, msg in GC.run(spec, ctx):
         rep.add(gate, status, msg)
 
+    # 7c". shared gates for every project, any skill (promo/shared_check.py): muted-hook, end-card-hold
+    from . import shared_check as SC
+    for gate, status, msg in SC.gates(spec, ctx):
+        rep.add(gate, status, msg)
+
     # 7c'. opt-in platform gates (`platform: x` in promo.yaml, promo/x_check.py)
     from . import x_check as XC
     for gate, status, msg in XC.gates(spec, ctx):

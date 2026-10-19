@@ -1,0 +1,12 @@
+id: promo-video-route
+description: Pick a video model for non-UI plates (backgrounds, transitions, scenery).
+skill_md: skills/promo-video-route/SKILL.md
+primary: false
+aspect: "16:9"
+outputs: [render]
+inputs: []
+stages: [plates]
+hints: [plate, plates, b-roll, background, higgsfield, runway]
+companions: []
+copy:
+  max_lines: 0  # plates never carry copy

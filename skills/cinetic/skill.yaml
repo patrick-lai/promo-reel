@@ -1,0 +1,17 @@
+id: cinetic
+description: Motion-design launch films from code (Remotion or GSAP) with a code-made soundtrack.
+skill_md: skills/cinetic/SKILL.md
+primary: true
+formats: [launch-film]
+aspect: "16:9"
+outputs: [storyboard, styleframes, render, audio]
+inputs: [code-snippets]
+stages: [sound]
+hints: [motion, motion-design, launch, film, kinetic-type, gsap, remotion, animated]
+companions: []
+copy:
+  max_words_per_line: 5
+  max_lines: 2
+  tagline: false
+  voiceover: false
+  end_card_min_s: 2.0

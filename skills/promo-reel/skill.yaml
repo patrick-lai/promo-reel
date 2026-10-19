@@ -1,0 +1,15 @@
+id: promo-reel
+description: Product promo from real app footage (hero, feature clip, deep dive, talk show).
+skill_md: skills/promo-reel/SKILL.md
+primary: true
+formats: [hero, feature-clip, deep-dive, talk-show]
+aspect: "16:9"
+outputs: [storyboard, render]
+inputs: [real-footage]
+hints: [hero, feature, footage, product, demo, reel, deep-dive, talk-show, hosts, podcast]
+companions: []
+copy:
+  max_words_per_line: 6
+  max_lines: 2
+  tagline: true
+  voiceover: true

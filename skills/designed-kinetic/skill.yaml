@@ -1,0 +1,15 @@
+id: designed-kinetic
+description: Kinetic dialect of the designed plan (promo/designed.py) for punchy feature clips and heroes.
+skill_md: skills/promo-reel/SKILL.md
+primary: true
+formats: [feature-clip, hero]
+aspect: "16:9"
+outputs: [storyboard, render]
+inputs: [real-footage]
+hints: [kinetic, punchy, energetic, bold, smash]
+companions: []
+copy:
+  max_words_per_line: 4
+  max_lines: 2
+  tagline: true
+  voiceover: false

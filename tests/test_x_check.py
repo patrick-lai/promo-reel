@@ -31,7 +31,7 @@ def test_x_gates_pass_and_fail(tmp_path, monkeypatch):
     s = NS(id="01")
     _stub(monkeypatch, [(s, "HOOK", 0.4, [100, 400, 900, 500])])
     r = {g: st for g, st, _m in X.gates(_spec(str(tmp_path)), None)}
-    assert r == {"x-muted-hook": "PASS", "x-safe-zone": "PASS", "x-export": "PASS", "x-soft-open": "PASS"}
+    assert r == {"x-safe-zone": "PASS", "x-export": "PASS", "x-soft-open": "PASS"}
     _stub(monkeypatch, [(s, "LATE", 2.5, [100, 900, 900, 1000])], h=720, lufs=-18.0, windows=(-20.0, -19.0))
     r = {g: st for g, st, _m in X.gates(_spec(str(tmp_path), scale=1), None)}
-    assert r == {"x-muted-hook": "WARN", "x-safe-zone": "FAIL", "x-export": "FAIL", "x-soft-open": "WARN"}
+    assert r == {"x-safe-zone": "FAIL", "x-export": "FAIL", "x-soft-open": "WARN"}

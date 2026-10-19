@@ -1,0 +1,11 @@
+id: previz
+description: Wireframe previz of camera, panels, type and timing before keyframes and renders.
+skill_md: docs/previz.md
+primary: false
+aspect: "16:9"
+outputs: [storyboard]
+stages: [previz]
+hints: [previz, wireframe]
+companions: []
+copy:
+  inherit: primary  # placeholder text must match the primary skill's real line lengths

@@ -1,6 +1,6 @@
 """Opt-in X (Twitter) platform gates for `promo check`, enabled by `platform: x` in promo.yaml.
 
-x-muted-hook  text on screen within the first 2.0 s (autoplay is muted)       WARN
+(the muted hook is the shared `muted-hook` gate in promo/shared_check.py)
 x-safe-zone   no caption / text box in the bottom 15 % of the frame (player UI) FAIL
 x-export      16:9/1:1/4:5, H.264 + AAC, 1080p for a final; -14 LUFS +/-1.5           FAIL format / WARN loudness
 x-soft-open   music 0-2 s at least 3 LU under 2-4 s (fade-in under the hook)    WARN
@@ -45,9 +45,6 @@ def gates(spec, ctx):
         return []
     from .check import ffprobe_json, loudness
     rows, items = [], list(_boxes(spec, ctx))
-    first = min((t for _s, _t, t, _b in items), default=None)
-    rows.append(("x-muted-hook", "PASS" if first is not None and first <= HOOK_S + 1e-9 else "WARN",
-                 f"first on-screen text at {first:.2f}s (X autoplays muted: want <= {HOOK_S}s)" if first is not None else "no on-screen text at all"))
     lim = (1 - SAFE_BOTTOM) * 1080
     bad = [f"shot {s.id} {t!r} bottom {b[3]:.0f}px > {lim:.0f}px" for s, t, _t0, b in items if b and b[3] > lim + 0.5]
     rows.append(("x-safe-zone", "FAIL" if bad else "PASS", "; ".join(bad) if bad else f"all text above the bottom {SAFE_BOTTOM:.0%} (X player controls)"))
