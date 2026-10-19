@@ -6,6 +6,7 @@ Spec form (all optional keys have defaults):
     {type: pill,    text: "macOS alpha", style: light, cy: 690, size: 32, ...}       # free pill, not zone-checked
     {type: text,    text: "Product name", cy: 500, size: 132, weight: Bold, color: [255,255,255], shadow: true, ...}
     {type: scrim,   ellipse: [0.18, 0.22, 0.82, 0.70], fill: 120, blur: 120, color: [8, 10, 16]}  # always on unless `t` given
+    {type: highlight, box: [x0, y0, x1, y1], width: 4, radius: 16, color: [143, 184, 255]}  # source fractions; follows cam
     {type: avatar,  source: <clip id>, t_in: 0.0, anchor: bottom-right, h: 0.26, margin: 0.03, radius: 0.16, label: "AI voice + face"}
 `t` is shot-local output seconds (default [0, 99]); fades are `alpha_at` params. Role "caption" overlays are QA-checked
 (safe zone + minimum hold); other roles are not.
@@ -120,6 +121,40 @@ class Scrim(Overlay):
         return super().apply(out, t)
 
 
+class Highlight(Overlay):
+    """One rounded stroke around a source-space box. Follows the shot camera (`tracks`).
+    A guide mark only: it does not replace, cover, or repaint UI pixels."""
+    role = "highlight"
+    tracks = True
+
+    def build(self):
+        return Image.new("RGBA", (self.ctx.OW, self.ctx.OH), (0, 0, 0, 0))
+
+    def apply(self, out, t):
+        a = self.alpha(t)
+        box = self.cfg.get("box")
+        if a <= 0 or not box or len(box) != 4:
+            return out
+        cx, cy, w = getattr(self, "cam", (0.5, 0.5, 1.0))
+        OW, OH = self.ctx.OW, self.ctx.OH
+        bw, bh = w * OW, w * OH
+        x0 = min(max(cx * OW - bw / 2, 0), OW - bw)
+        y0 = min(max(cy * OH - bh / 2, 0), OH - bh)
+        rect = [(box[0] * OW - x0) / bw * OW, (box[1] * OH - y0) / bh * OH,
+                (box[2] * OW - x0) / bw * OW, (box[3] * OH - y0) / bh * OH]
+        if rect[2] < 0 or rect[0] > OW or rect[3] < 0 or rect[1] > OH:
+            return out
+        color = tuple(self.cfg.get("color", (143, 184, 255)))
+        width = max(2, int(round(float(self.cfg.get("width", 4)) * self.ctx.K)))
+        radius = max(4, int(round(float(self.cfg.get("radius", 16)) * self.ctx.K)))
+        layer = Image.new("RGBA", (OW, OH), (0, 0, 0, 0))
+        glow = Image.new("RGBA", (OW, OH), (0, 0, 0, 0))
+        ImageDraw.Draw(glow).rounded_rectangle(rect, radius=radius, outline=color + (160,), width=width * 3)
+        layer.alpha_composite(glow.filter(ImageFilter.GaussianBlur(max(1, int(5 * self.ctx.K)))))
+        ImageDraw.Draw(layer).rounded_rectangle(rect, radius=radius, outline=color + (235,), width=width)
+        return R.over(out, layer, a)
+
+
 class Avatar(Overlay):
     """A generated talking head of the person themself in a rounded corner card (team rule 1, own-likeness carve-out).
     The clip plays from its `t_in` at shot time 0, so consecutive shots pass on the same take by advancing t_in.
@@ -170,7 +205,7 @@ class Avatar(Overlay):
         return R.over(out, layer, a)
 
 
-TYPES = {"caption": Caption, "pill": Pill, "text": Text, "scrim": Scrim, "avatar": Avatar}
+TYPES = {"caption": Caption, "pill": Pill, "text": Text, "scrim": Scrim, "highlight": Highlight, "avatar": Avatar}
 
 
 def build_overlays(ctx, cfgs, motion=None):

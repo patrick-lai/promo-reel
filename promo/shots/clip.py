@@ -61,6 +61,9 @@ class Clip(ShotType):
             cx, cy, w = seg_fns[k](t - a) if seg_fns[k] else cam_fn(t)
             if punch:
                 w *= 1 - punch * M.burst(t)
+            for o in overlays:
+                if getattr(o, "tracks", False):
+                    o.cam = (cx, cy, w)
             out = R.frame_cam(ctx, im, cx, cy, w).convert("RGBA")
             return apply_overlays(overlays, out, t)
 

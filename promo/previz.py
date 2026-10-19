@@ -274,6 +274,16 @@ def _apply_shot(shot, ov):
     return s
 
 
+def _anchor_types(shot, A):
+    """Re-seat `anchor: panel-bl` type under its panel's bottom-left corner after panel edits (the tag is grouped with the panel)."""
+    pb = next((p for p in shot.get("panels") or [] if p.get("kind") != "fullscreen"), None)
+    for c in shot.get("type") or []:
+        if c.get("anchor") == "panel-bl" and pb:
+            tw, th = type_size(c, A)
+            c["cx"] = round(_num(pb.get("cx"), 0.5) - _num(pb.get("w"), 0.5) / 2 + tw / 2, 4)
+            c["cy"] = round(_num(pb.get("cy"), 0.5) + panel_hw(pb, A) / 2 + _num(c.get("gap"), 0.012) + th / 2, 4)
+
+
 def effective(scene):
     """The scene as it plays: generated shots with `overrides` applied, durations cascaded into start times. Does not mutate `scene`."""
     ov = scene.get("overrides") or {}
@@ -281,6 +291,7 @@ def effective(scene):
     shots, shift = [], 0.0
     for s in scene["shots"]:
         e = _apply_shot(s, (ov.get("shots") or {}).get(s["id"]))
+        _anchor_types(e, aspect_of(scene))
         e["t0"] = round(_num(s["t0"]) + shift, 4)
         shift += _num(e["dur"]) - _num(s["dur"])
         shots.append(e)
@@ -463,7 +474,12 @@ def from_designed(raw, plan, pd):
                       cx=_num(item.get("cx"), 0.5), anim=item.get("anim") or cd.get("anim"))
             if cd.get("brackets") or item.get("brackets"):
                 ty["brackets"] = True
-            if item.get("cy") is not None:
+            if item.get("anchor") == "panel-bl" and panels and panels[0]["kind"] != "fullscreen":
+                pb = panels[0]                    # grouped with the panel: under its bottom-left corner, as cinema draws it
+                tw, th = type_size(ty, A)
+                ty.update(anchor="panel-bl", gap=_num(item.get("gap"), 0.012), cx=round(pb["cx"] - pb["w"] / 2 + tw / 2, 4),
+                          cy=round(pb["cy"] + panel_hw(pb, A) / 2 + _num(item.get("gap"), 0.012) + th / 2, 4))
+            elif item.get("cy") is not None:
                 ty["cy"] = _num(item["cy"])
             elif panels and panels[0]["kind"] != "fullscreen":
                 pb = panels[0]

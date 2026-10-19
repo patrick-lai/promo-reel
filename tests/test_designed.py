@@ -385,3 +385,40 @@ if __name__ == "__main__":
                 print("FAIL", k)
                 traceback.print_exc()
     raise SystemExit(1 if fails else 0)
+
+
+def test_panel_tag_sits_under_the_panels_bottom_left_and_scales_with_it():
+    spec = _spec()
+    tag = dict(text="Worktrees", at=0.0, dur=2.0, size_pct=6.0, anim="snap", anchor="panel-bl", gap=0.012, cx=0.9, cy=0.1)
+    cfg = dict(look=dict(panel=dict(w=0.62, cy=0.42)), source="x", kinetic_copy=[tag])
+    shot = _shot(cfg)
+    pb = CN.panel_box_of(spec, shot, (1920, 1080))
+    kb = CN.kinetic_box(spec, shot, tag, (1920, 1080))
+    assert abs(kb[0] - pb[0]) < 1.0, "left-aligned to the panel's left edge (cx / cy ignored)"
+    assert abs(kb[1] - (pb[3] + 0.012 * 1080)) < 1.0, "a small gap below the panel, never on the UI"
+    # designed-clear still sees it as off the panel
+    assert not (kb[0] < pb[2] and pb[0] < kb[2] and kb[1] < pb[3] and pb[1] < kb[3])
+    # an unanchored line keeps its own cx
+    free = dict(tag, anchor=None)
+    assert abs((CN.kinetic_box(spec, shot, free, (1920, 1080))[0] + CN.kinetic_box(spec, shot, free, (1920, 1080))[2]) / 2 - 0.9 * 1920) < 1.0
+
+
+def test_designed_apply_keeps_the_provenance_footage_add_recorded():
+    from promo import footage as FT
+    info, _ = plan_of()
+    designed.apply_shots(info["path"])
+    spec = load_spec(info["path"], plugins=False)
+    st = info["plan"]["designed"]["stills"][0]
+    FT.add(spec, st["path"], st["id"], commit="abc123", capture="demo=promo 60fps", demo=True, notes="real take")
+    designed.apply_shots(info["path"])
+    c = FT.load(load_spec(info["path"], plugins=False))[st["id"]]
+    assert c["demo"] is True and c["app_commit"] == "abc123" and c["capture"] == "demo=promo 60fps" and c["notes"] == "real take"
+
+
+def test_previz_reseats_a_panel_tag_when_the_panel_moves():
+    from promo import previz as PV
+    shot = dict(panels=[dict(id="ui-1", kind="floating", cx=0.5, cy=0.45, w=0.6, aspect=16 / 9)],
+                type=[dict(id="t", text="Worktrees", size_pct=6.0, anchor="panel-bl", gap=0.012, cx=0.5, cy=0.5)])
+    PV._anchor_types(shot, 16 / 9)
+    tw, th = PV.type_size(shot["type"][0], 16 / 9)
+    assert abs(shot["type"][0]["cx"] - tw / 2 - 0.2) < 1e-3 and abs(shot["type"][0]["cy"] - th / 2 - (0.75 + 0.012)) < 1e-3
