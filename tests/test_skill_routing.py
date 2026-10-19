@@ -1,0 +1,45 @@
+"""Skill routing: the golden eval passes, and --write persists then reuses skills:."""
+import os
+import subprocess
+import sys
+
+import yaml
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+from promo import cli  # noqa: E402
+
+
+def test_eval_all_pass():
+    script = os.path.join(ROOT, "scripts", "eval_skill_routing.py")
+    proc = subprocess.run([sys.executable, script], cwd=ROOT, capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    lines = [ln for ln in proc.stdout.splitlines() if ln.strip()]
+    assert len(lines) == 6
+    assert all(len(ln.split("|")) == 4 and ln.endswith("|PASS") for ln in lines)
+
+
+def test_write_persists_then_reuses(tmp_path):
+    dest = tmp_path / "proj"
+    dest.mkdir()
+    path = dest / "promo.yaml"
+    path.write_text(yaml.safe_dump(
+        {"project": {"name": "proj"}, "output": {"name": "proj", "resolution": 1080}},
+        sort_keys=False), encoding="utf-8")
+    prompt = "A launch film in Remotion with kinetic type"
+    assert cli.main(["skills", "route", prompt, "--format", "launch-film",
+                     "--project", str(dest), "--write"]) == 0
+    saved = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert saved["project"]["name"] == "proj"
+    assert saved["output"]["resolution"] == 1080
+    assert saved["skills"]["primary"] == "cinetic"
+    assert saved["skills"]["helpers"] == ["previz"]
+    before = path.read_text(encoding="utf-8")
+    assert cli.main(["skills", "route", "A calm craft clip, minimal and quiet",
+                     "--format", "feature-clip", "--platform", "x", "--length", "15",
+                     "--project", str(dest), "--write"]) == 0
+    assert path.read_text(encoding="utf-8") == before
+    again = yaml.safe_load(before)
+    assert again["skills"]["primary"] == "cinetic"
+    assert again["skills"]["helpers"] == ["previz"]

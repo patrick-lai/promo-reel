@@ -1,0 +1,28 @@
+# Golden briefs for skill routing. scripts/eval_skill_routing.py prints brief|picked|expected|PASS/FAIL.
+cases:
+  - id: hero
+    prompt: "A 60 second product hero from real footage of the app"
+    format: hero
+    expected: promo-reel
+  - id: feature-clip
+    prompt: "A feature clip of the review flow from real product footage"
+    format: feature-clip
+    expected: promo-reel
+  - id: deep-dive
+    prompt: "A deep dive on how the reviewer works, from the real product"
+    format: deep-dive
+    expected: promo-reel
+  - id: launch-film
+    prompt: "A launch film with motion design and kinetic type, made in Remotion"
+    format: launch-film
+    expected: cinetic
+  - id: talk-show
+    prompt: "A talk show with two hosts walking through the product"
+    format: talk-show
+    expected: promo-reel
+  - id: x-craft-clip
+    prompt: "A calm craft clip, minimal and quiet"
+    format: feature-clip
+    platform: x
+    length: 15
+    expected: designed-ethereal

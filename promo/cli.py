@@ -831,6 +831,7 @@ def build_parser():
     sub.add_parser("rubric", help="PASS/FAIL of a scores file (or a review .md) against evals/rubric.yaml (see `promo rubric -h`)")
     sub.add_parser("live2d", help="Live2D host renderer: fetch | models | add | stills | render | lag (see `promo live2d -h`)")
     sub.add_parser("podcast", help="podcast / VTuber show from a script: script | plan | set | preview | status (see `promo podcast -h`)")
+    sub.add_parser("skills", help="skill catalog: list | route a prompt to a primary skill and helpers (see `promo skills -h`)")
     return ap
 
 
@@ -1054,6 +1055,9 @@ def main(argv=None):
     if argv[:1] == ["podcast"]:         # `promo podcast script|plan|set|preview|status -p PROJECT`: a podcast / VTuber show from a script
         from . import podcast_cli
         return podcast_cli.main(argv[1:])
+    if argv[:1] == ["skills"]:          # `promo skills list|route`: catalog only; SKILL.md is loaded after a skill is chosen
+        from . import skill_routing
+        return skill_routing.main(argv[1:])
     if argv[:1] == ["rubric"]:          # `promo rubric <scores>`: PASS/FAIL against evals/rubric.yaml (no promo.yaml needed)
         from . import rubric
         return rubric.main(argv[1:])

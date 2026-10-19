@@ -13,6 +13,8 @@ A thin prompt still becomes a full project before any spec. `promo plan <name> -
 
 **Style skill: Cinetic** (`skills/cinetic/`, MIT, vendored; see its VENDORED.md): use for motion-design and launch films built from code (Remotion or HTML+GSAP, code-generated sound). Any app UI in them still comes from real captures (rule 1), and `promo check` still runs on the output.
 
+Skills (`promo skills route`) change the look, never the checks: `promo check` always runs (real UI, licences, text size, yuv420p, X aspect). Cinetic is for motion and launch films built from code; app UI still comes from real captures.
+
 ## 0. Team rules (non-negotiable)
 1. **Real footage only.** Every UI frame comes from a real screen recording of the product (a real run, or the product's built-in demo mode, labelled internally as demo). No mock-ups, no AI-generated UI, no generative video of the product.
    **Carve-out (Patrick, 5 Oct 2026):** AI-generated *non-UI plates* (backgrounds, transitions, scenery, macro textures; no text, logos, screens or anything that reads as the product) are allowed via `promo gen`. Video plates go through this ACP agent's Higgsfield or Runway connectors (`skills/promo-video-route/SKILL.md`), or Seedance on the person's own OpenRouter key (`promo gen video --provider openrouter`, the Stage's Studio tab; priced and capped before each job, run under `commissionctl secret exec OPENROUTER_API_KEY`); grok / codex CLIs remain the headless fallback. They sit only on shots marked `ui: false`, carry `generated:` in the footage manifest, are flagged for human review by `promo check` (`generated-plates` FAIL on a UI shot, `generated-review` WARN), and are never described in captions as the product.
