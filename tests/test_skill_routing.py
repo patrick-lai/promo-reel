@@ -62,3 +62,12 @@ def test_illustration_avatar_adds_mesh_avatar_helper_only():
     vtuber = route("A vtuber podcast with two Live2D avatars and an anime illustration style", format="talk-show")
     assert vtuber["primary"] == "promo-reel"
     assert "mesh-avatar" not in vtuber["helpers"]
+
+
+def test_procedural_background_adds_framefields_plates_helper_only():
+    asked = route("A 30 second launch film over a procedural background, aurora background behind the cards", format="hero")
+    assert asked["primary"] == "promo-reel"
+    assert "framefields-plates" in asked["helpers"]
+    plain = route("A 60 second product hero with a dark background behind the real app footage", format="hero")
+    assert plain["primary"] == "promo-reel"
+    assert "framefields-plates" not in plain["helpers"]

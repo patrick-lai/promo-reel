@@ -1,0 +1,14 @@
+id: framefields-plates
+description: Procedural UI-free plates (aurora, smoke, particles, light) rendered from code with framefields, as a helper.
+skill_md: skills/framefields-plates/SKILL.md
+primary: false
+aspect: "16:9"
+outputs: [render]
+inputs: []
+stages: [plates]
+hints: [framefields-plates]
+# helper only, and phrases rather than words so a brief that just mentions a background keeps its own route
+triggers: [framefields, procedural plate, procedural plates, procedural background, procedural backgrounds, aurora background, particle background, particles background, smoke background, shader background, deterministic plate, deterministic background]
+companions: []
+copy:
+  max_lines: 0  # plates never carry copy
