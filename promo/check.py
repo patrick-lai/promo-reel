@@ -277,6 +277,26 @@ def run(spec):
     rep.add("caption-hold", "FAIL" if hf else ("WARN" if hw else "PASS"), "; ".join(hf + hw) if (hf or hw) else f"all captions >= {hold_min}s")
     rep.add("caption-zone", "FAIL" if zones else "PASS", "; ".join(zones) if zones else "all caption pills inside the safe zone")
 
+    # 6b. dissolves at the cuts (blended by promo/assemble.py): the style allows them, and no text sits in a window, where it would
+    # double up with the held frame and lose part of its hold
+    from .spec import SpecError, cuts
+    try:
+        cl = cuts(spec)
+    except SpecError:
+        cl = []                                     # the timeline gate above already FAILs it with the reason
+    if cl:
+        allowed = ((spec.style or {}).get("transitions") or {}).get("allowed") or ["cut"]
+        bad = [] if "dissolve" in allowed else [f"cut_in dissolve on shots {', '.join(c['shot'] for c in cl)} but style.transitions.allowed is {allowed}"]
+        warn = []
+        for c in cl:
+            i = next(k for k, s in enumerate(spec.shots) if s.id == c["shot"])
+            a, b = spec.shots[i - 1], spec.shots[i]
+            for s, w0, w1 in ((a, a.dur - c["a"] / spec.fps, a.dur), (b, 0.0, c["b"] / spec.fps)):
+                warn += [f"shot {s.id} {x['role']} {x['text']!r} is on screen during the dissolve into {c['shot']}"
+                         for x in get_type(s.type).captions(ctx, s) if x["t0"] < w1 - 1e-9 and min(x["t1"], s.dur) > w0 + 1e-9]
+        rep.add("cut-in", "FAIL" if bad else "WARN" if warn else "PASS", "; ".join(bad + warn) or
+                f"{len(cl)} dissolve{'s' if len(cl) > 1 else ''} ({', '.join(c['shot'] for c in cl)}), no text inside a window")
+
     # 7b. style-preset gates (anime-opening: bar cuts, holds, band, UI-clear cards, fx at cuts, claims, markers ...)
     from . import genvideo
     for g, st_, msg in genvideo.plate_gate(spec):

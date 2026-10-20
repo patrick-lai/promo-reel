@@ -14,7 +14,7 @@ import subprocess
 import sys
 import tempfile
 
-from PIL import Image, ImageDraw, ImageEnhance
+from PIL import Image, ImageColor, ImageDraw, ImageEnhance
 
 WHICH = (("a", "start"), ("b", "middle"), ("c", "end"))
 THUMB_W = 480
@@ -75,7 +75,11 @@ def _post(shot, im, t):
         k = min(k, t / float(f["in"]))
     if f.get("out"):
         k = min(k, (shot.dur - t) / float(f["out"]))
-    return ImageEnhance.Brightness(im).enhance(max(0.0, k)) if k < 1 else im
+    if k >= 1:
+        return im
+    if f.get("color"):
+        return Image.blend(Image.new("RGB", im.size, ImageColor.getrgb(str(f["color"]))[:3]), im, max(0.0, k))
+    return ImageEnhance.Brightness(im).enhance(max(0.0, k))
 
 
 class Stills:

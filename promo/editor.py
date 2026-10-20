@@ -717,6 +717,7 @@ def apply_ops(raw, ops, B, bpb=4):
             cut = round(k * B, 6)
             t = copy.deepcopy(s)
             t["id"] = nid
+            t.pop("cut_in", None)            # the second half runs on from the first: no dissolve inside one take
             _set_beats(s, b0, b0 + k)
             _set_beats(t, b0 + k, b1)
             if "source" in t:

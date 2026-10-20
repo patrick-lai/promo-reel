@@ -954,6 +954,7 @@
         const nid = String(s.id) + [..."bcdefghijklmnopqrstuvwxyz"].find((c) => !ids.has(String(s.id) + c));
         const cut = n6(k * B), t = clone(s);
         t.id = nid;
+        delete t.cut_in;                       // the second half runs on from the first: no dissolve inside one take
         setBeats(s, b0, b0 + k); setBeats(t, b0 + k, b1);
         if ("source" in t) t.t_in = n6(Math.round((+(s.t_in || 0) + cut * +(s.speed || 1)) * 1000) / 1000);
         for (const [key, field] of [["overlays", "t"], ["sfx", "at"]]) if (key in s) {

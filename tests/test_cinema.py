@@ -528,7 +528,7 @@ def test_style_cinematic_story_preset_is_registered_with_rules():
     for k in ("description", "pacing", "typography", "transitions", "checks", "qa", "look"):
         assert k in p, k
     assert p["pacing"]["min_shot_s"] == 0.8 and p["pacing"]["ui_min_hold_s"] == 2.5 and p["pacing"]["cut_rate"]["thirds"] == [0.3, 0.6, 0.3]
-    assert p["transitions"]["allowed"] == ["cut", "fade"] and "flash" not in p["transitions"]["allowed"]
+    assert p["transitions"]["allowed"] == ["cut", "fade", "dissolve"] and "flash" not in p["transitions"]["allowed"]
     assert p["look"]["protect_ui"] is True and p["look"]["backdrop"] == "dof"
     assert {"ui-protect", "ui-hold", "no-fx", "copy-clear", "cut-curve"} <= set(p["checks"])
     st = styles.resolve(dict(style=dict(preset="cinematic-story", look=dict(grain=False, panel=dict(w=0.7)))))

@@ -126,7 +126,7 @@ PRESETS = {
         look=_grade.DEFAULT_LOOK,
         caption=dict(cx=960, cy=905, size=32, max_w=608, zone=dict(x0=656, x1=1264, y0=860, y1=950)),   # unused (no pills); engine contract
         typography=dict(serif_fonts=SERIF_FONTS, color=[244, 236, 224]),
-        transitions=dict(allowed=["cut", "fade"]),        # fade_in / fade_out from / to black; no flashes, no speed lines
+        transitions=dict(allowed=["cut", "fade", "dissolve"]),   # fade_in / fade_out from / to black, cut_in: dissolve; no flashes, no speed lines
         checks=["shot-hold", "ui-hold", "ui-hold-short", "no-fx", "cinema-keys", "ui-protect", "copy-hold", "copy-clear", "copy-size", "claims",
                 "cut-curve", "slow-camera", "fades", "serif-font", "screen-quad", "screen-ui"],
         qa=dict(min_caption_hold=2.0, beat_subdivision=1),
@@ -136,7 +136,7 @@ PRESETS = {
         pacing=dict(snap="beat", min_shot_s=4.0, min_caption_hold_s=2.5),
         caption=dict(cx=520, cy=960, size=34, max_w=900, zone=dict(x0=64, x1=1000, y0=900, y1=1020)),
         typography=dict(font=INTER, weight="SemiBold"),
-        transitions=dict(allowed=["cut"]),          # dissolves: not rendered by the engine yet
+        transitions=dict(allowed=["cut"]),          # no cut_in dissolve: it would blend the hosts (drawn in every shot) with a held frame
         checks=["caption-hold", "caption-zone", "beat-grid", "shot-hold", "no-fx"],
         qa=dict(min_caption_hold=2.5, beat_subdivision=1),
     ),

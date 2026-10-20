@@ -2,6 +2,11 @@
 
 Frame counts of every segment are asserted against the timeline before concat. Per-shot EDL entries are written by
 `promo shot` next to each segment (segs/<id>.edl.json) and merged here into build/<WxH>/edl.json and out/EDL.md.
+
+Dissolves (`cut_in: dissolve` or `{kind: dissolve, dur: S}` on the shot after the cut) are blended here, in the one delivery
+encode, so every segment keeps its frames, the cut stays on the beat and no shot re-renders. The window is centred on the cut:
+the outgoing side blends towards the next shot's first frame, the incoming side from the last frame before the cut (the
+segments have no handles to run on). Allowed per style in `transitions.allowed`; promo check gates it (`cut-in`).
 """
 from __future__ import annotations
 
@@ -9,7 +14,34 @@ import json
 import os
 import subprocess
 
+import numpy as np
+
 from .mix import master_path
+from .spec import cuts
+
+
+def dissolve(frames, cut_list, size):
+    """The film's yuv420p frames (bytes of `size`, in order) with every dissolve window blended. Linear in Y'CbCr, the same mix as in
+    R'G'B'. Weights run (j + 1) / (n + 1) across the n-frame window, so neither end repeats a source frame."""
+    before, into = {}, {}
+    for c in cut_list:
+        n = c["a"] + c["b"]
+        for j in range(c["a"]):
+            before[c["frame"] - c["a"] + j] = (j + 1) / (n + 1)
+        for j in range(c["b"]):
+            into[c["frame"] + j] = (c["a"] + j + 1) / (n + 1)
+    mix = lambda x, y, p: np.rint(np.frombuffer(x, np.uint8) * (1 - p) + np.frombuffer(y, np.uint8) * p).astype(np.uint8).tobytes()
+    waiting, held, prev = [], None, None
+    for i, f in enumerate(frames):
+        assert len(f) == size, (i, len(f), size)
+        if i in before:
+            waiting.append((f, before[i]))         # blended once the next shot's first frame arrives
+        else:
+            if waiting:
+                yield from (mix(x, f, p) for x, p in waiting)
+                waiting, held = [], prev
+            yield mix(held, f, into[i]) if i in into else f
+        prev = f
 
 
 def count_frames(path):
@@ -23,17 +55,21 @@ def edl_json_path(spec):
 
 def build_edl(spec):
     edl = {}
+    into = {c["shot"]: c["a"] + c["b"] for c in cuts(spec)}
     for s in spec.shots:
         p = os.path.join(spec.segs_dir, f"{s.id}.edl.json")
         e = json.load(open(p)) if os.path.exists(p) else {}
         edl[s.id] = dict(shot=s.id, beats=[s.b0, s.b1], t0=round(s.t0, 3), t1=round(s.t1, 3), frames=s.n, type=s.type, **e)
+        if s.id in into:
+            edl[s.id]["dissolve_in_frames"] = into[s.id]
     with open(edl_json_path(spec), "w") as f:
         json.dump(edl, f, indent=1)
     os.makedirs(spec.out, exist_ok=True)
     rows = ["| # | Time (s) | Frames | Type | Source | In-out | Move | Caption |", "|---|---|---|---|---|---|---|---|"]
     for s in spec.shots:
         e = edl[s.id]
-        rows.append(f"| {s.id} | {s.t0:.2f}-{s.t1:.2f} | {s.n} | {s.type} | {e.get('src', '')} | {e.get('inout', '')} | {e.get('move', '')} | {e.get('caption', '')} |")
+        typ = s.type + (f" (dissolve in, {into[s.id]} frames)" if s.id in into else "")
+        rows.append(f"| {s.id} | {s.t0:.2f}-{s.t1:.2f} | {s.n} | {typ} | {e.get('src', '')} | {e.get('inout', '')} | {e.get('move', '')} | {e.get('caption', '')} |")
     with open(os.path.join(spec.out, "EDL.md"), "w") as f:
         f.write(f"# {spec.title}: EDL ({spec.timeline.beats} beats at {spec.timeline.bpm} BPM, {spec.total_frames()} frames @ {spec.fps} fps)\n\n" + "\n".join(rows) + "\n")
     return edl
@@ -71,11 +107,17 @@ def watermark_png(spec, path, text=WATERMARK):
 DELIVERY_CRF = 23          # the masters people watch and drafts are cloned from: ~15x smaller than the crf 16 segments, no visible loss
 
 
-def final_video(spec, vid, watermark=False):
-    """The delivered picture: the stream-copied segments encoded ONCE (H.264, `output.crf`, default 23), with the TEST watermark
-    (`watermark`: a `test_only` asset is in the mix) and `output.fade_out` in the same pass. The crf 16 segments stay the editing source."""
+def final_video(spec, vid, watermark=False, cut_list=()):
+    """The delivered picture: the stream-copied segments encoded ONCE (H.264, `output.crf`, default 23), with the dissolves (`cut_list`),
+    the TEST watermark (`watermark`: a `test_only` asset is in the mix) and `output.fade_out` in the same pass. The crf 16 segments stay
+    the editing source. With dissolves the frames pass through Python by index: concatenated segments drift off N/fps timestamps."""
     out_cfg = spec.raw.get("output") or {}
     inputs, chain, label = ["-i", vid], [], "[0:v]"
+    if cut_list:
+        size = spec.OW * spec.OH * 3 // 2
+        inputs =["-f", "rawvideo", "-pix_fmt", "yuv420p", "-s", f"{spec.OW}x{spec.OH}", "-r", str(spec.fps), "-i", "-"]
+        chain.append("[0:v]setparams=range=tv:colorspace=bt709[raw]")      # the segments' tags, so nothing converts the pixels
+        label = "[raw]"
     if watermark:
         png = watermark_png(spec, os.path.join(spec.segs_dir, "watermark.png"))
         m = int(24 * spec.OW / 1920)
@@ -85,9 +127,23 @@ def final_video(spec, vid, watermark=False):
     fade = fade_out_filter(spec.duration, out_cfg.get("fade_out"))
     chain.append(f"{label}{fade or 'null'}[v]")
     out = os.path.join(spec.segs_dir, "video-final.mp4")
-    subprocess.run(["nice", "-n", "10", "ffmpeg", "-v", "error", "-y", "-threads", "2", *inputs, "-filter_complex", ";".join(chain), "-map", "[v]",
-                    "-c:v", "libx264", "-preset", "slow", "-crf", str(out_cfg.get("crf", DELIVERY_CRF)), "-profile:v", "high", "-pix_fmt", "yuv420p",
-                    "-g", "60", "-bf", "2", "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709", out], check=True)
+    cmd = ["nice", "-n", "10", "ffmpeg", "-v", "error", "-y", "-threads", "2", *inputs, "-filter_complex", ";".join(chain), "-map", "[v]",
+           "-c:v", "libx264", "-preset", "slow", "-crf", str(out_cfg.get("crf", DELIVERY_CRF)), "-profile:v", "high", "-pix_fmt", "yuv420p",
+           "-g", "60", "-bf", "2", "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709", out]
+    if not cut_list:
+        subprocess.run(cmd, check=True)
+        return out
+    dec = subprocess.Popen(["ffmpeg", "-v", "error", "-threads", "2", "-i", vid, "-f", "rawvideo", "-pix_fmt", "yuv420p", "-"], stdout=subprocess.PIPE)
+    enc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
+    frames = iter(lambda: dec.stdout.read(size), b"")
+    try:
+        for f in dissolve(frames, cut_list, size):
+            enc.stdin.write(f)
+    finally:
+        enc.stdin.close()
+        dec.stdout.close()
+    if dec.wait() or enc.wait():
+        raise subprocess.CalledProcessError(dec.returncode or enc.returncode, "ffmpeg (dissolve pass)")
     return out
 
 
@@ -105,7 +161,7 @@ def run(spec, force=False):
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-threads", "2", "-f", "concat", "-safe", "0", "-i", lst, "-c", "copy", vid], check=True)
     from . import assets as A
     tests = A.test_only_assets(spec)
-    concat, vid = vid, final_video(spec, vid, watermark=bool(tests))
+    concat, vid = vid, final_video(spec, vid, watermark=bool(tests), cut_list=cuts(spec))
     if tests:
         print(f"watermarked (test-only assets: {', '.join(tests)})", flush=True)
     outs = []

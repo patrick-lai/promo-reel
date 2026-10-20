@@ -152,7 +152,8 @@
     ],
     "type": "card",
     "source": "rec-c",
-    "ui": false
+    "ui": false,
+    "cut_in": "dissolve"
    },
    {
     "id": "04",
@@ -491,6 +492,31 @@
    "name": "split outside the shot is refused",
    "ops": "split 02 at=8",
    "error": "must be inside the shot"
+  },
+  {
+   "name": "split: the dissolve into the shot stays on its first half",
+   "ops": "split 03 at=4",
+   "expect": {
+    "shots": [
+     {},
+     {},
+     {
+      "id": "03",
+      "cut_in": "dissolve"
+     },
+     {
+      "id": "03b"
+     },
+     "..."
+    ]
+   },
+   "absent": [
+    [
+     "shots",
+     3,
+     "cut_in"
+    ]
+   ]
   },
   {
    "name": "delete ripples: later shots move up, the film and its music get shorter, its voice lines go",

@@ -115,6 +115,44 @@ class Shot:
         return self.cfg[key]
 
 
+# ---------------------------------------------------------------- dissolves at the cuts (blended by promo/assemble.py)
+DISSOLVE_S = 0.3
+DISSOLVE_MAX_S = 0.4       # each side is a held frame over moving video; 0.2 s a side also stays inside generic_check.sample_times' pad
+
+
+def dissolve_s(shot):
+    """The dissolve into `shot` in seconds, or None. `hard` / `flash_dip` cut_in values belong to the shot renderer (horizon)."""
+    ci = shot.cfg.get("cut_in")
+    kind = ci.get("kind") if isinstance(ci, dict) else ci
+    if kind in (None, "hard", "flash_dip"):
+        return None
+    if kind != "dissolve":
+        raise SpecError(f"shot {shot.id}: cut_in {kind!r} is not hard or dissolve (flash_dip is the horizon preset's)")
+    return float(ci.get("dur", DISSOLVE_S)) if isinstance(ci, dict) else DISSOLVE_S
+
+
+def cuts(spec):
+    """[{shot, frame, a, b}]: a dissolve into `shot`, whose first frame is `frame`; `a` frames before the cut and `b` from it blend."""
+    out, used = [], {}
+    for prev, s in zip([None] + spec.shots, spec.shots):
+        d = dissolve_s(s)
+        if d is None:
+            continue
+        if prev is None:
+            raise SpecError(f"shot {s.id}: cut_in dissolve on the first shot (there is nothing to dissolve from)")
+        if not 0 < d <= DISSOLVE_MAX_S:
+            raise SpecError(f"shot {s.id}: cut_in dissolve lasts {d:g}s; keep it over 0 and at most {DISSOLVE_MAX_S:g}s")
+        n = max(2, round(d * spec.fps))
+        c = dict(shot=s.id, frame=s.f0, a=n // 2, b=n - n // 2)
+        used[prev.id] = used.get(prev.id, 0) + c["a"]
+        used[s.id] = used.get(s.id, 0) + c["b"]
+        out.append(c)
+    for s in spec.shots:
+        if used.get(s.id, 0) > s.n:
+            raise SpecError(f"shot {s.id}: its dissolves need {used[s.id]} frames but the shot has {s.n}; shorten them or drop one")
+    return out
+
+
 # ---------------------------------------------------------------- spec
 class Spec:
     def __init__(self, path, raw, scale=None):
@@ -249,7 +287,7 @@ class Spec:
         return sum(s.n for s in self.shots)
 
     def validate(self):
-        """Structural checks that do not need media: contiguity, beat range, known shot types, audio `fx` values."""
+        """Structural checks that do not need media: contiguity, beat range, known shot types, audio `fx` values, dissolves, fade colours."""
         errs = []
         shots = self.shots
         if not shots:
@@ -268,6 +306,19 @@ class Spec:
                 audiofx.resolve(fx, where)
             except SpecError as e:
                 errs.append(str(e))
+        try:
+            cuts(self)
+        except SpecError as e:
+            errs.append(str(e))
+        from PIL import ImageColor
+        for s in shots:
+            c = (s.cfg.get("fade") or {}).get("color")
+            if c is None:
+                continue
+            try:
+                ImageColor.getrgb(str(c))
+            except ValueError:
+                errs.append(f"shot {s.id}: fade color {c!r} is not a colour (a name like white or #rrggbb)")
         return errs
 
     # -- subtree hashing (for stamps)

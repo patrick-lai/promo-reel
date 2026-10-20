@@ -19,7 +19,7 @@ import time
 from . import assets as A
 from . import footage as FT
 from .cache import PKG, Stamps, code_hash, digest, file_sig
-from .spec import SpecError, load_spec
+from .spec import SpecError, cuts, load_spec
 
 QA_ONLY_KEYS = ("named", "contact_at", "hold")   # `hold: planned` is a QA mark (long-hold exemption), not a picture change
 AUDIO_KEYS = ("audio",)         # shot `audio:` lines only change the clip-audio / events / mix steps, never the rendered picture
@@ -58,10 +58,14 @@ def post_filter(cfg, dur):
     if g.get("vignette"):
         vf.append(f"vignette=angle={0.15 + 0.9 * float(g['vignette']):.3f}")
     f = cfg.get("fade") or {}
+    color = ""
+    if f.get("color"):              # out to white on one shot + in from white on the next = a dip to white at the cut
+        from PIL import ImageColor
+        color = ":color=0x%02x%02x%02x" % ImageColor.getrgb(str(f["color"]))[:3]
     if f.get("in"):
-        vf.append(f"fade=t=in:st=0:d={float(f['in']):g}")
+        vf.append(f"fade=t=in:st=0:d={float(f['in']):g}{color}")
     if f.get("out"):
-        vf.append(f"fade=t=out:st={max(0.0, dur - float(f['out'])):.3f}:d={float(f['out']):g}")
+        vf.append(f"fade=t=out:st={max(0.0, dur - float(f['out'])):.3f}:d={float(f['out']):g}{color}")
     return ",".join(vf) or None
 
 
@@ -119,6 +123,8 @@ def shot_digest(spec, shot, legacy=False, raw=False):
         code = code + ["motion"]
         extra = extra + [spec.raw.get("motion")]
     cfg = {k: v for k, v in shot.cfg.items() if k not in QA_ONLY_KEYS + AUDIO_KEYS + (() if legacy else EVENT_KEYS) + (POST_KEYS if raw else ())}   # QA / audio / cue keys never force a re-render
+    if cfg.get("cut_in") != "flash_dip":     # a dissolve is blended at assemble; only horizon's flash_dip is drawn into the shot
+        cfg.pop("cut_in", None)
     if not legacy and local_time(shot):
         cfg = {k: v for k, v in cfg.items() if k not in ("beats", "bars")}
         cfg["beats_len"] = round(shot.b1 - shot.b0, 6)
@@ -184,8 +190,8 @@ def plan(spec):
         steps[-1].update(legacy=(lambda s=s: shot_digest(spec, s, legacy=True)), seg=dict(mp4=spec.seg_path(s.id), edl=os.path.join(spec.segs_dir, f"{s.id}.edl.json")))
         if post_filter(s.cfg, s.dur):
             steps[-1].update(raw=(lambda s=s: shot_digest(spec, s, raw=True)), post=(lambda s=s: apply_post(spec, s)))
-    # QA-only shot keys (named boxes, contact_at) and the picture's grade / fade never make the events step stale
-    qa_free_shots = lambda: [{k: v for k, v in sh.items() if k not in QA_ONLY_KEYS + POST_KEYS} if isinstance(sh, dict) else sh
+    # QA-only shot keys (named boxes, contact_at) and the picture's grade / fade / dissolve never make the events step stale
+    qa_free_shots = lambda: [{k: v for k, v in sh.items() if k not in QA_ONLY_KEYS + POST_KEYS + ("cut_in",)} if isinstance(sh, dict) else sh
                              for sh in (spec.raw.get("shots") or [])] if spec.raw.get("shots") is not None else None
     add("events", "events", lambda: digest(qa_free_shots(), spec.raw.get("vo", {}).get("lines"), spec.raw.get("timeline"), spec.fps,
                                           code_hash("events", "spec", "shots/clip", "shot_audio", extra_files=spec.plugins)),
@@ -212,7 +218,7 @@ def plan(spec):
         assemble.run(spec)
     add("assemble", f"assemble_{spec.OW}",
         lambda: digest({s.id: file_sig(spec.seg_path(s.id)) for s in spec.shots}, {m["name"]: file_sig(mix.master_path(spec, m["name"])) for m in spec.masters},
-                       spec.raw.get("mix", {}).get("masters"), spec.duration, spec.name, code_hash("assemble"), A.test_only_assets(spec)),
+                       spec.raw.get("mix", {}).get("masters"), spec.duration, spec.name, code_hash("assemble"), A.test_only_assets(spec), cuts(spec)),
         outs, assemble_run, deps=[f"shot {s.id}" for s in spec.shots] + ["mix"])
     add("contact", f"contact_{spec.OW}", lambda: digest(file_sig(outs[0]), [s.get("contact_at") for s in spec.shots], spec.title, code_hash("contact")),
         [contact.contact_paths(spec)[0]], lambda a: contact.run(spec), deps=["assemble"])
