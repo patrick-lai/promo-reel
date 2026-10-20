@@ -110,6 +110,24 @@ most quiet sits between lines; a per-line bed (the first design) would switch on
 test lines, the quietest frames between lines went from digital silence (−187 dB, Ming) and −88 dB (Gemini) to a steady −64 /
 −66 dB under the loud level; the bed lands on its target within 0.1 dB and a re-mix is sample-identical.
 
+## Listening (`promo listen`, built 21 Oct)
+
+The agent itself cannot take audio in, so listening goes through local detectors plus an audio model on OpenRouter (46 models take
+audio; Gemini 3.8 Flash is about $0.002 a minute). Calibration used 8 defects planted at known times into real takes, plus 3 clean
+takes. This is the tuning set: no held-out set was run, so read these as an upper bound.
+
+| | caught | false alarms on clean takes |
+|---|---|---|
+| Gemini 3.8 Flash alone, low reasoning | 4 / 8 | 0 |
+| Gemini 3.8 Flash alone, high reasoning, 2 runs | 3 / 8 (cut-off, dead air, hiss) | 0 |
+| with the local detectors (what `promo listen --ear` reports) | 5 / 8 (+ clipping, click) | 0 |
+
+Missed by everything: a voice under music 4 dB louder (scored balance 5/5; `vo-masking` catches it in a project) and a swapped word
+("overwrite" for "override", which at low reasoning the model "heard" as the script word; `vo-script`'s whisper catches it).
+`gemini-4-argon` answered garbage through OpenRouter; `gemini-3.1-pro-preview` called good ElevenLabs takes robotic; `openai/gpt-audio`
+returned 400. Blind compare: the same take vs itself +0.2 dB came back "unsure" (no position bias); clean beat robotic and dead-air
+versions in both orders; it preferred a buried voice over a different clean take (balance is its blind spot).
+
 ## Other layers (not built yet; draft tickets)
 
 | Layer | Best now | Notes |

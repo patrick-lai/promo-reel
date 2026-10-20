@@ -126,6 +126,19 @@ score drifts to the flattest read).
 - Old projects stay as they were until someone adds the keys. A new mix code version re-runs only the `mix` step, never the
   voices or the shots.
 
+## Listen to what you made (`promo listen`)
+
+The agent cannot hear audio itself (its file reader takes text, images and PDFs), so `promo listen` is its ears:
+- `promo -p <project> listen` (free): per VO line the numbers and what they prove (clipping, clicks, dead air, cut-offs, hiss) and
+  `build/listen/sheet.png`. Open the sheet: you can see a dead gap, a clipped stretch, a whine in the spectrogram.
+- `--ear` (about $0.002 a line, cached): an audio model (Gemini 3.8 Flash) hears each line without the script. It reports robotic or
+  flat reads, cut-offs, pacing and hiss with times, and what it heard is diffed with the script. `--mix` listens to the lines in the mix.
+- `promo listen compare A B`: a blind A/B in both orders, for "did my fix help?". Keep a change only when it wins in both orders.
+- The loop: listen, fix the worst solid finding (another take, `direction`, `polish`, `duck.band`, move `at`), listen again,
+  compare before and after. Stop at no solid severity >= 2, or after 3 rounds. Then `promo check`, then the person listens.
+- What it misses: the model did not hear clipping, clicks or a buried voice in calibration, and once "heard" the word it expected.
+  The local detectors, `vo-masking` and `vo-script` cover those. Never pick a take for the person on ear scores.
+
 ## Read the gates (`promo check`)
 
 | Gate | Means | Fix |

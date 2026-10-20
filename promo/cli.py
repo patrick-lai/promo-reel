@@ -840,6 +840,7 @@ def build_parser():
     mp.add_argument("specs", nargs="+")
     sub.add_parser("watch", help="watch a video (file/URL): contact sheets, cut stills, transcript, audio + pacing metrics (see `promo watch -h`)")
     sub.add_parser("fx", help="audio character effects (radio, tape, vintage, telephone, vinyl, crackle): list | apply | audition (see `promo fx -h`)")
+    sub.add_parser("listen", help="the agent's ears: numbers + sheet per VO line / file, --ear (audio model), compare A B, calibrate (see `promo listen -h`)")
     sub.add_parser("gen", help="generated images/video for non-UI plates (backgrounds, transitions): detect | image | video | plan (see `promo gen -h`)")
     sub.add_parser("depth", help="depth of a generated still plate and a 2.5D parallax clip from it, on this Mac: map | parallax (see `promo depth -h`)")
     sub.add_parser("brief", help="the locked brief (the user's exact words + references): init | show | check | confirm | conflict (see `promo brief -h`)")
@@ -1064,12 +1065,12 @@ def main_vo_voices(argv):
     return 0
 
 
-def _previz_argv(argv):
-    """(project or None, args after `previz`) when the command is `previz`, allowing the global `-p PROJECT` in front of it; else None."""
+def _previz_argv(argv, cmd="previz"):
+    """(project or None, args after `cmd`) when the command is `cmd`, allowing the global `-p PROJECT` in front of it; else None."""
     i, proj = 0, None
     while i + 1 < len(argv) and argv[i] in ("-p", "--project"):
         proj, i = argv[i + 1], i + 2
-    return (proj, argv[i + 1:]) if i < len(argv) and argv[i] == "previz" else None
+    return (proj, argv[i + 1:]) if i < len(argv) and argv[i] == cmd else None
 
 
 def main(argv=None):
@@ -1136,6 +1137,10 @@ def main(argv=None):
     if pv is not None:                  # `promo previz ...` / `promo -p NAME previz ...`: wireframe directing step (docs/previz.md)
         from . import previz
         return previz.main(pv[1], project=pv[0])
+    ls = _previz_argv(argv, "listen")
+    if ls is not None:                  # `promo listen FILE ...` / `promo -p NAME listen ...`: the agent's ears (promo/listen.py)
+        from . import listen
+        return listen.main(ls[1], project=ls[0])
     if argv[:1] == ["flow"]:            # `promo flow ...`: the gated production flow (scripts -> storyboard -> assets -> drafts -> council rounds)
         from . import flow
         return flow.main(argv[1:])

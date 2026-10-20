@@ -453,3 +453,47 @@ def speech_table(catalogue=None):
             continue
         rows.append(dict(id=m["id"], name=m.get("name", m["id"]), usd_per_1k_chars=usd, voices=m.get("supported_voices") or []))
     return sorted(rows, key=lambda r: r["usd_per_1k_chars"])
+
+
+# ---------------------------------------------------------------- listening: audio in, a critique out (promo/listen.py)
+LISTEN_AUDIO_TOKENS_PER_S = 32   # Gemini bills ~25 audio tokens a second (58 for a 2.3 s clip); priced high, not low
+LISTEN_TEXT_TOKENS = 600         # the rubric and the JSON schema
+
+
+def listen_models(max_age=CACHE_S):
+    """OpenRouter's public catalogue of chat models that take audio in."""
+    return _catalogue("openrouter-listen-models.json", "/models?input_modalities=audio", max_age)
+
+
+def listen_model(mid, catalogue=None):
+    rows = catalogue if catalogue is not None else listen_models()
+    for m in rows:
+        if m["id"] == mid:
+            return m
+    raise OpenRouterError(f"{mid} does not take audio on OpenRouter (e.g. {', '.join(sorted(r['id'] for r in rows if 'gemini' in r['id'])[:4])})")
+
+
+def listen_estimate(m, audio_s, max_tokens):
+    """USD for one listening call before it is sent: the audio, the rubric and a full `max_tokens` answer (reasoning bills as output)."""
+    p = m.get("pricing") or {}
+    audio, prompt, comp = float(p.get("audio") or p.get("prompt") or 0), float(p.get("prompt") or 0), float(p.get("completion") or 0)
+    return round(audio_s * LISTEN_AUDIO_TOKENS_PER_S * audio + LISTEN_TEXT_TOKENS * prompt + max_tokens * comp, 6)
+
+
+def listen(body, price, max_usd):
+    """Send one chat request that carries audio, after `guard`. Returns the reply text; the ledger gets OpenRouter's own `usage.cost`.
+    A reply cut at max_tokens is an error, never half a critique."""
+    if not has_key():
+        raise OpenRouterError("listening needs the board's OpenRouter key: run under `commissionctl secret exec OPENROUTER_API_KEY -- promo listen ...`")
+    guard(price, max_usd)
+    r = _request("POST", "/chat/completions", dict(body, usage={"include": True}), timeout=300)
+    cost = (r.get("usage") or {}).get("cost")
+    _log(dict(at=datetime.datetime.now().astimezone().isoformat(timespec="seconds"), job_id=r.get("id") or f"listen-{time.time_ns()}", kind="listen",
+              model=body["model"], estimate=price, cost=cost, status="completed"))
+    choice = (r.get("choices") or [{}])[0]
+    if choice.get("finish_reason") == "length":
+        raise OpenRouterError(f"{body['model']} ran out of room before finishing its answer (max_tokens {body.get('max_tokens')}); try again or raise it")
+    text = (choice.get("message") or {}).get("content")
+    if not text:
+        raise OpenRouterError(f"{body['model']} sent no answer (finish_reason {choice.get('finish_reason')!r})")
+    return text
