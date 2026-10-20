@@ -1,0 +1,14 @@
+id: promo-audio-route
+description: Pick a voice for VO lines (Kokoro, Gemini 3.8 Flash TTS, Eleven v4, Fish Drama 3), direct it, make takes, read the VO audio gates.
+skill_md: skills/promo-audio-route/SKILL.md
+primary: false
+aspect: "16:9"
+outputs: [render]
+inputs: []
+stages: [vo]
+hints: [voiceover, narration, tts]
+# helper only: added next to any primary when the prompt hits one of these
+triggers: [voice, voices, voiceover, voice-over, narration, narrator, narrated, tts, vo]
+companions: []
+copy:
+  inherit: primary

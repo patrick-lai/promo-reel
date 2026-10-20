@@ -56,17 +56,22 @@ def compute_events(spec):
             else:
                 out = spec.g(shot.id, e["at"])
             add(name, None if out is None else (out + offset if offset else out), db, **extra)
-    vo = {}
-    for line in spec.raw.get("vo", {}).get("lines", []):
-        if line.get("mute"):            # a muted line (the editor's mute) gets no event, so the mix leaves it out like a line without one
-            continue
-        vo[str(line.get("id", line["shot"]))] = spec.g(line["shot"], line.get("at", 0.0))
-    ev = dict(sfx=sorted(sfx, key=lambda e: e["t"]), vo=vo)
+    ev = dict(sfx=sorted(sfx, key=lambda e: e["t"]), vo=vo_times(spec))
     from . import shot_audio
     clips = shot_audio.event_rows(spec)         # per-shot `audio:` lines (clip soundtrack), placed like VO lines
     if clips:
         ev["clips"] = clips
     return ev
+
+
+def vo_times(spec):
+    """{line id: film time the line starts} of every VO line that sounds."""
+    vo = {}
+    for line in spec.raw.get("vo", {}).get("lines", []):
+        if line.get("mute"):            # a muted line (the editor's mute) gets no event, so the mix leaves it out like a line without one
+            continue
+        vo[str(line.get("id", line["shot"]))] = spec.g(line["shot"], line.get("at", 0.0))
+    return vo
 
 
 def events_path(spec):

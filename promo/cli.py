@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import copy
 import json
 import os
 import shlex
@@ -151,11 +152,12 @@ def plan(spec):
                 return digest([[vo.line_id(l), l["shot"], l["text"], l.get("sha256"), l.get("db"), file_sig(vo.line_file(spec, l, man))] for l in cfg["lines"]],
                               code_hash("vo"))
             # only what changes the audio: each line's id/shot/text/tts and its resolved voice (vo block < host < line), not `at` / `asr_aliases`
-            lines = [[vo.line_id(l), l["shot"], l["text"], l.get("tts"), l.get("host"), vo.voice_of(spec, l)] for l in cfg["lines"]]
+            lines = [[vo.line_id(l), l["shot"], l["text"], l.get("tts"), l.get("host"), vo.voice_of(spec, l), vo.takes_of(cfg, l), l.get("take")]
+                     for l in cfg["lines"]]
             cfg = dict({k: v for k, v in cfg.items() if k != "lines"}, lines=lines)
             models = {k: file_sig(A.asset_path(spec, cfg[k], man)) for k in ("model_asset", "voices_asset") if cfg.get(k)}
             return digest(cfg, models, code_hash("vo"))
-        add("vo", "vo", vo_dig, [vo.vo_json_path(spec)], lambda a: vo.run(spec))
+        add("vo", "vo", vo_dig, [vo.vo_json_path(spec)], lambda a: vo.run(spec, max_usd=getattr(a, "max_usd", None)))
     from . import shot_audio
     if shot_audio.has_lines(spec):                  # shot `audio:` lines: clip soundtrack extracted + normalised (cheap; picture untouched)
         add("clip-audio", "clip_audio", lambda: digest(shot_audio.digest_parts(spec), code_hash("shot_audio")),
@@ -780,7 +782,11 @@ def build_parser():
     q.add_argument("ids", nargs="*", help="clip ids (default: every clip the spec uses)")
     q.add_argument("--json", action="store_true")
     add("sfx", "synthesise SFX wavs")
-    add("vo", "render VO lines with Kokoro")
+    vp = add("vo", "render VO lines (kokoro, openrouter, voicestudio, say); `vo takes ID [--pick K]` lists / picks a line's takes; `promo vo voices` lists hosted voices")
+    vp.add_argument("action", nargs="?", choices=("takes",), help="takes: the scored takes of one line (`takes: N` in promo.yaml)")
+    vp.add_argument("line", nargs="?", help="the VO line id (takes)")
+    vp.add_argument("--pick", type=int, help="takes: use take K for this line (writes `take: K` into promo.yaml)")
+    vp.add_argument("--max-usd", type=float, help="most this run may spend on paid (openrouter) takes (default vo.max_usd, else $0.50)")
     add("clip-audio", "extract + normalise the soundtrack of clips used by shot `audio:` lines")
     add("music", "edit the music on the beat grid")
     add("shot", "render shots").add_argument("ids", nargs="+")
@@ -970,6 +976,8 @@ def _dispatch_heavy(spec, args, c, job=None):
         print("preview 540p" + (f": {len(stills)} stills" if stills else ": stills follow the 540p build"))
         for p in stills:
             print(f"  {p}")
+    elif c == "vo" and getattr(args, "action", None) == "takes":
+        return cmd_vo_takes(spec, args)
     elif c in ("sfx", "vo", "clip-audio", "music", "events", "mix", "assemble", "contact"):
         if c == "clip-audio" and not any(st["name"] == c for st in plan(spec)):
             raise SpecError("no shot has an `audio:` key")
@@ -977,6 +985,61 @@ def _dispatch_heavy(spec, args, c, job=None):
             _step(spec, args, "clip-audio")          # the mix places the clip WAVs: make sure they are current
         _step(spec, args, c)
     return None, None, 0
+
+
+def cmd_vo_takes(spec, args):
+    """`promo vo takes ID [--pick K]`: the scored takes of one VO line; --pick writes `take: K` into promo.yaml and re-voices the line."""
+    import yaml
+
+    from . import vo, vo_score
+    from .editor import write_text
+    _step(spec, args, "vo")
+    meta = {m["id"]: m for m in json.load(open(vo.vo_json_path(spec)))["lines"]}
+    if not args.line:
+        raise SpecError(f"which line? `promo vo takes <id>` (have {', '.join(meta)})")
+    if args.line not in meta:
+        raise SpecError(f"no VO line {args.line!r} (have {', '.join(meta)})")
+    m = meta[args.line]
+    if not m.get("takes"):
+        raise SpecError(f"VO line {args.line} has one take; give it `takes: 3` (engine openrouter or voicestudio) and run `promo vo`")
+    if args.pick is not None:
+        if not 1 <= args.pick <= len(m["takes"]):
+            raise SpecError(f"VO line {args.line} has takes 1-{len(m['takes'])}")
+        text = open(spec.path).read()
+        old = yaml.safe_load(text)
+        new = copy.deepcopy(old)
+        for ln in [*new["vo"]["lines"], *spec.raw["vo"]["lines"]]:
+            if vo.line_id(ln) == args.line:
+                ln["take"] = args.pick
+        with open(spec.path + ".tmp", "w") as f:
+            f.write(write_text(text, old, new))
+        os.replace(spec.path + ".tmp", spec.path)
+        _step(spec, args, "vo")
+        m = next(x for x in json.load(open(vo.vo_json_path(spec)))["lines"] if x["id"] == args.line)
+    print(f"VO line {args.line}: {m['text']}")
+    print(vo_score.table(m["takes"], m["take"]))
+    print(f"using take {m['take']} -> {os.path.join(spec.vo_dir, m['file'])}")
+    return None, None, 0
+
+
+def main_vo_voices(argv):
+    from . import openrouter as OR
+    ap = argparse.ArgumentParser(prog="promo vo voices", description="OpenRouter speech models (engine openrouter): price per 1,000 characters and voices")
+    ap.add_argument("--model", help="only this model, with every voice it has")
+    ap.add_argument("--json", action="store_true")
+    a = ap.parse_args(argv)
+    try:
+        rows = OR.speech_table([OR.speech_model(a.model)] if a.model else None)
+    except OR.OpenRouterError as e:
+        raise SystemExit(f"promo vo voices: {e}") from None
+    if a.json:
+        print(json.dumps(rows, indent=1))
+        return 0
+    for r in rows:
+        vs = r["voices"] if a.model else r["voices"][:6]
+        more = "" if a.model or len(r["voices"]) <= 6 else f" ... (+{len(r['voices']) - 6})"
+        print(f"{r['id']:<42} ${r['usd_per_1k_chars']:.4f} / 1k chars   {', '.join(vs) or '(no voice list)'}{more}")
+    return 0
 
 
 def _previz_argv(argv):
@@ -1009,6 +1072,8 @@ def main(argv=None):
     if argv[:1] == ["screen-quad"]:     # `promo screen-quad <plate-clip-id|file> [-p promo.yaml]`: track a plate's monitor quad, print it, draw a debug PNG
         from . import screentrack
         return screentrack.main(argv[1:])
+    if argv[:2] == ["vo", "voices"]:    # `promo vo voices [--model M] [--json]`: hosted voices with prices (public catalogue, no key, no promo.yaml)
+        return main_vo_voices(argv[2:])
     if argv[:1] == ["fx"]:              # `promo fx list|apply|audition`: radio / tape / ... on any audio file (no promo.yaml needed)
         from . import audiofx
         return audiofx.main(argv[1:])

@@ -1,4 +1,5 @@
 """Seedance and Grok Imagine video through OpenRouter, for NON-UI plates (AGENTS.md rule 1 carve-out): the catalogue, a price before every job, the job, a spend ledger.
+Also hosted voices for VO lines (`speech()`, the `openrouter` engine of promo/vo.py; `promo vo voices` lists them), on the same key, caps and ledger.
 
     promo gen models [--json]                        the video models with what 4 s at 480p / 720p costs (catalogue is public, no key needed)
     promo gen video "prompt" --out F --provider openrouter [--model M --res 480p --seconds 4 --first-frame IMG --audio --max-usd 0.50 --dry-run]
@@ -57,7 +58,8 @@ def has_key():
     return bool(os.environ.get("OPENROUTER_API_KEY"))
 
 
-def _request(method, path, body=None, auth=True, raw=False, timeout=60):
+def _request(method, path, body=None, auth=True, raw=False, timeout=60, headers_out=None):
+    """One API call; JSON back, or the raw bytes with `raw`. `headers_out` (a dict) is filled with the response headers."""
     headers = {"Content-Type": "application/json", "X-Title": "promo-reel"}
     if auth:
         key = os.environ.get("OPENROUTER_API_KEY")
@@ -68,6 +70,8 @@ def _request(method, path, body=None, auth=True, raw=False, timeout=60):
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             data = r.read()
+            if headers_out is not None:
+                headers_out.update({k.lower(): v for k, v in r.headers.items()})
     except urllib.error.HTTPError as e:
         raise OpenRouterError(f"OpenRouter said {e.code}: {_message(e.read())}") from None
     except urllib.error.URLError as e:
@@ -83,16 +87,20 @@ def _message(body):
     return (err.get("message") if isinstance(err, dict) else str(err or "")) or "no details"
 
 
-def models(max_age=CACHE_S):
-    """Seedance and Grok Imagine rows of OpenRouter's public video catalogue, fetched again when the cached copy is older than `max_age` seconds (None: any age)."""
-    cache = _tools_dir() / "openrouter-models.json"
+def _catalogue(name, path, max_age):
+    """Rows of a public OpenRouter catalogue, kept in ~/.promo-tools/<name> and fetched again when older than `max_age` seconds (None: any age)."""
+    cache = _tools_dir() / name
     if cache.exists() and (max_age is None or time.time() - cache.stat().st_mtime < max_age):
-        rows = json.loads(cache.read_text())
-    else:
-        rows = _request("GET", "/videos/models", auth=False)["data"]
-        cache.parent.mkdir(parents=True, exist_ok=True)
-        cache.write_text(json.dumps(rows))
-    return [m for m in rows if m["id"].startswith(FAMILIES)]
+        return json.loads(cache.read_text())
+    rows = _request("GET", path, auth=False)["data"]
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    cache.write_text(json.dumps(rows))
+    return rows
+
+
+def models(max_age=CACHE_S):
+    """Seedance and Grok Imagine rows of OpenRouter's public video catalogue."""
+    return [m for m in _catalogue("openrouter-models.json", "/videos/models", max_age) if m["id"].startswith(FAMILIES)]
 
 
 def model(mid, catalogue=None):
@@ -327,3 +335,117 @@ def price_table(catalogue=None):
                          audio=bool(m.get("generate_audio")), price_4s=prices,
                          image_input=float(m["pricing_skus"].get("cents_per_image_input", 0)) / 100))
     return sorted(rows, key=lambda r: r["price_4s"].get(DEFAULT_RES, 9e9))
+
+
+# ---------------------------------------------------------------- speech: VO lines (promo/vo.py engine `openrouter`)
+DEFAULT_SPEECH_MODEL = "google/gemini-3.8-flash-tts"   # #3 on the Speech Arena (Oct 2026) and the cheapest of the top five
+DEFAULT_SPEECH_VOICE = "Kore"
+DEFAULT_SPEECH_MAX_USD = 0.50
+AUDIO_TOKENS_PER_S = 25        # Gemini bills speech per output token, 25 of them per second of audio
+CHARS_PER_S = 10               # slower than real speech (a 21-character Gemini line ran 2.1 s), so a line not yet made is priced high, not low
+
+
+def speech_models(max_age=CACHE_S):
+    """OpenRouter's public speech catalogue (id, pricing, supported_voices, ...)."""
+    return _catalogue("openrouter-speech-models.json", "/models?output_modalities=speech", max_age)
+
+
+def speech_model(mid, catalogue=None):
+    rows = catalogue if catalogue is not None else speech_models()
+    for m in rows:
+        if m["id"] == mid:
+            return m
+    raise OpenRouterError(f"{mid} is not an OpenRouter speech model; see `promo vo voices` (e.g. {', '.join(sorted(r['id'] for r in rows)[:6])})")
+
+
+def speech_estimate(m, text):
+    """USD for one take before it is made. Most voices bill per input character (`pricing.prompt`); Gemini adds output audio tokens
+    and completion-only models (Seed Audio) bill per second (`pricing.completion`), so the seconds are guessed from the text."""
+    p = m.get("pricing") or {}
+    if p.get("prompt") is None and p.get("completion") is None:
+        raise OpenRouterError(f"no price for {m['id']} in the catalogue")
+    prompt, comp = float(p.get("prompt") or 0), float(p.get("completion") or 0)
+    per_s = comp if prompt == 0 else comp * AUDIO_TOKENS_PER_S
+    return round(len(text) * prompt + len(text) / CHARS_PER_S * per_s, 5)
+
+
+def speech_body(v, text):
+    """The /audio/speech request for one VO line in voice `v` (engine openrouter: model, voice, instructions, speed)."""
+    body = dict(model=v["model"], input=text)
+    for k in ("voice", "instructions"):
+        if v.get(k):
+            body[k] = str(v[k])
+    if v.get("speed") is not None:
+        body["speed"] = float(v["speed"])
+    return body
+
+
+SETTLE_S = 60                  # a speech generation's billing record was still missing 10 s after its audio in real runs
+
+
+def settle_costs(timeout=SETTLE_S):
+    """Fill in OpenRouter's billed cost of every speech take whose ledger row still has none (one appended row per take; spend() keeps
+    the latest). Returns (settled, still pending). A record not there yet answers 404, so lookups repeat until `timeout`; whatever is
+    still pending keeps counting its estimate and is settled by a later run."""
+    last = {}
+    for row in _ledger():
+        last[row["job_id"]] = row
+    pending = {j: r for j, r in last.items() if r.get("kind") == "speech" and r.get("cost") is None and j.startswith("gen-")}
+    settled, t0 = 0, time.monotonic()
+    while pending:
+        for gid, row in list(pending.items()):
+            try:
+                cost = float(_request("GET", f"/generation?id={gid}")["data"]["total_cost"])
+            except OpenRouterError:
+                continue
+            _log(dict(row, cost=cost))
+            settled += 1
+            del pending[gid]
+        if not pending or time.monotonic() - t0 > timeout:
+            break
+        time.sleep(POLL_S)
+    return settled, len(pending)
+
+
+def speech(body, max_usd=DEFAULT_SPEECH_MAX_USD):
+    """Price, guard and make one take: (mono float32 samples, sample rate). Every call gets a ledger row with its estimate; its billed
+    cost follows from settle_costs()."""
+    import io
+    import uuid
+
+    import numpy as np
+    import soundfile as sf
+    m = speech_model(body["model"])
+    voices = m.get("supported_voices") or []
+    if voices and body.get("voice") not in voices:
+        raise OpenRouterError(f"{m['id']} has no voice {body.get('voice')!r}; it has {', '.join(voices[:10])}{' ...' if len(voices) > 10 else ''} "
+                              f"(`promo vo voices --model {m['id']}`)")
+    price = speech_estimate(m, body["input"])
+    guard(price, max_usd)
+    hdr = {}
+    # pcm, not mp3: lossless, and Gemini sends nothing else. The rate rides on the Content-Type (audio/pcm;rate=24000;channels=1).
+    data = _request("POST", "/audio/speech", dict(body, response_format="pcm"), raw=True, timeout=300, headers_out=hdr)
+    gid = hdr.get("x-generation-id")
+    _log(dict(at=datetime.datetime.now().astimezone().isoformat(timespec="seconds"), job_id=gid or f"speech-{uuid.uuid4().hex[:12]}", kind="speech",
+              model=m["id"], chars=len(body["input"]), estimate=price, cost=None, status="completed"))
+    if data[:4] == b"RIFF":
+        x, sr = sf.read(io.BytesIO(data), dtype="float32", always_2d=True)
+        return x.mean(1), sr
+    params = dict(p.strip().split("=", 1) for p in hdr.get("content-type", "").split(";")[1:] if "=" in p)
+    if "rate" not in params:
+        raise OpenRouterError(f"{m['id']} sent raw audio without its sample rate (Content-Type {hdr.get('content-type')!r}); try another model")
+    ch = int(params.get("channels", 1))
+    x = np.frombuffer(data[: len(data) // (2 * ch) * 2 * ch], "<i2").astype(np.float32) / 32768.0
+    return x.reshape(-1, ch).mean(1), int(params["rate"])
+
+
+def speech_table(catalogue=None):
+    """One row per speech model: what 1,000 characters cost (Gemini's audio tokens guessed from the text) and its voices, cheapest first."""
+    rows = []
+    for m in catalogue if catalogue is not None else speech_models():
+        try:
+            usd = speech_estimate(m, "x" * 1000)
+        except OpenRouterError:
+            continue
+        rows.append(dict(id=m["id"], name=m.get("name", m["id"]), usd_per_1k_chars=usd, voices=m.get("supported_voices") or []))
+    return sorted(rows, key=lambda r: r["usd_per_1k_chars"])

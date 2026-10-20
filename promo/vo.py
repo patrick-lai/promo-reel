@@ -1,10 +1,17 @@
 """VO per line (port of make_vo.py). `promo vo`.
 
-Spec: vo: {engine: kokoro, model_asset, voices_asset, voice, lang, speed, lines: [{id?, shot, text, tts?, at, host?, voice?, asr_aliases?}]}
-Output: build/vo/vo-<line id>.wav + build/vo/vo.json  (lines: id, shot, host, text, tts, file, dur, sr, engine, voice)
-Each line is rendered separately (line id = `id`, default the shot); leading/trailing near-silence is trimmed exactly
-like the legacy script. Takes are cached by what changes the audio (build/vo/.cache), so re-voicing one line of a
-dialogue only synthesises that line.
+Spec: vo: {engine: kokoro, model_asset, voices_asset, voice, lang, speed, takes?, max_usd?,
+            lines: [{id?, shot, text, tts?, at, host?, voice?, asr_aliases?, takes?, take?}]}
+Output: build/vo/vo-<line id>.wav + build/vo/vo.json  (lines: id, shot, host, text, tts, file, dur, sr, engine, voice, take, takes)
+Each line is rendered separately (line id = `id`, default the shot). The cache (build/vo/.cache) keeps the engine's raw take,
+float and untrimmed, keyed by what changes the audio, so re-voicing one line of a dialogue only synthesises that line and a
+change to the trim never pays for a paid take again. `trim()` runs when vo-<id>.wav is written: near-silence is judged
+relative to the line's own peak (a quiet take keeps its soft ending) and both edges get a short fade (no click).
+
+Takes: `takes: N` (vo block or line) makes N takes of each line on an engine that varies (openrouter, voicestudio) and
+scores them (promo/vo_score.py); a take that misreads its words or ends mid-sound is rejected. The line uses its `take: k`
+(1-based, set with `promo vo takes <id> --pick k` after listening), else the first take that was not rejected. Kokoro and
+`say` give the same audio every time, so they refuse takes > 1. Auditions: build/vo/takes/<id>-<k>.wav.
 
 Voices per line (a dialogue): the vo block's engine/voice/speed/lang, then the line's host voice
 (`podcast.hosts[].voice: {engine, voice, speed}`, the host matched by id, name or model), then the line's own
@@ -14,6 +21,11 @@ Voices per line (a dialogue): the vo block's engine/voice/speed/lang, then the l
                (Apple's terms: personal, non-commercial); `promo check` WARNs `draft-voice`.
   voicestudio  the local VoiceStudio app (http://127.0.0.1:3900, $PROMO_VOICESTUDIO): `profile` (profile id) or
                `instruct` (voice design), `seed`. Needs `asset:`; its model is CC-BY-NC, an open licence question.
+  openrouter   a hosted voice through OpenRouter's speech API (promo/openrouter.py): `model` (default
+               google/gemini-3.8-flash-tts; elevenlabs/eleven-v4 for hero lines), `voice` (`promo vo voices --model M`),
+               `instructions` (delivery: Gemini, Fish). Needs `asset:` (the provider's terms). Paid: the whole run is priced
+               before the first call and refused over `max_usd` (default $0.50) or the daily cap; run it under
+               `commissionctl secret exec OPENROUTER_API_KEY -- promo vo`.
   files        pre-rendered WAVs (below); the whole vo block only.
 
 Pre-rendered VO (e.g. a two-host talk show voiced elsewhere):
@@ -105,14 +117,19 @@ def line_audio(spec, line, man=None):
     return x, sr
 
 
-def silences(x, sr, min_len=0.12, win=0.01, db=-40.0):
-    """[(start, end)] seconds of runs quieter than `db` (relative to the line's peak window RMS) lasting >= min_len."""
+def rms_db(x, sr, win=0.01):
+    """dB of each `win`-second window's RMS relative to the loudest window (empty when x is shorter than one window)."""
     hop = max(1, int(win * sr))
     n = len(x) // hop
     if n == 0:
-        return []
-    rms = np.sqrt(np.mean(x[: n * hop].reshape(n, hop) ** 2, axis=1) + 1e-12)
-    q = 20 * np.log10(rms / rms.max())
+        return np.zeros(0)
+    rms = np.sqrt(np.mean(np.asarray(x[: n * hop], dtype=np.float64).reshape(n, hop) ** 2, axis=1) + 1e-12)
+    return 20 * np.log10(rms / rms.max())
+
+
+def silences(x, sr, min_len=0.12, win=0.01, db=-40.0):
+    """[(start, end)] seconds of runs quieter than `db` (relative to the line's peak window RMS) lasting >= min_len."""
+    q = rms_db(x, sr, win)
     out, a = [], None
     for i, v in enumerate(q):
         if v < db and a is None:
@@ -159,7 +176,7 @@ def run_files(spec):
             x, sr = line_audio(spec, line, man)
             os.makedirs(spec.vo_dir, exist_ok=True)
             p = os.path.join(spec.vo_dir, f"{line_id(line)}-trim.wav")
-            sf.write(p, x, sr, subtype="PCM_16")
+            sf.write(p, x, sr, subtype="FLOAT")
             frames = len(x)
         else:
             info = sf.info(p)
@@ -174,9 +191,16 @@ def run_files(spec):
     return meta
 
 
-ENGINES = ("kokoro", "say", "voicestudio", "files")
+ENGINES = ("kokoro", "say", "voicestudio", "openrouter", "files")
 DRAFT_ENGINES = ("say",)
-VOICE_KEYS = ("engine", "voice", "speed", "lang", "asset", "profile", "instruct", "seed", "rate")
+VARYING_ENGINES = ("voicestudio", "openrouter")      # a second take sounds different; kokoro and say repeat themselves exactly
+VOICE_KEYS = ("engine", "voice", "speed", "lang", "asset", "profile", "instruct", "seed", "rate", "model", "instructions")
+CACHE_VERSION = 2                                    # 2: the cache holds raw float takes (1 held trimmed PCM_16, which clipped)
+TRIM_DB = -45.0                                      # a 10 ms window this far under the take's loudest counts as silence
+# kept before / after the first / last loud window: 20 ms in keeps a soft onset (a breath, an "h") that sits just under TRIM_DB;
+# 100 ms out is the legacy pad (2400 samples at 24 kHz) that podcast layouts were timed with
+PAD_IN, PAD_OUT = 0.02, 0.1
+FADE_IN, FADE_OUT = 0.005, 0.03
 
 
 def _host_of(spec, line):
@@ -200,11 +224,18 @@ def voice_of(spec, line):
             v["voice"] = src
         elif isinstance(src, dict):
             v.update({k: src[k] for k in VOICE_KEYS if k in src})
+    if "asset" not in v and cfg.get("asset") and v["engine"] == cfg.get("engine"):
+        v["asset"] = cfg["asset"]                    # the vo block's licence entry covers its own engine, not a host's or line's other engine
     if v["engine"] not in ENGINES or v["engine"] == "files":
-        raise RuntimeError(f"VO line {line_id(line)}: engine {v['engine']!r} (have kokoro, say, voicestudio; `files` is for the whole vo block)")
+        raise RuntimeError(f"VO line {line_id(line)}: engine {v['engine']!r} (have kokoro, say, voicestudio, openrouter; `files` is for the whole vo block)")
     if v["engine"] == "kokoro":
         v.setdefault("voice", "bf_emma")
         v.setdefault("lang", "en-gb" if str(v["voice"]).startswith("b") else "en-us")
+    if v["engine"] == "openrouter":
+        from .openrouter import DEFAULT_SPEECH_MODEL, DEFAULT_SPEECH_VOICE
+        v.setdefault("model", DEFAULT_SPEECH_MODEL)
+        if v["model"] == DEFAULT_SPEECH_MODEL:
+            v.setdefault("voice", DEFAULT_SPEECH_VOICE)
     return v
 
 
@@ -216,19 +247,28 @@ def voices_used(spec):
     return [(line_id(ln), voice_of(spec, ln)) for ln in cfg.get("lines") or []]
 
 
-def _trim(s, sr):
+def trim(s, sr):
+    """A raw take without its leading/trailing near-silence, both edges faded. Silence is judged against the take's own loudest
+    window: the old absolute floor (0.01) ate the soft endings of quiet takes, and a cut with no fade clicks."""
     s = np.asarray(s, dtype=np.float32)
-    idx = np.where(np.abs(s) > 0.01)[0]
-    if not len(idx):
+    q = rms_db(s, sr)
+    loud = np.where(q > TRIM_DB)[0]
+    if not len(loud) or not np.any(s):
         return s
-    return s[max(0, idx[0] - int(0.01 * sr)): idx[-1] + int(0.1 * sr)]      # trim leading/trailing near-silence (legacy: 240 / 2400 at 24 kHz)
+    hop = max(1, int(0.01 * sr))
+    out = s[max(0, loud[0] * hop - int(PAD_IN * sr)): (loud[-1] + 1) * hop + int(PAD_OUT * sr)].copy()
+    ramp = lambda n: (0.5 - 0.5 * np.cos(np.pi * np.arange(n) / n)).astype(np.float32)   # noqa: E731  raised cosine from 0
+    n_in, n_out = min(int(FADE_IN * sr), len(out)), min(int(FADE_OUT * sr), len(out))
+    out[:n_in] *= ramp(n_in)
+    out[len(out) - n_out:] *= ramp(n_out)[::-1]
+    return out
 
 
 _KOKORO = {}
 
 
-def synth(spec, v, text, man=None):
-    """(mono float32, sr) of one take in voice `v`."""
+def synth(spec, v, text, man=None, max_usd=None):
+    """(mono float32, sr) of one raw take in voice `v` (untrimmed: `trim()` it before use). `max_usd` caps one paid call."""
     eng = v["engine"]
     if eng == "kokoro":
         try:
@@ -241,7 +281,7 @@ def synth(spec, v, text, man=None):
         if key not in _KOKORO:
             _KOKORO[key] = Kokoro(*key)
         s, sr = _KOKORO[key].create(text, voice=v["voice"], speed=float(v.get("speed", 1.0)), lang=v.get("lang", "en-gb"))
-        return _trim(s, sr), sr
+        return np.asarray(s, dtype=np.float32), sr
     if eng == "say":
         import shutil
         import subprocess
@@ -257,7 +297,7 @@ def synth(spec, v, text, man=None):
         s, sr = sf.read(out, dtype="float32", always_2d=True)
         import shutil as _sh
         _sh.rmtree(d, ignore_errors=True)
-        return _trim(s.mean(1), sr), sr
+        return s.mean(1), sr
     if eng == "voicestudio":
         import io
         import urllib.request
@@ -277,12 +317,16 @@ def synth(spec, v, text, man=None):
         except OSError as e:
             raise RuntimeError(f"VoiceStudio not reachable at {url} ({e}); start the app or use engine kokoro") from e
         s, sr = sf.read(io.BytesIO(data), dtype="float32", always_2d=True)
-        return _trim(s.mean(1), sr), sr
+        return s.mean(1), sr
+    if eng == "openrouter":
+        from . import openrouter as OR
+        return OR.speech(OR.speech_body(v, text), max_usd=OR.DEFAULT_SPEECH_MAX_USD if max_usd is None else max_usd)
     raise RuntimeError(f"engine {eng!r}")
 
 
-def take_key(spec, v, text):
-    """What a take depends on (the cache key): the voice, the text and, for kokoro, the model files."""
+def take_key(spec, v, text, take=0):
+    """What a take depends on (the cache key): the voice, the text, the take index and, for kokoro, the model files. Take 0's key
+    does not depend on how many takes the line asks for, so going from 1 to 3 takes reuses the first."""
     import hashlib
     extra = None
     if v["engine"] == "kokoro":
@@ -290,10 +334,55 @@ def take_key(spec, v, text):
         cfg = spec.raw.get("vo") or {}
         man = load_manifest(spec)
         extra = [file_sig(asset_path(spec, cfg[k], man)) for k in ("model_asset", "voices_asset")]
-    return hashlib.sha256(json.dumps([v, text, extra], sort_keys=True, default=str).encode()).hexdigest()[:20]
+    return hashlib.sha256(json.dumps([v, text, extra, CACHE_VERSION, take], sort_keys=True, default=str).encode()).hexdigest()[:20]
 
 
-def run(spec, force=False):
+def takes_of(cfg, line):
+    return int(line.get("takes", cfg.get("takes", 1)))
+
+
+def take_voice(v, k):
+    """The voice of take k: VoiceStudio varies by seed; an OpenRouter call varies by itself (its API takes no seed)."""
+    return dict(v, seed=int(v.get("seed", 1)) + k) if k and v["engine"] == "voicestudio" else v
+
+
+def _write_wav(path, x, sr):
+    """Write a FLOAT WAV, leaving the file (and its mtime, which shot digests follow) alone when it already holds this audio. Samples are
+    compared, not bytes: libsndfile stamps the time into a FLOAT WAV's PEAK chunk, so the same audio never writes the same bytes twice."""
+    if os.path.exists(path):
+        old, osr = sf.read(path, dtype="float32")
+        if osr == sr and np.array_equal(old, x):
+            return
+    sf.write(path + ".tmp.wav", x, sr, subtype="FLOAT")
+    os.replace(path + ".tmp.wav", path)
+
+
+def _plan(spec, cfg):
+    """[(line, voice, take keys)] with every line's takes and pick validated before anything is synthesised."""
+    out = []
+    for line in cfg["lines"]:
+        lid, say = line_id(line), line.get("tts", line["text"])
+        v = voice_of(spec, line)
+        n = takes_of(cfg, line)
+        if n < 1:
+            raise RuntimeError(f"VO line {lid}: takes must be 1 or more")
+        if n > 1 and v["engine"] not in VARYING_ENGINES:
+            raise RuntimeError(f"VO line {lid}: {v['engine']} gives the same audio every time; takes: {n} needs engine openrouter or voicestudio")
+        if line.get("take") is not None and not 1 <= int(line["take"]) <= n:
+            raise RuntimeError(f"VO line {lid}: take {line['take']} picked, but the line has {n} take(s)")
+        out.append((line, v, [take_key(spec, take_voice(v, k), say, k) for k in range(n)]))
+    return out
+
+
+def price_run(spec, plan, cache, force=False):
+    """(USD, number of takes) that the paid (openrouter) takes still to make would cost, from the live catalogue."""
+    from . import openrouter as OR
+    todo = [(v, line.get("tts", line["text"])) for line, v, keys in plan for key in keys
+            if v["engine"] == "openrouter" and (force or not os.path.exists(os.path.join(cache, key + ".wav")))]
+    return round(sum(OR.speech_estimate(OR.speech_model(v["model"]), say) for v, say in todo), 4), len(todo)
+
+
+def run(spec, force=False, max_usd=None):
     cfg = spec.raw.get("vo")
     if not cfg:
         return None
@@ -302,34 +391,61 @@ def run(spec, force=False):
         return run_files(spec)
     cache = os.path.join(spec.vo_dir, ".cache")
     os.makedirs(cache, exist_ok=True)
+    plan = _plan(spec, cfg)
+    price, n_paid = price_run(spec, plan, cache, force) if any(v["engine"] == "openrouter" for _, v, _ in plan) else (0, 0)
+    cap = None
+    if n_paid:
+        from . import openrouter as OR
+        cap = float(max_usd if max_usd is not None else cfg.get("max_usd", OR.DEFAULT_SPEECH_MAX_USD))
+        OR.guard(price, cap)
+        print(f"vo openrouter: {n_paid} take(s) to make, about ${price:.3f} (limit ${cap:.2f})", flush=True)
     man = None
     meta, keep = [], set()
-    for line in cfg["lines"]:
+    for line, v, keys in plan:
         lid, txt = line_id(line), line["text"]
         say = line.get("tts", txt)
-        v = voice_of(spec, line)
         if v["engine"] == "kokoro" and man is None:
             man = load_manifest(spec)
-        key = take_key(spec, v, say)
-        cp = os.path.join(cache, key + ".wav")
-        if force or not os.path.exists(cp):
-            s, sr = synth(spec, v, say, man)
-            sf.write(cp + ".tmp.wav", s, sr)
-            os.replace(cp + ".tmp.wav", cp)
-        info = sf.info(cp)
+        for k, key in enumerate(keys):
+            cp = os.path.join(cache, key + ".wav")
+            if force or not os.path.exists(cp):
+                s, sr = synth(spec, take_voice(v, k), say, man, max_usd=cap)
+                sf.write(cp + ".tmp.wav", s, sr, subtype="FLOAT")
+                os.replace(cp + ".tmp.wav", cp)
+            keep.add(key)
+        takes = None
+        if len(keys) > 1:
+            from . import vo_score
+            os.makedirs(os.path.join(spec.vo_dir, "takes"), exist_ok=True)
+            takes = []
+            for k, key in enumerate(keys):
+                x, sr = sf.read(os.path.join(cache, key + ".wav"), dtype="float32")
+                aud = os.path.join("takes", f"{lid}-{k + 1}.wav")
+                _write_wav(os.path.join(spec.vo_dir, aud), trim(x, sr), sr)
+                takes.append(dict(take=k + 1, file=aud, **vo_score.score(spec, line, os.path.join(spec.vo_dir, aud), os.path.join(cache, key))))
+        if line.get("take") is not None:
+            pick = int(line["take"])
+        else:                                            # the first take that passed; never the "best" score, which drifts to the flattest read
+            pick = next((t["take"] for t in takes or [] if not t["rejected"]), 1)
+        x, sr = sf.read(os.path.join(cache, keys[pick - 1] + ".wav"), dtype="float32")
+        x = trim(x, sr)
         fn = f"vo-{lid}.wav"
-        dst = os.path.join(spec.vo_dir, fn)
-        if not os.path.exists(dst) or open(dst, "rb").read() != open(cp, "rb").read():
-            import shutil
-            shutil.copyfile(cp, dst + ".tmp")
-            os.replace(dst + ".tmp", dst)
-        keep.add(key)
-        meta.append(dict(id=lid, shot=str(line["shot"]), host=line.get("host"), text=txt, tts=say, file=fn, dur=round(info.frames / info.samplerate, 3),
-                         sr=info.samplerate, engine=v["engine"], voice=v.get("voice") or v.get("profile") or v.get("instruct")))
+        _write_wav(os.path.join(spec.vo_dir, fn), x, sr)
+        meta.append(dict(id=lid, shot=str(line["shot"]), host=line.get("host"), text=txt, tts=say, file=fn, dur=round(len(x) / sr, 3),
+                         sr=sr, engine=v["engine"], voice=v.get("voice") or v.get("profile") or v.get("instruct"), take=pick, takes=takes))
         print("vo", lid, v["engine"], meta[-1]["voice"], round(meta[-1]["dur"], 2), txt, flush=True)
+        if takes:
+            print(vo_score.table(takes, pick), flush=True)
+    if n_paid:
+        from . import openrouter as OR
+        settled, pending = OR.settle_costs()
+        print(f"vo openrouter: billed cost in for {settled} take(s)" + (f"; {pending} still pending (their estimate counts until a later run)" if pending else ""),
+              flush=True)
     old = sorted((os.path.getmtime(os.path.join(cache, f)), f) for f in os.listdir(cache) if f.endswith(".wav") and f[:-4] not in keep)
     for _, f in old[:max(0, len(old) - 200)]:           # keep up to 200 unused takes (an undo re-uses them), oldest go first
         os.remove(os.path.join(cache, f))
+        if os.path.exists(os.path.join(cache, f[:-4] + ".score.json")):
+            os.remove(os.path.join(cache, f[:-4] + ".score.json"))
     with open(vo_json_path(spec), "w") as f:
         json.dump(dict(voice=cfg.get("voice"), lang=cfg.get("lang"), speed=cfg.get("speed"), lines=meta), f, indent=1)
     return meta

@@ -258,6 +258,7 @@ def cmd_preview(path, layouts=False, log=print):
         sample = str(line["text"]) if line else f"Hi, I'm {h.get('name') or h['model']}."
         v = VO.voice_of(spec, dict(host=hid, text=sample, shot="01", voice=(line or {}).get("voice")))
         s, sr = VO.synth(spec, v, sample)
+        s = VO.trim(s, sr)
         import soundfile as sf
         wav = os.path.join(od, f"{hid}-voice.wav")
         sf.write(wav, s, sr)

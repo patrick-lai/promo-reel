@@ -18,6 +18,7 @@ import soundfile as sf
 from .assets import asset_path
 
 SR = 48000
+SILENCE_FADE = 0.03
 
 
 def music_path(spec):
@@ -76,7 +77,10 @@ def edit(spec, src_path):
             g[b:hi] *= np.linspace(v, 1, r)[:hi - b]                  # fade back OUT of the region: a quiet open that rises into the bed
     out *= g[:, None]
     if e.get("silence_from_beat") is not None:
-        out[T(e["silence_from_beat"]):] = 0
+        s0 = T(e["silence_from_beat"])
+        nf = min(s0, int(SILENCE_FADE * SR))                        # a 30 ms fade into the silence: a hard drop to zero clicks
+        out[s0 - nf:s0] *= (0.5 + 0.5 * np.cos(np.pi * np.arange(nf) / nf))[:, None]
+        out[s0:] = 0
     return out
 
 

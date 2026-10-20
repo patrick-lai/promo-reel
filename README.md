@@ -2,7 +2,7 @@
 
 A declarative, agent-runnable pipeline for **product promo videos made from real app footage**: a beat-locked edit with eased crops and push-ins, captions in a fixed 9:16-safe zone, a licensed music edit, synthesised UI SFX, TTS voiceover, ducking and loudness mastering, and automated QA gates. It uses Python, Pillow and ffmpeg.
 
-- **Agents start here:** [`skills/promo-reel/SKILL.md`](skills/promo-reel/SKILL.md) (short), [`skills/promo-video-route/SKILL.md`](skills/promo-video-route/SKILL.md) (which video model / Higgsfield vs Runway), and [`AGENTS.md`](AGENTS.md) (the full workflow, team rules, and what still needs a human).
+- **Agents start here:** [`skills/promo-reel/SKILL.md`](skills/promo-reel/SKILL.md) (short), [`skills/promo-video-route/SKILL.md`](skills/promo-video-route/SKILL.md) (which video model / Higgsfield vs Runway), [`skills/promo-audio-route/SKILL.md`](skills/promo-audio-route/SKILL.md) (which voice, takes, the VO audio gates), and [`AGENTS.md`](AGENTS.md) (the full workflow, team rules, and what still needs a human).
 - **Capture handoff:** [`capture/README.md`](capture/README.md) and `projects/<name>/footage/manifest.yaml`.
 - **Starting a project:** [`templates/new-project/`](templates/new-project/) or `promo new <name> --style hero|anime-opening|livestream|horizon|cinematic-story|vertical-short`. A thin prompt is not a spec: `promo plan <name> --prompt "<their words>"` fills the idea, preset, five beats, length, shot list, capture defaults and hook into `promo.yaml` ([`docs/PRODUCT-DEFAULTS.md`](docs/PRODUCT-DEFAULTS.md)). `vertical-short@1` is the locked 9:16 format shell (about 6–20 s; default is an 11 s UI zoom), not the 60 s hero. Projects are saved where you choose (`promo config output home|repo|default|<folder with {project}/{slug}>`, or the folder button in the promo-flow Stage; by default the gitignored `projects/`), so they can live on an external drive and not in this repo.
 
@@ -27,6 +27,7 @@ projects/<name>/
 capture/                  capture-script contract (product-specific capture scripts live in your projects dir)
 skills/promo-reel/        agent skill (flow, ingest, gates)
 skills/promo-video-route/  pick Runway vs Higgsfield and a model for generated plates
+skills/promo-audio-route/  pick a voice (Kokoro, Gemini, Eleven v4 on OpenRouter), direct it, pick takes by ear
 templates/new-project/    scaffold used by `promo new`
 evals/rubric.yaml         UX reviewer's scoring rubric (versioned): read by `promo critique-pack` and `promo rubric`
 tests/                    fast unit tests (.venv/bin/python tests/test_<name>.py; needs the deps above, incl. pyyaml)

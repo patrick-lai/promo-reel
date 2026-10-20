@@ -206,7 +206,9 @@ A box is a choice, never the default: `frame: card | circle | soft` (show or sho
 own alpha). Small edits: `promo podcast set host a place=bottom-right size=xl | layout speaker --shot 03 | frame card | backdrop blur | subtitles off`.
 The Stage's Cast card sends exactly those as the `podcast` action; run them, re-run preview, publish.
 Voices: `kokoro` (Apache-2.0, the publishable default), `say` (macOS, drafts only: needs an assets entry, WARNs), `voicestudio` (a local
-profile; the model is CC-BY-NC, an open licence question: WARNs). Every voice has an assets.yaml licence entry (rule 4).
+profile; the model is CC-BY-NC, an open licence question: WARNs), `openrouter` (hosted: Gemini 3.8 Flash TTS by default, Eleven v4 for hero
+lines; priced and capped per run, `takes: N` to pick by ear). Every voice has an assets.yaml licence entry (rule 4). Which voice, how to
+direct it, takes and the `vo-fit` / `vo-clip` / `vo-tail` gates: `skills/promo-audio-route/SKILL.md`.
 Characters: the free Live2D samples (Mao: A/I/U/E/O vowel mouth shapes + 8 expressions; Hiyori: standard parameters) look good but are not
 commissioned-VTuber art. For that level the person brings their own model: `promo live2d add <model3.json|dir> --id ID --name N --type
 own|commissioned|original --licence TEXT --source URL [--credit T]` registers it (files stay where they are, never committed), measures its

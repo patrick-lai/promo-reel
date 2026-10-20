@@ -4,6 +4,7 @@ import json
 import os
 import urllib.error
 
+import numpy as np
 import pytest
 
 from promo import assetplan as AP
@@ -296,3 +297,73 @@ def test_a_character_swap_preps_locally_and_sends_seedance_a_video_reference(api
         json.dump({"clips": [dict(id="rec-board", path=rec, sha256=G.sha256(rec), capture="?view=board")]}, f)
     assert F.main(["--project", proj, "studio", "swap", "--take", rec, "--prompt", "an astronaut"]) == 1
     assert len(api.sent) == 3
+
+
+GEMINI_TTS = dict(id="google/gemini-3.8-flash-tts", name="Google: Gemini 3.8 Flash TTS", pricing={"prompt": "0.0000005", "completion": "0.000009"},
+                  supported_voices=["Kore", "Puck"])
+ELEVEN = dict(id="elevenlabs/eleven-v4", name="ElevenLabs: Eleven v4", pricing={"prompt": "0.00008", "completion": "0"}, supported_voices=[])
+
+
+class FakeSpeech:
+    """OpenRouter's speech API as documented: the public catalogue, raw pcm back with an X-Generation-Id, the generation's billed cost."""
+
+    def __init__(self, cost=0.0021):
+        self.cost, self.sent = cost, []
+
+    def __call__(self, method, path, body=None, auth=True, raw=False, timeout=60, headers_out=None):
+        if path == "/models?output_modalities=speech":
+            return {"data": [GEMINI_TTS, ELEVEN]}
+        assert os.environ.get("OPENROUTER_API_KEY") == KEY
+        if path == "/audio/speech":
+            self.sent.append(body)
+            headers_out.update({"x-generation-id": "gen-1", "content-type": "audio/pcm;rate=24000;channels=1"})
+            return (np.full(24000, 0.25) * 32767).astype("<i2").tobytes()
+        if path == "/generation?id=gen-1":
+            return {"data": {"total_cost": self.cost}}
+        raise AssertionError(path)
+
+
+@pytest.fixture
+def speech_api(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", KEY)
+    fake = FakeSpeech()
+    monkeypatch.setattr(OR, "_request", fake)
+    return fake
+
+
+def test_a_voice_is_priced_per_character_or_per_audio_token_from_the_catalogue():
+    assert OR.speech_estimate(ELEVEN, "x" * 100) == pytest.approx(0.008)
+    assert OR.speech_estimate(GEMINI_TTS, "x" * 120) == pytest.approx(120 * 5e-7 + 12 * 25 * 9e-6)
+
+
+def test_a_take_comes_back_as_samples_and_the_ledger_keeps_its_billed_cost(speech_api):
+    x, sr = OR.speech(OR.speech_body(dict(model=GEMINI_TTS["id"], voice="Kore", instructions="warm, unhurried"), "Hello there."))
+    assert sr == 24000 and len(x) == 24000 and abs(float(x.max()) - 0.25) < 1e-3
+    assert speech_api.sent == [dict(model=GEMINI_TTS["id"], input="Hello there.", voice="Kore", instructions="warm, unhurried", response_format="pcm")]
+    row = json.loads(OR.ledger_path().read_text().splitlines()[-1])
+    assert row["job_id"] == "gen-1" and row["kind"] == "speech" and row["cost"] is None and row["estimate"] > 0
+    assert OR.spend()["today"] == pytest.approx(row["estimate"], abs=1e-4)      # until billed, the estimate counts
+    assert OR.settle_costs() == (1, 0)
+    assert OR.spend()["today"] == pytest.approx(0.0021) and KEY not in OR.ledger_path().read_text()
+    assert OR.settle_costs() == (0, 0)                  # nothing left to settle
+
+
+def test_a_wrong_model_or_voice_or_an_empty_budget_is_refused_before_anything_is_sent(speech_api, monkeypatch, tmp_path):
+    with pytest.raises(OR.OpenRouterError, match="promo vo voices"):
+        OR.speech(dict(model="elevenlabs/eleven-v9", input="Hi."))
+    with pytest.raises(OR.OpenRouterError, match="no voice 'Nobody'"):
+        OR.speech(dict(model=GEMINI_TTS["id"], input="Hi.", voice="Nobody"))
+    monkeypatch.setenv("PROMO_GEN_DAILY_USD", "0")
+    with pytest.raises(OR.OpenRouterError, match="daily cap"):
+        OR.speech(dict(model=ELEVEN["id"], input="Hi.", voice="Rachel"))
+    monkeypatch.delenv("PROMO_GEN_DAILY_USD")
+    from promo import vo
+    from promo.spec import load_spec
+    lines = [dict(id=str(i), shot="01", text="A line of about forty characters, said.") for i in range(3)]
+    (tmp_path / "promo.yaml").write_text(json.dumps({"output": {"name": "t", "resolution": 1080, "fps": 12, "duration": 4.0}, "timeline": {"bpm": 120, "beats": 8},
+                                                     "shots": [{"id": "01", "beats": [0, 8], "type": "card", "text": "x"}],
+                                                     "vo": {"engine": "openrouter", "model": ELEVEN["id"], "voice": "Rachel", "asset": "or", "lines": lines}}))
+    (tmp_path / "assets.yaml").write_text("assets: []\n")
+    with pytest.raises(OR.OpenRouterError, match=r"about \$0.01, over the"):
+        vo.run(load_spec(str(tmp_path / "promo.yaml")), max_usd=0.005)     # each line ~ $0.003 on Eleven v4: only the whole run's price passes $0.005
+    assert speech_api.sent == []

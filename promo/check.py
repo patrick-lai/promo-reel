@@ -106,6 +106,47 @@ def line_max_wer(line, default):
     return float(line.get("max_wer", default))
 
 
+def heard_wer(line, heard, qa):
+    """WER of what whisper heard against the line's script text, after the project's and the line's `asr_aliases` (heard-as -> script word)."""
+    for k, v in {**(qa.get("asr_aliases") or {}), **(line.get("asr_aliases") or {})}.items():
+        heard = re.sub(re.escape(k), v, heard, flags=re.I)
+    return wer(norm_words(line["text"]), norm_words(heard))
+
+
+def vo_audio_gates(spec, meta):
+    """[(gate, status, msg)] on the VO takes themselves (no whisper): `vo-fit` FAILs a line that runs past the film's end (the mix
+    cuts it off) and WARNs one that runs into the next line; `vo-clip` WARNs a clipped take; `vo-tail` WARNs a take that ends mid-sound."""
+    import numpy as np
+    import soundfile as sf
+
+    from .events import vo_times
+    from .shot_audio import OVERLAP_WARN
+    from .vo_score import TAIL_CUT_DB, tail_db
+    times = vo_times(spec)
+    spans, clipped, cut = [], [], []
+    for m in meta:
+        lid = str(m.get("id", m["shot"]))
+        x, sr = sf.read(os.path.join(spec.vo_dir, m["file"]), dtype="float32", always_2d=True)
+        x = x.mean(1)
+        if lid in times:
+            spans.append((times[lid], times[lid] + len(x) / sr, lid))
+        # three equal samples in a row at full scale is a flat top: the take clipped (a float take above 1.0 that was not clipped never repeats like that)
+        flat = (np.abs(x[:-2]) >= 0.999) & (x[:-2] == x[1:-1]) & (x[1:-1] == x[2:])
+        if flat.any():
+            clipped.append(f"{lid} ({int(flat.sum())} flat-topped samples)")
+        td = tail_db(x, sr)
+        if td > TAIL_CUT_DB:
+            cut.append(f"{lid} ({td:.0f} dB just before its end)")
+    spans.sort()
+    late = [f"{lid} ends at {b:.2f}s, after the film's end at {spec.duration:.2f}s (the mix cuts it off)" for a, b, lid in spans
+            if b > spec.duration + 1e-3]
+    over = [f"{an} runs {a1 - b0:.2f}s into {bn} at {b0:.2f}s" for (a0, a1, an), (b0, b1, bn) in zip(spans, spans[1:]) if a1 - b0 > OVERLAP_WARN]
+    return [("vo-fit", "FAIL" if late else ("WARN" if over else "PASS"),
+             "; ".join(late + over) or f"{len(spans)} lines end inside the film, none runs > {OVERLAP_WARN}s into the next"),
+            ("vo-clip", "WARN" if clipped else "PASS", "clipped takes (re-voice them): " + ", ".join(clipped) if clipped else "no clipped takes"),
+            ("vo-tail", "WARN" if cut else "PASS", "cut off mid-sound (listen; re-voice or move the cut): " + ", ".join(cut) if cut else "every take ends in its own silence")]
+
+
 def run(spec):
     rep = Report()
     qa = spec.qa
@@ -324,14 +365,13 @@ def run(spec):
                 else:
                     txt = transcribe(p, qa.get("asr_model", "small.en"))
                     stamps.write(key, h + qa.get("asr_model", "small.en"), text=txt)
-                ref_s = ln["text"]
-                hyp_s = txt
-                for k, v in {**(qa.get("asr_aliases") or {}), **(ln.get("asr_aliases") or {})}.items():   # alias: heard-as -> script word
-                    hyp_s = re.sub(re.escape(k), v, hyp_s, flags=re.I)
-                w = wer(norm_words(ref_s), norm_words(hyp_s))
+                w = heard_wer(ln, txt, qa)
                 if w > line_max_wer(ln, maxw_):
                     bad.append(f"{sid}: WER {w:.2f} (heard {txt!r})")
             rep.add("vo-script", "FAIL" if bad else "PASS", "; ".join(bad) if bad else f"{len(lines)} lines match the script (WER <= {maxw_})")
+    if lines and os.path.exists(vj):
+        for gate, status, msg in vo_audio_gates(spec, json.load(open(vj))["lines"]):
+            rep.add(gate, status, msg)
 
     # 9b. shot audio (clip soundtrack lines, promo/shot_audio.py): clips present with sound, vo-bus overlaps, ASR read-back
     from . import shot_audio
