@@ -265,6 +265,116 @@ def test_the_sample_scene_loads_and_strips(tmp_path):
     assert "THREE" in html and '"shots"' in html
 
 
+# ---------------------------------------------------------------- animatic (per-shot clips on the music grid)
+FAST = dict(fps=4, size="192x108", audio="click")
+
+
+def new_spec(tmp_path, style="cinematic-story"):
+    d = str(tmp_path / "pv")
+    assert cli.main(["new", "pv", "--style", style, "--dir", d]) in (0, None)
+    return d
+
+
+def edit_shot(pd, sid, **kw):
+    path = os.path.join(pd, "promo.yaml")
+    raw = yaml.safe_load(open(path))
+    next(s for s in raw["shots"] if str(s["id"]) == sid).update(kw)
+    yaml.safe_dump(raw, open(path, "w"), sort_keys=False)
+
+
+def probe_s(path):
+    import subprocess
+    return float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path], capture_output=True, text=True).stdout)
+
+
+def test_a_new_spec_gives_one_clip_per_shot_and_an_animatic_as_long_as_the_timeline(tmp_path):
+    pd = new_spec(tmp_path)
+    t, = PZ.targets(pd)
+    assert t.kind == "spec"
+    r = PZ.animatic(t, **FAST)
+    spec = load_spec(os.path.join(pd, "promo.yaml"), plugins=False)
+    clips = sorted(f for f in os.listdir(os.path.join(t.dir, "shots")) if f.endswith(".previz.mp4"))
+    assert clips == [f"{s.id}.previz.mp4" for s in spec.shots] and r["rebuilt"] == [s.id for s in spec.shots]
+    assert abs(probe_s(r["video"]) - spec.timeline.beats * spec.timeline.B) <= spec.timeline.B
+    meta = read(r["meta"])
+    assert meta["not_footage"] is True and meta["kind"] == "previz" and ".previz-animatic." in r["video"]
+    assert [x["id"] for x in meta["trajectory"]] == [s.id for s in spec.shots]
+    assert PZ.needed(spec) is False                       # a look at a hand-written spec, not a step it must pass
+
+
+def test_one_spec_edit_rebuilds_one_shot_and_a_gap_gets_a_slate(tmp_path):
+    pd = new_spec(tmp_path)
+    t, = PZ.targets(pd)
+    PZ.animatic(t, **FAST)
+    clip = lambda sid: os.path.join(t.dir, "shots", f"{sid}.previz.mp4")  # noqa: E731
+    before = {s: os.path.getmtime(clip(s)) for s in ("01", "02", "04")}
+    edit_shot(pd, "03", cam=[[0, 0.4, 0.5, 0.9], ["end", 0.55, 0.5, 0.7]])
+    r = PZ.animatic(t, **FAST)
+    assert r["rebuilt"] == ["03"] and "02" in r["kept"] and {s: os.path.getmtime(clip(s)) for s in before} == before
+    edit_shot(pd, "03", beats=[26, 38])                  # ends 2 beats early: 04 does not move, a GAP slate fills the hole
+    r = PZ.animatic(t, **FAST)
+    assert r["rebuilt"] == ["03"] and r["gaps"] == [dict(t0=19.0, t1=20.0)]
+    assert abs(probe_s(r["video"]) - 60.0) < 0.3
+
+
+def test_overlaps_and_nudges_on_a_spec_scene_are_refused(tmp_path):
+    pd = new_spec(tmp_path)
+    t, = PZ.targets(pd)
+    edit_shot(pd, "03", beats=[26, 42])
+    with pytest.raises(PZ.PrevizError, match="overlap"):
+        PZ.animatic(t, **FAST)
+    assert not os.path.isdir(os.path.join(t.dir, "shots")) or not os.listdir(os.path.join(t.dir, "shots"))
+    assert PZ.main(["cam", "03", "push"], project=pd) == 1
+    edit_shot(pd, "03", beats=[26, 40])
+    with pytest.raises(PZ.PrevizError, match="no shot 99"):
+        PZ.animatic(t, only=["99"], **FAST)
+
+
+def test_film_styles_need_the_animatic_and_cinematic_story_is_3d(tmp_path):
+    assert PZ.settings(new_spec(tmp_path / "c"))["animatic"] is True
+    assert PZ.targets(str(tmp_path / "c" / "pv"))[0].compile()["projection"] == "persp"
+    h = PZ.settings(new_spec(tmp_path / "h", "horizon"))
+    assert (h["animatic"], h["projection"]) == (True, "ortho")
+    pd = new_spec(tmp_path / "a", "anime-opening")
+    assert (PZ.settings(pd)["animatic"], PZ.settings(pd)["projection"]) == (False, "ortho")
+    open(os.path.join(pd, "promo.yaml"), "a").write("\nprevis: {animatic: true, projection: persp}\n".replace("previs", "previz"))
+    assert (PZ.settings(pd)["animatic"], PZ.settings(pd)["projection"]) == (True, "persp")
+
+
+def test_previz_is_never_footage(tmp_path):
+    from promo import footage as FT
+    pd = new_spec(tmp_path)
+    r = PZ.animatic(PZ.targets(pd)[0], **FAST)
+    spec = load_spec(os.path.join(pd, "promo.yaml"), plugins=False)
+    for f in (os.path.join(os.path.dirname(r["video"]), "shots", "01.previz.mp4"), r["video"]):
+        with pytest.raises(FT.FootageError, match="never footage"):
+            FT.add(spec, f, "x")
+    assert FT.previz_entries(spec) == []
+
+
+def test_a_film_style_flow_shows_the_animatic_in_the_plan_review_with_no_new_gate(tmp_path):
+    pd = str(tmp_path / "proj")
+    F.init(pd, PROMPT)
+    F.discover(pd, "Horizon film", [], True)
+    st = F.load(pd)
+    st.update(stage="previz", picks=["A"])
+    F.save(pd, st)
+    d = os.path.join(pd, "flow", "boards", "A")
+    os.makedirs(d)
+    json.dump(dict(story="A", title="TA", logline="L", scenes=[dict(id="01", t=[0, 4], source="real", caption="Go to bed", camera="push in", action="open"),
+                                                              dict(id="02", t=[4, 9], source="generated", action="dawn")]), open(os.path.join(d, "board.json"), "w"))
+    t, = PZ.targets(pd)
+    PZ.strip(t, engine="pil")
+    with pytest.raises(F.FlowError, match="animatic for story A"):
+        F.advance(pd)
+    PZ.animatic(t, **FAST)
+    assert F.advance(pd) == "assets"
+    pz, = F.snapshot(pd)["previz"]
+    assert pz["animatic"]["$file"].endswith("proj-A.previz-animatic.mp4") and pz["strip"]
+    assert F.STAGES == ["discover", "scripts", "pick", "storyboard", "previz", "assets", "keyframes", "confirm", "drafts", "review", "final"]
+    assert F.GATE_OF == dict(pick="scripts-picked", assets="assets-approved", review="draft-approved")
+
+
 @pytest.mark.skipif(PZ.find_chrome() is None, reason="no headless Chrome")
 def test_chrome_draws_the_three_js_viewer(tmp_path):
     sc = read(os.path.join(ROOT, "templates", "previz", "sample", "scene.json"))

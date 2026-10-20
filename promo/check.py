@@ -289,6 +289,9 @@ def run(spec):
     from . import previz as PZ
     for gate, status, msg in PZ.gates(spec):
         rep.add(gate, status, msg)
+    pv = FT.previz_entries(spec)
+    rep.add("previz-not-footage", "FAIL" if pv else "PASS", f"footage manifest points at previz blockouts: {', '.join(pv)} (record the real screen)" if pv
+            else "no previz file is registered as footage")
 
     # 7b. livestream layout: screen share, chat lines, single side move, keep-clear rectangles
     from . import livestream as LS

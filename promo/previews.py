@@ -67,9 +67,10 @@ def _ffmpeg(*args):
 
 
 # ---------------------------------------------------------------- storyboard frames
-def frame_prompt(board, scene, label, frame, look):
+def frame_prompt(board, scene, label, frame, look, framing=""):
+    """`framing`: the approved previz's camera box for this frame (`previz.blocking_text`), timing and camera only."""
     parts = [frame.get("prompt") or f"{label} of the scene", f"Scene {scene['id']} ({scene.get('beat', '')}): {scene.get('action', '')}",
-             f"Frame: {board.get('aspect', '16:9')}." + (f" Look: {look}." if look else "")]
+             f"Frame: {board.get('aspect', '16:9')}." + (f" Look: {look}." if look else ""), framing]
     return " ".join(p for p in parts if p)
 
 
@@ -112,17 +113,21 @@ def frame_targets(bds, scene=None, which=("start", "end"), force=False):
     return out
 
 
-def make_frames(bds, look="", scene=None, which=("start", "end"), force=False, provider="auto", jobs=3, limit=None, say=print, job=None):
+def make_frames(bds, look="", scene=None, which=("start", "end"), force=False, provider="auto", jobs=3, limit=None, say=print, job=None, blocking=None):
     """Generate the missing frames in parallel. Returns (made, failed): the labels, and [(label, reason)] for the ones a provider could not make.
-    `job(todo)` returns a `flowjob.Job` for the targets, told about each frame as it lands."""
+    `job(todo)` returns a `flowjob.Job` for the targets, told about each frame as it lands. `blocking` = `previz.blocking()`: each frame's
+    prompt gets its camera box from the approved previz."""
+    from . import previz as PZ
     todo = frame_targets(bds, scene, which, force)[:limit]
     made, failed = [], []
     track = job(todo) if job else None
 
     def run(t):
         label, b, s, f, p = t
+        story, _, w = label.split("/", 2)
+        blk = ((blocking or {}).get(story) or {}).get(str(s.get("id")))
         try:
-            _make_one(frame_prompt(b, s, label.rsplit("/", 1)[1], f, look), p, provider)
+            _make_one(frame_prompt(b, s, label.rsplit("/", 1)[1], f, look, PZ.blocking_text(blk, w) if blk else ""), p, provider)
         except (RuntimeError, OSError) as e:
             return label, str(e)
         return label, None

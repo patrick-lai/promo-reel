@@ -35,7 +35,7 @@ Every path below that says `file` is `{"$file": "<absolute path>"}` (the host tu
     steps      [{id, label, state: done|current|todo|stale, stale}]  (10, one per stage; `stale` = its approval no longer matches what was approved; never `done` then)
     stale_steps [{id, gate, label}]                            approvals that went stale; the mod shows "Approved earlier, but <step> changed since."
     style      {style, preset: hero|horizon|anime-opening|podcast|null, refs[], no_refs} | null
-    previz     [{story, strip: file}]   the wireframe strip of each picked story (`promo previz strip`), from the previz step on: the Storyboard tab shows it, since the plan approval covers it
+    previz     [{story, strip: file, animatic: file|null}]   the wireframe strip of each picked story (`promo previz strip`) and its animatic (`promo previz animatic`, null until made for the current scene), from the previz step on: the Storyboard tab shows both, since the plan approval covers them
     podcast    {title, tag, layout, frame, edge, subtitles, names, backdrop, lines, script, planned, preview_fresh, preview_at,
                 hosts [{id, name, model, color, place {anchor, size, x?, y?}, voice {engine, voice, ...}, portrait: file, moods: file, voice_sample: file, voice_label, sample_text}],
                 shots [{id, layout, focus}], layouts {overlay|boxed|two-shot|speaker: file}, layouts_list, frames_list, edges_list, sizes, anchors} | null
@@ -59,7 +59,7 @@ Every path below that says `file` is `{"$file": "<absolute path>"}` (the host tu
                  while any asset has neither `path` nor `sample`; the banner's "Ask the agent to make them" sends the `generate` action (`promo flow make`)
                  the mod shows a `ready` asset whose file is missing or failed as "File missing", never as ready, and disables Approve at the assets gate while any file is missing.
                  `label` is the human title (explicit `label`, else the first clause of `how`, else the id made readable); the raw `id` is only a tooltip
-    to_make    [{kind: keyframe|asset, id, label, at?, detail, story?, scene?, which?, asset_kind?, source?}]   what `promo flow needs` lists; keyframe label is "Scene 03 · mid frame 1", at is "t=14.5 s"
+    to_make    [{kind: keyframe|asset, id, label, at?, detail, story?, scene?, which?, asset_kind?, source?, blocking?}]   what `promo flow needs` lists; keyframe label is "Scene 03 · mid frame 1", at is "t=14.5 s"; blocking is the approved previz's camera box for a start / end frame (timing and camera only, "" before approval)
     studio     {models [{id, name, seconds [min, max], resolutions, aspects, first_frame, last_frame, audio, subscription, local, needs_frame, prompt (false: reads none), price_4s {res: USD}, per_second {"480p|16:9|0": USD}}], models_error, default_model,
                 guard (the plate guard that leads every prompt), presets [{id, label, sentence}], max_usd (one take), account: ready|unchecked, spend {today, total, cap},
                 takes [{id, kind: generate|rerun|restyle, from (the take a rerun / restyle came from), prompt, preset, model, resolution (null for a restyle), seconds, aspect, audio, seed,
