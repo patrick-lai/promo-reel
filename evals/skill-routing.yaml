@@ -20,6 +20,10 @@ cases:
     prompt: "A talk show with two hosts walking through the product"
     format: talk-show
     expected: promo-reel
+  - id: mesh-avatar-host
+    prompt: "A talk show where my character is the host; make an avatar from this illustration"
+    format: talk-show
+    expected: promo-reel
   - id: x-craft-clip
     prompt: "A calm craft clip, minimal and quiet"
     format: feature-clip

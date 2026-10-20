@@ -1,0 +1,14 @@
+id: mesh-avatar
+description: One character illustration -> an animated 2D mesh avatar (Mesh Avatar Studio) as a helper.
+skill_md: skills/mesh-avatar/SKILL.md
+primary: false
+aspect: "3:4"
+outputs: [avatar]
+inputs: [illustration]
+stages: [cast]
+hints: [mesh-avatar]
+# helper only, and phrases rather than words so plain podcast / vtuber / anime-mv briefs keep their own route
+triggers: [mesh avatar, mavatar, avatar from this illustration, avatar from my illustration, avatar from an illustration, avatar from illustration, avatar from this drawing, avatar from my drawing, avatar from this image, avatar from a png, animate this illustration, animate my illustration, animate my drawing, animate this drawing, illustration avatar, png avatar]
+companions: []
+copy:
+  inherit: primary

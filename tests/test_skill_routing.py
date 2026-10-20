@@ -17,7 +17,7 @@ def test_eval_all_pass():
     proc = subprocess.run([sys.executable, script], cwd=ROOT, capture_output=True, text=True)
     assert proc.returncode == 0, proc.stdout + proc.stderr
     lines = [ln for ln in proc.stdout.splitlines() if ln.strip()]
-    assert len(lines) == 6
+    assert len(lines) == 7
     assert all(len(ln.split("|")) == 4 and ln.endswith("|PASS") for ln in lines)
 
 
@@ -53,3 +53,12 @@ def test_motion_words_add_motionmaxxing_helper():
     plain = route("A 60 second product hero from real footage of the app", format="hero")
     assert plain["primary"] == "promo-reel"
     assert "motionmaxxing" not in plain["helpers"]
+
+
+def test_illustration_avatar_adds_mesh_avatar_helper_only():
+    asked = route("A talk show where my character is the host; make an avatar from this illustration", format="talk-show")
+    assert asked["primary"] == "promo-reel"
+    assert "mesh-avatar" in asked["helpers"]
+    vtuber = route("A vtuber podcast with two Live2D avatars and an anime illustration style", format="talk-show")
+    assert vtuber["primary"] == "promo-reel"
+    assert "mesh-avatar" not in vtuber["helpers"]

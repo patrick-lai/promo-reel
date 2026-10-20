@@ -15,6 +15,8 @@ A thin prompt still becomes a full project before any spec. `promo plan <name> -
 
 **Helper skill: motionmaxxing** (`skills/motionmaxxing/`, Apache-2.0, vendored; see its VENDORED.md): loads next to the leading skill for any motion work (eases, transitions, camera moves, kinetic type, logo stings, critiquing how a video moves). It never leads and never overrides rules 1-5: app UI only from real captures, its `imagegen.py` images only as `ui: false` plates with `generated:`, ElevenLabs or any other audio only with an `assets.yaml` entry, no publishing. Its gates (`look.py`, `lint.mjs`) are advisory; `promo check` decides. Do not run its `install.sh`.
 
+**Helper skill: mesh-avatar** (`skills/mesh-avatar/`, a wrapper over Mesh Avatar Studio, MIT; see its VENDORED.md): turns one original or owned character illustration into a talking mesh avatar in the tool's own checkout, never in this repo. Its renders do not enter a build yet: no gated asset kind or alpha overlay takes them, and the `avatar` overlay stays own-likeness only.
+
 Skills (`promo skills route`) change the look, never the checks: `promo check` always runs (real UI, licences, text size, yuv420p, X aspect). Cinetic is for motion and launch films built from code; app UI still comes from real captures.
 
 ## 0. Team rules (non-negotiable)
