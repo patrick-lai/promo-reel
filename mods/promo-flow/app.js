@@ -2538,11 +2538,12 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       h("button", { type: "button", class: "btn ghost", "data-quiet": "1", "data-k": "notes-undo", text: "Discard", onclick: () => { b.ops = []; render(true); say("Unsent note changes discarded"); } })) : null;
     return h("section", { class: "pins", "aria-label": "Notes on " + it.label },
       h("div", { class: "pins-h" }, h("button", { type: "button", class: "btn ghost", "data-quiet": "1", "data-k": "pin-" + n, disabled: S.readonly, onclick: () => live((p) => p.addAt()) }, ic("plus"), "Add a note"),
-        h("span", { class: "sub", text: "Press N while watching, or double-click the timeline. Hover a mark to read it, click to edit, drag to move." })),
+        h("span", { class: "sub", text: "Press N while watching, or double-click the timeline. Drag on the paused picture to point at something. Hover a mark to read it, click to edit, drag to move." })),
       sendBar,
       view.length ? h("ul", { class: "pin-list" }, view.map((p) => h("li", { "data-state": p.state },
         h("button", { type: "button", class: "lchip", "data-k": "seek-" + p.key, title: "Go to " + PF.clockT(p.at), onclick: () => live((x) => x.seek(p.at)) }, ic("play"), PF.clockT(p.at)),
         p.scene ? h("span", { class: "chip", text: "Scene " + p.scene }) : null,
+        p.spot ? h("span", { class: "chip", text: "Spot" }) : null,
         p.sent ? h("span", { class: "chip", text: "Sent" }) : STATE[p.state] ? h("span", { class: "chip " + STATE[p.state][1], text: STATE[p.state][0] }) : null,
         h("span", { class: "pin-t" + (p.state === "removed" ? " gone" : ""), text: p.text }),
         !p.sent && !S.readonly ? h("button", { type: "button", class: "btn ghost pin-ed", "data-quiet": "1", "data-k": "ed-" + p.key, text: p.state === "removed" ? "Keep" : "Edit",

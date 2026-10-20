@@ -1,7 +1,8 @@
 "use strict";
 /* The draft player: our own controls so notes live on the timeline. A mark sits on the seek bar at each note; hover reads it, click edits it, drag
-   moves it, N (or + Note) adds one where the playhead is. Scenes from the storyboard run under the bar, hovering the bar shows the frame there, and the
-   keys an editor expects work while the player has focus (? lists them). Notes change only through `onChange`; the caller owns them. */
+   moves it, N (or + Note) adds one where the playhead is. Dragging on the paused picture marks an area and opens a note pointing at it (its spot).
+   Scenes from the storyboard run under the bar, hovering the bar shows the frame there, and the keys an editor expects work while the player has
+   focus (? lists them). Notes change only through `onChange`; the caller owns them. */
 (function (root) {
   const RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2];
   const FLASH_MS = 2600;
@@ -30,6 +31,7 @@
     const fps = o.fps || 30;
     let notes = o.notes || [], scenes = o.scenes || [], editable = !!o.editable;
     let fmt = "clock", loop = null, editing = null, drag = null, flashTimer = 0, raf = 0, lastT = 0, thumb = null, thumbWant = null, thumbBusy = false;
+    let marking = null, swallowClick = false;
 
     const video = h("video", { src: o.src, preload: "metadata", playsinline: "", "aria-label": o.label });
     const bigPlay = h("button", { type: "button", class: "pfp-big", "aria-label": "Play", tabindex: "-1" }, ic("play"));
@@ -37,7 +39,8 @@
     const help = h("div", { class: "pfp-help", role: "dialog", "aria-label": "Keyboard shortcuts", hidden: true },
       h("div", { class: "pfp-help-h" }, h("b", { text: "Keys while the player has focus" }), h("button", { type: "button", class: "pfp-x", "aria-label": "Close", onclick: () => toggleHelp(false) }, ic("close"))),
       h("dl", null, KEYS.map(([k, v]) => h("div", null, h("dt", null, h("kbd", { text: k })), h("dd", { text: v })))));
-    const stage = h("div", { class: "pfp-stage" }, video, bigPlay, flash, help);
+    const spotBox = h("i", { class: "pfp-spot", hidden: true, "aria-hidden": "true" });
+    const stage = h("div", { class: "pfp-stage" }, video, spotBox, bigPlay, flash, help);
 
     const buf = h("i", { class: "pfp-buf" }), prog = h("i", { class: "pfp-prog" }), loopBand = h("i", { class: "pfp-loopband", hidden: true }), head = h("i", { class: "pfp-head" });
     const track = h("div", { class: "pfp-track", role: "slider", tabindex: "-1", "aria-label": "Seek", "aria-valuemin": "0" }, buf, loopBand, prog, head);
@@ -97,6 +100,19 @@
       loopBand.hidden = !loop || !d;
       if (loop && d) { loopBand.style.left = pct(loop.a) + "%"; loopBand.style.width = (pct(loop.b) - pct(loop.a)) + "%"; }
       if (video.buffered.length && d) buf.style.width = pct(video.buffered.end(video.buffered.length - 1)) + "%";
+      el.classList.toggle("can-mark", editable && !!d);
+      drawSpot(marking || (editing ? editing.spot : !on && notes.find((n) => n.spot && n.state !== "removed" && Math.abs(n.at - t) <= 0.5 / fps + 0.01)?.spot));
+    }
+    /* The picture inside the video box: object-fit: contain letterboxes it, and a spot is a fraction of the picture, not of the box. */
+    function picture() {
+      const r = video.getBoundingClientRect(), vw = video.videoWidth || 16, vh = video.videoHeight || 9, k = Math.min(r.width / vw, r.height / vh);
+      return { left: r.left + (r.width - vw * k) / 2, top: r.top + (r.height - vh * k) / 2, width: vw * k, height: vh * k };
+    }
+    function drawSpot(s) {
+      spotBox.hidden = !s;
+      if (!s) return;
+      const p = picture(), r = stage.getBoundingClientRect();
+      Object.assign(spotBox.style, { left: p.left - r.left + s.x * p.width + "px", top: p.top - r.top + s.y * p.height + "px", width: s.w * p.width + "px", height: s.h * p.height + "px" });
     }
     function tick() {
       const t = video.currentTime;
@@ -125,6 +141,31 @@
     video.addEventListener("click", () => { el.focus({ preventScroll: true }); toggle(); });
     video.addEventListener("dblclick", () => fullscreen());
     bigPlay.addEventListener("click", () => { el.focus({ preventScroll: true }); play(); });
+
+    /* ---- a spot: drag on the paused picture (a click still plays) ---- */
+    stage.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0 || !editable || !video.paused || !dur() || help.contains(e.target)) return;
+      const p = picture(), x0 = e.clientX, y0 = e.clientY;
+      const fx = (x) => Math.min(1, Math.max(0, (x - p.left) / p.width)), fy = (y) => Math.min(1, Math.max(0, (y - p.top) / p.height));
+      const area = (ev) => {
+        const a = fx(x0), b = fy(y0), c = fx(ev.clientX), d = fy(ev.clientY), r3 = (v) => Math.round(v * 1000) / 1000;
+        return { x: r3(Math.min(a, c)), y: r3(Math.min(b, d)), w: r3(Math.abs(c - a)), h: r3(Math.abs(d - b)) };
+      };
+      stage.setPointerCapture(e.pointerId);
+      const mv = (ev) => { if (marking || Math.hypot(ev.clientX - x0, ev.clientY - y0) >= DRAG_PX) { marking = area(ev); paint(); } };
+      const up = (ev) => {
+        stage.removeEventListener("pointermove", mv); stage.removeEventListener("pointerup", up); stage.removeEventListener("pointercancel", up);
+        const s = marking && ev.type === "pointerup" ? area(ev) : null;
+        marking = null;
+        if (s) { swallowClick = true; setTimeout(() => { swallowClick = false; }); }     // the click this drag ends with is not a play
+        if (s && s.w >= 0.01 && s.h >= 0.01) {
+          if (editing) { editing.spot = s; editing.showSpot(); } else openEditor(null, null, s);
+        }
+        paint();
+      };
+      stage.addEventListener("pointermove", mv); stage.addEventListener("pointerup", up); stage.addEventListener("pointercancel", up);
+    });
+    stage.addEventListener("click", (e) => { if (swallowClick) { swallowClick = false; e.stopPropagation(); } }, true);
 
     /* ---- the bar: seek by click or drag, preview on hover ---- */
     track.addEventListener("pointerdown", (e) => {
@@ -244,7 +285,8 @@
       cardPinned = !!pinned;
       const STATE = { new: "New, not sent", edited: "Changed, not sent", removed: "To be removed, not sent", saved: "" };
       card.replaceChildren(...items.map((n) => h("div", { class: "pfp-card-n" },
-        h("div", { class: "pfp-card-h" }, h("b", { text: clock(n.at) }), n.scene ? h("span", { text: "Scene " + n.scene }) : null, n.by ? h("span", { text: n.by }) : null,
+        h("div", { class: "pfp-card-h" }, h("b", { text: clock(n.at) }), n.scene ? h("span", { text: "Scene " + n.scene }) : null, n.spot ? h("span", { text: "Spot on the picture" }) : null,
+          n.by ? h("span", { text: n.by }) : null,
           n.sent ? h("em", { text: "Sent, waiting for the agent" }) : STATE[n.state] ? h("em", { text: STATE[n.state] }) : null),
         h("p", { class: n.state === "removed" ? "gone" : "", text: n.text }),
         n.was && n.was.text !== n.text ? h("p", { class: "pfp-was", text: "Was: " + n.was.text }) : null,
@@ -262,12 +304,20 @@
     card.addEventListener("pointerleave", () => hideCardSoon());
 
     /* ---- the note editor: a new note (n = null) or an existing one ---- */
-    function openEditor(n, at) {
+    function openEditor(n, at, spot) {
       if (!editable || (n && !canEdit(n))) return;
       hideCard();
       video.pause();
       const t = n ? n.at : at != null ? at : video.currentTime;
-      editing = { n, at: Math.round(t * 100) / 100 };
+      const spotRow = h("div", { class: "pfp-ed-spot" });
+      editing = { n, at: Math.round(t * 100) / 100, spot: spot || (n && n.spot) || null, showSpot: () => {
+        spotRow.replaceChildren(...(editing.spot
+          ? [h("span", { class: "pfp-ed-mark", text: "Spot marked on the picture" }),
+            h("button", { type: "button", class: "pfp-mini", text: "Clear spot", onclick: () => { editing.spot = null; editing.showSpot(); paint(); } })]
+          : [h("span", { text: "Drag on the picture to mark what you mean (optional)" })]));
+      } };
+      editing.showSpot();
+      paint();
       if (!n) seek(t);
       const when = h("b", { class: "pfp-when" });
       const sc = h("span", { class: "pfp-ed-sc" });
@@ -282,6 +332,7 @@
       editor.replaceChildren(
         h("div", { class: "pfp-ed-h" }, h("span", null, n ? "Note at " : "New note at ", when), sc,
           h("button", { type: "button", class: "pfp-mini", title: "Move the note to the playhead", text: "Use playhead", onclick: () => { editing.at = Math.round(video.currentTime * 100) / 100; showWhen(); } })),
+        spotRow,
         ta,
         h("div", { class: "pfp-ed-a" },
           n ? h("button", { type: "button", class: "pfp-del", text: "Delete", onclick: () => { closeEditor(); change({ op: "remove", key: n.key }); } }) : null,
@@ -292,7 +343,7 @@
         if (!ta.value.trim()) return;
         const ed = editing;
         closeEditor();
-        change(ed.n ? { op: "edit", key: ed.n.key, at: ed.at, text: ta.value } : { op: "add", key: o.newKey(), at: ed.at, text: ta.value });
+        change(ed.n ? { op: "edit", key: ed.n.key, at: ed.at, text: ta.value, spot: ed.spot } : { op: "add", key: o.newKey(), at: ed.at, text: ta.value, spot: ed.spot });
       };
       ta.addEventListener("keydown", (e) => {
         if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); editor.requestSubmit(); }
@@ -304,7 +355,7 @@
       place(editor, r.left + (pct(editing.at) / 100) * r.width);
       ta.focus();
     }
-    function closeEditor() { editing = null; editor.hidden = true; editor.replaceChildren(); el.focus({ preventScroll: true }); }
+    function closeEditor() { editing = null; editor.hidden = true; editor.replaceChildren(); paint(); el.focus({ preventScroll: true }); }
     function change(ch) { o.onChange(ch); }
     function jumpNote(dir) {
       const t = video.currentTime, list = notes.filter((n) => n.state !== "removed");
@@ -354,6 +405,7 @@
     });
     document.addEventListener("fullscreenchange", () => fsBtn.replaceChildren(ic(el.getRootNode().fullscreenElement === el ? "shrink" : "expand")));
     new ResizeObserver(() => { if (!drag) drawNotes(); drawScenes(); }).observe(track);
+    new ResizeObserver(() => paint()).observe(stage);          // a marked spot follows the picture
 
     addBtn.disabled = !editable;
     paint();
@@ -366,6 +418,7 @@
         addBtn.disabled = !editable;
         if (!drag) drawNotes();
         drawScenes();
+        paint();
       },
       busy: () => !!editing || !!drag,
       seek: (t) => { seek(t); el.focus({ preventScroll: true }); },

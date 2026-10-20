@@ -33,8 +33,10 @@ def _scoreboard_lines(st):
     # the round's control sits among the other rows with the same columns: a reviewer must not be able to tell it apart
     sb = FC.scoreboard(st, control=True)
     L_ = [FC.scoreboard(st)["line"] + ".", "", "| check | scene | last draft | change | evidence |", "|---|---|---|---|---|"]
+    spots = {c["id"]: c["spot"] for c in st.get("checks") or [] if c.get("spot")}
     for x in sb["rows"]:
-        L_.append(f"| {x['id']} {x['what']} | {x['scene'] or 'all'} | {x['status']} | {x['change']} | {F._clip(x['why'], 90)} |")
+        where = f" (at {FC.spot_text(spots[x['id']])})" if x["id"] in spots else ""
+        L_.append(f"| {x['id']} {x['what']}{where} | {x['scene'] or 'all'} | {x['status']} | {x['change']} | {F._clip(x['why'], 90)} |")
     L_ += ["", "Mark every judge check on the new draft (`promo flow check mark` / `check marks`), pass or fail with evidence, not only the newest notes: a draft starts with none marked, and unmeasured is not a pass.",
            "Keep what got fixed; restore what broke. A draft that breaks what the reviewed draft got right cannot go to the person."]
     return L_
@@ -99,7 +101,8 @@ def write_brief(pd):
            "Read this first. The person's words below win over everything else in this file.", "",
            "## The person's words (obey these over everything below)", "", "> " + r["feedback"].replace("\n", "\n> "), ""]
     for p in pins:
-        out.append(f"- Pinned at {p['at_s']:.1f} s of draft {p['draft']}" + (f", scene {p['scene']}" if p.get("scene") else "") + f": \"{p['text']}\" ({p['by']})")
+        out.append(f"- Pinned at {p['at_s']:.1f} s of draft {p['draft']}" + (f", scene {p['scene']}" if p.get("scene") else "") + f": \"{p['text']}\" ({p['by']})"
+                   + (f"; it points at {FC.spot_text(p['spot'])}, marked frame: {os.path.join(F.fdir(pd), p['still'])}" if p.get("spot") else ""))
     for a in over:
         out.append(f"- Instead of \"{a['text']}\": \"{a['overturned']['text']}\" ({a['overturned']['by']})")
     out += ["", "What they asked for in the first place:", "", "> " + st["intent"].replace("\n", "\n> ")]

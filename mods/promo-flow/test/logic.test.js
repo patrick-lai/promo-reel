@@ -419,6 +419,18 @@ test("timeline notes: local changes fold into one list, edits back to the saved 
   assert.deepEqual(L.noteChange(ops, pins, { op: "remove", key: "l1" }).map((o) => o.key), ["n1", "n2"]);            // a local note just goes
 });
 
+test("timeline notes: a spot dragged on the picture is a change of its own and reaches the agent as --spot", () => {
+  const pins = [{ id: "n1", at_s: 5, text: "logo is tiny", spot: { x: 0.1, y: 0.2, w: 0.3, h: 0.1 } }];
+  const spot = { x: 0.40004, y: 0.5, w: 0.2, h: 0.25 };
+  let ops = L.noteChange([], pins, { op: "add", key: "l1", at: 2, text: "this button", spot });
+  ops = L.noteChange(ops, pins, { op: "edit", key: "n1", at: 5, text: "logo is tiny", spot: null });       // only the spot cleared
+  assert.deepEqual(ops, [{ key: "l1", op: "add", at: 2, text: "this button", spot: { x: 0.4, y: 0.5, w: 0.2, h: 0.25 } }, { key: "n1", op: "edit", spot: null }]);
+  assert.equal(L.notesMessage(ops, pins), "(1) new note at 0:02 (--at 2) pointing at an area of the frame (--spot 0.4,0.5,0.2,0.25): “this button” (2) change n1: without its spot (--spot none)");
+  assert.deepEqual(L.noteChange(ops, pins, { op: "edit", key: "n1", text: "logo is tiny", spot: pins[0].spot }).map((o) => o.key), ["l1"]);   // back as saved
+  assert.deepEqual(L.notesView(pins, ops, []).map((n) => n.spot), [{ x: 0.4, y: 0.5, w: 0.2, h: 0.25 }, null]);
+  assert.equal(L.notesUnsettled([{ key: "n1", op: "edit", spot: null }], pins).length, 1);
+});
+
 test("timeline notes: sent changes wait until the published pins show them", () => {
   const sent = [{ key: "l1", op: "add", at: 14.23, text: "cut off" }, { key: "n1", op: "edit", text: "bigger logo" }, { key: "n2", op: "remove" }];
   const before = [{ id: "n1", at_s: 5, text: "logo is tiny" }, { id: "n2", at_s: 9, text: "too loud" }];

@@ -3,6 +3,7 @@ pinned notes, the look against the references, autopilot, and what carries over 
 import datetime
 import json
 import os
+import subprocess
 
 import pytest
 from PIL import Image
@@ -219,6 +220,33 @@ def test_a_pinned_note_can_be_reworded_moved_and_taken_back(pd, tmp_path):
     assert all(c["retired"] for c in F.load(pd)["checks"] if c["source"] == "pin")
     with pytest.raises(F.FlowError):
         FC.pin_edit(pd, pid, "Pat", text="again")
+
+
+@pytest.mark.skipif(subprocess.run(["which", "ffmpeg"], capture_output=True).returncode != 0, reason="needs ffmpeg")
+def test_a_spot_marks_the_frame_and_re_marking_it_makes_a_new_check(pd, tmp_path):
+    at_drafts(pd, tmp_path, n=0)
+    video = str(tmp_path / "d1.mp4")
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=white:s=160x90:r=10:d=8", "-pix_fmt", "yuv420p", video], check=True)
+    F.add_draft(pd, video)
+    pid, _ = FC.pin(pd, 1, 5.0, "this word is cut off", "Pat", spot=FC.parse_spot("0.25,0.5,0.5,0.25"))
+    st = F.load(pd)
+    p = st["pins"][0]
+    assert p["spot"] == dict(x=0.25, y=0.5, w=0.5, h=0.25) and next(c for c in st["checks"] if c["id"] == p["check"])["spot"] == p["spot"]
+    still = Image.open(os.path.join(F.fdir(pd), p["still"])).convert("RGB")
+    r, g, _ = still.getpixel((40, 56))                                                  # the box's left edge, on a white frame
+    assert r > 200 and g < 150 and still.getpixel((80, 20)) > (240, 240, 240)
+    assert F.snapshot(pd)["drafts"][0]["pins"][0]["spot"] == p["spot"]
+    F.round_start(pd, "see my notes")
+    brief = open(RB.brief_path(pd, F.open_round(F.load(pd)))).read()
+    assert "it points at x 25-75%, y 50-75% of the frame, marked frame: " + os.path.join(F.fdir(pd), "pins", "n1.jpg") in brief
+    FC.pin_edit(pd, pid, "Pat", spot=FC.parse_spot("0,0,0.5,0.5"))                     # "this" now means something else
+    st = F.load(pd)
+    assert next(c for c in st["checks"] if c["id"] == p["check"])["retired"] and st["pins"][0]["spot"]["x"] == 0
+    FC.pin_edit(pd, pid, "Pat", spot=None)
+    assert "spot" not in F.load(pd)["pins"][0] and "spot" not in F.snapshot(pd)["drafts"][0]["pins"][0]
+    for bad in ("1,0,0.5,0.5", "0.5,0.5,0.6,0.1", "a,b"):
+        with pytest.raises(F.FlowError, match="--spot"):
+            FC.parse_spot(bad)
 
 
 def report(tmp_path, shas, rows):

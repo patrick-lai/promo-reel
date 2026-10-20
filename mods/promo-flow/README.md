@@ -73,7 +73,8 @@ Every path below that says `file` is `{"$file": "<absolute path>"}` (the host tu
                  of another file is refused), skipped gates named with their reason, never counted as passed. board {line, fixed, broken, open, held, total, passing,
                  rows[{id, what, scene, status: pass|fail|unmeasured, change: fixed|broken|open|held, source}]}: every check against the draft before it (the round's
                  hidden control is never in it). look {mean, scenes[{scene, d, pair: file}]} | null: reference look distance, pair = reference left, draft right.
-                 pins [{id, at_s, scene, text, by}]: notes pinned to a moment. judged: the blind comparison line. restorable: the plan behind it is kept
+                 pins [{id, at_s, scene, text, by, spot?}]: notes pinned to a moment; spot {x, y, w, h} = the area dragged on the paused picture
+                 (fractions of the frame from its top-left). judged: the blind comparison line. restorable: the plan behind it is kept
     pairs      [{id, question, scene, media: image|video|audio, left: file, right: file, answered: {side, by, at}|null}]   blind picks for the person; labels never sent
     autopilot  {state: running|paused|done|blocked|out_of_time|stopped, minutes, used_min, left_min, passes, by, line, goal_met} | null
     assumptions [{id, text, scene, overturned: {by, text, at}|null}]    choices the agent made without asking; "Change this" overturns one

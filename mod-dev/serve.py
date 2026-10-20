@@ -190,9 +190,11 @@ def run_action(pd, name, payload):
     elif name == "share":
         return {"ok": True, "message": f"upload {payload['item']} to {payload['dest_label']}: `promo flow share {payload['kind']} {payload['n']} --to {payload['dest']} --by NAME` is the agent's to run", "pending": True}
     elif name == "pins":
+        spot = lambda s: ["--spot", ",".join(str(s[k]) for k in "xywh") if s else "none"]
         for o in payload["ops"]:
-            argv = dict(add=["pin", "add", "--draft", str(payload["draft"]), "--at", str(o.get("at")), "--text", str(o.get("text"))],
-                        edit=["pin", "edit", o["key"]] + (["--at", str(o["at"])] if "at" in o else []) + (["--text", o["text"]] if "text" in o else []),
+            argv = dict(add=["pin", "add", "--draft", str(payload["draft"]), "--at", str(o.get("at")), "--text", str(o.get("text"))] + (spot(o["spot"]) if o.get("spot") else []),
+                        edit=["pin", "edit", o["key"]] + (["--at", str(o["at"])] if "at" in o else []) + (["--text", o["text"]] if "text" in o else [])
+                        + (spot(o["spot"]) if "spot" in o else []),
                         remove=["pin", "remove", o["key"]])[o["op"]]
             if flow.main(["--project", pd, *argv, "--by", BY]) != 0:
                 return {"ok": False, "error": f"promo flow pin {o['op']} failed (see the harness console)", "pending": False}

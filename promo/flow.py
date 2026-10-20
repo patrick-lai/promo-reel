@@ -1590,7 +1590,8 @@ def _draft_extras(pd, st, i):
                            rows=[{k: x[k] for k in ("id", "what", "scene", "status", "change", "source", "last", "replaced_by")} for x in sb["rows"]]),
                 look=dict(mean=lk["mean"], scenes=[dict(scene=k, d=v["d"], pair=_media(v["pair"]) if i >= len(st["drafts"]) - LOOK_IMAGE_DRAFTS else None)
                                                    for k, v in sorted(lk["scenes"].items())]) if lk else None,
-                pins=[dict(id=p["id"], at_s=p["at_s"], scene=p.get("scene"), text=p["text"], by=p["by"]) for p in st.get("pins") or [] if p["draft"] == i + 1 and not p.get("removed")],
+                pins=[dict(id=p["id"], at_s=p["at_s"], scene=p.get("scene"), text=p["text"], by=p["by"], **({"spot": p["spot"]} if p.get("spot") else {}))
+                      for p in st.get("pins") or [] if p["draft"] == i + 1 and not p.get("removed")],
                 judged=AB.result(jp)["line"] if jp else None, restorable=os.path.isdir(os.path.join(fdir(pd), "versions", f"d{i + 1}")))
 
 
@@ -2090,13 +2091,14 @@ def _pin_cli(pd, a):
     if a.action == "add":
         if a.at is None or a.text is None:
             raise FlowError("pin add needs --at and --text")
-        pid, scene = FC.pin(pd, a.draft, a.at, a.text, a.by, a.scene, a.story)
-        print(f"pinned {pid}" + (f" on scene {scene}" if scene else "") + ": it goes into the next round as a check")
+        pid, scene = FC.pin(pd, a.draft, a.at, a.text, a.by, a.scene, a.story, FC.parse_spot(a.spot) if a.spot else None)
+        print(f"pinned {pid}" + (f" on scene {scene}" if scene else "") + ": it goes into the next round as a check"
+              + (f"; marked frame flow/pins/{pid}.jpg" if a.spot else ""))
         return True
     if not a.id:
         raise FlowError(f"pin {a.action} needs the note's id (n1, n2, ...)")
     if a.action == "edit":
-        scene = FC.pin_edit(pd, a.id, a.by, a.text, a.at)
+        scene = FC.pin_edit(pd, a.id, a.by, a.text, a.at, FC.parse_spot(a.spot) if a.spot else FC.KEEP)
         print(f"changed {a.id}" + (f" (scene {scene})" if scene else "") + ": the next round checks the new words")
     else:
         FC.pin_remove(pd, a.id, a.by)
@@ -2198,7 +2200,7 @@ def main(argv=None):
     g.add_argument("--fail", dest="ok", action="store_false"); p.add_argument("--evidence"); p.add_argument("--family"); p.add_argument("--file"); p.add_argument("--why")
     p.add_argument("--json", action="store_true"); p.add_argument("--replaces", help="older check ids this one supersedes, comma-separated (a hint for the person)")
     p = P("pin"); p.add_argument("action", choices=["add", "edit", "remove"]); p.add_argument("id", nargs="?"); p.add_argument("--draft", type=int); p.add_argument("--at", type=float)
-    p.add_argument("--text")
+    p.add_argument("--text"); p.add_argument("--spot", help="X,Y,W,H: the area the note points at, fractions of the frame from its top-left; none clears it")
     p.add_argument("--by", required=True); p.add_argument("--scene"); p.add_argument("--story")
     p = P("look"); p.add_argument("--draft", type=int); p.add_argument("--story")
     p = P("restore"); p.add_argument("--draft", type=int); p.add_argument("--scene"); p.add_argument("--shot", action="append", default=[]); p.add_argument("--undo", type=int)

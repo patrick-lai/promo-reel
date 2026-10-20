@@ -302,6 +302,10 @@
      changes, `sent` the ones the agent has not published back yet. */
   const noteText = (t) => String(t == null ? "" : t).trim().replace(/\s+/g, " ");
   const noteAt = (t) => Math.max(0, Math.round((+t || 0) * 100) / 100);
+  /* A spot is the area the person dragged on the paused picture: {x, y, w, h}, fractions of the frame from its top-left (`promo flow pin --spot`). */
+  const noteSpot = (s) => (s ? { x: +(+s.x).toFixed(3), y: +(+s.y).toFixed(3), w: +(+s.w).toFixed(3), h: +(+s.h).toFixed(3) } : null);
+  const sameSpot = (a, b) => JSON.stringify(noteSpot(a)) === JSON.stringify(noteSpot(b));
+  const spotArg = (s) => (s ? [s.x, s.y, s.w, s.h].join(",") : "none");
   function noteChange(ops, pins, ch) {
     const list = arr(ops).slice(), i = list.findIndex((o) => o.key === ch.key), was = i < 0 ? null : list[i];
     if (i >= 0) list.splice(i, 1);
@@ -312,9 +316,11 @@
       next = was && was.op !== "remove" ? { ...was } : pin ? { key: ch.key, op: "edit" } : { key: ch.key, op: "add", at: 0, text: "" };
       if (ch.at != null) next.at = noteAt(ch.at);
       if (ch.text != null) next.text = noteText(ch.text);
+      if (ch.spot !== undefined) next.spot = noteSpot(ch.spot);
       if (pin && next.at === pin.at_s) delete next.at;
       if (pin && next.text === pin.text) delete next.text;
-      if ((next.op === "edit" && next.at == null && next.text == null) || (next.op === "add" && !next.text)) next = null;
+      if ((pin || next.op === "add") && "spot" in next && sameSpot(next.spot, pin && pin.spot)) delete next.spot;
+      if ((next.op === "edit" && next.at == null && next.text == null && !("spot" in next)) || (next.op === "add" && !next.text)) next = null;
     }
     if (next) list.splice(i < 0 ? list.length : i, 0, next);
     return list;
@@ -324,10 +330,11 @@
     const out = arr(pins).map((p) => {
       const o = mine.get(p.id) || gone.get(p.id);
       return { key: p.id, id: p.id, at: o && o.at != null ? o.at : p.at_s, text: o && o.text != null ? o.text : p.text, scene: p.scene || null, by: p.by || "",
+        spot: o && "spot" in o ? o.spot : p.spot || null,
         state: !o ? "saved" : o.op === "remove" ? "removed" : "edited", sent: !!o && !mine.has(p.id), was: o ? { at: p.at_s, text: p.text } : null };
     });
     for (const [o, isSent] of [...arr(sent).map((o) => [o, true]), ...arr(ops).map((o) => [o, false])])
-      if (o.op === "add") out.push({ key: o.key, id: null, at: o.at, text: o.text, scene: null, by: "", state: "new", sent: isSent, was: null });
+      if (o.op === "add") out.push({ key: o.key, id: null, at: o.at, text: o.text, spot: o.spot || null, scene: null, by: "", state: "new", sent: isSent, was: null });
     return out.sort((a, b) => a.at - b.at || String(a.key).localeCompare(String(b.key)));
   }
   /* What the agent has not published back yet: an added note shows up as a pin with its words near its time, an edit as the pin's new values, a removal
@@ -338,16 +345,18 @@
       if (o.op === "add") return !ps.some((p) => noteText(p.text) === o.text && Math.abs(p.at_s - o.at) <= 0.06);
       const p = ps.find((x) => x.id === o.key);
       if (o.op === "remove" || !p) return !!p;
-      return (o.at != null && Math.abs(p.at_s - o.at) > 0.06) || (o.text != null && noteText(p.text) !== o.text);
+      return (o.at != null && Math.abs(p.at_s - o.at) > 0.06) || (o.text != null && noteText(p.text) !== o.text) || ("spot" in o && !sameSpot(p.spot, o.spot));
     });
   }
   function notesMessage(ops, pins) {
     const q = (t) => "\u201c" + t + "\u201d";
     return arr(ops).map((o, i) => {
       const p = arr(pins).find((x) => x.id === o.key);
-      const line = o.op === "add" ? "new note at " + clockT(o.at) + " (--at " + o.at + "): " + q(o.text)
+      const spot = !("spot" in o) ? "" : o.spot ? " pointing at an area of the frame (--spot " + spotArg(o.spot) + ")" : " without its spot (--spot none)";
+      const line = o.op === "add" ? "new note at " + clockT(o.at) + " (--at " + o.at + ")" + spot + ": " + q(o.text)
         : o.op === "remove" ? "remove " + o.key + " (" + q(p ? p.text : "") + ")"
-        : "change " + o.key + (o.at != null ? ": move to " + clockT(o.at) + " (--at " + o.at + ")" : "") + (o.text != null ? (o.at != null ? ", " : ": ") + "new words " + q(o.text) : "");
+        : "change " + o.key + (o.at != null ? ": move to " + clockT(o.at) + " (--at " + o.at + ")" : "") + (o.text != null ? (o.at != null ? ", " : ": ") + "new words " + q(o.text) : "")
+          + (spot ? (o.at != null || o.text != null ? "," : ":") + spot : "");
       return "(" + (i + 1) + ") " + line;
     }).join(" ");
   }

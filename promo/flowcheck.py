@@ -303,19 +303,65 @@ def scene_at(pd, st, t, story=None):
     return story, None
 
 
-def pin(pd, n, at_s, text, by, scene=None, story=None):
-    """The person's note on one moment of a draft: it becomes a check on that scene, for the round that takes it."""
+def parse_spot(text):
+    """`--spot X,Y,W,H`: the area the note points at, as fractions of the frame from its top-left corner; `none` clears it."""
+    if str(text).strip().lower() == "none":
+        return None
+    try:
+        x, y, w, h = (float(v) for v in str(text).split(","))
+    except ValueError:
+        raise F.FlowError("--spot is X,Y,W,H: fractions of the frame (0-1) from its top-left corner, or none") from None
+    if not (0 <= x < 1 and 0 <= y < 1 and 0 < w and 0 < h and x + w <= 1.001 and y + h <= 1.001):
+        raise F.FlowError("--spot must lie inside the frame: 0 <= X, Y < 1, W and H over 0, X + W and Y + H at most 1")
+    return dict(x=round(x, 3), y=round(y, 3), w=round(w, 3), h=round(h, 3))
+
+
+def spot_text(s):
+    return f"x {s['x'] * 100:.0f}-{(s['x'] + s['w']) * 100:.0f}%, y {s['y'] * 100:.0f}-{(s['y'] + s['h']) * 100:.0f}% of the frame"
+
+
+def _spot_still(pd, video, at_s, spot, pid):
+    """flow/pins/<pid>.jpg: the draft's frame at the note's moment with its spot outlined, so whoever acts on the note sees what it means."""
+    import subprocess
+
+    from PIL import ImageDraw
+
+    from .contact import _grab
+    out = os.path.join(F.fdir(pd), "pins", f"{pid}.jpg")
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    tmp = out[:-4] + ".grab.png"
+    try:
+        im = _grab(video, at_s, tmp)
+    except subprocess.CalledProcessError:
+        raise F.FlowError(f"could not read the frame at {at_s:g} s of {os.path.basename(video)} to mark the note's spot") from None
+    os.remove(tmp)
+    W, H = im.size
+    box = [spot["x"] * W, spot["y"] * H, (spot["x"] + spot["w"]) * W, (spot["y"] + spot["h"]) * H]
+    k = max(2, W // 480)
+    d = ImageDraw.Draw(im)
+    d.rectangle([box[0] - k, box[1] - k, box[2] + k, box[3] + k], outline=(0, 0, 0), width=k)       # a dark edge keeps it visible on light frames
+    d.rectangle(box, outline=(255, 64, 160), width=k)
+    im.save(out, quality=88)
+    return os.path.relpath(out, F.fdir(pd))
+
+
+def pin(pd, n, at_s, text, by, scene=None, story=None, spot=None):
+    """The person's note on one moment of a draft: it becomes a check on that scene, for the round that takes it. `spot` (parse_spot) marks
+    what on the frame the note is about: kept on the pin and its check, with the marked frame as flow/pins/<id>.jpg."""
     st = F.load(pd)
-    n, _ = draft_of(st, n)
+    n, d = draft_of(st, n)
     if at_s is None or at_s < 0:
         raise F.FlowError("--at is the moment in seconds (0 or more)")
     if not scene:
         story, scene = scene_at(pd, st, at_s, story)
+    pid = f"n{len(st.get('pins') or []) + 1}"
+    marked = dict(spot=spot, still=_spot_still(pd, d["file"], at_s, spot, pid)) if spot else {}
     cid = add(pd, text, scene=scene, story=story, source="pin", by=by)
     st = F.load(pd)
     c = find(st, cid)
-    pid = f"n{len(st.setdefault('pins', [])) + 1}"
-    st["pins"].append(dict(id=pid, draft=n, at_s=round(float(at_s), 2), scene=scene, story=story, text=c["what"], by=c["by"], check=cid, round=c["round"], created=F.now()))
+    c.update(marked)
+    st.setdefault("pins", []).append(dict(id=pid, draft=n, at_s=round(float(at_s), 2), scene=scene, story=story, text=c["what"], by=c["by"], check=cid,
+                                          round=c["round"], created=F.now(), **marked))
     F.save(pd, st)
     return pid, scene
 
@@ -327,25 +373,36 @@ def _live_pin(st, pid):
     return p
 
 
-def pin_edit(pd, pid, by, text=None, at_s=None):
-    """The person rewords or moves a pinned note. A new wording or scene retires the old note's check (its marks stay with it) and makes a new one
-    for the round that takes it; a move inside the same scene keeps the check."""
-    if text is None and at_s is None:
-        raise F.FlowError("say what changes: --text, --at or both")
+KEEP = "keep"
+
+
+def pin_edit(pd, pid, by, text=None, at_s=None, spot=KEEP):
+    """The person rewords, moves or re-marks a pinned note (`spot`: KEEP, None to clear, or a parse_spot area). A new wording, scene or spot
+    retires the old note's check (its marks stay with it: "this" now means something else) and makes a new one for the round that takes it;
+    a move inside the same scene keeps the check."""
+    if text is None and at_s is None and spot == KEEP:
+        raise F.FlowError("say what changes: --text, --at, --spot or several")
     if at_s is not None and at_s < 0:
         raise F.FlowError("--at is the moment in seconds (0 or more)")
     st = F.load(pd)
     p = _live_pin(st, pid)
     text = p["text"] if text is None else " ".join(text.split())
     story, scene = (p.get("story"), p.get("scene")) if at_s is None else scene_at(pd, st, at_s, p.get("story"))
+    spot = p.get("spot") if spot == KEEP else spot
+    at = p["at_s"] if at_s is None else round(float(at_s), 2)
+    marked = dict(spot=spot, still=_spot_still(pd, draft_of(st, p["draft"])[1]["file"], at, spot, pid)) if spot else {}
     cid = p["check"]
-    if text != p["text"] or scene != p.get("scene"):
+    if text != p["text"] or scene != p.get("scene") or spot != p.get("spot"):
         retire(pd, cid, f"the person changed pinned note {pid}", by)
         cid = add(pd, text, scene=scene, story=story, source="pin", by=by)
         st = F.load(pd)
         p = _live_pin(st, pid)
     c = find(st, cid)
-    p.update(at_s=p["at_s"] if at_s is None else round(float(at_s), 2), scene=scene, story=story, text=c["what"], check=cid, round=c["round"], edited=F.now())
+    for x in (c, p):
+        x.pop("spot", None)
+        x.pop("still", None)
+        x.update(marked)
+    p.update(at_s=at, scene=scene, story=story, text=c["what"], check=cid, round=c["round"], edited=F.now())
     F.log(st, f"pin {pid} edited")
     F.save(pd, st)
     return scene
