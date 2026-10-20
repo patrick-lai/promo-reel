@@ -30,7 +30,7 @@ from ..cache import Stamps, code_hash, digest
 from ..overlays import apply_overlays, build_overlays
 from . import ShotType, shot_type
 
-L2D_CODE = ["live2d", "livestream"]
+L2D_CODE = ["live2d", "livestream", "mesh_avatar"]
 
 
 def host_layer_path(spec, hid):
@@ -121,12 +121,14 @@ def content_sig(path):
 def ensure_host_layers(spec, log=print):
     """Render (or reuse) one alpha layer per host covering the whole show. Returns {host id: path}."""
     from .. import live2d as L2
+    from .. import mesh_avatar as MA
     c = LS.cfg(spec)
     hosts = c.get("hosts") or []
     st = Stamps(spec.build)
     out = {}
     here = os.path.dirname(L2.__file__)
-    extra = [os.path.join(L2.L2D_DIR, f) for f in ("render.mjs", "page.html", "assets.yaml")]
+    extra = [os.path.join(L2.L2D_DIR, f) for f in ("render.mjs", "page.html", "mesh-page.html", "assets.yaml")]
+    models = L2.registry()["models"]
     hl = LS.host_layout(c)
     hw, hh = hl["w"], hl["h"]
     for i, h in enumerate(hosts):
@@ -139,7 +141,7 @@ def ensure_host_layers(spec, log=print):
         partner = partner[0] if partner else None
         gz = gaze_track(spec)
         dig = digest(h, content_sig(wav) if wav else None, content_sig(partner) if partner else None, spec.duration, spec.fps, spec.scale,
-                     [round(float(g), 3) for g in gz], hw, lh, fr_ov, code_hash(*L2D_CODE, extra_files=extra))
+                     [round(float(g), 3) for g in gz], hw, lh, fr_ov, MA.signature(models.get(h.get("model"))), code_hash(*L2D_CODE, extra_files=extra))
         key = f"live2d_{hid}_{spec.OW}"
         if not st.is_fresh(key, dig, [p]):
             if R.sampling():

@@ -29,7 +29,7 @@ from .livestream import LayerReader, comp, content_sig, framed, host_track, plac
 
 # The host layers depend on these modules' code; everything else they use (geometry, line times, gaze sides, the VO takes) goes into their
 # digest as data, so a subtitle or layout change never re-renders Live2D.
-PODCAST_CODE = ["live2d", "perform"]
+PODCAST_CODE = ["live2d", "perform", "mesh_avatar"]
 
 
 def layer_path(spec, hid):
@@ -86,13 +86,14 @@ def _mix_partners(spec, wavs, i):
 def ensure_podcast_layers(spec, log=print):
     """Render (or reuse) one alpha master layer per host covering the whole show. Returns {host id: path}."""
     from .. import live2d as L2
+    from .. import mesh_avatar as MA
     c = P.cfg(spec)
     hs = P.hosts(c)
     M = P.master(spec)
     st = Stamps(spec.build)
     lines = P.timed_lines(spec)
     wavs = [host_track(spec, h, log) for h in hs]
-    extra = [os.path.join(L2.L2D_DIR, f) for f in ("render.mjs", "page.html", "assets.yaml")]
+    extra = [os.path.join(L2.L2D_DIR, f) for f in ("render.mjs", "page.html", "mesh-page.html", "assets.yaml")]
     ss = supersample(spec)
     out = {}
     for i, h in enumerate(hs):
@@ -112,7 +113,7 @@ def ensure_podcast_layers(spec, log=print):
         wav = wavs[i]
         dig = digest(P.plain(h), content_sig(wav) if wav else None, content_sig(partner) if partner else None, spec.duration, spec.fps, spec.scale,
                      [round(float(x), 2) for x in pd[:: max(1, spec.fps // 2)]], mh["W"], M["H"], mh["frame"], own, others, sd, ss, P.plain(umodel),
-                     code_hash(*PODCAST_CODE, extra_files=extra))
+                     MA.signature(umodel), code_hash(*PODCAST_CODE, extra_files=extra))
         key = f"podcast_{hid}_{spec.OW}"
         if not st.is_fresh(key, dig, [p]):
             if R.sampling():

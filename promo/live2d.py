@@ -48,6 +48,9 @@ class Live2DError(RuntimeError):
 
 # ---------------------------------------------------------------- registry / fetch
 SAMPLE_TYPES = ("original",)                     # Live2D Original Characters (the free sample models)
+# AGENTS.md rule 1: the person's own likeness may appear only in an `avatar` overlay, so a host model drawn from them
+# (`likeness: own`) renders for tests and stills but fails the show's licence gate.
+OWN_LIKENESS_HOST = "is drawn from the person's own likeness: rule 1 allows that only in an `avatar` overlay, not as a show host"
 BYO_TYPES = ("own", "commissioned", "original")  # bring-your-own models: drawn / commissioned / bought for this use
 REFUSED_TYPES = ("collaboration", "external")
 
@@ -91,6 +94,9 @@ def model_entry(name, reg=None):
         if miss:
             raise Live2DError(f"{name}: your model needs {' and '.join(miss)} (what lets you use it, and where it came from): "
                               f"`promo live2d add ... --licence TEXT --source URL`")
+        if m.get("likeness") == "own" and not str(m.get("consent") or "").strip():
+            raise Live2DError(f"{name}: a model of the person's own likeness needs their consent on record: "
+                              f"`promo live2d add ... --likeness own --consent TEXT`")
         return m
     if ct not in SAMPLE_TYPES:
         raise Live2DError(f"{name}: character_type={ct!r}. Only Live2D Original Characters may be used in a "
@@ -169,6 +175,9 @@ def fetch(names=None, force=False, log=print):
 def resolve_model(name):
     reg = registry()
     m = model_entry(name, reg)
+    if m.get("renderer") == "mesh":
+        from . import mesh_avatar
+        return mesh_avatar.resolve(name, m)
     core = _abs(reg["runtime"]["path"])
     if m.get("user"):
         p = os.path.expanduser(m["model3"])
@@ -500,10 +509,16 @@ def render_host(model_name, out, *, wav=None, partner_wav=None, duration=None, f
     k = max(1, int(supersample))
     os.makedirs(os.path.dirname(os.path.abspath(out)) or ".", exist_ok=True)
     side = os.path.splitext(out)[0]
-    job = dict(modelDir=model["dir"], model3=os.path.relpath(model["model3_path"], model["dir"]), core=model["core"], width=width * k, height=height * k,
-               fps=fps, frames=n, seed=seed, warmup=warmup, frame=frame_job(model, _scaled_frame(model, frame, height, k), height * k),
-               tracks=job_tracks(tracks), readback=info["mouth_ids"][:1], readbackPath=side + ".readback.json", premultiplied=k > 1,
-               chromium=os.environ.get("PROMO_CHROMIUM") or _default_chromium())
+    fj = frame_job(model, _scaled_frame(model, frame, height, k), height * k)
+    chromium = os.environ.get("PROMO_CHROMIUM") or _default_chromium()
+    if model.get("renderer") == "mesh":
+        from . import mesh_avatar
+        job = mesh_avatar.job(model, width=width * k, height=height * k, fps=fps, frames=n, seed=seed, warmup=warmup, frame=fj, layers=tracks,
+                              readback_path=side + ".readback.json", premultiplied=k > 1, chromium=chromium)
+    else:
+        job = dict(modelDir=model["dir"], model3=os.path.relpath(model["model3_path"], model["dir"]), core=model["core"], width=width * k,
+                   height=height * k, fps=fps, frames=n, seed=seed, warmup=warmup, frame=fj, tracks=job_tracks(tracks),
+                   readback=info["mouth_ids"][:1], readbackPath=side + ".readback.json", premultiplied=k > 1, chromium=chromium)
     with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
         json.dump(job, f)
         jpath = f.name
@@ -572,6 +587,10 @@ def framing(model, H, override=None):
     if head <= 0 or not (top <= an["head_top"] < an["chin"] < an["chest"]):
         raise Live2DError(f"{model.get('id')}: anchors must satisfy top <= head_top < chin < chest (got {an})")
     zp = hf / head                                      # model height in PANEL heights
+    if model.get("cut_bottom"):
+        # a bust picture cut flat at its bottom edge (a mesh avatar) never floats above the panel bottom: same head
+        # size as every host, set lower in the panel until the cut sits on the panel's bottom edge
+        ht = max(ht, 1.0 - (1.0 - an["head_top"]) * zp)
     px = lambda y: (ht + (y - an["head_top"]) * zp) * P
     return dict(zoom=zp * P / H, at_x=[an.get("cx", 0.5), 0.5], at_y=[an["head_top"], (pad + ht * P) / H],
                 head_top_px=px(an["head_top"]), chin_px=px(an["chin"]), chest_px=px(an["chest"]), top_px=px(top),
@@ -612,11 +631,17 @@ def render_stills(model_name, width, height, tracks, *, frame=None, warmup=60, s
     n = max(_track_len(v) for v in tracks.values())
     k = max(1, int(supersample))
     d = tempfile.mkdtemp(prefix="l2d-still-")
-    job = dict(modelDir=model["dir"], model3=os.path.relpath(model["model3_path"], model["dir"]), core=model["core"], width=width * k,
-               height=height * k, fps=fps, frames=n, seed=seed, warmup=warmup, frame=frame_job(model, _scaled_frame(model, frame, height, k), height * k),
-               tracks=job_tracks({key: (v if isinstance(v, dict) else {"set": np.asarray(v, float)}) for key, v in tracks.items()}), readback=list(readback),
-               readbackPath=os.path.join(d, "rb.json"), premultiplied=k > 1, describe=describe,
-               chromium=os.environ.get("PROMO_CHROMIUM") or _default_chromium())
+    layers = {key: (v if isinstance(v, dict) else {"set": np.asarray(v, float)}) for key, v in tracks.items()}
+    fj = frame_job(model, _scaled_frame(model, frame, height, k), height * k)
+    chromium = os.environ.get("PROMO_CHROMIUM") or _default_chromium()
+    if model.get("renderer") == "mesh":
+        from . import mesh_avatar
+        job = mesh_avatar.job(model, width=width * k, height=height * k, fps=fps, frames=n, seed=seed, warmup=warmup, frame=fj, layers=layers,
+                              readback_path=os.path.join(d, "rb.json"), premultiplied=k > 1, chromium=chromium, settle=0.25)
+    else:
+        job = dict(modelDir=model["dir"], model3=os.path.relpath(model["model3_path"], model["dir"]), core=model["core"], width=width * k,
+                   height=height * k, fps=fps, frames=n, seed=seed, warmup=warmup, frame=fj, tracks=job_tracks(layers), readback=list(readback),
+                   readbackPath=os.path.join(d, "rb.json"), premultiplied=k > 1, describe=describe, chromium=chromium)
     jpath = os.path.join(d, "job.json")
     json.dump(job, open(jpath, "w"))
     with render_lock(lambda *a: None):
@@ -837,9 +862,12 @@ def measure_anchors(model_name, H=1400):
     return an, dict(eyes_y=round(e, 4), mouth_y=round(mo, 4), silhouette_top=round(rows[0] / H, 4), size=[W, H])
 
 
-def add_model(path, mid, name, licence, source_url, ctype, credit=None, force=False, measure=True, log=print):
+def add_model(path, mid, name, licence, source_url, ctype, credit=None, force=False, measure=True, log=print, likeness=None, consent=None):
     """Register a model the person owns / commissioned / bought (`promo live2d add`). The files stay where they are
-    (never copied, never committed). Licence gate: own | commissioned | original only, with a licence and a source."""
+    (never copied, never committed). Licence gate: own | commissioned | original only, with a licence and a source; a
+    model of the person's own likeness (`likeness="own"`) also needs their consent. `path` = a Live2D model (.model3.json
+    or its folder) or a Mesh Avatar Studio project (rig.json + built/), which renders through promo.mesh_avatar."""
+    from . import mesh_avatar
     from . import perform as PF
     if ctype in REFUSED_TYPES:
         raise Live2DError(f"character type {ctype!r} is refused: a collaboration or third-party character's terms do not cover a promo")
@@ -847,6 +875,10 @@ def add_model(path, mid, name, licence, source_url, ctype, credit=None, force=Fa
         raise Live2DError(f"--type must be one of {', '.join(BYO_TYPES)}")
     if not licence or not source_url:
         raise Live2DError("a model of your own needs --licence (what lets you use it) and --source (where it came from: the artist, the store page)")
+    if likeness not in (None, "own"):
+        raise Live2DError("--likeness can only be own: never register anyone else's face or voice")
+    if likeness == "own" and not str(consent or "").strip():
+        raise Live2DError("a model of the person's own likeness needs --consent (who agreed, when, for what use)")
     if not mid or not mid.replace("-", "").replace("_", "").isalnum():
         raise Live2DError("--id must be letters, digits, - or _")
     if mid in registry(user=False)["models"]:
@@ -854,7 +886,14 @@ def add_model(path, mid, name, licence, source_url, ctype, credit=None, force=Fa
     reg_p = user_registry_path()
     have = user_models(reg_p)
     if mid in have and not force:
-        raise Live2DError(f"{mid!r} is already registered ({have[mid].get('model3')}); --force replaces it")
+        raise Live2DError(f"{mid!r} is already registered ({have[mid].get('model3') or have[mid].get('avatar')}); --force replaces it")
+    if mesh_avatar.is_avatar_dir(path):
+        entry = dict(mesh_avatar.entry(path, name or mid, licence, source_url, ctype, credit, likeness, consent), added=time.strftime("%Y-%m-%d"))
+        missing = mesh_avatar.missing_drawings(entry["avatar"])
+        if missing:
+            log(f"warning: {mid} has some drawn eyes / mouths but not {', '.join(missing)}: with a partial set the runtime erases "
+                f"the eyes on every blink. Import all of {', '.join(mesh_avatar.DRAWINGS)} in the studio, or none")
+        return _register(reg_p, mid, entry, measure, log)
     p3 = find_model3(path)
     inf = model3_info(p3)
     ids = set(inf["param_ids"])
@@ -867,6 +906,13 @@ def add_model(path, mid, name, licence, source_url, ctype, credit=None, force=Fa
                  mouth=mouth, moods=PF.auto_moods(list(inf["expressions"])), rest_smile=0.35,
                  expressions=sorted(inf["expressions"]), motions=sorted(k for k in inf["motions"] if ":" not in k),
                  added=time.strftime("%Y-%m-%d"))
+    if likeness:
+        entry.update(likeness=likeness, consent=consent)
+    return _register(reg_p, mid, entry, measure, log)
+
+
+def _register(reg_p, mid, entry, measure, log):
+    """Write a user model, then measure its framing anchors from real renders (any renderer)."""
     _write_user(reg_p, mid, entry)
     if measure:
         try:
@@ -901,13 +947,15 @@ def main(argv=None):
     m = sub.add_parser("models", help="list models (samples + your own) with licence, moods, expressions and motions")
     m.add_argument("--json", action="store_true")
     ad = sub.add_parser("add", help="register a model you own / commissioned / bought (files stay where they are)")
-    ad.add_argument("path", help=".model3.json or the folder holding it")
+    ad.add_argument("path", help=".model3.json or the folder holding it, or a Mesh Avatar Studio project (rig.json + built/)")
     ad.add_argument("--id", required=True)
     ad.add_argument("--name")
     ad.add_argument("--licence", required=True, help="what lets you use it (e.g. 'commissioned from X, commercial use, contract 2026-09')")
     ad.add_argument("--source", required=True, help="where it came from (artist page, store page, contract URL)")
     ad.add_argument("--type", required=True, choices=list(BYO_TYPES) + list(REFUSED_TYPES), dest="ctype")
     ad.add_argument("--credit", help="credit line for the end card (e.g. 'Illustration: X; Rigging: Y')")
+    ad.add_argument("--likeness", choices=["own"], help="own = the character is drawn from the person themselves (needs --consent)")
+    ad.add_argument("--consent", help="the person's consent for their own likeness: who agreed, when, for what use")
     ad.add_argument("--force", action="store_true")
     ad.add_argument("--no-measure", action="store_true", help="skip the anchor measurement renders")
     ad.add_argument("--json", action="store_true")
@@ -966,11 +1014,13 @@ def main(argv=None):
                         print(f"{'':<10} not ready: {row['why']}")
                 print("notice:", reg["notice"]["long"])
         elif a.cmd == "add":
-            rep = add_model(a.path, a.id, a.name, a.licence, a.source, a.ctype, a.credit, a.force, not a.no_measure, log=log)
+            rep = add_model(a.path, a.id, a.name, a.licence, a.source, a.ctype, a.credit, a.force, not a.no_measure, log=log,
+                            likeness=a.likeness, consent=a.consent)
             if a.json:
                 print(json.dumps(dict(ok=True, **rep), indent=1, default=str))
             else:
-                print(f"registered {rep['id']} ({rep['character_type']}) in {rep['registry']}: {rep['model3']}")
+                kind = "mesh avatar" if rep.get("renderer") == "mesh" else "Live2D"
+                print(f"registered {rep['id']} ({kind}, {rep['character_type']}) in {rep['registry']}: {rep.get('model3') or rep.get('avatar')}")
                 print(f"  moods mapped from expressions: {rep['moods'] or 'none (generic moods on the standard parameters)'}")
                 print(f"  anchors: {rep.get('anchors') or 'not measured'}")
                 print(f"  check it: promo live2d stills --model {rep['id']} --moods --out /tmp/{rep['id']}-moods.png")

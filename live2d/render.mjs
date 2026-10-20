@@ -3,6 +3,8 @@
 // job.json: {modelDir, model3, core, width, height, fps, frames, seed, warmup, frame:{zoom,at_x,at_y} (or legacy {zoom,cy,dx}),
 //            tracks:{ParamId:[{mode:set|blend|add|mul, v:[..], w?:[..]}, ...]} (or one {v, mode}), premultiplied?: true}
 // premultiplied: true writes premultiplied RGBA (for a supersampled render that ffmpeg scales down, then un-premultiplies).
+// A mesh avatar job (promo/mesh_avatar.py) sets page: "mesh-page.html", avatarDir (a Mesh Avatar Studio project: rig.json +
+// built/) and values: {runtimeParam: [per frame]} instead of modelDir / model3 / core / tracks; the frame contract is the same.
 // The model clock advances exactly 1/fps per frame (performance.now is virtualised in page.html); wall clock is
 // never read, so the same job gives the same pixels. Progress + stats go to stderr; frames go to stdout.
 import fs from "node:fs";
@@ -21,14 +23,19 @@ const roots = {
   "/lib/cubism4.min.js": path.join(HERE, "node_modules/pixi-live2d-display/dist/cubism4.min.js"),
   "/core/live2dcubismcore.min.js": job.core,
   "/page.html": path.join(HERE, "page.html"),
+  "/mesh-page.html": path.join(HERE, "mesh-page.html"),
+  "/lib/mesh-avatar.js": path.join(HERE, "node_modules/mesh-avatar/dist/index.js"),
+};
+const under = (dir, rel) => {
+  if (!dir) return null;
+  const file = path.join(dir, rel);
+  return file.startsWith(dir + path.sep) ? file : null;        // no path escapes
 };
 const server = http.createServer((req, res) => {
   const u = decodeURIComponent(new URL(req.url, "http://x").pathname);
   let file = roots[u];
-  if (!file && u.startsWith("/model/")) {
-    file = path.join(job.modelDir, u.slice(7));
-    if (!file.startsWith(job.modelDir)) file = null;          // no path escapes
-  }
+  if (!file && u.startsWith("/model/")) file = under(job.modelDir, u.slice(7));
+  if (!file && u.startsWith("/avatar/")) file = under(job.avatarDir, u.slice(8));
   if (!file || !fs.existsSync(file)) { res.writeHead(404); res.end(); return; }
   res.writeHead(200, { "content-type": MIME[path.extname(file)] || "application/octet-stream" });
   fs.createReadStream(file).pipe(res);
@@ -46,7 +53,7 @@ const browser = await chromium.launch({
 const page = await browser.newPage({ viewport: { width: W, height: H }, deviceScaleFactor: 1 });
 page.on("console", (m) => { if (m.type() === "error" || m.type() === "warning") process.stderr.write(`[page ${m.type()}] ${m.text()}\n`); });
 page.on("pageerror", (e) => process.stderr.write(`[pageerror] ${e}\n`));
-await page.goto(`http://127.0.0.1:${port}/page.html?seed=${job.seed || 1}`);
+await page.goto(`http://127.0.0.1:${port}/${job.page || "page.html"}?seed=${job.seed || 1}`);
 await page.waitForFunction(() => window.__ready === true);
 const modelUrl = `/model/${job.model3}`;
 const info = await page.evaluate((j) => window.L2D.init(j), { ...job, modelUrl });

@@ -12,13 +12,29 @@ vowel mouths from a voice level, expressions (smile, wink, surprise, sad, angry,
 It is a lighter cousin of Live2D: no artist-made parts, one picture in. Upstream's own guide is the procedure; this file is
 how it fits promo-reel.
 
-## What promo-reel can do with it today
-- Make and review an avatar (this skill), show the person stills and a test clip, hand over the project and a `.mavatar`.
-- The person can stream with it from Studio's Live page (OBS Browser Source) outside promo-reel.
-- **Not yet:** put it in a promo-reel video. No shot or overlay composites it: the `avatar` overlay is only for the person's own
-  likeness and draws an opaque rounded box, podcast hosts are Live2D models, and there is no gated asset kind for a mesh
-  character. Do not route its render into a build as a workaround; say it needs the mesh backend (a second renderer behind
-  `promo/live2d.py` `render_host`, driven by `promo/perform.py`, plus a licence-gated asset kind) and offer that as the next step.
+## Using it in a promo-reel video (podcast / livestream host)
+A built avatar becomes a host like a Live2D model, composited with alpha and no box (the podcast `overlay` layout is the
+"talking character over the footage" look). Only models registered this way take the mesh path; Live2D hosts are unchanged.
+```sh
+promo live2d add ~/.promo-reel/tools/mesh-avatar-studio/projects/<name> --id <id> --name "<Name>" \
+  --type own|commissioned|original --licence "<what lets you use it>" --source "<where it came from>" [--credit "..."]
+promo live2d stills --model <id> --moods --out /tmp/<id>-moods.png      # real renders: look before using it
+promo live2d render --model <id> --wav line.wav --out /tmp/<id>.mov        # optional: one ProRes 4444 alpha layer + lip-sync report
+```
+Then set `podcast.hosts[].model: <id>` (or a livestream host) and follow the podcast recipe in `skills/promo-reel/SKILL.md`.
+`promo check` gates it like any host (`podcast-licence`, `podcast-framing`, ...). What to know:
+- `add` measures the framing anchors from real renders and refuses a missing licence or source, `--type collaboration|external`,
+  and `--likeness own` without `--consent`. It warns when only some drawings are imported (see step 6).
+- A character drawn from the person themselves (`--likeness own`) renders for tests and stills, but `podcast-licence` /
+  `livestream-licence` FAIL it as a host: AGENTS.md rule 1 allows the person's own likeness only in an `avatar` overlay.
+- Moods come through eye smile (^^ on laugh), cheeks, brows and eye openness; the mouth shapes come from the voice's vowels.
+  Mood smiles do not bend the mouth (the runtime's mouth axis is the vowel), so expressions read subtler than on a Live2D rig.
+- A bust cut at mid-chest is set low in the panel so it never floats; in a speaker cam add `place: {<host id>: {size: l}}`
+  to that shot if `podcast-framing` reports a subtitle over its face. A picture drawn down to the waist avoids both.
+- Rendering uses the npm runtime `mesh-avatar` in `live2d/node_modules` (`cd live2d && npm ci`), not the studio checkout.
+  If Playwright says its headless shell is missing, `node live2d/node_modules/playwright-core/cli.js install chromium-headless-shell`.
+
+The person can also stream with it from Studio's Live page (OBS Browser Source) outside promo-reel.
 
 ## Rules here
 - The illustration must be original, the person's own, or commissioned with a licence that allows animation. Never a
@@ -26,8 +42,8 @@ how it fits promo-reel.
   to learn the editor, never in anything published.
 - A generated illustration (grok / Codex images) is a generated asset: record the prompt and tool next to the project.
 - An anime version drawn from the person's own photo (grok `image_edit` with the photo as reference) is their own likeness:
-  only theirs, made because they asked, and under the AGENTS.md own-likeness carve-out (consent in `brief.yaml`) if it ever
-  goes into a published video. Never draw anyone else from a photo.
+  only theirs, made because they asked, registered with `--likeness own --consent`, and not a show host (rule 1). Never draw
+  anyone else from a photo.
 - Drawn variants (step 6) send `source.png` and a mask to an image generator. Ask first unless the picture was generated for
   this job. If they decline, the avatar still works from mesh deformation alone.
 - Projects (the picture and everything built from it) live under the Studio checkout's `projects/`, never in this repo.
@@ -69,7 +85,5 @@ step 1. Field meanings: `docs/rig-fields.md`.
 7. Hand over: `npm run dev` -> Open project; `npm run pack-avatar -- projects/<name>` for a `.mavatar`; say which parts are least sure.
 
 ## Showing the person
-Stills from `review/` are the quick look. For a moving test, drive the runtime headless: `createMeshAvatar(canvas, {rig, assets,
-manual: true})`, then per frame `setSpeaking`, `setVoiceLevel(rms)`, `setEmotion` / `setExpression` / `play(motion)` and
-`advance(1/fps, fps)`, reading `canvas.toDataURL()` (see `tools/render-poses.mjs` for the page and asset loading). About 40 ms
-a frame at 1080p on this Mac. Idle and blinks use unseeded `Math.random`, so two renders differ.
+Stills from `review/` are the quick look; after `promo live2d add`, `promo live2d stills --moods` and `promo live2d render` give
+real promo-reel renders (deterministic: seeded, virtual clock; about 75-90 ms a frame supersampled on this Mac).

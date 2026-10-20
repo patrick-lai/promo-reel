@@ -346,6 +346,8 @@ def check(spec, ctx=None):
     for h in c.get("hosts") or []:
         try:
             m = L2.model_entry(h["model"])
+            if m.get("likeness") == "own":
+                lic.append(f"{h['model']} {L2.OWN_LIKENESS_HOST}")
             if not m.get("credit") or not m.get("source_url"):
                 lic.append(f"{h['model']}: missing credit/source_url in live2d/assets.yaml")
         except L2.Live2DError as e:

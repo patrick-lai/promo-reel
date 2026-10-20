@@ -102,9 +102,14 @@ def shot_digest(spec, shot, legacy=False, raw=False):
         extra = [spec.style, LY.digest_part(spec, shot)]
     if shot.type in ("podcast", "live2d_credits") and spec.raw.get("podcast"):
         # hosts, layout, subtitles and the performance come from the show block, the VO lines and their takes
-        code = code + ["shots/podcast", "podcast", "perform", "vo"]
+        code = code + ["shots/podcast", "podcast", "perform", "vo", "mesh_avatar"]
+        from . import live2d as L2
+        from . import mesh_avatar as MA
         from . import podcast as PC
-        extra = [PC.plain({k: v for k, v in spec.raw["podcast"].items() if k != "script"})]
+        models = L2.registry()["models"]
+        # a mesh avatar rebuilt in the studio re-renders its host layer, so the composited segment must follow
+        extra = [PC.plain({k: v for k, v in spec.raw["podcast"].items() if k != "script"}),
+                 [MA.signature(models.get(h.get("model"))) for h in spec.raw["podcast"].get("hosts") or []]]
         if shot.type == "podcast":
             vj = os.path.join(spec.vo_dir, "vo.json")
             takes = {l["file"]: file_sig(os.path.join(spec.vo_dir, l["file"])) for l in json.load(open(vj))["lines"]} if os.path.exists(vj) else {}

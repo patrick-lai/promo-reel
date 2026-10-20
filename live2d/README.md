@@ -29,6 +29,17 @@ promo live2d add ~/Models/mychar --id mine --name "My Char" --type commissioned 
   measures the framing anchors from renders (eyes / mouth by blinking and opening the mouth, the silhouette top
   and width from alpha), and maps moods from expression names (smile, angry, sad, surprise, ...). A sample id
   cannot be replaced. The free samples are good but not commissioned-VTuber art; your own rig is how a show gets there.
+- **Mesh avatars (opt-in):** `promo live2d add <Mesh Avatar Studio project>` (a folder with `rig.json` + `built/`; see
+  `skills/mesh-avatar/SKILL.md`) registers a character made from one illustration with `renderer: mesh`, behind the same
+  licence gate (`--likeness own --consent ...` for a character drawn from the person, which renders but fails the show
+  gates: AGENTS.md rule 1). Only such entries take this path: `render.mjs` loads `mesh-page.html` with the npm runtime
+  `mesh-avatar` (MIT) instead of `page.html`; the same `perform.py` layers are flattened and mapped onto its parameters
+  (`promo/mesh_avatar.py`; vowel shapes from the A/I/U/E/O weights, moods through eye smile, cheeks and brows). Every runtime
+  parameter is set each frame, so nothing animates on its own. The picture's cut edges fade unless the layer edge hides
+  them, and framing sets a bust cut at the bottom (`cut_bottom`) on the panel's bottom edge, keeping the shared head size.
+  A bust that stops at mid-chest therefore sits low in the panel; in a speaker cam give it `place: {<host>: {size: l}}` if
+  `podcast-framing` reports a subtitle over its face, or draw the picture down to the waist. `add` warns when the avatar
+  has only some drawn eyes / mouths (the runtime then erases the eyes on every blink).
 - **Chromium:** Playwright's `chromium_headless_shell` from `~/.cache/ms-playwright` if present (or `PROMO_CHROMIUM`).
   WebGL2 runs on SwiftShader, so no GPU is needed.
 - **Deterministic:** the page virtualises `performance.now`/`Date.now` and seeds `Math.random`. The model clock

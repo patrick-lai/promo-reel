@@ -252,7 +252,8 @@ def silhouette(spec, i):
         m = L2.model_entry(h["model"])
     except L2.Live2DError:
         return None
-    key = digest(h["model"], m.get("anchors"), m.get("model3"), mh["frame"], mh["W"], M["H"], 1)
+    from . import mesh_avatar
+    key = digest(h["model"], m.get("anchors"), m.get("model3") or m.get("avatar"), mesh_avatar.signature(m), mh["frame"], mh["W"], M["H"], 1)
     p = os.path.join(spec.build, "live2d", f"podcast-{mh['id']}-silhouette.json")
     if os.path.exists(p):
         try:
@@ -567,6 +568,8 @@ def check(spec, ctx=None):
     for h in hs:
         try:
             m = L2.model_entry(h["model"])
+            if m.get("likeness") == "own":
+                lic.append(f"{h['model']} {L2.OWN_LIKENESS_HOST}")
             if not m.get("user"):
                 need_card = True
                 if not m.get("credit") or not m.get("source_url"):

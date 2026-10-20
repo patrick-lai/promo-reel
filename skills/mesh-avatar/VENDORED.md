@@ -7,7 +7,7 @@
 - Copied: nothing but LICENSE. SKILL.md and skill.yaml are written for promo-reel; the tool runs from its own checkout
   (`~/.promo-reel/tools/mesh-avatar-studio`, pinned to the commit above), because it is a full Node app (editor, runtime,
   Python layer builder) and its sample art may not be redistributed as an asset.
-- Here it is a helper only (`primary: false`, phrase `triggers:`). Its renders cannot enter a promo-reel build yet (see
-  SKILL.md, "What promo-reel can do with it today").
+- Here it is a helper only (`primary: false`, phrase `triggers:`). Rendering in promo-reel uses the published runtime
+  `mesh-avatar@0.2.1` (MIT, npm) pinned in `live2d/package.json`; the studio checkout is only for making avatars.
 - Update: `git -C ~/.promo-reel/tools/mesh-avatar-studio pull`, re-run its checks and a test avatar, then bump the commit here
   and in SKILL.md's Install block.

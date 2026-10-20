@@ -5,8 +5,9 @@
   "description": "Offline deterministic Live2D frame renderer for promo-reel (headless Chromium + pixi.js + pixi-live2d-display + official Cubism Core).",
   "type": "module",
   "dependencies": {
-    "pixi.js": "6.5.10",
+    "mesh-avatar": "0.2.1",
     "pixi-live2d-display": "0.4.0",
+    "pixi.js": "6.5.10",
     "playwright-core": "1.57.0"
   }
 }
