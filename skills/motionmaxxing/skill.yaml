@@ -1,0 +1,14 @@
+id: motionmaxxing
+description: Motion-design craft (measured eases, transitions, camera moves, kinetic type, slop gates) as a helper.
+skill_md: skills/motionmaxxing/SKILL.md
+primary: false
+aspect: "16:9"
+outputs: [storyboard, render]
+inputs: []
+stages: [motion]
+hints: [motionmaxxing]
+# helper only: added next to any primary when the prompt hits one of these
+triggers: [motion, animation, animations, animate, animated, easing, eases, transition, transitions, kinetic, camera-move, push-in]
+companions: []
+copy:
+  inherit: primary  # the primary skill's line lengths and end-card hold win

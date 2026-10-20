@@ -1,6 +1,7 @@
 """Route a brief to one primary skill. Catalog is skills/*/skill.yaml; SKILL.md is not read here.
 Score = hint hits on prompt tokens; a skill-id token counts 2. Floor 1.5. Ties follow catalog order
 (promo-reel, then id). Below the floor: first primary whose formats include format, else promo-reel.
+A non-primary skill joins the helpers when any of its `triggers` is in the prompt.
 """
 from __future__ import annotations
 
@@ -68,7 +69,7 @@ def _score(skill, prompt, extras):
             hits.append(phrase)
     return total, hits
 
-def _helpers(skill, prompt):
+def _helpers(skill, prompt, catalog):
     pid = skill["id"]
     found = [str(h) for h in (skill.get("companions") or [])]
     if "render" in (skill.get("outputs") or []):
@@ -76,6 +77,9 @@ def _helpers(skill, prompt):
     text = " " + " ".join(_words(prompt)) + " "
     if pid != "cinetic" and any(f" {w} " in text for w in ("sound", "sfx", "audio")):
         found.append("cinetic")
+    for s in catalog:
+        if not s.get("primary", True) and _score({"hints": s.get("triggers")}, prompt, [])[0] > 0:
+            found.append(s["id"])
     return sorted({h for h in found if h and h != pid})
 
 def route(prompt, format=None, platform=None, length=None):
@@ -97,7 +101,7 @@ def route(prompt, format=None, platform=None, length=None):
         else:
             skill = next(s for s in catalog if s["id"] == "promo-reel")
             reason = f"no score >= {FLOOR:g}; fallback promo-reel"
-    return {"primary": skill["id"], "helpers": _helpers(skill, prompt or ""), "reason": reason}
+    return {"primary": skill["id"], "helpers": _helpers(skill, prompt or "", catalog), "reason": reason}
 
 def _show(result):
     helpers = ", ".join(result["helpers"]) if result["helpers"] else "-"

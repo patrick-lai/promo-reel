@@ -9,6 +9,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 from promo import cli  # noqa: E402
+from promo.skill_routing import route  # noqa: E402
 
 
 def test_eval_all_pass():
@@ -34,7 +35,7 @@ def test_write_persists_then_reuses(tmp_path):
     assert saved["project"]["name"] == "proj"
     assert saved["output"]["resolution"] == 1080
     assert saved["skills"]["primary"] == "cinetic"
-    assert saved["skills"]["helpers"] == ["previz"]
+    assert saved["skills"]["helpers"] == ["motionmaxxing", "previz"]
     before = path.read_text(encoding="utf-8")
     assert cli.main(["skills", "route", "A calm craft clip, minimal and quiet",
                      "--format", "feature-clip", "--platform", "x", "--length", "15",
@@ -42,4 +43,13 @@ def test_write_persists_then_reuses(tmp_path):
     assert path.read_text(encoding="utf-8") == before
     again = yaml.safe_load(before)
     assert again["skills"]["primary"] == "cinetic"
-    assert again["skills"]["helpers"] == ["previz"]
+    assert again["skills"]["helpers"] == ["motionmaxxing", "previz"]
+
+
+def test_motion_words_add_motionmaxxing_helper():
+    moving = route("A 60 second product hero with a slow camera-move and soft transitions", format="hero")
+    assert moving["primary"] == "promo-reel"
+    assert "motionmaxxing" in moving["helpers"]
+    plain = route("A 60 second product hero from real footage of the app", format="hero")
+    assert plain["primary"] == "promo-reel"
+    assert "motionmaxxing" not in plain["helpers"]
