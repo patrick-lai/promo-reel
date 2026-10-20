@@ -15,6 +15,7 @@ Nothing is sent anywhere during prep. Product screen recordings are refused by t
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import os
 import subprocess
@@ -63,9 +64,9 @@ def _model(name, url):
 
 def available_mesh():
     try:
-        from mediapipe.tasks.python.vision import FaceLandmarker  # noqa: F401
+        importlib.import_module("mediapipe.tasks.python.vision").FaceLandmarker
         return True
-    except ImportError:
+    except (ImportError, AttributeError):
         return False
 
 

@@ -129,10 +129,17 @@ score drifts to the flattest read).
 ## Listen to what you made (`promo listen`)
 
 The agent cannot hear audio itself (its file reader takes text, images and PDFs), so `promo listen` is its ears:
-- `promo -p <project> listen` (free): per VO line the numbers and what they prove (clipping, clicks, dead air, cut-offs, hiss) and
-  `build/listen/sheet.png`. Open the sheet: you can see a dead gap, a clipped stretch, a whine in the spectrogram.
-- `--ear` (about $0.002 a line, cached): an audio model (Gemini 3.8 Flash) hears each line without the script. It reports robotic or
-  flat reads, cut-offs, pacing and hiss with times, and what it heard is diffed with the script. `--mix` listens to the lines in the mix.
+- `promo -p <project> listen` (free): per VO line the numbers and what they prove: clipping (samples held at one ceiling), clicks
+  (1-3 ms bursts in the top band), dead air of 1 s or more inside a line, cut-off endings, a hissy floor. Plus
+  `build/listen/sheet.png`: open it, and you can see a dead gap, a clipped stretch or a whine in the spectrogram.
+- `--ear` (about $0.002 a line, cached): an audio model (Gemini 3.8 Flash; `--careful` is Gemini 3.1 Pro) hears each line without
+  the script. It reports robotic or flat reads, cut-offs, pacing and hiss with times, and what it heard is diffed with the script;
+  words that sound alike ("two" / "to") come back as severity 1. Each line is heard `--runs 2` times: a finding in both runs, or
+  backed by a local number, is solid, the rest "maybe". The whole command is priced up front at its worst case and capped by
+  `--max-usd` (default $0.50).
+- `--mix`: the model hears each line in the mix. The local checks still read the VO stem, because in the mix the music under every
+  pause and past every line's end would read as hiss and a cut-off. `--mix` adds `buried` when a line sits under 10 dB over the
+  music in 1-5 kHz.
 - `promo listen compare A B`: a blind A/B in both orders, for "did my fix help?". Keep a change only when it wins in both orders.
 - The loop: listen, fix the worst solid finding (another take, `direction`, `polish`, `duck.band`, move `at`), listen again,
   compare before and after. Stop at no solid severity >= 2, or after 3 rounds. Then `promo check`, then the person listens.

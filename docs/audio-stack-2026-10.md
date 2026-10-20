@@ -124,6 +124,19 @@ takes. This is the tuning set: no held-out set was run, so read these as an uppe
 
 Missed by everything: a voice under music 4 dB louder (scored balance 5/5; `vo-masking` catches it in a project) and a swapped word
 ("overwrite" for "override", which at low reasoning the model "heard" as the script word; `vo-script`'s whisper catches it).
+A real run on `commission-ai-jev` (21 Oct, all 16 lines, VO stem and `--mix`, 2 runs each) changed three local detectors:
+- **`--mix`.** The first version ran the local checks on the mix and read the music bed as hiss and every line's end as a cut-off: 32
+  false solid findings. They now read the VO stem in both modes, and `--mix` adds a `buried` check from the speech-band ratio
+  (`check.vo_music_db`, the same number as `vo-masking`). Result: no solid findings on jev's VO stem or mix.
+- **Clicks.** These are now found in the window's top band (above 55 % of Nyquist). TTS made at 24 kHz is silent up there and a click is
+  broadband. No false clicks on 44 clean windows (12 takes, plus jev's 16 lines in the stem and in the mix). It also finds a click
+  inside loud speech that the earlier > 3 kHz detector missed (22 dB over its surroundings, under that detector's 30 dB bar).
+- **Clipping.** It counts only at a level where 8 or more flat-topped samples sit. macOS `say` repeats a sample now and then at many
+  levels, which the first version called clipping.
+
+A click, 1.5 s of dead air and a clipped stretch planted into jev's line 10 were all found at their times (3 / 3). Set A above is
+unchanged at 5 / 8 with no false alarms. These thresholds were set on these same takes; nothing was held out.
+
 `gemini-4-argon` answered garbage through OpenRouter; `gemini-3.1-pro-preview` called good ElevenLabs takes robotic; `openai/gpt-audio`
 returned 400. Blind compare: the same take vs itself +0.2 dB came back "unsure" (no position bias); clean beat robotic and dead-air
 versions in both orders; it preferred a buried voice over a different clean take (balance is its blind spot).

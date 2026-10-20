@@ -444,7 +444,7 @@ def make_clips(d):
 def frame_of(path, i):
     """Decoded frame number i of a segment as an (H, W, 3) int array."""
     W, H = R.probe(path)[:2]
-    raw = subprocess.check_output(["ffmpeg", "-v", "error", "-threads", "1", "-i", path, "-vf", f"select=eq(n\\,{i})", "-vsync", "0",
+    raw = subprocess.check_output(["ffmpeg", "-v", "error", "-threads", "1", "-i", path, "-vf", f"select=eq(n\\,{i})", "-fps_mode", "passthrough",
                                    "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"])
     return np.frombuffer(raw, np.uint8).reshape(H, W, 3).astype(int)
 

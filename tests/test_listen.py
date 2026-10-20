@@ -47,6 +47,29 @@ def test_local_detectors_find_a_clip_a_click_and_dead_air_and_nothing_on_a_clean
     assert {("clipping", 0.2), ("artifact", 1.3)} <= got and any(i == "pacing" and 2.3 <= t <= 2.5 for i, t in got), got
 
 
+def test_clipping_needs_a_ceiling_not_a_few_repeated_samples(tmp_path):
+    x, _ = voice_like()
+    loud = np.nonzero(np.abs(x) > 0.15)[0]
+    for i in np.random.default_rng(2).choice(loud[:-3], 19, replace=False):   # macOS `say`: 19 three-sample repeats at many levels
+        x[i + 1] = x[i + 2] = x[i]
+    w = L.hear_locally(L.file_windows(write(tmp_path, "coarse.wav", x)))[0]
+    assert not [f for f in w["findings"] if f["issue"] == "clipping"], w["findings"]
+
+
+def test_mix_mode_reads_the_vo_stem_and_flags_a_buried_line():
+    from test_vo_polish import project
+    spec, _ = project(duck={"db": 0.0})
+    w = L.hear_locally(L.project_windows(spec, mix=True))[0]
+    issues = {f["issue"] for f in w["findings"]}
+    assert not issues & {"noise", "cut_off"}, "the music under the line is not hiss and its tail is not a cut-off"
+    spec.raw["mix"]["bus_db"]["music"] = 30.0                       # the bed far over the voice
+    from promo import events, mix
+    events.write_events(spec)
+    mix.run(spec)
+    w = L.hear_locally(L.project_windows(spec, mix=True))[0]
+    assert any(f["issue"] == "buried" and f["solid"] for f in w["findings"]), w["findings"]
+
+
 class FakeEar:
     """/chat/completions answers from a script, one per call; counts the calls."""
 

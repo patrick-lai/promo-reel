@@ -18,7 +18,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "tests"))
 
-from test_designed import PROMPT, _Ctx, _shot, _spec, make_stills  # noqa: E402
+from test_designed import _Ctx, _shot, _spec, make_stills  # noqa: E402
 
 from promo import cospec, designed, gapfill  # noqa: E402
 from promo import render as R  # noqa: E402

@@ -1,7 +1,6 @@
 """`screen` shot type: monitor tracking on a generated plate, the perspective warp of a real UI recording into the tracked quad,
 its gates (`screen-quad`, `screen-ui`) and the `promo screen-quad` CLI. Plain asserts (pytest or `python tests/test_screen.py`).
 Everything is tiny: synthetic 480x270 plates (a white parallelogram drifting 3 px/frame on a dark noisy background), one 480p encode."""
-import copy
 import os
 import subprocess
 import sys
@@ -9,7 +8,6 @@ import tempfile
 from types import SimpleNamespace as NS
 
 import numpy as np
-import yaml
 from PIL import Image
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -200,7 +198,6 @@ def test_warp_interior_equals_an_independent_warp_and_keeps_flat_colours_exact()
     assert inner.sum() > 5000
     assert np.array_equal(out[y0:y1, x0:x1][inner], indep[inner]), "interior is exactly the perspective resampling of the UI crop"
     # flat patch: map its centre into the frame and look at a 3x3 neighbourhood
-    H = np.array(ST.homography_coeffs(np.array([[0, 0], [160, 0], [160, 90], [0, 90]], float), q))        # UI rect -> quad is the inverse of what PIL needs
     # PIL needs dst->src; here we map src->dst by solving the other way round
     co = ST.homography_coeffs(np.array([[0, 0], [160, 0], [160, 90], [0, 90]], float), q)
     cx, cy = 80.0, 45.0
@@ -294,7 +291,6 @@ def test_screen_tiny_render_places_the_ui_on_the_tracked_monitor():
     got = np.frombuffer(raw, np.uint8).reshape(480, 854, 3).astype(float)
     tr = ST.track_shot(spec, shot, plate, 854 / 480)
     comp = SC.ScreenComposer(ctx, shot, tr, tuple(sc["crop"]))
-    from promo.shots.clip import segments
     uimg = R.Source(ui, 0.0, 2.1).frame(8 / 12)
     want = np.asarray(comp.compose(R.Source(plate, 0.0, 2.1, prescale=(854, 480)).frame(8 / 12), uimg, R.cam_at(
         __import__("promo.shots.cinema", fromlist=["x"]).camera_keys(shot), 8 / 12), 8 / 12, 8)).astype(float)

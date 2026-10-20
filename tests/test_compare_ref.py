@@ -10,7 +10,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "tests"))
 
-from test_refs import FAKE_TR, INTENT, FakeASR, tiny_video  # noqa: E402
+from test_refs import INTENT, FakeASR, tiny_video  # noqa: E402
 
 from promo import brief as BR  # noqa: E402
 from promo import cli  # noqa: E402

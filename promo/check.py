@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
 import os
 import re
@@ -152,26 +153,24 @@ def lost_words(line, heard, qa):
     return 1 - d[len(hyp)] / len(ref)
 
 
-def vo_masking(spec, qa):
-    """(status, msg) for `vo-masking`: how far each VO line sits over the music in the speech band (1-5 kHz) while it speaks, from
-    the stems. WARNs a line under `qa.vo_music_min_db` (default 10): whisper still hears words a viewer strains for."""
+def vo_music_db(spec):
+    """{line id: dB} how far each VO line sits over the music in the speech band (1-5 kHz) while it speaks, from the stems; None
+    when the project has no music or no mix yet."""
     import numpy as np
     import soundfile as sf
     from scipy import signal
     rp = os.path.join(spec.audio_dir, "mix-report.json")
     sd = os.path.join(spec.audio_dir, "stems")
-    if not spec.raw.get("music"):
-        return "PASS", "no music under the VO"
-    if not (os.path.exists(rp) and os.path.exists(os.path.join(sd, "music.wav"))):
-        return "WARN", "no mix yet (run `promo build`)"
+    if not (spec.raw.get("music") and os.path.exists(rp) and os.path.exists(os.path.join(sd, "music.wav"))):
+        return None
     rep = json.load(open(rp))
     vo, sr = sf.read(os.path.join(sd, "vo.wav"), dtype="float32")
     mu, _ = sf.read(os.path.join(sd, "music.wav"), dtype="float32")
     sos = signal.butter(4, [1000, 5000], btype="band", fs=sr, output="sos")
     v = signal.sosfiltfilt(sos, vo.mean(1))
     m = signal.sosfiltfilt(sos, mu.mean(1)) * 10 ** (rep["bus_db"]["music"] / 20)    # the music stem is before its bus gain
-    want, low, worst = float(qa.get("vo_music_min_db", 10.0)), [], None
     hop = int(0.05 * sr)
+    out = {}
     for t0, t1, sid, _ in rep["vo"]:
         a = int(t0 * sr)
         n = (min(int(t1 * sr), len(v)) - a) // hop
@@ -180,10 +179,21 @@ def vo_masking(spec, qa):
         fv = np.mean(v[a:a + n * hop].reshape(n, hop) ** 2, 1)
         fm = np.mean(m[a:a + n * hop].reshape(n, hop) ** 2, 1)
         on = fv > fv.max() * 0.01                                # 50 ms frames within 20 dB of the line's loudest: speaking
-        r = 10 * np.log10(fv[on].mean() / (fm[on].mean() + 1e-20))
-        worst = r if worst is None else min(worst, r)
-        if r < want:
-            low.append(f"{sid} {r:.1f} dB")
+        out[str(sid)] = float(10 * np.log10(fv[on].mean() / (fm[on].mean() + 1e-20)))
+    return out
+
+
+def vo_masking(spec, qa):
+    """(status, msg) for `vo-masking`: each VO line's `vo_music_db`. WARNs a line under `qa.vo_music_min_db` (default 10): whisper still
+    hears words a viewer strains for."""
+    if not spec.raw.get("music"):
+        return "PASS", "no music under the VO"
+    ratios = vo_music_db(spec)
+    if ratios is None:
+        return "WARN", "no mix yet (run `promo build`)"
+    want = float(qa.get("vo_music_min_db", 10.0))
+    low = [f"{sid} {r:.1f} dB" for sid, r in ratios.items() if r < want]
+    worst = min(ratios.values()) if ratios else None
     if low:
         return "WARN", (f"VO over the music in 1-5 kHz under {want:g} dB (listen; duck more, `mix.duck.band`, or lower bus_db.music): "
                         + ", ".join(low))
@@ -492,7 +502,7 @@ def run(spec):
         rep.add("vo-script", "WARN", "no VO stems (run `promo vo`)")
     else:
         try:
-            import faster_whisper  # noqa: F401
+            importlib.import_module("faster_whisper")
             have = True
         except ImportError:
             have = False

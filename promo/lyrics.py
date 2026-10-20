@@ -37,6 +37,8 @@ import unicodedata
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
+from . import fonts
+
 JP_FONTS = ["/System/Library/Fonts/ヒラギノ明朝 ProN.ttc", "/Library/Fonts/NotoSerifJP-Regular.otf",
             "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc", "/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc"]
 DEFAULT_STYLE = dict(layout="band", size=34, color=[44, 58, 74], tracking=0.32, y=1012, anim="fade", fade_s=0.12,
@@ -317,7 +319,7 @@ _FONTS = {}
 def load_font(path, px):
     k = (path, int(px))
     if k not in _FONTS:
-        _FONTS[k] = ImageFont.truetype(path, max(6, int(px)))
+        _FONTS[k] = ImageFont.truetype(fonts.path(path), max(6, int(px)))
     return _FONTS[k]
 
 

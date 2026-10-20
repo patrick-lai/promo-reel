@@ -241,7 +241,7 @@ def sync_md(spec, clips=None):
     mp = os.path.join(os.path.dirname(manifest_path(spec)), "manifest.md")
     clips = clips if clips is not None else load_raw(manifest_path(spec))
     region = f"{MD_BEGIN}\n{render_md_table(clips)}\n{MD_END}\n"
-    txt = open(mp).read() if os.path.exists(mp) else f"# Footage notes\n\n"
+    txt = open(mp).read() if os.path.exists(mp) else "# Footage notes\n\n"
     if MD_BEGIN in txt and MD_END in txt:
         a, b = txt.index(MD_BEGIN), txt.index(MD_END) + len(MD_END)
         txt = txt[:a] + region.rstrip("\n") + txt[b:]

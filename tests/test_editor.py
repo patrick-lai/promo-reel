@@ -3,7 +3,6 @@ the build cache that makes a re-render after an edit cheap."""
 import json
 import re
 import os
-import subprocess
 import types
 
 import pytest
@@ -213,7 +212,6 @@ def project(root, name="ed"):
     open(os.path.join(pd, "assets.yaml"), "w").write(ASSETS)
     wav(os.path.join(pd, "media", "music", "a.wav"))
     wav(os.path.join(pd, "media", "sfx", "hit.wav"), 0.2)
-    from promo import footage as FT
     clips = []
     for cid in ("rec-a", "rec-b", "rec-c"):
         p = os.path.join(pd, "footage", cid + ".mov")

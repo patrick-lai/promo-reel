@@ -86,6 +86,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 from .. import bookends as BK
 from .. import claims as C
+from .. import fonts
 from .. import grade as G
 from .. import render as R
 from ..spec import resolve_cam_keys
@@ -265,7 +266,7 @@ def serif_font(spec, px, fallback=None):
     k = (path, px)
     if k not in _FONTS:
         try:
-            f = ImageFont.truetype(path, px) if path else ImageFont.load_default(size=px)
+            f = ImageFont.truetype(fonts.path(path), px) if path else ImageFont.load_default(size=px)
             try:        # variable fonts (New York): the default optical size is a hairline display cut; pick one for the size
                 axes = f.get_variation_axes()
                 f.set_variation_by_axes([min(max(px * 0.55, a["minimum"]), 72) if a["name"] == b"Optical Size" else a["default"] for a in axes])
@@ -365,8 +366,8 @@ def kinetic_font(spec, px, fallback=None, weight=None):
         path = fallback
     if k not in _FONTS:
         try:
-            f = ImageFont.truetype(path, px) if path else ImageFont.load_default(size=px)
-            names = [weight] if weight else [b"Black", b"ExtraBold", b"Bold"] if path == fallback else []
+            f = ImageFont.truetype(fonts.path(path), px) if path else ImageFont.load_default(size=px)
+            names =[weight] if weight else [b"Black", b"ExtraBold", b"Bold"] if path == fallback else []
             for nm in names:
                 nm = nm.encode() if isinstance(nm, str) else nm
                 try:

@@ -14,10 +14,11 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "tests"))
 
+from promo import fonts  # noqa: E402
 from promo import generic_check as G  # noqa: E402
 from promo import rubric as RB  # noqa: E402
 
-FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+FONT = fonts.path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
 from localproj import ANIME, HERO  # noqa: E402  (local example projects; tests skip without them)
 
 

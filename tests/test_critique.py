@@ -14,12 +14,13 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "tests"))
 
 from promo import critique as CR  # noqa: E402
+from promo import fonts  # noqa: E402
 from promo import named as N  # noqa: E402
 from promo import style_check  # noqa: E402
 from promo.spec import load_spec  # noqa: E402
 from test_styles import B, CLAIMS, GOOD, anime_project  # noqa: E402
 
-FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+FONT = fonts.path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
 
 
 def text_frame(path, size=24, xy=(400, 300), text="Coding", W=1920, H=1080):
@@ -287,7 +288,7 @@ def test_pack_end_to_end_on_a_fake_render():
     os.makedirs(s.out, exist_ok=True)
     master = s.output_path("")
     n = s.total_frames()
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", f"testsrc2=size=1920x1080:rate=30", "-frames:v", str(n),
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=1920x1080:rate=30", "-frames:v", str(n),
                     "-threads", "2", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", master], check=True)
     json.dump(dict(ok=True, failed=False, results=[dict(gate="assets", status="PASS", msg="fine")]),
               open(os.path.join(s.out, f"{s.name}-{s.tag}-check.json"), "w"))

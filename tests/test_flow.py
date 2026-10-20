@@ -313,7 +313,7 @@ def test_storyboard_problems_and_dashboard(pd):
     b = dict(title="x", logline="y", scenes=[scene("01", 0, 4, caption="c", proof=""), scene("02", 3, 5)])
     pr = SB.problems(b)
     assert any("caption without `proof`" in p for p in pr) and any("before the previous scene" in p for p in pr)
-    d = board(pd, "A")
+    board(pd, "A")
     st = F.load(pd)
     st["picks"] = ["A"]
     F.save(pd, st)

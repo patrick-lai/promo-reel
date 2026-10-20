@@ -235,7 +235,6 @@ def test_layout_geometry_and_off_edge_move():
 
 
 def test_keep_clear_outline_debug_only():
-    from promo.render import RenderContext
     from promo.shots import livestream as SL
     s = _spec()
     src = open(SL.__file__).read()
@@ -274,7 +273,8 @@ def test_heavy_lock_reentrant_and_exclusive():
                 os.close(fd)
         assert not LK.held()
         # a holder in another process makes us wait (and log) until it releases
-        p = subprocess.Popen(["flock", path, "sleep", "1.5"])
+        p = subprocess.Popen([sys.executable, "-c", "import fcntl, os, sys, time; fd = os.open(sys.argv[1], os.O_RDONLY); "
+                              "fcntl.flock(fd, fcntl.LOCK_EX); time.sleep(1.5)", path])      # the `flock` CLI is Linux-only
         import time
         time.sleep(0.3)
         logs, t = [], time.time()

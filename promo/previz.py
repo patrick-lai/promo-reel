@@ -40,6 +40,7 @@ import sys
 import tempfile
 import time
 
+from . import fonts
 from .spec import SpecError
 
 SCHEMA = "promo-previz@1"
@@ -875,7 +876,7 @@ def tile_label(e, t):
 @functools.lru_cache(maxsize=32)
 def _font(px):
     from PIL import ImageFont
-    for p in ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"):
+    for p in map(fonts.path, ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf")):
         if os.path.isfile(p):
             return ImageFont.truetype(p, px)
     try:

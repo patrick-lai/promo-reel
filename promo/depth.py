@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib
 import json
 import math
 import os
@@ -44,8 +45,8 @@ class DepthError(RuntimeError):
 
 def available():
     try:
-        import huggingface_hub  # noqa: F401
-        import onnxruntime  # noqa: F401
+        importlib.import_module("huggingface_hub")
+        importlib.import_module("onnxruntime")
     except ImportError:
         return False
     return True

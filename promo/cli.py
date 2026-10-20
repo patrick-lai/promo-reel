@@ -460,7 +460,7 @@ def cmd_status(spec, args):
         try:
             dig = st["dig"]()
             fresh = is_fresh(stamps, st, dig)
-        except Exception as e:  # noqa: BLE001  (inputs not available yet)
+        except Exception:  # noqa: BLE001  (inputs not available yet)
             dig, fresh = None, False
         if not exists:
             status, detail = "missing", "output not built"
@@ -658,7 +658,6 @@ def _cmd_cospec(args, dest, out=None):
     import json as _json
 
     from . import cospec as CS
-    from . import designed as D
     from . import gapfill
     path = os.path.join(os.path.abspath(dest), "promo.yaml")
     if not os.path.isfile(path):
@@ -840,6 +839,7 @@ def build_parser():
     mp.add_argument("specs", nargs="+")
     sub.add_parser("watch", help="watch a video (file/URL): contact sheets, cut stills, transcript, audio + pacing metrics (see `promo watch -h`)")
     sub.add_parser("fx", help="audio character effects (radio, tape, vintage, telephone, vinyl, crackle): list | apply | audition (see `promo fx -h`)")
+    sub.add_parser("fonts", help="fetch | list: Inter, Barlow Condensed and DejaVu into ~/.promo-tools/fonts where the presets' Linux paths do not exist")
     sub.add_parser("listen", help="the agent's ears: numbers + sheet per VO line / file, --ear (audio model), compare A B, calibrate (see `promo listen -h`)")
     sub.add_parser("gen", help="generated images/video for non-UI plates (backgrounds, transitions): detect | image | video | plan (see `promo gen -h`)")
     sub.add_parser("depth", help="depth of a generated still plate and a 2.5D parallax clip from it, on this Mac: map | parallax (see `promo depth -h`)")
@@ -940,13 +940,11 @@ def dispatch(spec, args):
     if c in ("sfx", "vo", "clip-audio", "music", "mix", "build", "events", "shot", "assemble", "contact", "preview"):
         from .lock import heavy_lock
         job = _flow_job(spec, args, c) if c in ("build", "shot") else None
-        log = None
-        if job:
-            def log(m):
-                print(m, file=sys.stderr, flush=True)
-                job.wait("Waiting for another render on this Mac to finish")
+        def wait_log(m):
+            print(m, file=sys.stderr, flush=True)
+            job.wait("Waiting for another render on this Mac to finish")
         try:
-            with heavy_lock(f"promo {c}", log=log):          # box-wide lock: never overlap two heavy jobs
+            with heavy_lock(f"promo {c}", log=wait_log if job else None):          # box-wide lock: never overlap two heavy jobs
                 if job:
                     job.wait(None)
                 out = _dispatch_heavy(spec, args, c, job)
@@ -1075,6 +1073,9 @@ def _previz_argv(argv, cmd="previz"):
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else list(argv)
+    if argv[:1] == ["fonts"]:           # `promo fonts fetch | list`: the presets' open-licence fonts on a machine without them
+        from . import fonts
+        return fonts.main(argv[1:])
     if argv[:1] == ["live2d"]:          # `promo live2d ...` does not need a promo.yaml
         from . import live2d
         return live2d.main(argv[1:])

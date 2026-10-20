@@ -31,6 +31,8 @@ import math
 import numpy as np
 from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 
+from .. import fonts
+
 DEFAULTS = dict(
     name_style="brand",
     wordmark=None,                # [{text, color, weight}, ...]; default: one part from `name`
@@ -74,7 +76,7 @@ def _font(path, px, wght, opsz_cap=60):
             return ImageFont.load_default(size=px)
         except TypeError:
             return ImageFont.load_default()
-    f = ImageFont.truetype(path, px)
+    f = ImageFont.truetype(fonts.path(path), px)
     try:
         f.set_variation_by_axes(axis_values(f.get_variation_axes(), px, wght, opsz_cap))
     except Exception:           # static font, or Pillow built without FreeType variation support

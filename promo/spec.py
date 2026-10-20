@@ -13,7 +13,6 @@ import os
 import re
 import sys
 from dataclasses import dataclass, field
-from fractions import Fraction
 
 import yaml
 

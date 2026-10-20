@@ -159,7 +159,6 @@ def test_rounded_panel_interior_is_byte_identical_to_the_resampled_source():
 
 def test_panel_shadow_rim_and_glow_only_exist_outside_the_panel():
     keep = None
-    base = None
     for name in ("shadow", "rim", "glow"):
         on = pnl(**{**NO_FX, name: G.DEFAULT_LOOK["panel"][name]})
         ui, box, a = panel_render(on)
@@ -335,7 +334,6 @@ def test_look_panel_shorthand_carries_depth_keys_and_explicit_w_cy_still_works()
     sh = mk_shot(dict(type="cinema", source="c", panel=dict(w=0.9, cy=0.5, radius=0, shadow=False)))
     p = CN.look_of(spec, sh)["panel"]
     assert p["w"] == 0.9 and p["cy"] == 0.5 and p["radius"] == 0 and not G.enabled(p["shadow"]) and G.enabled(p["rim"])
-    sq = mk_shot(dict(type="cinema", source="c", look=dict(panel=dict(radius=False, shadow=False, rim=False, glow=False))))
     ctx, shot, comp, out = compose_all(look=dict(panel=dict(radius=False, shadow=False, rim=False, glow=False)))
     box = G.panel_box((ctx.OW, ctx.OH), 0.80, 0.455)
     crop = R.frame_cam(ctx, textured(640, 360), 0.5, 0.5, 0.8, out=(box[2] - box[0], box[3] - box[1]))

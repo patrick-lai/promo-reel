@@ -1,12 +1,14 @@
 """Ears for the agent: listen to a take, a file or a project's VO and mix, and hear what the numbers miss. `promo listen`.
 
-  promo listen FILE [FILE ...] [--ear] [--runs 2] [--careful | --model M] [--max-usd 0.10] [--out DIR] [--json]
-  promo -p PROJECT listen [--line ID ...] [--mix] [--ear] ...   each VO line as it sounds in the mix's VO stem, or (--mix) in the mix
+  promo listen FILE [FILE ...] [--ear] [--runs 2] [--careful | --model M] [--max-usd 0.50] [--out DIR] [--json]
+  promo -p PROJECT listen [--line ID ...] [--mix] [--ear] ...   each VO line as it sounds in the mix's VO stem, or (--mix) in the mix;
+                                                                 the local checks read the VO stem either way, --mix adds `buried`
   promo listen compare A B [--careful | --model M] [--max-usd]   blind A/B in both orders: a winner only when both orders agree
   promo listen calibrate CASES.json [--runs 2] ...               files with planted defects at known times: how much the ear hears
 
 Always (free, local): per window the numbers (LUFS, peak, flat tops, the floor, the tail, clicks, dead air) and the findings they
-prove (clipping, artifact, pacing, cut_off, noise), plus a sheet PNG (waveform, spectrogram, loudness, findings) the agent can look at.
+prove (clipping, artifact, pacing, cut_off, noise; with --mix also buried), plus a sheet PNG (waveform, spectrogram, loudness,
+findings) the agent can look at.
 
 --ear sends each window (a VO line, or 20 s of a long file) as mono mp3 to an audio model on OpenRouter (default gemini-3.8-flash,
 --careful gemini-3.1-pro-preview) with a fixed rubric (RUBRIC_VERSION) and without the script: a model given the script hears the
@@ -15,7 +17,7 @@ the script is compared with what it heard here, locally. Each window runs `--run
 local finding, is `solid`, the rest `maybe`. Calls are priced first (the whole command against --max-usd and the daily cap), logged in
 the spend ledger with their billed cost, and cached by their exact request, so asking again is free.
 Measured (docs/audio-stack-2026-10.md): the model alone hears robotic reads, cut-offs, dead air and hiss, but not clipping, clicks or a
-voice buried under music, and it can "hear" the word it expects. The local detectors cover the first two; vo-masking covers the third.
+voice buried under music, and it can "hear" the word it expects. The local detectors cover the first two, `--mix` (as vo-masking) the third.
 
 It advises. `promo check` and the person decide: act on solid findings, keep a fix only when `compare` prefers it in both orders, and
 never pick a take for the person by ear scores (they drift to the flattest read, as vo_score found).
@@ -72,12 +74,15 @@ better balance against music? Answer "same" when you cannot hear a difference th
 AB_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["better", "why", "decisive_defect"], "properties": {
     "better": {"type": "string", "enum": ["first", "second", "same"]}, "why": {"type": "string"}, "decisive_defect": {"type": "string"}}}
 
-DEAD_AIR_S = 1.0               # silence this long inside a line reads as a mistake, not a pause
+CLIP_SAMPLES = 8               # flat-topped samples at one level before it reads as a clip ceiling
+DEAD_AIR_S = 1.0              # silence this long inside a line reads as a mistake, not a pause
 NOISE_DB = -40.0               # a floor this close under the loud level is heard as hiss (Ming's own sits at -41..-45)
-# clicks: 1 ms frames of the > 3 kHz band at least CLICK_DB over the median of the 60 ms around them and over the frames 5 ms
-# either side (a click is over in 1-3 ms; a "t" or "p" burst lasts 10 ms and more), and within CLICK_FLOOR_DB of the take's loudest.
-# Tuned on 12 clean takes from 4 voices (none flagged) and one planted click.
-CLICK_DB, CLICK_FLOOR_DB = 30.0, 25.0
+# clicks: 1 ms frames of the window's top band (above 55 % of Nyquist) at least CLICK_DB over the median of the 60 ms around them
+# and over the frames 5 ms either side, and no more than CLICK_FLOOR_DB under the window's average level. A click is broadband and
+# over in 1-3 ms; speech is quiet up there (TTS made at 24 kHz has nothing above 12 kHz) and a "t" or "p" burst lasts 10 ms and more.
+# Tuned on 12 clean takes from 4 voices and the 16 commission-ai-jev lines in its VO stem and mix (none flagged), and two planted clicks.
+CLICK_DB, CLICK_FLOOR_DB = 30.0, 30.0
+VO_MUSIC_MIN_DB = 10.0         # as qa.vo_music_min_db: a line less far over the music in 1-5 kHz is hard to follow
 
 
 # ---------------------------------------------------------------- audio in
@@ -118,24 +123,36 @@ def file_windows(path):
 
 def project_windows(spec, lines=None, mix=False):
     """One window per VO line placed in the mix: the VO stem (how the voice itself sounds after polish and fx) or, with `mix`, the
-    first master (how it sits against music and effects). The line id comes from the window, never from the model."""
+    first master (how it sits against music and effects) for the ear. The line id comes from the window, never from the model.
+    The local checks always read the VO stem (`voice`): in the mix the music carries on under every pause and past every line's end,
+    which would read as hiss and a cut-off; the mix's own local check is the line's `vo_music_db` (buried under the music)."""
     import soundfile as sf
+
+    from .check import vo_music_db
     rp = os.path.join(spec.audio_dir, "mix-report.json")
-    src = os.path.join(spec.audio_dir, f"mix-{spec.masters[0]['name']}.wav") if mix else os.path.join(spec.audio_dir, "stems", "vo.wav")
-    if not (os.path.exists(rp) and os.path.exists(src)):
+    stem = os.path.join(spec.audio_dir, "stems", "vo.wav")
+    src = os.path.join(spec.audio_dir, f"mix-{spec.masters[0]['name']}.wav") if mix else stem
+    if not (os.path.exists(rp) and os.path.exists(src) and os.path.exists(stem)):
         raise SystemExit("promo listen: no mix yet; run `promo build` (or `promo mix`) first")
     spec_lines = {str(ln.get("id", ln.get("shot"))): ln for ln in (spec.raw.get("vo") or {}).get("lines") or []}
-    info = sf.info(src)
+    ratios = (vo_music_db(spec) or {}) if mix else {}
+
+    def cut(path, a, b):
+        sr = sf.info(path).samplerate
+        x, _ = sf.read(path, start=int(a * sr), stop=int(b * sr), dtype="float64", always_2d=True)
+        return x.mean(1), sr
     out = []
     for t0, t1, lid, text in json.load(open(rp))["vo"]:
         if lines and str(lid) not in lines:
             continue
         a = max(0.0, t0 - PAD_S)
-        x, sr = sf.read(src, start=int(a * info.samplerate), stop=int((t1 + PAD_S) * info.samplerate), dtype="float64", always_2d=True)
+        x, sr = cut(src, a, t1 + PAD_S)
+        voice, vsr = (x, sr) if src == stem else cut(stem, a, t1 + PAD_S)
         ln = spec_lines.get(str(lid), {})
         # the project's and the line's asr_aliases (heard-as -> script word), as vo-script uses them: "1" read as "one" is not an error
-        out.append(dict(label=str(lid), kind="voice-over line in a mix" if mix else "voice-over line", x=x.mean(1), sr=sr, offset=a,
-                        text=ln.get("text", text), aliases={**(spec.qa.get("asr_aliases") or {}), **(ln.get("asr_aliases") or {})}))
+        out.append(dict(label=str(lid), kind="voice-over line in a mix" if mix else "voice-over line", x=x, sr=sr, voice=voice, voice_sr=vsr,
+                        offset=a, vo_music_db=ratios.get(str(lid)), text=ln.get("text", text),
+                        aliases={**(spec.qa.get("asr_aliases") or {}), **(ln.get("asr_aliases") or {})}))
     missing = sorted(set(lines or ()) - {w["label"] for w in out})
     if missing:
         raise SystemExit(f"promo listen: no VO line {', '.join(missing)} in the mix (lines: {', '.join(spec_lines) or 'none'})")
@@ -147,14 +164,15 @@ def _clicks(x, sr):
     from scipy.ndimage import median_filter
 
     from .audiofx import _filt, _sos
-    hp = _filt(x, _sos("high", 3000.0, 2, sr))
+    hp = _filt(x, _sos("high", 0.55 * sr / 2, 4, sr))
     hop = max(1, int(0.001 * sr))
     n = len(hp) // hop
     if n < 61:
         return []
     e = 10 * np.log10(np.mean(hp[: n * hop].reshape(n, hop) ** 2, 1) + 1e-20)
     near = np.maximum(np.r_[np.full(5, -200.0), e[:-5]], np.r_[e[5:], np.full(5, -200.0)])
-    hit = (e - median_filter(e, size=61, mode="nearest") > CLICK_DB) & (e > np.percentile(e, 99) - CLICK_FLOOR_DB) & (e - near > CLICK_DB)
+    average = 10 * np.log10(np.mean(x ** 2) + 1e-20)
+    hit = (e - median_filter(e, size=61, mode="nearest") > CLICK_DB) & (e - near > CLICK_DB) & (e > average - CLICK_FLOOR_DB)
     return [round(i / 1000, 3) for i in np.nonzero(hit & ~np.r_[False, hit[:-1]])[0]]
 
 
@@ -172,11 +190,20 @@ def metrics(x, sr):
         for a, b in zip(sound, sound[1:]):
             if (b - a) * 0.02 >= DEAD_AIR_S:
                 gaps.append([round((a + 1) * 0.02, 2), round(b * 0.02, 2)])
-    # a flat top: three equal samples in a row on a loud sample, at any level (a clip at 0.8 is as clipped as one at 1.0)
+    # a flat top: three equal samples in a row on a loud sample, at any level (a clip at 0.8 is as clipped as one at 1.0), counted only
+    # at a level where CLIP_SAMPLES of them sit: a clipped take keeps hitting its ceiling, while coarse audio (macOS `say`) repeats a
+    # sample now and then at many different levels
     flat = (np.abs(x[:-2]) >= 0.1) & (x[:-2] == x[1:-1]) & (x[1:-1] == x[2:])
+    levels, counts = np.unique(np.abs(x[:-2][flat]), return_counts=True)
+    flat &= np.isin(np.abs(x[:-2]), levels[counts >= CLIP_SAMPLES])
+    clipped = []                                                # stretches of flat tops, 0.25 s apart or more
+    for i in np.nonzero(flat)[0] / sr:
+        if clipped and i - clipped[-1][1] < 0.25:
+            clipped[-1][1] = round(float(i), 2)
+        else:
+            clipped.append([round(float(i), 2), round(float(i), 2)])
     return dict(dur=round(len(x) / sr, 2), lufs=round(float(pyln.Meter(sr).integrated_loudness(x)), 1) if len(x) > sr // 2 else None,
-                peak_dbfs=round(float(20 * np.log10(np.abs(x).max() + 1e-12)), 1), flat_tops=int(flat.sum()),
-                flat_at=round(float(np.argmax(flat) / sr), 2) if flat.any() else None,
+                peak_dbfs=round(float(20 * np.log10(np.abs(x).max() + 1e-12)), 1), flat_tops=int(flat.sum()), clipped=clipped,
                 floor_db=round(float(np.percentile(fr, 10)) - loud, 1), tail_db=round(float(tail_db(x.astype(np.float32), sr)), 1),
                 dead_air=gaps, clicks=_clicks(x, sr))
 
@@ -184,8 +211,8 @@ def metrics(x, sr):
 def local_findings(m):
     """What the numbers alone can tell, as findings in the ear's own form (times from the window start)."""
     out = []
-    if m["flat_tops"]:
-        out.append(dict(t0=m["flat_at"], t1=m["flat_at"] + 0.2, issue="clipping", severity=3, note=f"{m['flat_tops']} flat-topped samples",
+    for a, b in m["clipped"]:
+        out.append(dict(t0=a, t1=max(b, a + 0.05), issue="clipping", severity=3, note="flat-topped samples: the waveform was cut off at a level",
                         fix="re-voice or lower the gain before the clip; nothing in post un-clips it"))
     for t in m["clicks"]:
         out.append(dict(t0=t, t1=t + 0.01, issue="artifact", severity=2, note="a click: a 1-3 ms burst far over its surroundings",
@@ -263,13 +290,16 @@ def _merge(runs, local):
 
 def _script_findings(text, heard, dur, aliases=None):
     """Words the script has and the ear did not hear the same: wrong or swapped words, with a time guessed from their place in the line."""
-    from .check import _aliased, norm_words
+    from .check import _aliased, norm_words, soundex
     ref, hyp = norm_words(text), norm_words(_aliased({}, heard, {"asr_aliases": aliases or {}}))
     out = []
     for op, i1, i2, j1, j2 in difflib.SequenceMatcher(a=ref, b=hyp, autojunk=False).get_opcodes():
         if op in ("replace", "delete"):
             said = " ".join(hyp[j1:j2]) or "nothing"
-            out.append(dict(t0=round(dur * i1 / max(1, len(ref)), 2), t1=round(dur * i2 / max(1, len(ref)), 2), issue="mispronounced", severity=2,
+            # words that sound alike are minor: mostly spelling ("two" / "to"), though Soundex also hides "override" / "overwrite"
+            alike = [soundex(w) for w in ref[i1:i2]] == [soundex(w) for w in hyp[j1:j2]]
+            out.append(dict(t0=round(dur * i1 / max(1, len(ref)), 2), t1=round(dur * i2 / max(1, len(ref)), 2), issue="mispronounced",
+                            severity=1 if alike else 2,
                             note=f"script {' '.join(ref[i1:i2])!r}, heard {said!r}", fix="re-voice the line, or spell the word as it is said",
                             seen="script", backed=False, solid=False))
     return out
@@ -314,8 +344,13 @@ def _absolute(w, findings):
 def hear_locally(windows):
     """The free part: numbers and local findings for each window."""
     for w in windows:
-        w["metrics"] = metrics(w["x"], w["sr"])
-        w["findings"] = _absolute(w, local_findings(w["metrics"]))
+        w["metrics"] = metrics(w["voice"], w["voice_sr"]) if "voice" in w else metrics(w["x"], w["sr"])
+        found = local_findings(w["metrics"])
+        if w.get("vo_music_db") is not None and w["vo_music_db"] < VO_MUSIC_MIN_DB:
+            found.append(dict(t0=0.0, t1=w["metrics"]["dur"], issue="buried", severity=2, seen="local", backed=True, solid=True,
+                              note=f"the voice is only {w['vo_music_db']:.1f} dB over the music in 1-5 kHz",
+                              fix="duck more, `mix.duck.band`, or lower bus_db.music"))
+        w["findings"] = _absolute(w, found)
     return windows
 
 
@@ -485,7 +520,7 @@ def main(argv, project=None):
         if a.ear:
             ear(windows, _model(a), a.runs, a.max_usd)
         png = sheet(windows, os.path.join(out, "sheet.png"), title)
-        report = dict(sheet=png, windows=[{k: v for k, v in w.items() if k not in ("x",)} for w in windows])
+        report = dict(sheet=png, windows=[{k: v for k, v in w.items() if k not in ("x", "voice")} for w in windows])
         with open(os.path.join(out, "report.json"), "w") as f:
             json.dump(report, f, indent=1)
         if a.json:

@@ -6,7 +6,6 @@ Plain asserts (pytest). Everything is composed in memory (no ffmpeg); the audio 
 import os
 import sys
 import tempfile
-from types import SimpleNamespace as NS
 
 import numpy as np
 import yaml
@@ -16,8 +15,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "tests"))
 
-from test_dialects import INK, PASTEL, _applied, _comp, _frame, _item  # noqa: E402
-from test_designed import _Ctx, _shot, _spec  # noqa: E402
+from test_dialects import INK, _applied, _comp, _frame, _item  # noqa: E402
+from test_designed import _Ctx, _spec  # noqa: E402
 
 from promo import bookends as BK  # noqa: E402
 from promo import designed  # noqa: E402

@@ -1,11 +1,9 @@
 import json
-import os
 import shutil
 import subprocess
 
 import numpy as np
 import pytest
-from PIL import Image
 
 from promo import prep as P
 

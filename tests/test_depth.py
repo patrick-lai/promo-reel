@@ -11,7 +11,9 @@ from promo import flow as F
 from promo import genvideo as G
 from promo import studio as STU
 
-from test_openrouter import api, proj  # noqa: F401  (fixtures: a fake OpenRouter and a flow project with a generated scene)
+import test_openrouter  # noqa: E402
+
+api, proj = test_openrouter.api, test_openrouter.proj   # fixtures, found by name: a fake OpenRouter and a flow project with a generated scene
 
 needs_ffmpeg = pytest.mark.skipif(not shutil.which("ffmpeg"), reason="ffmpeg is needed")
 
@@ -59,7 +61,7 @@ def test_a_parallax_clip_has_its_own_generated_sidecar_and_a_screenshot_is_refus
 
 
 @needs_ffmpeg
-def test_a_studio_depth_take_moves_a_storyboard_frame_for_free(api, proj, monkeypatch, tmp_path):  # noqa: F811
+def test_a_studio_depth_take_moves_a_storyboard_frame_for_free(api, proj, monkeypatch, tmp_path):
     monkeypatch.setattr(D, "available", lambda: True)
     monkeypatch.setattr(D, "estimate", lambda img: halves(img.height, img.width))
     monkeypatch.setattr(STU, "HEIGHT", dict(STU.HEIGHT, **{"720p": 36, "1080p": 54}))   # tiny renders: the test is about the plumbing

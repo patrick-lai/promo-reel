@@ -126,8 +126,7 @@ def ensure_host_layers(spec, log=print):
     hosts = c.get("hosts") or []
     st = Stamps(spec.build)
     out = {}
-    here = os.path.dirname(L2.__file__)
-    extra = [os.path.join(L2.L2D_DIR, f) for f in ("render.mjs", "page.html", "mesh-page.html", "assets.yaml")]
+    extra =[os.path.join(L2.L2D_DIR, f) for f in ("render.mjs", "page.html", "mesh-page.html", "assets.yaml")]
     models = L2.registry()["models"]
     hl = LS.host_layout(c)
     hw, hh = hl["w"], hl["h"]
@@ -483,7 +482,7 @@ class LayerReader:
 @shot_type("livestream")
 class Livestream(ShotType):
     def render(self, ctx, shot):
-        spec, cfg = ctx.spec, shot.cfg
+        spec = ctx.spec
         c = LS.cfg(spec)
         if not c:
             raise ValueError("livestream shot needs a show-level `livestream:` block in promo.yaml")

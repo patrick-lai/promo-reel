@@ -19,6 +19,7 @@ trimmed, faded. n = index of the line in the shot's list (0-based). events.json 
 """
 from __future__ import annotations
 
+import importlib
 import json
 import os
 import subprocess
@@ -313,7 +314,7 @@ def check(spec, stamps=None, qa=None):
         rows.append(("shot-audio-asr", "PASS", f"skipped: no audio line has `text` ({len(skipped)} line(s) without `text`)"))
         return rows
     try:
-        import faster_whisper  # noqa: F401
+        importlib.import_module("faster_whisper")
     except ImportError:
         rows.append(("shot-audio-asr", "WARN", "skipped: faster-whisper not installed"))
         return rows

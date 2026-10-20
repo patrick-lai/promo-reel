@@ -22,6 +22,7 @@ Nothing here calls a reviewer model. Heavy steps (frame extraction, check, whisp
 """
 from __future__ import annotations
 
+import importlib
 import io
 import json
 import os
@@ -239,7 +240,7 @@ def extract_frames(video, frames, dest_dir):
     expr = "+".join(f"eq(n\\,{f})" for f in uniq)
     pat = os.path.join(dest_dir, "f%04d.png")
     subprocess.run(["nice", "-n", "10", "ffmpeg", "-v", "error", "-y", "-threads", "2", "-i", video, "-vf", f"select='{expr}'",
-                    "-vsync", "0", "-start_number", "0", pat], check=True)
+                    "-fps_mode", "passthrough", "-start_number", "0", pat], check=True)
     out = {}
     for k, f in enumerate(uniq):
         p = pat % k
@@ -297,7 +298,7 @@ def vo_transcript(spec):
     if not os.path.exists(vj):
         return "# VO transcript\n\nNo VO stems built (`promo vo`); nothing transcribed.\n"
     try:
-        import faster_whisper  # noqa: F401
+        importlib.import_module("faster_whisper")
     except ImportError:
         return "# VO transcript\n\nfaster-whisper is not installed in this environment; transcript not produced.\n"
     import hashlib
@@ -462,7 +463,7 @@ def intent_section(rb, info):
          "Judge the cut against **the person's own words** and **the actual reference(s)**, never against a style summary an agent",
          "wrote. A look that matches while the story, people, dialogue, sound and pacing do not is a FAIL of `reference`.", ""]
     if hard:
-        L += [f"- Hard gates (cannot be averaged away): " + ", ".join(f"**{k} >= {v}**" for k, v in hard.items()) + "."]
+        L += ["- Hard gates (cannot be averaged away): " + ", ".join(f"**{k} >= {v}**" for k, v in hard.items()) + "."]
     L += ["- A gate you did not or could not evaluate (no brief, no dossier, no transcript/audio comparison) scores **1** and the cut is "
           "INCOMPLETE, never a pass.", ""]
     if info is None:
@@ -504,7 +505,7 @@ def brief_md(spec, kind, master, index, copied, payload, have_contact, have_vo, 
          "## The cut", "",
          f"- Project: `{spec.name}` ({kind}; style preset `{(spec.style or {}).get('preset', 'hero')}`)",
          f"- Render: `{os.path.basename(master)}` {spec.OW}x{spec.OH} {spec.fps} fps, {spec.duration:.2f} s, {len(spec.shots)} shots"
-         + (f" (copied here)" if video else " (not copied; stills are taken from it)"),
+         + (" (copied here)" if video else " (not copied; stills are taken from it)"),
          f"- `promo check`: **{'FAILED' if payload.get('failed') else 'OK'}** "
          f"({sum(1 for r in payload['results'] if r['status'] == 'FAIL')} FAIL, {sum(1 for r in payload['results'] if r['status'] == 'WARN')} WARN): see `CHECK.txt`",
          "- Placeholder slates (labelled 'PLACEHOLDER', yellow frame) mark shots not captured yet: judge the cut around them, list them, do not score them as footage.",

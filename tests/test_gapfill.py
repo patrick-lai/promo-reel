@@ -430,7 +430,7 @@ if __name__ == "__main__":
             try:
                 v()
                 print("ok  ", k)
-            except Exception as e:  # noqa: BLE001
+            except Exception:  # noqa: BLE001
                 fails += 1
                 import traceback
                 print("FAIL", k)

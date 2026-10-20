@@ -31,6 +31,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 from .. import claims as C
+from .. import fonts
 from .. import render as R
 from ..spec import resolve_cam_keys
 from . import ShotType, shot_type
@@ -53,7 +54,7 @@ def style_of(spec):
 def _font(path, px):
     k = (path, int(px))
     if k not in _FONTS:
-        _FONTS[k] = ImageFont.truetype(path, int(px))
+        _FONTS[k] = ImageFont.truetype(fonts.path(path), int(px))
     return _FONTS[k]
 
 
@@ -294,7 +295,7 @@ def band_layer(ctx, spec, shot):
 
 def card_layer(ctx, spec, row, text):
     st = style_of(spec)
-    b, ty = st["band"], st["typography"]
+    b = st["band"]
     g = card_geometry(spec, row, text, ctx.K)
     im = Image.new("RGBA", (ctx.OW, ctx.OH), (0, 0, 0, 0))
     d = ImageDraw.Draw(im)

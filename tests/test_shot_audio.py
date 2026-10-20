@@ -1,6 +1,7 @@
 """Shot `audio:` lines (promo/shot_audio.py): clip soundtrack in events + mix. Plain asserts (pytest or `python tests/test_shot_audio.py`).
 Tiny: a 4 s timeline, two synthetic 12 fps 64x48 clips made with ffmpeg (a sine tone with an audio stream; a silent video)."""
 import copy
+import importlib
 import json
 import os
 import subprocess
@@ -159,7 +160,7 @@ def test_asr_gate_skips_lines_without_text_and_without_wer():
     assert [g for g, *_ in shot_audio.check(spec, qa={})] == ["shot-audio"]                 # no vo_max_wer: no read-back
     rows = shot_audio.check(spec, qa={"vo_max_wer": 0.0})
     try:
-        import faster_whisper  # noqa: F401
+        importlib.import_module("faster_whisper")
         assert rows[1][0] == "shot-audio-asr" and "skipped" in rows[1][2] and "without `text`" in rows[1][2]
     except ImportError:
         assert rows[1][1] in ("PASS", "WARN")

@@ -6,6 +6,8 @@
 
 Project plugins (spec `plugins: [shots.py]`) register extra types with the same decorator.
 """
+import importlib
+
 REGISTRY = {}
 
 
@@ -41,4 +43,5 @@ class ShotType:
         return caption_boxes(ctx, shot)
 
 
-from . import anime, card, cinema, clip, horizon, livestream, mv, podcast, screen  # noqa: E402,F401  (register built-in types)
+for _name in ("anime", "card", "cinema", "clip", "horizon", "livestream", "mv", "podcast", "screen"):   # importing registers the built-in types
+    importlib.import_module(f".{_name}", __name__)

@@ -57,6 +57,7 @@ import os
 import numpy as np
 from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 
+from .. import fonts
 from .. import render as R
 from ..spec import resolve_cam_keys
 from . import ShotType, shot_type
@@ -92,7 +93,7 @@ def load_font(cands, px):
     key = (tuple(cands), px)
     if key not in _FONTS:
         f = None
-        for p in cands:
+        for p in map(fonts.path, cands):
             if p and os.path.exists(p):
                 try:
                     f = ImageFont.truetype(p, px)

@@ -11,6 +11,7 @@ A declarative, agent-runnable pipeline for **product promo videos made from real
 python3 -m venv .venv && . .venv/bin/activate
 pip install -e '.[vo,asr,depth,prep]'   # vo = kokoro-onnx TTS, asr = faster-whisper (the VO check gate is skipped without it), depth = promo depth, prep = Studio face mesh
 # needs ffmpeg/ffprobe on PATH and the font named in style.font (Inter, OFL)
+promo fonts fetch                       # on a Mac (no /usr/share/fonts): the presets' Inter, Barlow Condensed and DejaVu into ~/.promo-tools/fonts
 ```
 
 ## Layout

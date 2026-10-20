@@ -17,6 +17,8 @@ from dataclasses import dataclass, field
 import numpy as np
 from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont
 
+from . import fonts
+
 DEFAULT_FONT = "/usr/share/fonts/truetype/sand-box/google/Inter/Inter-VariableFont_opsz,wght.ttf"
 
 
@@ -67,7 +69,7 @@ class RenderContext:
     def font(self, size, weight=b"SemiBold"):
         if isinstance(weight, str):
             weight = weight.encode()
-        f = ImageFont.truetype(self.font_path, int(size * self.K))
+        f = ImageFont.truetype(fonts.path(self.font_path), int(size * self.K))
         try:
             f.set_variation_by_name(weight)
         except ValueError:                   # a named instance spelt differently ("Semibold" vs "SemiBold", "Semi Bold"): match ignoring case and spaces

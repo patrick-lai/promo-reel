@@ -1,7 +1,8 @@
 """Optional local example projects used by a few regression tests (hero / anime / talkshow style projects).
 
 They live in your projects dir (`promo config projects-dir`, default the gitignored `<repo>/projects/`), never in this repo.
-A project is found as `<projects-dir>/<suffix>` or `<projects-dir>/<anything>-<suffix>` (first by name), or pointed at with
+A project is found as `<projects-dir>/<suffix>` or `<projects-dir>/<anything>-<suffix>` (first by name, and only if it is that
+example: IS_EXAMPLE), or pointed at with
 `PROMO_TEST_HERO` / `PROMO_TEST_ANIME` / `PROMO_TEST_TALKSHOW` / `PROMO_TEST_DEMO` (a project directory). When one is absent the constants point at a
 sentinel path, and tests/conftest.py turns "file under the sentinel not found" failures into skips.
 """
@@ -13,12 +14,26 @@ from promo import home
 MISSING = "__no-local-example-project__"
 
 
+def _has(path, needle):
+    return os.path.isfile(path) and needle in open(path, encoding="utf-8", errors="replace").read()
+
+
+# what makes a project the example a kind's tests were written against, not just a project with a matching name (a person's own
+# `podcast-demo` is not the Live2D livestream demo; a later re-cut of their hero is not hero v5, whose clips the tests hash)
+IS_EXAMPLE = {
+    "hero": lambda d: _has(os.path.join(d, "footage", "manifest.yaml"), "shot-06-still-node"),
+    "demo": lambda d: _has(os.path.join(d, "promo.yaml"), "\nlivestream:"),
+    "talkshow": lambda d: os.path.isfile(os.path.join(d, "make_spec.py")),
+}
+
+
 def find(kind):
     env = os.environ.get(f"PROMO_TEST_{kind.upper()}")
     if env:
         return os.path.abspath(os.path.expanduser(env))
     base = home.projects_dir()
-    cands = [d for pat in (kind, f"*-{kind}") for d in sorted(glob.glob(os.path.join(base, pat))) if os.path.isfile(os.path.join(d, "promo.yaml"))]
+    cands = [d for pat in (kind, f"*-{kind}") for d in sorted(glob.glob(os.path.join(base, pat)))
+             if os.path.isfile(os.path.join(d, "promo.yaml")) and IS_EXAMPLE.get(kind, lambda d: True)(d)]
     return cands[0] if cands else os.path.join(base, MISSING, kind)
 
 

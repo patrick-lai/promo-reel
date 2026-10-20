@@ -8,12 +8,14 @@ import time
 
 from PIL import Image, ImageDraw, ImageFont
 
+from . import fonts
+
 BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 
 
 def _font(size):
     try:
-        return ImageFont.truetype(BOLD, size)
+        return ImageFont.truetype(fonts.path(BOLD), size)
     except OSError:
         return ImageFont.load_default(size)
 
