@@ -102,14 +102,20 @@ What the gates showed:
 - With the music raised 12 dB and no duck, whisper still heard every word, though line 20 sat 0.6 dB over the music in 1-5 kHz.
   That is why `vo-masking` exists next to `vo-mix-asr`.
 - At +24 dB `vo-mix-asr` FAILs, naming lines 08 and 18 and quoting what whisper heard.
-- The approved `commission-ai-jev` mix bottoms out at 11.7 dB, so 10 dB is the WARN line.
+- The approved `commission-ai-jev` mix bottoms out at 11.7 dB, so 10 dB is the WARN line. With `polish: on` and the band duck
+  (21 Oct) its lowest line is at 15.7 dB and `vo-mix-asr` still passes.
+
+Room tone (`mix.room`, built 21 Oct): one seeded bed under the whole VO span, not one per line. The lines are trimmed tight, so
+most quiet sits between lines; a per-line bed (the first design) would switch on and off at every edge. On music-free copies of the
+test lines, the quietest frames between lines went from digital silence (−187 dB, Ming) and −88 dB (Gemini) to a steady −64 /
+−66 dB under the loud level; the bed lands on its target within 0.1 dB and a re-mix is sample-identical.
 
 ## Other layers (not built yet; draft tickets)
 
 | Layer | Best now | Notes |
 |---|---|---|
 | Direction | per-engine translation of one `direction:` per line; a pronunciation lexicon; neighbouring-line context | Eleven tags, Gemini instructions, Fish tags |
-| VO restoration | room tone under gated pauses; Sidon (ICASSP 2026: denoise, dereverb, bandwidth extension to 48 kHz) | a spectral denoise risks the musical-noise artifacts the gate avoids |
+| VO restoration | Sidon (ICASSP 2026: denoise, dereverb, bandwidth extension to 48 kHz) | a spectral denoise risks the musical-noise artifacts the gate avoids |
 | Scoring | UTMOSv2 / `utmos` (MPS), DNSMOS | advisory only: scores favour flat reads |
 | ASR | whisper large-v3-turbo, Parakeet TDT | better word timings for lip-sync and lyric sync |
 | SFX | MOSS-SoundEffect v2.0 (Apache-2.0, 48 kHz, MLX 4-bit port); ElevenLabs `eleven_text_to_sound_v2` (0.5-30 s, loops) | Stable Audio 3 Small-SFX: sources disagree on its licence |

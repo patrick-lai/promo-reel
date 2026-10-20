@@ -40,7 +40,8 @@ promo live2d add ~/Models/mychar --id mine --name "My Char" --type commissioned 
   A bust that stops at mid-chest therefore sits low in the panel; in a speaker cam give it `place: {<host>: {size: l}}` if
   `podcast-framing` reports a subtitle over its face, or draw the picture down to the waist. `add` warns when the avatar
   has only some drawn eyes / mouths (the runtime then erases the eyes on every blink).
-- **Chromium:** Playwright's `chromium_headless_shell` from `~/.cache/ms-playwright` if present (or `PROMO_CHROMIUM`).
+- **Chromium:** `PROMO_CHROMIUM` if set, else Playwright's `chromium_headless_shell` from `~/.cache/ms-playwright` if present,
+  else Playwright's own download for its version, else the installed Google Chrome / Chromium (no download needed on a Mac).
   WebGL2 runs on SwiftShader, so no GPU is needed.
 - **Deterministic:** the page virtualises `performance.now`/`Date.now` and seeds `Math.random`. The model clock
   advances exactly `1/fps` per frame and the wall clock is never read. Blink, breath, sway, nods and mouth are

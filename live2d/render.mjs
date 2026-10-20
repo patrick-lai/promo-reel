@@ -43,7 +43,12 @@ const server = http.createServer((req, res) => {
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const port = server.address().port;
 
-const exe = job.chromium || process.env.PROMO_CHROMIUM || undefined;
+// Playwright's own download when it matches this playwright-core, else the Chrome or Chromium installed on the machine:
+// a newer Playwright on the box leaves only other revisions in its cache, and launch() would fail looking for this one
+const SYSTEM_CHROME = ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/Applications/Chromium.app/Contents/MacOS/Chromium",
+                       "/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser"];
+const exe = job.chromium || process.env.PROMO_CHROMIUM
+  || (fs.existsSync(chromium.executablePath()) ? undefined : SYSTEM_CHROME.find((p) => fs.existsSync(p)));
 const browser = await chromium.launch({
   executablePath: exe,
   args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--use-gl=angle", "--ignore-gpu-blocklist",

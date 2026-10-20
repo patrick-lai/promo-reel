@@ -119,6 +119,10 @@ score drifts to the flattest read).
 - `mix: {duck: {db: 4, band: {lo: 1000, hi: 5000, db: 12}}}` carves a gap in the music where words live: under speech the 1-5 kHz
   band drops 12 dB and the rest only 4, so the bed keeps its bass and sheen instead of pumping.
   Without `band`, ducking is full-band as before. `anime-opening` keeps `duck.db: 0` on purpose.
+- `mix: {room: on}` (or `{db: -60, seed: 0}`) is room tone: one quiet, seeded noise bed from the first VO line to the last, at
+  `vo_line_lufs + db`, coloured like the takes' own pauses (pink when those are digital silence). Use it when there is no music
+  under the voice (podcast, explainer, the template turns it on): without it the gaps between lines fall to digital silence
+  (−187 dB measured) and every line edge switches the noise on and off. Under music it is inaudible, so leave it off there.
 - Old projects stay as they were until someone adds the keys. A new mix code version re-runs only the `mix` step, never the
   voices or the shots.
 
@@ -131,11 +135,11 @@ score drifts to the flattest read).
 | `vo-clip` WARN | flat-topped samples: the take itself clipped | re-voice (another take, or another voice); nothing in post can un-clip it |
 | `vo-tail` WARN | the take ends mid-sound (a cut word, or a `files` trim inside speech) | re-voice, or move the `trim: end` into a silence |
 | `vo-script` FAIL | whisper heard other words | a mis-read take: re-voice or pick another take; an alias if only the spelling differs |
-| `vo-mix-asr` FAIL | whisper, listening to the finished mix, lost script words that the clean take had (extra words heard, such as a lyric, do not count) | duck more, add `duck.band`, lower `bus_db.music`. WARN instead on a line with character `fx` |
+| `vo-mix-asr` FAIL | whisper, listening to the finished mix, lost script words that the clean take had (extra words heard, such as a lyric, do not count) | duck more, add `duck.band`, lower `bus_db.music`. Two lines talking over each other also lose words (`vo-fit` WARNs it): move `at`. WARN instead on a line with character `fx` |
 | `vo-masking` WARN | a line sits < `qa.vo_music_min_db` (10) dB over the music in 1-5 kHz | same fixes; listen first. Whisper hears through music a viewer strains at: it read every word at 0.6 dB |
 
 ## Not yet built (draft tickets)
 
-Per-line `direction:` translated per engine, a pronunciation lexicon, room tone under gated pauses, generated SFX
+Per-line `direction:` translated per engine, a pronunciation lexicon, generated SFX
 (MOSS-SoundEffect, ElevenLabs SFX v2) and music (ElevenLabs Music v2.5), an app-wide OpenRouter key in CommissionAI.
 See `docs/audio-stack-2026-10.md`. Until then: SFX stay `promo sfx` / licensed files, music stays a licensed track (rule 4).

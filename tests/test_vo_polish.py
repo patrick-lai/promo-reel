@@ -103,6 +103,23 @@ def test_band_duck_dips_the_speech_band_more_than_the_rest():
         assert mix.spec_problems({"mix": {"duck": bad}}), bad
 
 
+def test_room_tone_fills_the_gaps_at_its_level_and_is_seeded():
+    spec, stem = project(polish="on")
+    assert not os.path.exists(os.path.join(spec.audio_dir, "stems", "amb.wav")), "no room key, no bed"
+    spec.raw["mix"]["room"] = {"db": -50}
+    mix.run(spec)
+    room = json.load(open(os.path.join(spec.audio_dir, "mix-report.json")))["room"]
+    bed = stem("amb")[int((room["span"][0] + 0.5) * SR): int((room["span"][1] - 0.5) * SR)]
+    assert abs(level_db(bed) - (-16 - 50)) < 1.0 and room["colour"] == "takes", room       # noisy_voice has a real floor
+    first = stem("amb").copy()
+    mix.run(spec)
+    assert np.array_equal(stem("amb"), first)
+    _, colour = mix.room_tone([(np.zeros(SR), SR)], SR, SR, -60.0, 0)
+    assert colour == "pink", "digital-silence pauses have no colour to copy"
+    for bad in ({"db": -5}, {"level": -60}, "loud"):
+        assert mix.spec_problems({"mix": {"room": bad}}), bad
+
+
 def test_lost_words_ignores_extra_words_and_homophones_only():
     line = {"text": "Small decisions, made fast."}
     assert check.lost_words(line, "Small decisions made fast. And the next line", {}) == 0.0

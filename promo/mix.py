@@ -4,6 +4,8 @@ Inputs: build/audio/events.json, build/audio/music-edit.wav, SFX wavs (assets), 
 Spec (mix:): sr, bus_db {music, sfx, vo}, vo_line_lufs (each VO line levelled to it, then its own `db`; a `mute: true` line has no event, so no sound), duck {db, attack, release, pre, post, band}, fade_out, masters [...]
 duck.band {lo, hi, db} (or `on` = 1000-5000 Hz, 12 dB): under speech the music's speech band dips by band.db, the rest by duck.db.
 VO polish (promo/vo_polish.py): vo.polish / vo.lines[].polish on each VO line first, before its fx and levelling.
+room (or {db, seed}): room tone, one seeded noise bed from the first VO line to the last at vo_line_lufs + db (default -60),
+coloured like the takes' own pauses (pink when they are digital silence); it sits in the amb stem, so music-free lines never fall to silence.
 SFX library entries may carry `duck_music: {db, dur}` (music dips under that SFX); `typing` entries use
 {variants, gain_jitter [lo, hi], pan_jitter, seed} with ONE seeded rng consumed in event order (same as legacy).
 Clip audio (events.json `clips`, promo/shot_audio.py): bus vo is placed in the vo stem and ducks music (+ sfx by duck.clip_sfx_db);
@@ -25,6 +27,7 @@ from scipy.signal import resample_poly
 
 from . import audiofx
 from . import bookends as BK
+from . import vo as VO
 from . import vo_polish
 from .assets import asset_path, load_manifest
 from .events import events_path
@@ -121,8 +124,43 @@ def duck_band(duck):
     return out
 
 
+def room_cfg(cfg):
+    """mix.room -> {db, seed} or None. `room: on` = a bed 60 dB under the VO level (mix.vo_line_lufs)."""
+    r = (cfg or {}).get("room")
+    if r in (None, False, "off"):
+        return None
+    r = {} if r is True or r == "on" else r
+    if not isinstance(r, dict) or set(r) - {"db", "seed"}:
+        raise SpecError(f"mix.room: expected on, off or {{db, seed}}, got {r!r}")
+    if any(isinstance(v, bool) or not isinstance(v, (int, float)) for v in r.values()):
+        raise SpecError(f"mix.room: db and seed must be numbers, got {r!r}")
+    if not -90 <= r.get("db", -60.0) <= -20:
+        raise SpecError(f"mix.room: db is how far under the VO level the bed sits, -90..-20, got {r['db']:g}")
+    return {"db": float(r.get("db", -60.0)), "seed": int(r.get("seed", 0))}
+
+
+def room_tone(pauses, n, SR, level_db, seed):
+    """`n` samples of seeded noise at `level_db` dBFS RMS, coloured like `pauses` ([(mono audio, sr)]: the takes' own quiet
+    stretches), or pink when they hold no sound to take a colour from (a hosted voice's pauses are digital silence).
+    Returns (bed, "takes" | "pink")."""
+    from scipy import signal
+    f = np.fft.rfftfreq(n, 1 / SR)
+    heard = [(p, sr) for p, sr in pauses if len(p) >= 2048 and audiofx._rms_db(p) > -90]
+    if sum(len(p) / sr for p, sr in heard) >= 0.3:
+        power = np.zeros(len(f))
+        for p, sr in heard:                                  # power-weighted average of each take's spectrum, on the bed's grid
+            fp, pp = signal.welch(p, sr, nperseg=2048)
+            power += np.interp(f, fp, pp, right=0.0) * len(p)
+        mag, colour = np.sqrt(power), "takes"
+    else:
+        mag, colour = 1 / np.sqrt(np.maximum(f, 20.0)), "pink"
+    y = np.fft.irfft(np.fft.rfft(np.random.default_rng(seed).standard_normal(n)) * mag, n)
+    y = audiofx._filt(y, audiofx._sos("high", 80.0, 2, SR))
+    return y * 10 ** ((level_db - audiofx._rms_db(y)) / 20), colour
+
+
 def spec_problems(raw):
-    """Errors in the mix's own keys that need no media: vo.polish values and mix.duck.band. Kept out of Spec.validate, whose module
+    """Errors in the mix's own keys that need no media: vo.polish values, mix.duck.band and mix.room. Kept out of Spec.validate, whose module
     every shot's render hash covers, so these keys never force a re-render."""
     errs = []
     for where, polish in vo_polish.spec_polish(raw):
@@ -130,10 +168,11 @@ def spec_problems(raw):
             vo_polish.resolve(polish, where)
         except SpecError as e:
             errs.append(str(e))
-    try:
-        duck_band((raw.get("mix") or {}).get("duck"))
-    except SpecError as e:
-        errs.append(str(e))
+    for check in (lambda: duck_band((raw.get("mix") or {}).get("duck")), lambda: room_cfg(raw.get("mix"))):
+        try:
+            check()
+        except SpecError as e:
+            errs.append(str(e))
     return errs
 
 
@@ -187,6 +226,7 @@ def run(spec, force=False):
         log.append((t, name, 1, g))
     # VO: level each line to vo_line_lufs, place at its event time
     vo_marks = []
+    room, pauses = room_cfg(cfg), []
     meta = json.load(open(os.path.join(spec.vo_dir, "vo.json"))) if os.path.exists(os.path.join(spec.vo_dir, "vo.json")) else dict(lines=[])
     spec_lines = {str(x.get("id", x["shot"])): x for x in (spec.raw.get("vo") or {}).get("lines") or []}
     for line in meta["lines"]:
@@ -198,6 +238,9 @@ def run(spec, force=False):
         x, sr0 = sf.read(os.path.join(spec.vo_dir, line["file"]), always_2d=True)
         x = x.astype(np.float64)
         lid = str(line.get("id", line["shot"]))
+        if room:                                     # the take's own pauses colour the room tone; trim's edge fades stay out
+            m, dur0 = x.mean(1), len(x) / sr0
+            pauses += [(m[int((a + 0.02) * sr0): int((b - 0.02) * sr0)], sr0) for a, b in VO.silences(m, sr0) if a > 0.05 and b < dur0 - 0.05]
         x = vo_polish.apply(x, sr0, vo_polish.line_polish(spec.raw, lid), where=f"vo line {lid} polish")
         x = audiofx.apply(x, sr0, audiofx.line_fx(spec.raw, lid), t0=t, where=f"vo line {lid} fx")
         meter = pyln.Meter(sr0)
@@ -221,6 +264,19 @@ def run(spec, force=False):
             clip_marks.append((c["t"], c["t"] + len(x) / SR))
         clip_log.append(dict(id=c["id"], shot=c.get("shot"), bus=c["bus"], t=c["t"], dur=round(len(x) / SR, 3), db=c.get("db", 0.0),
                              lufs=round(float(_lufs(x[:, :1], SR)), 2), peak_db=round(float(20 * np.log10(np.abs(x).max() + 1e-12)), 2)))
+    room_log = None
+    if room and vo_marks:
+        # one continuous bed from just before the first line to just after the last: the lines are trimmed tight, so most of the
+        # quiet sits between lines, and a bed per line would switch on and off at every line edge
+        a, b = int(max(0.0, min(m[0] for m in vo_marks) - 0.3) * SR), int(min(dur, max(m[1] for m in vo_marks) + 0.5) * SR)
+        level = cfg.get("vo_line_lufs", -16.0) + room["db"]
+        bed, colour = room_tone(pauses, b - a, SR, level, room["seed"])
+        k = min(int(0.4 * SR), (b - a) // 2)
+        ramp = 0.5 - 0.5 * np.cos(np.linspace(0, np.pi, k))
+        bed[:k] *= ramp
+        bed[len(bed) - k:] *= ramp[::-1]
+        amb[a:b] += bed[:, None]
+        room_log = dict(db=room["db"], level_dbfs=round(level, 1), colour=colour, span=[round(a / SR, 3), round(b / SR, 3)])
     # music ducking under VO (and under SFX with duck_music)
     dk = cfg.get("duck", {})
     duck_db, att, rel = dk.get("db", 7.0), dk.get("attack", 0.12), dk.get("release", 0.35)
@@ -254,7 +310,7 @@ def run(spec, force=False):
     sd = os.path.join(spec.audio_dir, "stems")
     os.makedirs(sd, exist_ok=True)
     stems = [("music", music_d), ("sfx", sfx * db(BUS["sfx"])), ("vo", vo * db(BUS["vo"]))]
-    if any(c["bus"] == "amb" for c in ev.get("clips", [])):
+    if room_log or any(c["bus"] == "amb" for c in ev.get("clips", [])):
         stems.append(("amb", amb * db(BUS["amb"])))
     for nm, x in stems:
         sf.write(os.path.join(sd, f"{nm}.wav"), x.astype(np.float32), SR, subtype="FLOAT")
@@ -275,6 +331,6 @@ def run(spec, force=False):
         out[m["name"]] = dict(lufs=round(float(L), 2), dbtp=round(float(tp), 2))
         print("master", m["name"], out[m["name"]], flush=True)
     with open(os.path.join(spec.audio_dir, "mix-report.json"), "w") as f:
-        json.dump(dict(master=out, sfx=log, vo=vo_marks, bus_db=BUS, duck_db=duck_db, **(dict(duck_band=band) if band else {}),
+        json.dump(dict(master=out, sfx=log, vo=vo_marks, bus_db=BUS, duck_db=duck_db, **(dict(duck_band=band) if band else {}), **(dict(room=room_log) if room_log else {}),
                        **(dict(clips=clip_log) if clip_log else {})), f, indent=1)
     return out

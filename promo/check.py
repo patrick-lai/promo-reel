@@ -193,7 +193,8 @@ def vo_masking(spec, qa):
 def vo_mix_asr(spec, stamps, qa, lines):
     """(status, msg) for `vo-mix-asr`: each VO line read back by whisper from the first master's mix (music, SFX and ducking in),
     against its script. FAILs a line the mix makes lose words that its clean take did not; WARNs instead on a line with character fx
-    (its own or mix.fx), where some loss can be the effect. Each window ends where the next line starts."""
+    (its own or mix.fx), where some loss can be the effect. Each window is the line's whole span, even where the next line overlaps
+    it (vo-fit reports that): cutting it at the next start would count the overlapped words as lost, and extra words do not count."""
     import tempfile
 
     import soundfile as sf
@@ -204,17 +205,15 @@ def vo_mix_asr(spec, stamps, qa, lines):
     rp = os.path.join(spec.audio_dir, "mix-report.json")
     if not (os.path.exists(wav) and os.path.exists(rp)):
         return "WARN", "no mix yet (run `promo build`)"
-    marks = sorted(json.load(open(rp))["vo"])                    # [t0, t1, id, text]; a muted line has none
-    starts = [m[0] for m in marks]
+    marks = json.load(open(rp))["vo"]                            # [t0, t1, id, text]; a muted line has none
     model = qa.get("asr_model", "small.en")
     by_id = {str(ln.get("id", ln["shot"])): ln for ln in lines}
     info = sf.info(wav)
     bad, soft, n = [], [], 0
-    for i, (t0, t1, sid, _) in enumerate(marks):
+    for t0, t1, sid, _ in marks:
         ln = by_id.get(str(sid))
         if ln is None:
             continue
-        t1 = min(t1, starts[i + 1]) if i + 1 < len(marks) else t1
         y, sr = sf.read(wav, start=int(t0 * info.samplerate), stop=int(t1 * info.samplerate), dtype="float32", always_2d=True)
         y = y.mean(1)
         key = hashlib.sha256(y.tobytes()).hexdigest() + model
