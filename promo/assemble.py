@@ -10,6 +10,7 @@ segments have no handles to run on). Allowed per style in `transitions.allowed`;
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import subprocess
@@ -42,6 +43,8 @@ def dissolve(frames, cut_list, size):
                 waiting, held = [], prev
             yield mix(held, f, into[i]) if i in into else f
         prev = f
+    if waiting:
+        raise RuntimeError(f"the film ended {len(waiting)} frame(s) before a dissolve's cut: the segments decoded short")
 
 
 def count_frames(path):
@@ -140,10 +143,12 @@ def final_video(spec, vid, watermark=False, cut_list=()):
         for f in dissolve(frames, cut_list, size):
             enc.stdin.write(f)
     finally:
-        enc.stdin.close()
-        dec.stdout.close()
-    if dec.wait() or enc.wait():
-        raise subprocess.CalledProcessError(dec.returncode or enc.returncode, "ffmpeg (dissolve pass)")
+        for pipe in (enc.stdin, dec.stdout):
+            with contextlib.suppress(BrokenPipeError):         # an encoder that died is reported by its exit code below
+                pipe.close()
+        codes = dec.wait(), enc.wait()
+    if any(codes):
+        raise subprocess.CalledProcessError(codes[1] or codes[0], "ffmpeg " + ("encode" if codes[1] else "decode") + " (dissolve pass)")
     return out
 
 

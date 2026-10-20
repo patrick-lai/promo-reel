@@ -1,7 +1,6 @@
 """`cut_in: dissolve`: parsed and refused in promo/spec.py, blended frame by frame in the delivery encode (promo/assemble.py)."""
 import os
 import subprocess
-import tempfile
 from types import SimpleNamespace as NS
 
 import numpy as np
@@ -26,14 +25,16 @@ def test_cuts_centre_the_window_and_refuse_what_cannot_render():
     for bad, why in [(film((30, {"cut_in": "dissolve"}), (30, {})), "first shot"),
                      (film((30, {}), (30, {"cut_in": {"kind": "dissolve", "dur": 0.5}})), "at most 0.4s"),
                      (film((30, {}), (30, {"cut_in": "wipe"})), "not hard or dissolve"),
+                     (film((30, {}), (30, {"cut_in": {"dur": 0.3}})), "not hard or dissolve"),
+                     (film((30, {}), (30, {"cut_in": {"kind": "dissolve", "dur": "0.3s"}})), "not a number of seconds"),
                      (film((30, {}), (8, {"cut_in": "dissolve"}), (30, {"cut_in": "dissolve"})), "shot 02: its dissolves need 9 frames")]:
         with pytest.raises(SpecError, match=why):
             cuts(bad)
 
 
 @pytest.mark.skipif(subprocess.run(["which", "ffmpeg"], capture_output=True).returncode != 0, reason="needs ffmpeg")
-def test_final_video_blends_only_the_frames_around_the_cut():
-    d = tempfile.mkdtemp()
+def test_final_video_blends_only_the_frames_around_the_cut(tmp_path):
+    d = str(tmp_path)
     src = os.path.join(d, "in.mp4")
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=white:s=64x64:r=10:d=1", "-f", "lavfi", "-i", "color=c=black:s=64x64:r=10:d=1",
                     "-filter_complex", "[0][1]concat=n=2,format=yuv420p", "-colorspace", "bt709", "-color_range", "tv", src], check=True)

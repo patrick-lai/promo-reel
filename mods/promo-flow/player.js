@@ -151,10 +151,15 @@
         const a = fx(x0), b = fy(y0), c = fx(ev.clientX), d = fy(ev.clientY), r3 = (v) => Math.round(v * 1000) / 1000;
         return { x: r3(Math.min(a, c)), y: r3(Math.min(b, d)), w: r3(Math.abs(c - a)), h: r3(Math.abs(d - b)) };
       };
-      stage.setPointerCapture(e.pointerId);
-      const mv = (ev) => { if (marking || Math.hypot(ev.clientX - x0, ev.clientY - y0) >= DRAG_PX) { marking = area(ev); paint(); } };
+      // capture only once it is a drag: capturing on press would send a plain click to the stage, not to the video or the Play button
+      const mv = (ev) => {
+        if (!marking && Math.hypot(ev.clientX - x0, ev.clientY - y0) < DRAG_PX) return;
+        if (!marking) stage.setPointerCapture(e.pointerId);
+        marking = area(ev);
+        paint();
+      };
       const up = (ev) => {
-        stage.removeEventListener("pointermove", mv); stage.removeEventListener("pointerup", up); stage.removeEventListener("pointercancel", up);
+        window.removeEventListener("pointermove", mv); window.removeEventListener("pointerup", up); window.removeEventListener("pointercancel", up);
         const s = marking && ev.type === "pointerup" ? area(ev) : null;
         marking = null;
         if (s) { swallowClick = true; setTimeout(() => { swallowClick = false; }); }     // the click this drag ends with is not a play
@@ -163,7 +168,7 @@
         }
         paint();
       };
-      stage.addEventListener("pointermove", mv); stage.addEventListener("pointerup", up); stage.addEventListener("pointercancel", up);
+      window.addEventListener("pointermove", mv); window.addEventListener("pointerup", up); window.addEventListener("pointercancel", up);
     });
     stage.addEventListener("click", (e) => { if (swallowClick) { swallowClick = false; e.stopPropagation(); } }, true);
 
@@ -317,8 +322,7 @@
           : [h("span", { text: "Drag on the picture to mark what you mean (optional)" })]));
       } };
       editing.showSpot();
-      paint();
-      if (!n) seek(t);
+      seek(t);                 // an existing note too: its spot is drawn over, and re-marked on, its own frame
       const when = h("b", { class: "pfp-when" });
       const sc = h("span", { class: "pfp-ed-sc" });
       const showWhen = () => { when.textContent = clock(editing.at); const s = sceneAt(editing.at); sc.textContent = s ? "Scene " + s.id : ""; };

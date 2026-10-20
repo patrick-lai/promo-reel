@@ -238,13 +238,16 @@ def test_a_spot_marks_the_frame_and_re_marking_it_makes_a_new_check(pd, tmp_path
     assert F.snapshot(pd)["drafts"][0]["pins"][0]["spot"] == p["spot"]
     F.round_start(pd, "see my notes")
     brief = open(RB.brief_path(pd, F.open_round(F.load(pd)))).read()
-    assert "it points at x 25-75%, y 50-75% of the frame, marked frame: " + os.path.join(F.fdir(pd), "pins", "n1.jpg") in brief
+    assert "it points at x 25-75%, y 50-75% of the frame, marked frame: " + os.path.join(F.fdir(pd), p["still"]) in brief
     FC.pin_edit(pd, pid, "Pat", spot=FC.parse_spot("0,0,0.5,0.5"))                     # "this" now means something else
     st = F.load(pd)
-    assert next(c for c in st["checks"] if c["id"] == p["check"])["retired"] and st["pins"][0]["spot"]["x"] == 0
+    old, now = next(c for c in st["checks"] if c["id"] == p["check"]), st["pins"][0]
+    assert old["retired"] and now["spot"]["x"] == 0 and now["still"] != old["still"]
+    assert os.path.isfile(os.path.join(F.fdir(pd), old["still"]))                      # the retired check keeps the picture it was about
     FC.pin_edit(pd, pid, "Pat", spot=None)
     assert "spot" not in F.load(pd)["pins"][0] and "spot" not in F.snapshot(pd)["drafts"][0]["pins"][0]
-    for bad in ("1,0,0.5,0.5", "0.5,0.5,0.6,0.1", "a,b"):
+    FC.pin(pd, 1, 8.0, "the end card is cut", "Pat", spot=FC.parse_spot("0,0,1,1"))     # the very end of the draft still has a frame
+    for bad in ("1,0,0.5,0.5", "0.5,0.5,0.6,0.1", "a,b", "0.1,0.1,0.0004,0.2"):
         with pytest.raises(F.FlowError, match="--spot"):
             FC.parse_spot(bad)
 

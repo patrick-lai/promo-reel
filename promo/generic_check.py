@@ -602,12 +602,11 @@ def gray_frames(path, spec, width=384):
     return np.frombuffer(raw, np.uint8).reshape(-1, H, W).astype(np.float32)
 
 
-def static_runs(path, spec, rects, width=384, pix_delta=10, max_changed=0.0005, frames=None):
+def static_runs(fr, spec, rects, pix_delta=10, max_changed=0.0005):
     """Per footage shot: longest run (s) where the footage viewport does not change frame to frame (no pixel moves
     more than pix_delta levels, beyond max_changed of the viewport). Cards / credits are skipped (a held card is
-    the design). `frames` = pre-decoded by gray_frames at this width."""
+    the design). `fr` = the output decoded by gray_frames."""
     cw, ch = canvas_units(spec)
-    fr = gray_frames(path, spec, width) if frames is None else frames
     W = fr.shape[2]
     k = W / cw
     out = {}
@@ -728,7 +727,7 @@ def frame_gates(spec, rules=None, clipped_named=()):
     bf = rules["black_frames"]
     frames = gray_frames(out, spec, lh.get("width", 384)) if lh.get("on", True) or bf.get("on", True) else None
     if lh.get("on", True):
-        runs = static_runs(out, spec, rects, pix_delta=lh.get("pix_delta", 10), max_changed=lh.get("max_changed", 0.0005), frames=frames)
+        runs = static_runs(frames, spec, rects, pix_delta=lh.get("pix_delta", 10), max_changed=lh.get("max_changed", 0.0005))
         long_, exempt = long_hold_offenders(runs, spec, lh["max_s"])
         top = max(runs.items(), key=lambda x: x[1][0]) if runs else None
         note = f" (planned hold exempt: {', '.join(sorted(exempt))})" if exempt else ""

@@ -1092,6 +1092,8 @@
         }
       }
     }
+    const ci = shots.length ? shots[0].cut_in : null;
+    if (ci === "dissolve" || (ci && ci.kind === "dissolve")) delete shots[0].cut_in;   // a delete or move put it first: there is nothing before it to dissolve from
     return { raw, origin };
   }
   function applyLyric(raw, o, n) {

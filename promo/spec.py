@@ -124,11 +124,16 @@ def dissolve_s(shot):
     """The dissolve into `shot` in seconds, or None. `hard` / `flash_dip` cut_in values belong to the shot renderer (horizon)."""
     ci = shot.cfg.get("cut_in")
     kind = ci.get("kind") if isinstance(ci, dict) else ci
-    if kind in (None, "hard", "flash_dip"):
+    if ci is None or kind in ("hard", "flash_dip"):
         return None
     if kind != "dissolve":
         raise SpecError(f"shot {shot.id}: cut_in {kind!r} is not hard or dissolve (flash_dip is the horizon preset's)")
-    return float(ci.get("dur", DISSOLVE_S)) if isinstance(ci, dict) else DISSOLVE_S
+    if not isinstance(ci, dict):
+        return DISSOLVE_S
+    try:
+        return float(ci.get("dur", DISSOLVE_S))
+    except (TypeError, ValueError):
+        raise SpecError(f"shot {shot.id}: cut_in dur {ci.get('dur')!r} is not a number of seconds") from None
 
 
 def cuts(spec):

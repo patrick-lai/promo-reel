@@ -944,6 +944,9 @@ def apply_ops(raw, ops, B, bpb=4):
                     for k in ("at", "db"):
                         if k in o:
                             e[k] = o[k]
+    ci = shots[0].get("cut_in") if shots else None
+    if ci == "dissolve" or (isinstance(ci, dict) and ci.get("kind") == "dissolve"):
+        shots[0].pop("cut_in")           # a delete or move put it first: there is nothing before it to dissolve from
     return raw, origin
 
 

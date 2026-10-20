@@ -374,7 +374,14 @@
       ]
      }
     ]
-   }
+   },
+   "absent": [
+    [
+     "shots",
+     0,
+     "cut_in"
+    ]
+   ]
   },
   {
    "name": "move after",

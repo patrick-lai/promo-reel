@@ -2091,9 +2091,10 @@ def _pin_cli(pd, a):
     if a.action == "add":
         if a.at is None or a.text is None:
             raise FlowError("pin add needs --at and --text")
-        pid, scene = FC.pin(pd, a.draft, a.at, a.text, a.by, a.scene, a.story, FC.parse_spot(a.spot) if a.spot else None)
+        spot = FC.parse_spot(a.spot) if a.spot else None
+        pid, scene = FC.pin(pd, a.draft, a.at, a.text, a.by, a.scene, a.story, spot)
         print(f"pinned {pid}" + (f" on scene {scene}" if scene else "") + ": it goes into the next round as a check"
-              + (f"; marked frame flow/pins/{pid}.jpg" if a.spot else ""))
+              + (f"; marked frame flow/{next(p['still'] for p in load(pd)['pins'] if p['id'] == pid)}" if spot else ""))
         return True
     if not a.id:
         raise FlowError(f"pin {a.action} needs the note's id (n1, n2, ...)")

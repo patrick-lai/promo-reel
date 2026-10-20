@@ -363,6 +363,21 @@ def test_shot_digest_ignores_sound_cues_and_a_move_of_a_built_in_shot(pd):
     assert cli.shot_digest(s0, s0.shots[0], legacy=True) != d01               # the old formula kept absolute beats
 
 
+def test_a_dissolve_reassembles_without_re_rendering_a_shot(pd):
+    sp = os.path.join(pd, "promo.yaml")
+    assemble = lambda s: next(x for x in cli.plan(s) if x["name"] == "assemble")["dig"]()
+    s0 = _spec(pd)
+    d02, a0 = cli.shot_digest(s0, s0.shots[1]), assemble(s0)
+    raw = yaml.safe_load(open(sp))
+    raw["shots"][1]["cut_in"] = "dissolve"
+    open(sp, "w").write(yaml.safe_dump(raw))
+    s1 = _spec(pd)
+    assert cli.shot_digest(s1, s1.shots[1]) == d02 and assemble(s1) != a0      # blended at assemble: no shot re-renders
+    raw["shots"][1]["cut_in"] = "flash_dip"
+    open(sp, "w").write(yaml.safe_dump(raw))
+    assert cli.shot_digest(_spec(pd), _spec(pd).shots[1]) != d02                 # horizon draws its flash_dip into the shot
+
+
 def _shot_step(spec, sid):
     return next(st for st in cli.plan(spec) if st["name"] == f"shot {sid}")
 
