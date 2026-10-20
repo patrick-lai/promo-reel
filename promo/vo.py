@@ -26,7 +26,10 @@ Voices per line (a dialogue): the vo block's engine/voice/speed/lang, then the l
                `instructions` (delivery: Gemini, Fish). Needs `asset:` (the provider's terms). Paid: the whole run is priced
                before the first call and refused over `max_usd` (default $0.50) or the daily cap; run it under
                `commissionctl secret exec OPENROUTER_API_KEY -- promo vo`.
-  files        pre-rendered WAVs (below); the whole vo block only.
+  mlx          a free local voice on Apple Silicon (promo/vo_mlx.py): Ming-3.0-tts-0.5B, MIT. `voice` (UK_Charlotte, US_James, ...;
+               `promo vo voices --local`) or `instructions` (a voice designed from words), `seed`. One-time `promo vo setup`;
+               needs `asset:`.
+  files       pre-rendered WAVs (below); the whole vo block only.
 
 Pre-rendered VO (e.g. a two-host talk show voiced elsewhere):
   vo: {engine: files, asset: <assets.yaml id of kind vo (a directory)>, lines: [{id, shot, at, file, text, host?, sha256?}]}
@@ -191,9 +194,10 @@ def run_files(spec):
     return meta
 
 
-ENGINES = ("kokoro", "say", "voicestudio", "openrouter", "files")
+ENGINES = ("kokoro", "say", "voicestudio", "openrouter", "mlx", "files")
 DRAFT_ENGINES = ("say",)
-VARYING_ENGINES = ("voicestudio", "openrouter")      # a second take sounds different; kokoro and say repeat themselves exactly
+VARYING_ENGINES = ("voicestudio", "openrouter", "mlx")  # a second take sounds different; kokoro and say repeat themselves exactly
+SEEDED_ENGINES = ("voicestudio", "mlx")                # take k is seed + k (an OpenRouter call varies by itself; its API takes no seed)
 VOICE_KEYS = ("engine", "voice", "speed", "lang", "asset", "profile", "instruct", "seed", "rate", "model", "instructions")
 CACHE_VERSION = 2                                    # 2: the cache holds raw float takes (1 held trimmed PCM_16, which clipped)
 TRIM_DB = -45.0                                      # a 10 ms window this far under the take's loudest counts as silence
@@ -227,7 +231,7 @@ def voice_of(spec, line):
     if "asset" not in v and cfg.get("asset") and v["engine"] == cfg.get("engine"):
         v["asset"] = cfg["asset"]                    # the vo block's licence entry covers its own engine, not a host's or line's other engine
     if v["engine"] not in ENGINES or v["engine"] == "files":
-        raise RuntimeError(f"VO line {line_id(line)}: engine {v['engine']!r} (have kokoro, say, voicestudio, openrouter; `files` is for the whole vo block)")
+        raise RuntimeError(f"VO line {line_id(line)}: engine {v['engine']!r} (have {', '.join(ENGINES[:-1])}; `files` is for the whole vo block)")
     if v["engine"] == "kokoro":
         v.setdefault("voice", "bf_emma")
         v.setdefault("lang", "en-gb" if str(v["voice"]).startswith("b") else "en-us")
@@ -236,6 +240,9 @@ def voice_of(spec, line):
         v.setdefault("model", DEFAULT_SPEECH_MODEL)
         if v["model"] == DEFAULT_SPEECH_MODEL:
             v.setdefault("voice", DEFAULT_SPEECH_VOICE)
+    if v["engine"] == "mlx" and not v.get("instructions"):
+        from .vo_mlx import DEFAULT_VOICE
+        v.setdefault("voice", DEFAULT_VOICE)
     return v
 
 
@@ -321,12 +328,16 @@ def synth(spec, v, text, man=None, max_usd=None):
     if eng == "openrouter":
         from . import openrouter as OR
         return OR.speech(OR.speech_body(v, text), max_usd=OR.DEFAULT_SPEECH_MAX_USD if max_usd is None else max_usd)
+    if eng == "mlx":
+        from . import vo_mlx
+        vo_mlx.check_voice(v)
+        return vo_mlx.synth(v, text)
     raise RuntimeError(f"engine {eng!r}")
 
 
 def take_key(spec, v, text, take=0):
-    """What a take depends on (the cache key): the voice, the text, the take index and, for kokoro, the model files. Take 0's key
-    does not depend on how many takes the line asks for, so going from 1 to 3 takes reuses the first."""
+    """What a take depends on (the cache key): the voice, the text, the take index and, for kokoro and mlx, the model files / local
+    install. Take 0's key does not depend on how many takes the line asks for, so going from 1 to 3 takes reuses the first."""
     import hashlib
     extra = None
     if v["engine"] == "kokoro":
@@ -334,6 +345,9 @@ def take_key(spec, v, text, take=0):
         cfg = spec.raw.get("vo") or {}
         man = load_manifest(spec)
         extra = [file_sig(asset_path(spec, cfg[k], man)) for k in ("model_asset", "voices_asset")]
+    if v["engine"] == "mlx":
+        from . import vo_mlx
+        extra = vo_mlx.signature()
     return hashlib.sha256(json.dumps([v, text, extra, CACHE_VERSION, take], sort_keys=True, default=str).encode()).hexdigest()[:20]
 
 
@@ -342,8 +356,8 @@ def takes_of(cfg, line):
 
 
 def take_voice(v, k):
-    """The voice of take k: VoiceStudio varies by seed; an OpenRouter call varies by itself (its API takes no seed)."""
-    return dict(v, seed=int(v.get("seed", 1)) + k) if k and v["engine"] == "voicestudio" else v
+    """The voice of take k: seed + k on a seeded engine, the voice unchanged for take 0 and for OpenRouter."""
+    return dict(v, seed=int(v.get("seed", 1)) + k) if k and v["engine"] in SEEDED_ENGINES else v
 
 
 def _write_wav(path, x, sr):
@@ -367,19 +381,22 @@ def _plan(spec, cfg):
         if n < 1:
             raise RuntimeError(f"VO line {lid}: takes must be 1 or more")
         if n > 1 and v["engine"] not in VARYING_ENGINES:
-            raise RuntimeError(f"VO line {lid}: {v['engine']} gives the same audio every time; takes: {n} needs engine openrouter or voicestudio")
+            raise RuntimeError(f"VO line {lid}: {v['engine']} gives the same audio every time; takes: {n} needs engine {', '.join(VARYING_ENGINES)}")
         if line.get("take") is not None and not 1 <= int(line["take"]) <= n:
             raise RuntimeError(f"VO line {lid}: take {line['take']} picked, but the line has {n} take(s)")
+        if v["engine"] == "mlx":
+            from . import vo_mlx
+            vo_mlx.check_voice(v)
+            if not vo_mlx.ready():
+                raise RuntimeError(f"VO line {lid}: the local voice (engine mlx) is not set up on this Mac: run `promo vo setup` once")
         out.append((line, v, [take_key(spec, take_voice(v, k), say, k) for k in range(n)]))
     return out
 
 
-def price_run(spec, plan, cache, force=False):
-    """(USD, number of takes) that the paid (openrouter) takes still to make would cost, from the live catalogue."""
-    from . import openrouter as OR
-    todo = [(v, line.get("tts", line["text"])) for line, v, keys in plan for key in keys
+def paid_todo(plan, cache, force=False):
+    """[(voice, text)] of the paid (openrouter) takes this run still has to make: a cached take needs no key and costs nothing."""
+    return [(v, line.get("tts", line["text"])) for line, v, keys in plan for key in keys
             if v["engine"] == "openrouter" and (force or not os.path.exists(os.path.join(cache, key + ".wav")))]
-    return round(sum(OR.speech_estimate(OR.speech_model(v["model"]), say) for v, say in todo), 4), len(todo)
 
 
 def run(spec, force=False, max_usd=None):
@@ -392,10 +409,13 @@ def run(spec, force=False, max_usd=None):
     cache = os.path.join(spec.vo_dir, ".cache")
     os.makedirs(cache, exist_ok=True)
     plan = _plan(spec, cfg)
-    price, n_paid = price_run(spec, plan, cache, force) if any(v["engine"] == "openrouter" for _, v, _ in plan) else (0, 0)
-    cap = None
+    todo = paid_todo(plan, cache, force)
+    n_paid, cap = len(todo), None
     if n_paid:
         from . import openrouter as OR
+        if not OR.has_key():
+            raise OR.OpenRouterError(OR.NO_SPEECH_KEY)
+        price = round(sum(OR.speech_estimate(OR.speech_model(v["model"]), say) for v, say in todo), 4)
         cap = float(max_usd if max_usd is not None else cfg.get("max_usd", OR.DEFAULT_SPEECH_MAX_USD))
         OR.guard(price, cap)
         print(f"vo openrouter: {n_paid} take(s) to make, about ${price:.3f} (limit ${cap:.2f})", flush=True)
@@ -432,7 +452,8 @@ def run(spec, force=False, max_usd=None):
         fn = f"vo-{lid}.wav"
         _write_wav(os.path.join(spec.vo_dir, fn), x, sr)
         meta.append(dict(id=lid, shot=str(line["shot"]), host=line.get("host"), text=txt, tts=say, file=fn, dur=round(len(x) / sr, 3),
-                         sr=sr, engine=v["engine"], voice=v.get("voice") or v.get("profile") or v.get("instruct"), take=pick, takes=takes))
+                         sr=sr, engine=v["engine"], voice=v.get("voice") or v.get("profile") or v.get("instruct") or v.get("instructions"),
+                         take=pick, takes=takes))
         print("vo", lid, v["engine"], meta[-1]["voice"], round(meta[-1]["dur"], 2), txt, flush=True)
         if takes:
             print(vo_score.table(takes, pick), flush=True)

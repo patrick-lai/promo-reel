@@ -245,6 +245,21 @@ def _voice(a, bds, out):
     lines = [s["vo"] for _, b, _ in bds for s in b.get("scenes") or [] if s["id"] in (a.get("scenes") or []) and s.get("vo")][:3]
     if not lines:
         raise PreviewError(f"{a['id']}: none of its scenes has a voice line (`vo`) to read")
+    from . import vo_mlx
+    if vo_mlx.ready():                     # the free local voice is far closer to a real read than `say`
+        import numpy as np
+        import soundfile as sf
+        from .vo import trim
+        parts = []
+        for text in lines:
+            x, sr = vo_mlx.synth(dict(voice=vo_mlx.DEFAULT_VOICE, seed=1), text)
+            parts += [trim(x, sr), np.zeros(int(0.5 * sr), np.float32)]
+        with tempfile.TemporaryDirectory() as tmp:
+            wav = os.path.join(tmp, "v.wav")
+            sf.write(wav, np.concatenate(parts), sr, subtype="FLOAT")
+            _ffmpeg("-i", wav, "-ac", "1", "-b:a", "128k", out)
+        return (f"First {len(lines)} script line{'s' if len(lines) > 1 else ''} read by the free local voice {vo_mlx.DEFAULT_VOICE} "
+                "(Ming-3.0-tts). The planned voice is made at build.")
     if not shutil.which("say"):
         raise PreviewError(f"{a['id']}: no text-to-speech here to read a sample (macOS `say`); render it with `promo vo` instead")
     have = subprocess.run(["say", "-v", "?"], capture_output=True, text=True).stdout

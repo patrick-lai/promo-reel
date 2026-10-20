@@ -139,3 +139,63 @@ def test_an_overlap_alone_only_warns(tmp_path):
     clean = vo.trim(np.concatenate([quiet(0.1), tone(1.0, 0.5), quiet(0.2)]), SR)
     g = gates(tmp_path, [{"id": "a", "shot": "01", "text": "x", "at": 0.0}, {"id": "b", "shot": "01", "text": "y", "at": 0.5}], {"a": clean, "b": clean})
     assert g["vo-fit"][0] == "WARN"
+
+
+STUB_WORKER = '''
+import json, os, sys
+import numpy as np, soundfile as sf
+proto = os.fdopen(os.dup(1), "w", buffering=1)
+proto.write(json.dumps({"ok": True, "ready": True}) + "\\n")
+for line in sys.stdin:
+    job = json.loads(line)
+    if "crash" in job["text"]:
+        sys.exit(3)
+    open(os.environ["SEEN"], "a").write(f"{job['seed']} {job['voice']}\\n")
+    t = np.arange(24000) / 24000
+    sf.write(job["out"], (0.4 * np.sin(2 * np.pi * (200 + 10 * job["seed"]) * t)).astype("float32"), 24000, subtype="FLOAT")
+    proto.write(json.dumps({"ok": True, "sr": 24000, "frames": 24000}) + "\\n")
+'''
+
+
+@pytest.fixture
+def local_voice(tmp_path, monkeypatch):
+    """The local voice as `promo vo setup` leaves it, with a stand-in worker that speaks its protocol (tests never load the model)."""
+    import sys
+
+    from promo import vo_mlx
+    monkeypatch.setattr(vo_mlx, "HOME", tmp_path / "home")
+    vo_mlx.venv_dir().mkdir(parents=True)
+    (vo_mlx.venv_dir() / "stamp.json").write_text('{"pin": "p", "model_rev": "r", "mlx": "0", "model_dir": "m"}')
+    (tmp_path / "stub.py").write_text(STUB_WORKER)
+    monkeypatch.setenv("PROMO_MLX_WORKER", f"{sys.executable} {tmp_path / 'stub.py'}")
+    monkeypatch.setenv("SEEN", str(tmp_path / "seen.txt"))
+    yield tmp_path / "seen.txt"
+    vo_mlx._close()
+    vo_mlx._WORKER.clear()
+
+
+def test_local_takes_are_seed_plus_k_from_one_worker(tmp_path, local_voice, monkeypatch):
+    monkeypatch.setattr(check, "transcribe", lambda wav, model: "Hello there.")
+    monkeypatch.setattr("promo.vo_score.pitch_st", lambda x, sr: 1.0)
+    spec = project(tmp_path, [{"id": "a", "shot": "01", "text": "Hello there.", "takes": 2, "voice": {"engine": "mlx", "seed": 5}},
+                              {"id": "b", "shot": "01", "text": "Hello there.", "at": 2.0, "voice": {"engine": "mlx", "voice": "US_James"}}])
+    meta = vo.run(spec)
+    assert local_voice.read_text().split("\n")[:3] == ["5 UK_Charlotte", "6 UK_Charlotte", "1 US_James"]
+    assert [m["take"] for m in meta] == [1, 1] and len(meta[0]["takes"]) == 2
+
+
+def test_a_worker_that_dies_leaves_no_cached_take(tmp_path, local_voice):
+    spec = project(tmp_path, [{"id": "a", "shot": "01", "text": "please crash", "voice": {"engine": "mlx"}}])
+    with pytest.raises(RuntimeError, match="local voice stopped"):
+        vo.run(spec)
+    assert not [f for f in os.listdir(os.path.join(spec.vo_dir, ".cache")) if f.endswith(".wav")]
+
+
+def test_the_local_voice_asks_for_setup_and_hosted_voices_name_it(tmp_path, monkeypatch):
+    from promo import openrouter as OR
+    from promo import vo_mlx
+    monkeypatch.setattr(vo_mlx, "HOME", tmp_path / "home")
+    with pytest.raises(RuntimeError, match="promo vo setup"):
+        vo.run(project(tmp_path, [{"id": "a", "shot": "01", "text": "Hi.", "voice": {"engine": "mlx"}}]))
+    with pytest.raises(OR.OpenRouterError, match="engine: mlx"):
+        vo.run(project(tmp_path, [{"id": "a", "shot": "01", "text": "Hi.", "voice": {"engine": "openrouter"}}]))

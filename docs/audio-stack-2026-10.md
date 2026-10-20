@@ -30,26 +30,38 @@ missing fades rather than the timeline.
 | Qwen-Audio-3.1-TTS-Plus | 1298 | ~$19 per 1M chars | Sep 2026 | Alibaba (3.0 is on OpenRouter) |
 | Gemini 3.8 Flash TTS | 1279 | $0.5 / 1M input tokens + $9 / 1M audio tokens (25 per second) | Sep 2026 | OpenRouter `google/gemini-3.8-flash-tts` |
 | Fish Audio Drama 3 | 1247 (#1 open weights) | ~$2 per 1M chars | Oct 2026 | OpenRouter `fish-audio/drama-3` |
-| Kokoro-82M (our default) | 1065 | free, local | Jan 2025 | `kokoro` engine |
+| Ming-3.0-tts-0.5B (open weights) | 1188 | free, local | Oct 2026 | `mlx` engine |
+| Kokoro-82M | 1065 | free, local | Jan 2025 | `kokoro` engine |
 
 - **Eleven v4**: inline audio tags (`[whispers]`, `[sighs]`, `[pause]`), no SSML `<break>`; stable voice across regenerations.
   The ElevenLabs API itself adds `previous_text` / `next_text`, 48 kHz pcm and character timestamps (not on OpenRouter).
 - **Gemini 3.8**: delivery goes in `instructions`; directions written into the text are spoken. Only pcm output. Multi-speaker turns.
 - **Fish Drama 3**: 35B-A3B, community licence on the weights (free under $500k revenue, "Built with Fish Audio" notice). Does
   not fit this Mac at bf16 and has no MLX port, so it is OpenRouter-only for us.
-- **Local and licence-clean**: Qwen3-TTS 1.7B (Apache-2.0) and Chatterbox Multilingual (MIT) via mlx-audio, both proven in
-  `~/work/avatar-poc`. Step-Audio-EditX (Apache-2.0) re-edits the emotion and breaths of an existing take.
+- **Local and licence-clean** (the free path, `engine: mlx`): on the AA open-weights board, above Kokoro, are:
+  - Breeze TTS 2 (1221): its weights are research and non-commercial only, so it is out.
+  - **Ming-3.0-tts-0.5B** (1188, Ant Group, MIT, 44.1 kHz, Oct 2026): #1 on AA's pronunciation board, with an mlx-community port. This is our local voice.
+  - Fish S2 Pro (1113).
+  - Step-Audio-EditX (1099, Apache-2.0): re-edits a take's emotion and breaths.
+  - Voxtral TTS (1091).
 
-### Measured here (three commission-ai-jev lines, each voiced four ways; the WAVs are kept out of git)
+  Qwen3-TTS 1.7B (Apache-2.0) and Chatterbox (MIT) stay the routes for the person's *own* cloned voice (`~/work/avatar-poc`).
+- **Ming via mlx-audio, measured here** (M5 Max):
+  - It needs mlx-audio from git main (after 0.6.0); `promo/vo_mlx_requirements.txt` pins it.
+  - Loading takes 4 s offline, but ~60 s when Hugging Face checks online, so the worker sets `HF_HUB_OFFLINE`. Speed is 0.6-0.8x real time.
+  - The same seed gives sample-equal audio. The model takes any `UK_`/`US_` name silently, so promo checks against the five real voices.
 
-| | Kokoro before | Kokoro after | Gemini 3.8 (Kore) | Eleven v4 (alice) |
-|---|---|---|---|---|
-| words / s | 2.6-3.2 | 2.6-3.2 | 1.7-2.4 | 2.1-2.5 |
-| pitch spread (semitones) | 2.0-2.3 | 2.1-4.2 | 4.8-5.8 | 4.4-5.6 |
-| edge (first/last 5 ms, dB) | -41 to -56 | -70 to -74 | -62 to -79 | -72 to -78 |
-| whisper WER | 0 | 0 | 0 | 0 |
-| clipped | line 18 (cut to 1.000) | none (1.021 kept) | 2 of 3 lines arrive clipped | none |
-| billed for the 3 lines | free | free | $0.0058 (+ 2 extra takes $0.0025) | $0.0250 |
+### Measured here (three commission-ai-jev lines, each voiced five ways; the WAVs are kept out of git)
+
+| | Kokoro before | Kokoro after | Ming local (UK_Charlotte) | Gemini 3.8 (Kore) | Eleven v4 (alice) |
+|---|---|---|---|---|---|
+| words / s | 2.6-3.2 | 2.6-3.2 | 2.2-3.1 | 1.7-2.4 | 2.1-2.5 |
+| pitch spread (semitones) | 2.0-2.3 | 2.1-4.2 | 4.5-6.3 | 4.8-5.8 | 4.4-5.6 |
+| edge (first/last 5 ms, dB) | -41 to -56 | -70 to -74 | -53 to -63 | -62 to -79 | -72 to -78 |
+| noise floor in pauses (dB) | | -47 to -79 | -49 to -52 | -66 to -71 | -71 to -74 |
+| whisper WER | 0 | 0 | 0 (2 of the 3 takes of line 18 misread one word and were rejected) | 0 | 0 |
+| clipped | line 18 (cut to 1.000) | none (1.021 kept) | none | 2 of 3 lines arrive clipped | none |
+| cost for the 3 lines | free | free | free | $0.0058 (+ 2 extra takes $0.0025) | $0.0250 |
 
 The hosted voices move their pitch about twice as much as Kokoro (a rough sign of a less flat read) and read 25-45 % slower,
 so a script timed on Kokoro overlaps on them (`vo-fit` WARNs). Gemini's output sometimes clips at the provider; `vo-clip`
@@ -75,7 +87,7 @@ catches it and the fix is another take. Which one sounds best is a listening cal
 | SFX | MOSS-SoundEffect v2.0 (Apache-2.0, 48 kHz, MLX 4-bit port); ElevenLabs `eleven_text_to_sound_v2` (0.5-30 s, loops) | Stable Audio 3 Small-SFX: sources disagree on its licence |
 | Music | ElevenLabs Music v2.5 (11 Sep 2026, ~$0.15/min, sections with `duration_ms`, so cuts can sit on our bars); Lyria 3.5 | Suno v6: no API and open litigation, skip |
 | Stems | Mel-band / BS-RoFormer, SAM Audio | for re-cutting licensed tracks |
-| Local voices | an `mlx` engine for Qwen3-TTS / Chatterbox | the free offline step up from Kokoro |
+| Keys | an app-wide OpenRouter key in CommissionAI (today secrets are per board, in `credentials/secrets.json`; agents only reach them through `commissionctl secret exec`) | so a key saved once works on every board |
 
 ## Skills on the web
 
@@ -97,3 +109,6 @@ None knows promo-reel's licence gate (rule 4), evidence rule (rule 3) or gates, 
 - ElevenLabs skills: https://github.com/elevenlabs/skills
 - MOSS-SoundEffect: https://huggingface.co/ilintar/moss-soundeffect-gguf
 - Music models, 2026: https://www.teamday.ai/blog/best-ai-music-models-2026
+- Ming-3.0-tts: https://huggingface.co/inclusionAI/Ming-3.0-tts-0.5B, https://huggingface.co/mlx-community/Ming-3.0-tts-0.5B-bf16,
+  https://github.com/inclusionAI/Ming-3.0-tts (cookbooks/instruction_en.md: voices, tags)
+- Breeze TTS 2 licence: https://huggingface.co/BreezeBlue/Breeze-TTS-2

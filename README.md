@@ -27,7 +27,7 @@ projects/<name>/
 capture/                  capture-script contract (product-specific capture scripts live in your projects dir)
 skills/promo-reel/        agent skill (flow, ingest, gates)
 skills/promo-video-route/  pick Runway vs Higgsfield and a model for generated plates
-skills/promo-audio-route/  pick a voice (Kokoro, Gemini, Eleven v4 on OpenRouter), direct it, pick takes by ear
+skills/promo-audio-route/  pick a voice (free local Ming-3.0-tts, Kokoro; Gemini, Eleven v4 on OpenRouter), direct it, pick takes by ear
 templates/new-project/    scaffold used by `promo new`
 evals/rubric.yaml         UX reviewer's scoring rubric (versioned): read by `promo critique-pack` and `promo rubric`
 tests/                    fast unit tests (.venv/bin/python tests/test_<name>.py; needs the deps above, incl. pyyaml)

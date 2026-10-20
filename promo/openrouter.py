@@ -342,7 +342,9 @@ DEFAULT_SPEECH_MODEL = "google/gemini-3.8-flash-tts"   # #3 on the Speech Arena 
 DEFAULT_SPEECH_VOICE = "Kore"
 DEFAULT_SPEECH_MAX_USD = 0.50
 AUDIO_TOKENS_PER_S = 25        # Gemini bills speech per output token, 25 of them per second of audio
-CHARS_PER_S = 10               # slower than real speech (a 21-character Gemini line ran 2.1 s), so a line not yet made is priced high, not low
+NO_SPEECH_KEY = ("hosted voices need the board's OpenRouter key: run under `commissionctl secret exec OPENROUTER_API_KEY -- promo vo` (a "
+                 "missing key opens the secure box for the person). No key? The free local voice: `engine: mlx` after `promo vo setup`")
+CHARS_PER_S = 10              # slower than real speech (a 21-character Gemini line ran 2.1 s), so a line not yet made is priced high, not low
 
 
 def speech_models(max_age=CACHE_S):
@@ -415,6 +417,8 @@ def speech(body, max_usd=DEFAULT_SPEECH_MAX_USD):
 
     import numpy as np
     import soundfile as sf
+    if not has_key():
+        raise OpenRouterError(NO_SPEECH_KEY)
     m = speech_model(body["model"])
     voices = m.get("supported_voices") or []
     if voices and body.get("voice") not in voices:

@@ -1,6 +1,6 @@
 ---
 name: promo-audio-route
-description: Pick a voice for promo-reel VO lines by quality, price and licence (Kokoro vs Gemini 3.8 Flash TTS vs Eleven v4 vs Fish Drama 3 on OpenRouter), direct the read, make takes and pick one by ear, and read the VO audio gates (vo-fit, vo-clip, vo-tail). Use when a voice sounds robotic, artifacty or cut off, when asked which TTS model to use, when voicing a hero / podcast / explainer, or when the user runs /promo-audio-route.
+description: Pick a voice for promo-reel VO lines by quality, price and licence (free local Ming-3.0-tts or Kokoro vs Gemini 3.8 Flash TTS vs Eleven v4 vs Fish Drama 3 on OpenRouter), direct the read, make takes and pick one by ear, and read the VO audio gates (vo-fit, vo-clip, vo-tail). Use when a voice sounds robotic, artifacty or cut off, when asked which TTS model to use, when voicing a hero / podcast / explainer, or when the user runs /promo-audio-route.
 ---
 
 # promo-audio-route
@@ -11,9 +11,16 @@ Research behind it (Oct 2026 leaderboards, prices, what to add next): `docs/audi
 
 ## Pick the voice
 
+First question: does this board hold the person's OpenRouter key (`commissionctl secret list` names `OPENROUTER_API_KEY`)?
+Keys are saved per board in CommissionAI; there is no app-wide key yet, so a new board starts without one.
+- **No key, or they don't want to pay**: the free local voice, `engine: mlx`. Never block on a key; offer the hosted voice as an upgrade.
+- **Key saved**: Gemini 3.8 by default, Eleven v4 for hero lines. A missing key on a paid line refuses the run before anything is
+  sent and names the local voice.
+
 | Need | Engine / model | Price | Notes |
 |---|---|---|---|
-| Free, offline, publishable draft | `kokoro` (Kokoro-82M, Apache-2.0) | free | Speech Arena Elo ~1065 (Jan 2025). Fast and clean, but flat: reads ~3 words/s with little pitch movement |
+| **Free, good** (the default without a key) | `mlx`: Ming-3.0-tts-0.5B (MIT) on this Mac | free | #1 open weights on the AA pronunciation board (Oct 2026). Voices `UK_Charlotte`, `UK_George`, `US_Emma`, `US_James`, `US_Stella`, or `instructions` for a voice designed from words. ~0.6-0.8x real time on an M5 Max, 44.1 kHz. Pitch moves about twice as much as Kokoro's. A faint noise floor (~-50 dB) in pauses; mishears a word now and then, so use `takes: 2-3` on long lines |
+| Free, zero setup | `kokoro` (Kokoro-82M, Apache-2.0) | free | Speech Arena Elo ~1065 (Jan 2025). Fast and clean, but flat: reads ~3 words/s with little pitch movement |
 | Default paid voice | `openrouter`, `google/gemini-3.8-flash-tts` | ~$0.02 / 1k chars | Elo ~1279. 30 voices (`Kore`, `Puck`, ...). Direct it with `instructions`. Its output can arrive clipped: watch `vo-clip` |
 | Hero lines, the voice that sells | `openrouter`, `elevenlabs/eleven-v4` | $0.08 / 1k chars (`-turbo` $0.04) | #1 on the Speech Arena (Elo ~1328, Sep 2026). Voices: `alice`, `george`, `sarah`, ... Direct it with inline tags |
 | Cheap, open weights | `openrouter`, `fish-audio/drama-3` | ~$0.002 / 1k chars | #1 open-weights model (Elo ~1247). Its weights' community licence (free under $500k revenue, a "Built with Fish Audio" credit) is not the API's terms; check both |
@@ -24,6 +31,30 @@ Research behind it (Oct 2026 leaderboards, prices, what to add next): `docs/audi
 will overlap when it moves to them: re-run `promo check` and read `vo-fit`.
 
 ## Set it up
+
+**Local voice** (one time per Mac, ~20 s when the model is already cached, else a ~3 GB download): `promo vo setup`. It makes a
+venv of exact versions in `~/.promo-tools/venv-mlx-tts-<pin>`, fetches the model at a pinned revision and reads a test line;
+running it again does nothing. `promo vo voices --local` lists the voices and says whether it is set up.
+
+```yaml
+vo:
+  engine: mlx
+  voice: UK_Charlotte                      # or instructions: "A calm, warm narrator ..." (not both)
+  asset: local-voice
+  lines: [...]
+# assets.yaml
+  - id: local-voice
+    kind: vo_model
+    path: build/vo
+    licence: "Ming-3.0-tts-0.5B weights: MIT (inclusionAI). Terms of its built-in speakers are not documented beyond that; confirm before publishing."
+    source_url: https://huggingface.co/inclusionAI/Ming-3.0-tts-0.5B
+    status: draft
+```
+
+Seeds make takes (take k is `seed + k`) and the same seed gives the same audio on this install. Ming tags inside `tts:`
+text: `[Breathing]`, `[Sigh]`, `[Laughter]`, `[Uhm]`, ... (keep `text:` plain for the ASR gate). Write numbers as words.
+
+**Hosted voice:**
 
 ```yaml
 vo:
@@ -67,7 +98,7 @@ A host or a single line can use another voice: `voice: {engine: openrouter, mode
 
 ## Takes: let the person pick by ear
 
-`takes: 3` on a line (or the vo block) makes three takes on openrouter or voicestudio (kokoro and say repeat themselves, so they refuse).
+`takes: 3` on a line (or the vo block) makes three takes on mlx, openrouter or voicestudio (kokoro and say repeat themselves, so they refuse).
 Each take is scored: whisper WER against the script, the tail energy, the spread of the pitch. A take that misreads its words or
 ends mid-sound is **rejected**. The rest are not ranked: the line uses the first take that passed until the person picks.
 Auditions: `build/vo/takes/<id>-<k>.wav`. `promo vo takes <id>` shows the table; `promo vo takes <id> --pick 2` writes `take: 2`
@@ -87,5 +118,6 @@ score drifts to the flattest read).
 ## Not yet built (draft tickets)
 
 Per-line `direction:` translated per engine, a pronunciation lexicon, a VO polish chain (high-pass, de-ess, room tone),
-speech-band ducking, generated SFX (MOSS-SoundEffect, ElevenLabs SFX v2) and music (ElevenLabs Music v2.5), local MLX voices.
+speech-band ducking and a denoise for the local voice's noise floor, generated SFX (MOSS-SoundEffect, ElevenLabs SFX v2) and music
+(ElevenLabs Music v2.5), an app-wide OpenRouter key in CommissionAI.
 See `docs/audio-stack-2026-10.md`. Until then: SFX stay `promo sfx` / licensed files, music stays a licensed track (rule 4).

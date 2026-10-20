@@ -156,6 +156,9 @@ def plan(spec):
                      for l in cfg["lines"]]
             cfg = dict({k: v for k, v in cfg.items() if k != "lines"}, lines=lines)
             models = {k: file_sig(A.asset_path(spec, cfg[k], man)) for k in ("model_asset", "voices_asset") if cfg.get(k)}
+            if any(ln[5]["engine"] == "mlx" for ln in lines):
+                from . import vo_mlx
+                models["mlx"] = vo_mlx.signature()           # a new local install (pin, model revision) re-voices its lines
             return digest(cfg, models, code_hash("vo"))
         add("vo", "vo", vo_dig, [vo.vo_json_path(spec)], lambda a: vo.run(spec, max_usd=getattr(a, "max_usd", None)))
     from . import shot_audio
@@ -1026,8 +1029,19 @@ def main_vo_voices(argv):
     from . import openrouter as OR
     ap = argparse.ArgumentParser(prog="promo vo voices", description="OpenRouter speech models (engine openrouter): price per 1,000 characters and voices")
     ap.add_argument("--model", help="only this model, with every voice it has")
+    ap.add_argument("--local", action="store_true", help="the free local voices instead (engine mlx)")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args(argv)
+    if a.local:
+        from . import vo_mlx
+        if a.json:
+            print(json.dumps(dict(ready=vo_mlx.ready(), model=vo_mlx.MODEL_REPO, voices=vo_mlx.VOICES), indent=1))
+            return 0
+        print(f"{vo_mlx.MODEL_REPO} (MIT, free, on this Mac): " + ("set up" if vo_mlx.ready() else "not set up yet: `promo vo setup`"))
+        for name, what in vo_mlx.VOICES.items():
+            print(f"  {name:<14} {what}")
+        print("  or `instructions: \"...\"` instead of a voice: one designed from your words")
+        return 0
     try:
         rows = OR.speech_table([OR.speech_model(a.model)] if a.model else None)
     except OR.OpenRouterError as e:
@@ -1072,8 +1086,15 @@ def main(argv=None):
     if argv[:1] == ["screen-quad"]:     # `promo screen-quad <plate-clip-id|file> [-p promo.yaml]`: track a plate's monitor quad, print it, draw a debug PNG
         from . import screentrack
         return screentrack.main(argv[1:])
-    if argv[:2] == ["vo", "voices"]:    # `promo vo voices [--model M] [--json]`: hosted voices with prices (public catalogue, no key, no promo.yaml)
+    if argv[:2] == ["vo", "voices"]:    # `promo vo voices [--model M | --local] [--json]`: hosted voices with prices, or the local ones (no promo.yaml)
         return main_vo_voices(argv[2:])
+    if argv[:2] == ["vo", "setup"]:     # `promo vo setup`: the free local voice (engine mlx) on this Mac, one time
+        from . import vo_mlx
+        try:
+            vo_mlx.setup()
+        except (RuntimeError, subprocess.CalledProcessError) as e:
+            raise SystemExit(f"promo vo setup: {e}") from None
+        return 0
     if argv[:1] == ["fx"]:              # `promo fx list|apply|audition`: radio / tape / ... on any audio file (no promo.yaml needed)
         from . import audiofx
         return audiofx.main(argv[1:])
