@@ -22,6 +22,10 @@ New WARN rules (never FAIL; thresholds per preset in WARN_RULES, project overrid
   long-hold      a footage shot whose viewport does not change (no more than 0.05 % of pixels move > 10 levels at 384 px
                  wide, so a typed word or badge flip counts as change) for longer than max_s. Cards, credits and
                  blank screens are skipped.
+  black-frames   the primary master is black (>= 99.9 % of pixels at <= 10 % luma) for >= 0.5 s: a shot that rendered
+                 black or an unplanned dip. Same 384 px decode as long-hold.
+  silent-gap     a master's soundtrack stays under -60 dBFS (100 ms windows) for >= 2 s: a dropped music edit or VO.
+                 Clipping needs no gate of its own: the true-peak gate already fails anything within 1 dB of full scale.
 Frame sampling uses ffmpeg -threads 2 inside the caller's heavy lock (`promo check` holds it).
 """
 from __future__ import annotations
@@ -43,6 +47,10 @@ WARN_RULES = {
         empty_frame=dict(on=True, max_frac=0.40, samples=3, block_px=24, blur_px=12, flat_std=2.0, halo_blocks=1, lum_tol=4),
         caption_truth=dict(on=True, unsupported="WARN"),
         long_hold=dict(on=True, max_s=3.5, pix_delta=10, max_changed=0.0005, width=384),
+        # framefields' video QA defaults (packages/renderer/src/video-qa.ts @4a26e73): a black run or dead air in the finished file.
+        # ratio 0.999, not its 0.98: a white title on a near-black card lights only ~1.6 % of the pixels (commission-ai-jev's cards)
+        black_frames=dict(on=True, min_s=0.5, luma=0.10, ratio=0.999),
+        silent_gap=dict(on=True, min_s=2.0, db=-60.0),
         # captures that show scenery, not app UI (scenery views of the app; extend the markers per project): not judged as UI shots by
         # empty-frame (a night sky is not empty canvas). Shots with an explicit `ui:` key use that instead.
         non_ui_capture=[],
@@ -585,18 +593,22 @@ def changed_fraction(seg, pix_delta=10):
     return (np.abs(np.diff(seg, axis=0)) > pix_delta).mean(axis=(1, 2))
 
 
+def gray_frames(path, spec, width=384):
+    """The output decoded once at width x width*(canvas h/w) gray (16:9 stays width*9/16; ffmpeg -threads 2): frames x h x w, 0-255."""
+    cw, ch = canvas_units(spec)
+    W, H = int(width), int(round(int(width) * ch / cw))
+    raw = subprocess.check_output(["ffmpeg", "-v", "error", "-threads", "2", "-i", path, "-an", "-vf", f"scale={W}:{H}:flags=area",
+                                   "-f", "rawvideo", "-pix_fmt", "gray", "-"])
+    return np.frombuffer(raw, np.uint8).reshape(-1, H, W).astype(np.float32)
+
+
 def static_runs(path, spec, rects, width=384, pix_delta=10, max_changed=0.0005, frames=None):
     """Per footage shot: longest run (s) where the footage viewport does not change frame to frame (no pixel moves
     more than pix_delta levels, beyond max_changed of the viewport). Cards / credits are skipped (a held card is
-    the design). Decodes the output once at width x width*(canvas h/w) gray (16:9 stays width*9/16; ffmpeg -threads 2);
-    `frames` = pre-decoded."""
+    the design). `frames` = pre-decoded by gray_frames at this width."""
     cw, ch = canvas_units(spec)
-    W, H = int(width), int(round(int(width) * ch / cw))
-    fr = frames
-    if fr is None:
-      raw = subprocess.check_output(["ffmpeg", "-v", "error", "-threads", "2", "-i", path, "-an", "-vf", f"scale={W}:{H}:flags=area",
-                                   "-f", "rawvideo", "-pix_fmt", "gray", "-"])
-      fr = np.frombuffer(raw, np.uint8).reshape(-1, H, W).astype(np.float32)
+    fr = gray_frames(path, spec, width) if frames is None else frames
+    W = fr.shape[2]
     k = W / cw
     out = {}
     for s in spec.shots:
@@ -615,15 +627,60 @@ def static_runs(path, spec, rects, width=384, pix_delta=10, max_changed=0.0005, 
     return out
 
 
+# ------------------------------------------------------------------ black-frames / silent-gap (new WARN)
+def black_runs(frames, fps, luma, ratio, min_s):
+    """[(t0, t1)] s where at least `ratio` of a frame's pixels sit at or under `luma` (0-1) for >= min_s."""
+    black = (frames <= luma * 255).mean(axis=(1, 2)) >= ratio
+    need = max(1, round(min_s * fps))
+    return [(st / fps, (st + n) / fps) for st, n in _runs(black) if n >= need]
+
+
+def master_audio(path, rate=48000):
+    """A master's soundtrack decoded to float32 (samples x 2) at `rate`, or None when the file has no audio stream."""
+    if not subprocess.check_output(["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "stream=index", "-of", "csv=p=0", path]).strip():
+        return None
+    raw = subprocess.check_output(["ffmpeg", "-v", "error", "-threads", "2", "-i", path, "-vn", "-ac", "2", "-ar", str(rate), "-f", "f32le", "-"])
+    return np.frombuffer(raw, np.float32).reshape(-1, 2)
+
+
+def silent_runs(x, rate, db=-60.0, min_s=2.0):
+    """[(t0, t1)] s where the mean power of 100 ms windows (all channels) stays under `db` dBFS for >= min_s."""
+    win = int(rate * 0.1)
+    n = len(x) // win
+    quiet = (x[:n * win].reshape(n, win, x.shape[1]) ** 2).mean(axis=(1, 2)) < 10 ** (db / 10)
+    need = max(1, round(min_s / 0.1))
+    return [(st * 0.1, (st + k) * 0.1) for st, k in _runs(quiet) if k >= need]
+
+
+def silent_gap_gate(spec, cfg):
+    """silent-gap on every built master (the web and social mixes are mastered apart)."""
+    import os
+    msgs, names = [], []
+    for m in spec.masters:
+        out = spec.output_path(m.get("suffix", ""))
+        if not os.path.exists(out):
+            continue
+        name = os.path.basename(out)
+        x = master_audio(out)
+        if x is None:
+            continue                       # the duration gate already FAILs a master without audio
+        names.append(name)
+        msgs += [f"{name}: under {cfg['db']:g} dBFS for {b - a:.1f}s from {a:.1f}s" for a, b in silent_runs(x, 48000, cfg["db"], cfg["min_s"])]
+    if not names:
+        return ("silent-gap", "PASS", "skipped: no rendered output with audio (run `promo build`)")
+    return ("silent-gap", "WARN" if msgs else "PASS", "; ".join(msgs) + " (a dropped music edit or VO line?)" if msgs
+            else f"no stretch under {cfg['db']:g} dBFS for {cfg['min_s']:g}s or longer in {', '.join(names)}")
+
+
 # ------------------------------------------------------------------ gate runner
 def frame_gates(spec, rules=None, clipped_named=()):
-    """text-edge, empty-frame, long-hold on the rendered primary master. WARN-only."""
+    """text-edge, empty-frame, long-hold, black-frames on the rendered primary master. WARN-only."""
     import os
     rules = rules or rules_for(spec)
     out = spec.output_path(spec.masters[0].get("suffix", "")) if spec.masters else None
     res = []
     if not out or not os.path.exists(out):
-        for g in ("text-edge", "empty-frame", "long-hold"):
+        for g in ("text-edge", "empty-frame", "long-hold", "black-frames"):
             res.append((g, "PASS", "skipped: no rendered output to sample (run `promo build`)"))
         return res
     te, ef, lh = rules["text_edge"], rules["empty_frame"], rules["long_hold"]
@@ -668,15 +725,22 @@ def frame_gates(spec, rules=None, clipped_named=()):
         top = ", ".join(f"{sid} {f * 100:.0f}%" for sid, f in sorted(measured, key=lambda x: -x[1])[:3])
         res.append(("empty-frame", "WARN" if empty_msgs else "PASS", "; ".join(empty_msgs) if empty_msgs else
                     f"no UI shot over {ef['max_frac'] * 100:.0f}% empty canvas (largest: {top or 'n/a'})"))
+    bf = rules["black_frames"]
+    frames = gray_frames(out, spec, lh.get("width", 384)) if lh.get("on", True) or bf.get("on", True) else None
     if lh.get("on", True):
-        runs = static_runs(out, spec, rects, width=lh.get("width", 384), pix_delta=lh.get("pix_delta", 10),
-                           max_changed=lh.get("max_changed", 0.0005))
+        runs = static_runs(out, spec, rects, pix_delta=lh.get("pix_delta", 10), max_changed=lh.get("max_changed", 0.0005), frames=frames)
         long_, exempt = long_hold_offenders(runs, spec, lh["max_s"])
         top = max(runs.items(), key=lambda x: x[1][0]) if runs else None
         note = f" (planned hold exempt: {', '.join(sorted(exempt))})" if exempt else ""
         res.append(("long-hold", "WARN" if long_ else "PASS",
                     "; ".join(f"shot {sid}: footage static for {d:.2f}s from {t:.2f}s (max {lh['max_s']:g}s)" for sid, d, t in long_) + note if long_
                     else f"no static hold over {lh['max_s']:g}s{note} (longest: shot {top[0]} {top[1][0]:.2f}s)" if top else "no shots"))
+    if bf.get("on", True):
+        black = black_runs(frames, spec.fps, bf["luma"], bf["ratio"], bf["min_s"])
+        at = lambda t: next((s.id for s in spec.shots if s.t0 - 1e-6 <= t < s.t1), "end")
+        res.append(("black-frames", "WARN" if black else "PASS",
+                    "; ".join(f"black for {b - a:.2f}s from {a:.2f}s (shot {at(a)})" for a, b in black) + " (a shot that rendered black, or an unplanned dip?)"
+                    if black else f"no black run of {bf['min_s']:g}s or longer"))
     return res
 
 
@@ -697,4 +761,6 @@ def run(spec, ctx=None):
     res += claims_gate(spec, ctx)
     res += caption_truth_gate(spec, ctx, rules)
     res += frame_gates(spec, rules, clipped)
+    if rules["silent_gap"].get("on", True):
+        res.append(silent_gap_gate(spec, rules["silent_gap"]))
     return res

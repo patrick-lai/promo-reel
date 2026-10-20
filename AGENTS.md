@@ -17,6 +17,10 @@ A thin prompt still becomes a full project before any spec. `promo plan <name> -
 
 **Helper skill: mesh-avatar** (`skills/mesh-avatar/`, a wrapper over Mesh Avatar Studio, MIT; see its VENDORED.md): turns one original or owned character illustration into a talking mesh avatar in the tool's own checkout, never in this repo. Registered with `promo live2d add <project>` (same licence gate as a Live2D model), it can be a podcast or livestream host (`promo/mesh_avatar.py`, opt-in per model; Live2D hosts are unchanged). A character drawn from the person themselves (`--likeness own`) fails the host licence gates: rule 1 keeps their likeness to the `avatar` overlay.
 
+**Helper skill: framefields-plates** (`skills/framefields-plates/`, a usage guide for framefields, Apache-2.0, nothing vendored): procedural, text-free plates
+(aurora, smoke, dust, light) rendered from code on this Mac in seconds, identical on every run, in a scratch folder outside the repo, then `promo gen register
+--provider local:framefields`. They are generated plates: `ui: false` shots only, gated like any other.
+
 Skills (`promo skills route`) change the look, never the checks: `promo check` always runs (real UI, licences, text size, yuv420p, X aspect). Cinetic is for motion and launch films built from code; app UI still comes from real captures.
 
 ## 0. Team rules (non-negotiable)
@@ -96,7 +100,7 @@ as each shot renders. Post `promo strip --out shots/strip.png` to the person whe
 is fixed before the full render, not after (`promo build --look` = only the quick look).
 
 ## 6. Check (automated gates)
-`promo check` must pass (exit 0) before review. Gates: asset licences + spec lint, footage present + sha256 match (WARN on DPR1 sources pushed >1.5x and on demo-mode footage), duration, resolution/fps/frame count, loudness and true peak per master, every cut on the beat grid, caption hold >= 2 s, captions inside the safe zone, contact sheet generated, no one-frame paint glitches in referenced captures (`footage-glitch`), VO transcribed back and matched word-for-word to the script (skipped with a warning if whisper is not installed), and build freshness. Report: `out/<name>-<tag>-check.json`; `promo check --json` / `promo status --json` print machine-readable results (stdout only, always with `ok`).
+`promo check` must pass (exit 0) before review. Gates: asset licences + spec lint, footage present + sha256 match (WARN on DPR1 sources pushed >1.5x and on demo-mode footage), duration, resolution/fps/frame count, loudness and true peak per master, every cut on the beat grid, caption hold >= 2 s, captions inside the safe zone, contact sheet generated, no one-frame paint glitches in referenced captures (`footage-glitch`), VO transcribed back and matched word-for-word to the script (skipped with a warning if whisper is not installed), black runs (`black-frames`) and dead air (`silent-gap`) in the finished masters (WARN), and build freshness. Report: `out/<name>-<tag>-check.json`; `promo check --json` / `promo status --json` print machine-readable results (stdout only, always with `ok`).
 
 ## 7. Review (**HUMAN / visual judgement**; the agent prepares, does not decide)
 Look at the contact sheet and watch the whole video with sound before asking for review. Things no gate can judge:

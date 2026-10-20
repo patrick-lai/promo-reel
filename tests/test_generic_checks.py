@@ -226,6 +226,26 @@ def test_changed_fraction_sees_typing_but_not_noise():
     assert d[1] > 0.0005 and d[0] <= 0.0005 and d[2] <= 0.0005                       # the old mean-abs metric missed this
 
 
+# ---------------------------------------------------------------- black-frames / silent-gap
+def test_black_runs_skip_a_dark_title_card():
+    cfg = G.WARN_RULES["_default"]["black_frames"]
+    fr = np.full((60, 216, 384), 120, np.float32)
+    fr[10:30] = 2                                                                    # 20 frames of black at 30 fps
+    fr[40:60] = 8
+    fr[40:60, 100:110, 120:260] = 230                                                # a white title line on a near-black card (1.7 %)
+    assert G.black_runs(fr, 30, cfg["luma"], cfg["ratio"], cfg["min_s"]) == [(10 / 30, 30 / 30)]
+    assert G.black_runs(fr[:24], 30, cfg["luma"], cfg["ratio"], cfg["min_s"]) == []   # 14 frames: under 0.5 s
+
+
+def test_silent_runs_find_dead_air_over_two_seconds():
+    rate = 1000
+    x = np.full((10 * rate, 2), 0.1, np.float32)
+    x[1 * rate:4 * rate] = 0.0                                                       # 3 s of silence
+    x[6 * rate:7 * rate] = 0.0                                                       # 1 s: a pause, not a gap
+    assert G.silent_runs(x, rate, -60.0, 2.0) == [(1.0, 4.0)]
+    assert G.silent_runs(x[:50], rate) == []                                         # shorter than one window
+
+
 # ---------------------------------------------------------------- caption-truth
 def test_caption_counts():
     assert G.caption_counts("8 TASKS · ALL LANDED") == {"cards": 8, "landed": "all"}
