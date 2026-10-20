@@ -81,7 +81,7 @@ mix:
   sr: 48000
   bus_db: {music: -5.0, sfx: -8.0, vo: 1.5}
   vo_line_lufs: -16.0
-  duck: {db: 7.0, attack: 0.12, release: 0.35, pre: 0.12, post: 0.1}
+  duck: {db: 4.0, attack: 0.12, release: 0.35, pre: 0.12, post: 0.1, band: {lo: 1000, hi: 5000, db: 12}}   # under speech: 1-5 kHz -12 dB, the rest -4
   fade_out: 0.03
   masters:
     - {name: web, suffix: "", lufs: -14.0, ceiling: -1.2, max_true_peak: -1.0}

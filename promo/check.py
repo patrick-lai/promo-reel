@@ -106,11 +106,138 @@ def line_max_wer(line, default):
     return float(line.get("max_wer", default))
 
 
-def heard_wer(line, heard, qa):
-    """WER of what whisper heard against the line's script text, after the project's and the line's `asr_aliases` (heard-as -> script word)."""
+def _aliased(line, heard, qa):
     for k, v in {**(qa.get("asr_aliases") or {}), **(line.get("asr_aliases") or {})}.items():
         heard = re.sub(re.escape(k), v, heard, flags=re.I)
-    return wer(norm_words(line["text"]), norm_words(heard))
+    return heard
+
+
+def heard_wer(line, heard, qa):
+    """WER of what whisper heard against the line's script text, after the project's and the line's `asr_aliases` (heard-as -> script word)."""
+    return wer(norm_words(line["text"]), norm_words(_aliased(line, heard, qa)))
+
+
+_SOUNDEX = {**dict.fromkeys("bfpv", "1"), **dict.fromkeys("cgjkqsxz", "2"), **dict.fromkeys("dt", "3"), "l": "4", "m": "5", "n": "5", "r": "6"}
+
+
+def soundex(word):
+    """American Soundex: words that sound alike get one code ("two" / "to", "routes" / "roots"); a word with digits stays as it is."""
+    if not word.isalpha():
+        return word
+    out, last = word[0], _SOUNDEX.get(word[0], "")
+    for c in word[1:]:
+        code = _SOUNDEX.get(c, "")
+        if code and code != last:
+            out += code
+        if c not in "hw":                                       # h and w do not separate two letters with the same code
+            last = code
+    return (out + "000")[:4]
+
+
+def lost_words(line, heard, qa):
+    """Share of the script's words missing from what whisper heard (1 - longest common subsequence / script words). Extra heard
+    words do not count: a window of the mix can catch the next line's first word or a lyric in the music. Words match by sound
+    (Soundex): over music whisper spells "Two" as "to" or "routes" as "roots", which a viewer hears the same."""
+    ref = [soundex(w) for w in norm_words(line["text"])]
+    hyp = [soundex(w) for w in norm_words(_aliased(line, heard, qa))]
+    if not ref:
+        return 0.0
+    d = [0] * (len(hyp) + 1)
+    for r in ref:
+        prev = 0
+        for j, h in enumerate(hyp, 1):
+            cur = d[j]
+            d[j] = prev + 1 if r == h else max(d[j], d[j - 1])
+            prev = cur
+    return 1 - d[len(hyp)] / len(ref)
+
+
+def vo_masking(spec, qa):
+    """(status, msg) for `vo-masking`: how far each VO line sits over the music in the speech band (1-5 kHz) while it speaks, from
+    the stems. WARNs a line under `qa.vo_music_min_db` (default 10): whisper still hears words a viewer strains for."""
+    import numpy as np
+    import soundfile as sf
+    from scipy import signal
+    rp = os.path.join(spec.audio_dir, "mix-report.json")
+    sd = os.path.join(spec.audio_dir, "stems")
+    if not spec.raw.get("music"):
+        return "PASS", "no music under the VO"
+    if not (os.path.exists(rp) and os.path.exists(os.path.join(sd, "music.wav"))):
+        return "WARN", "no mix yet (run `promo build`)"
+    rep = json.load(open(rp))
+    vo, sr = sf.read(os.path.join(sd, "vo.wav"), dtype="float32")
+    mu, _ = sf.read(os.path.join(sd, "music.wav"), dtype="float32")
+    sos = signal.butter(4, [1000, 5000], btype="band", fs=sr, output="sos")
+    v = signal.sosfiltfilt(sos, vo.mean(1))
+    m = signal.sosfiltfilt(sos, mu.mean(1)) * 10 ** (rep["bus_db"]["music"] / 20)    # the music stem is before its bus gain
+    want, low, worst = float(qa.get("vo_music_min_db", 10.0)), [], None
+    hop = int(0.05 * sr)
+    for t0, t1, sid, _ in rep["vo"]:
+        a = int(t0 * sr)
+        n = (min(int(t1 * sr), len(v)) - a) // hop
+        if n < 1:
+            continue
+        fv = np.mean(v[a:a + n * hop].reshape(n, hop) ** 2, 1)
+        fm = np.mean(m[a:a + n * hop].reshape(n, hop) ** 2, 1)
+        on = fv > fv.max() * 0.01                                # 50 ms frames within 20 dB of the line's loudest: speaking
+        r = 10 * np.log10(fv[on].mean() / (fm[on].mean() + 1e-20))
+        worst = r if worst is None else min(worst, r)
+        if r < want:
+            low.append(f"{sid} {r:.1f} dB")
+    if low:
+        return "WARN", (f"VO over the music in 1-5 kHz under {want:g} dB (listen; duck more, `mix.duck.band`, or lower bus_db.music): "
+                        + ", ".join(low))
+    return "PASS", f"every line >= {want:g} dB over the music in 1-5 kHz (lowest {worst:.1f} dB)" if worst is not None else "no VO in the mix"
+
+
+def vo_mix_asr(spec, stamps, qa, lines):
+    """(status, msg) for `vo-mix-asr`: each VO line read back by whisper from the first master's mix (music, SFX and ducking in),
+    against its script. FAILs a line the mix makes lose words that its clean take did not; WARNs instead on a line with character fx
+    (its own or mix.fx), where some loss can be the effect. Each window ends where the next line starts."""
+    import tempfile
+
+    import soundfile as sf
+
+    from . import audiofx
+    from . import mix as MX
+    wav = MX.master_path(spec, spec.masters[0]["name"])
+    rp = os.path.join(spec.audio_dir, "mix-report.json")
+    if not (os.path.exists(wav) and os.path.exists(rp)):
+        return "WARN", "no mix yet (run `promo build`)"
+    marks = sorted(json.load(open(rp))["vo"])                    # [t0, t1, id, text]; a muted line has none
+    starts = [m[0] for m in marks]
+    model = qa.get("asr_model", "small.en")
+    by_id = {str(ln.get("id", ln["shot"])): ln for ln in lines}
+    info = sf.info(wav)
+    bad, soft, n = [], [], 0
+    for i, (t0, t1, sid, _) in enumerate(marks):
+        ln = by_id.get(str(sid))
+        if ln is None:
+            continue
+        t1 = min(t1, starts[i + 1]) if i + 1 < len(marks) else t1
+        y, sr = sf.read(wav, start=int(t0 * info.samplerate), stop=int(t1 * info.samplerate), dtype="float32", always_2d=True)
+        y = y.mean(1)
+        key = hashlib.sha256(y.tobytes()).hexdigest() + model
+        st = stamps.get(f"asr_mix_{sid}")
+        if st and st.get("digest") == key:
+            heard = st["text"]
+        else:
+            with tempfile.NamedTemporaryFile(suffix=".wav") as f:
+                sf.write(f.name, y, sr)
+                heard = transcribe(f.name, model)
+            stamps.write(f"asr_mix_{sid}", key, text=heard)
+        st = stamps.get(f"asr_{sid}")                            # the clean take's read-back (vo-script, just before)
+        clean = lost_words(ln, st["text"], qa) if st else 0.0
+        lost = lost_words(ln, heard, qa)
+        n += 1
+        if lost > max(line_max_wer(ln, qa.get("vo_max_wer", 0.0)), clean) + 1e-9:
+            msg = f"{sid}: {lost:.0%} of its words lost in the mix (heard {heard.strip()!r})"
+            (soft if audiofx.line_fx(spec.raw, str(sid)) or (spec.raw.get("mix") or {}).get("fx") else bad).append(msg)
+    if bad:
+        return "FAIL", "; ".join(bad + soft) + " (duck the music more, `mix.duck.band`, or lower bus_db.music)"
+    if soft:
+        return "WARN", "; ".join(soft) + " (lines with character fx: listen)"
+    return "PASS", f"{n} lines read back from the {spec.masters[0]['name']} mix with no words lost"
 
 
 def vo_audio_gates(spec, meta):
@@ -176,7 +303,8 @@ def run(spec):
                 "the clip's glitch_ok)") if gl else "no one-frame paint glitches in the referenced captures")
     except FT.FootageError as e:
         rep.add("footage", "FAIL", str(e))
-    probs = spec.validate()
+    from .mix import spec_problems
+    probs = spec.validate() + spec_problems(spec.raw)
     rep.add("timeline", "FAIL" if probs else "PASS", "; ".join(probs) if probs else f"{len(spec.shots)} shots contiguous 0..{spec.timeline.beats} beats")
 
     # 5. beat grid. preset @2 with pacing.strict_beat false snaps to phrases instead (docs/PRODUCT-DEFAULTS.md):
@@ -371,6 +499,7 @@ def run(spec):
             have = False
         if not have:
             rep.add("vo-script", "WARN", "skipped: faster-whisper not installed")
+            rep.add("vo-mix-asr", "WARN", "skipped: faster-whisper not installed")
         else:
             meta = {str(x.get("id", x["shot"])): x for x in json.load(open(vj))["lines"]}
             bad, maxw_ = [], qa.get("vo_max_wer", 0.0)
@@ -392,9 +521,11 @@ def run(spec):
                 if w > line_max_wer(ln, maxw_):
                     bad.append(f"{sid}: WER {w:.2f} (heard {txt!r})")
             rep.add("vo-script", "FAIL" if bad else "PASS", "; ".join(bad) if bad else f"{len(lines)} lines match the script (WER <= {maxw_})")
+            rep.add("vo-mix-asr", *vo_mix_asr(spec, stamps, qa, lines))
     if lines and os.path.exists(vj):
         for gate, status, msg in vo_audio_gates(spec, json.load(open(vj))["lines"]):
             rep.add(gate, status, msg)
+        rep.add("vo-masking", *vo_masking(spec, qa))
 
     # 9b. shot audio (clip soundtrack lines, promo/shot_audio.py): clips present with sound, vo-bus overlaps, ASR read-back
     from . import shot_audio

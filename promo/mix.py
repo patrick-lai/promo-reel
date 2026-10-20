@@ -1,7 +1,9 @@
 """Mix + duck + master (port of build_mix.py, generic). `promo mix`.
 
 Inputs: build/audio/events.json, build/audio/music-edit.wav, SFX wavs (assets), VO stems (build/vo/vo.json).
-Spec (mix:): sr, bus_db {music, sfx, vo}, vo_line_lufs (each VO line levelled to it, then its own `db`; a `mute: true` line has no event, so no sound), duck {db, attack, release, pre, post}, fade_out, masters [...]
+Spec (mix:): sr, bus_db {music, sfx, vo}, vo_line_lufs (each VO line levelled to it, then its own `db`; a `mute: true` line has no event, so no sound), duck {db, attack, release, pre, post, band}, fade_out, masters [...]
+duck.band {lo, hi, db} (or `on` = 1000-5000 Hz, 12 dB): under speech the music's speech band dips by band.db, the rest by duck.db.
+VO polish (promo/vo_polish.py): vo.polish / vo.lines[].polish on each VO line first, before its fx and levelling.
 SFX library entries may carry `duck_music: {db, dur}` (music dips under that SFX); `typing` entries use
 {variants, gain_jitter [lo, hi], pan_jitter, seed} with ONE seeded rng consumed in event order (same as legacy).
 Clip audio (events.json `clips`, promo/shot_audio.py): bus vo is placed in the vo stem and ducks music (+ sfx by duck.clip_sfx_db);
@@ -23,9 +25,11 @@ from scipy.signal import resample_poly
 
 from . import audiofx
 from . import bookends as BK
+from . import vo_polish
 from .assets import asset_path, load_manifest
 from .events import events_path
 from .music import music_path
+from .spec import SpecError
 
 
 def db(v):
@@ -101,6 +105,38 @@ def master_path(spec, name):
     return os.path.join(spec.audio_dir, f"mix-{name}.wav")
 
 
+def duck_band(duck):
+    """mix.duck.band -> {lo, hi, db} or None (full-band ducking only). `band: on` = 1-5 kHz down 12 dB under speech."""
+    b = (duck or {}).get("band")
+    if b in (None, False, "off"):
+        return None
+    b = {} if b is True or b == "on" else b
+    if not isinstance(b, dict) or set(b) - {"lo", "hi", "db"}:
+        raise SpecError(f"mix.duck.band: expected on, off or {{lo, hi, db}}, got {b!r}")
+    if any(isinstance(v, bool) or not isinstance(v, (int, float)) for v in b.values()):
+        raise SpecError(f"mix.duck.band: lo, hi and db must be numbers, got {b!r}")
+    out = {"lo": 1000.0, "hi": 5000.0, "db": 12.0, **{k: float(v) for k, v in b.items()}}
+    if not 20 <= out["lo"] < out["hi"] <= 20000:
+        raise SpecError(f"mix.duck.band: needs 20 <= lo < hi <= 20000 Hz, got lo {out['lo']:g}, hi {out['hi']:g}")
+    return out
+
+
+def spec_problems(raw):
+    """Errors in the mix's own keys that need no media: vo.polish values and mix.duck.band. Kept out of Spec.validate, whose module
+    every shot's render hash covers, so these keys never force a re-render."""
+    errs = []
+    for where, polish in vo_polish.spec_polish(raw):
+        try:
+            vo_polish.resolve(polish, where)
+        except SpecError as e:
+            errs.append(str(e))
+    try:
+        duck_band((raw.get("mix") or {}).get("duck"))
+    except SpecError as e:
+        errs.append(str(e))
+    return errs
+
+
 def vo_line_gain_db(cfg, line, measured_lufs):
     """Gain that levels a VO line to `mix.vo_line_lufs`, plus the line's own `db` offset (quiet and loud lines keep their dynamics)."""
     return cfg.get("vo_line_lufs", -16.0) - measured_lufs + float(line.get("db", 0.0) or 0.0)
@@ -162,6 +198,7 @@ def run(spec, force=False):
         x, sr0 = sf.read(os.path.join(spec.vo_dir, line["file"]), always_2d=True)
         x = x.astype(np.float64)
         lid = str(line.get("id", line["shot"]))
+        x = vo_polish.apply(x, sr0, vo_polish.line_polish(spec.raw, lid), where=f"vo line {lid} polish")
         x = audiofx.apply(x, sr0, audiofx.line_fx(spec.raw, lid), t0=t, where=f"vo line {lid} fx")
         meter = pyln.Meter(sr0)
         L = meter.integrated_loudness(x) if len(x) > sr0 * 0.5 else -20
@@ -188,12 +225,15 @@ def run(spec, force=False):
     dk = cfg.get("duck", {})
     duck_db, att, rel = dk.get("db", 7.0), dk.get("attack", 0.12), dk.get("release", 0.35)
     pre, post = dk.get("pre", 0.12), dk.get("post", 0.1)
+    band = duck_band(dk)
     g = np.zeros(N)
+    gb = np.zeros(N)                                 # the speech band's extra duck under speech (mix.duck.band)
     gs = np.zeros(N)                                 # sfx duck under clip dialogue (mix.duck.clip_sfx_db, default 4 dB)
-    for t0, t1, *_ in vo_marks:
+    for t0, t1, *_ in vo_marks + clip_marks:
         g[int(max(0, t0 - pre) * SR): int(min(dur, t1 + post) * SR)] = duck_db
+        if band:
+            gb[int(max(0, t0 - pre) * SR): int(min(dur, t1 + post) * SR)] = band["db"]
     for t0, t1 in clip_marks:
-        g[int(max(0, t0 - pre) * SR): int(min(dur, t1 + post) * SR)] = duck_db
         gs[int(max(0, t0 - pre) * SR): int(min(dur, t1 + post) * SR)] = dk.get("clip_sfx_db", 4.0)
     for e in ev["sfx"]:
         d = (lib.get(e["sfx"]) or {}).get("duck_music")
@@ -202,6 +242,9 @@ def run(spec, force=False):
             g[a:b] = np.maximum(g[a:b], d["db"])
     duck = smooth(g, att, rel, SR)
     music_d = music * db(-duck)[:, None]
+    if band:                                         # the 1-5 kHz part, where words live, dips further; the bass and the sheen stay
+        mb = audiofx._filt(music, audiofx._sos("band", [band["lo"], band["hi"]], 4, SR))     # steep edges: the whole band dips by band.db
+        music_d = (music - mb) * db(-duck)[:, None] + mb * db(-smooth(np.maximum(g, gb), att, rel, SR))[:, None]
     if clip_marks:
         sfx = sfx * db(-smooth(gs, att, rel, SR))[:, None]
     BUS = {"music": -5.0, "sfx": -8.0, "vo": 1.5, "amb": 0.0}
@@ -232,5 +275,6 @@ def run(spec, force=False):
         out[m["name"]] = dict(lufs=round(float(L), 2), dbtp=round(float(tp), 2))
         print("master", m["name"], out[m["name"]], flush=True)
     with open(os.path.join(spec.audio_dir, "mix-report.json"), "w") as f:
-        json.dump(dict(master=out, sfx=log, vo=vo_marks, bus_db=BUS, duck_db=duck_db, **(dict(clips=clip_log) if clip_log else {})), f, indent=1)
+        json.dump(dict(master=out, sfx=log, vo=vo_marks, bus_db=BUS, duck_db=duck_db, **(dict(duck_band=band) if band else {}),
+                       **(dict(clips=clip_log) if clip_log else {})), f, indent=1)
     return out

@@ -140,7 +140,7 @@ def _sfx_outputs(spec):
 
 def plan(spec):
     """Ordered build steps: dicts(name, key, dig() -> str, outputs, run(args), deps). `dig` is lazy (may hash big files)."""
-    from . import assemble, audiofx, contact, events, mix, music, vo
+    from . import assemble, audiofx, contact, events, mix, music, vo, vo_polish
     from .events import events_path
     from .music import music_path
     from .render import RenderContext
@@ -160,7 +160,7 @@ def plan(spec):
             # only what changes the audio: each line's id/shot/text/tts and its resolved voice (vo block < host < line), not `at` / `asr_aliases`
             lines = [[vo.line_id(l), l["shot"], l["text"], l.get("tts"), l.get("host"), vo.voice_of(spec, l), vo.takes_of(cfg, l), l.get("take")]
                      for l in cfg["lines"]]
-            cfg = dict({k: v for k, v in cfg.items() if k != "lines"}, lines=lines)
+            cfg = dict({k: v for k, v in cfg.items() if k not in ("lines", "polish")}, lines=lines)     # polish is the mix's, not the takes'
             models = {k: file_sig(A.asset_path(spec, cfg[k], man)) for k in ("model_asset", "voices_asset") if cfg.get(k)}
             if any(ln[5]["engine"] == "mlx" for ln in lines):
                 from . import vo_mlx
@@ -207,7 +207,8 @@ def plan(spec):
         vo_lines = [[vo.line_id(l), l.get("db"), l.get("mute")] for l in (spec.raw.get("vo") or {}).get("lines") or []]     # per-line level and mute
         return digest(spec.raw.get("mix"), spec.raw.get("sfx"), spec.duration, file_sig(events_path(spec)), clip_sigs, vo_lines,
                       file_sig(music_path(spec)) if spec.raw.get("music") else None,
-                      file_sig(vj), vo_sigs, sfx_sigs, audiofx.spec_fx(spec.raw), code_hash("mix", "audiofx"))
+                      file_sig(vj), vo_sigs, sfx_sigs, audiofx.spec_fx(spec.raw), code_hash("mix", "audiofx"),
+                      *([vo_polish.spec_polish(spec.raw), code_hash("vo_polish")] if vo_polish.spec_polish(spec.raw) else []))
     add("mix", "mix", mix_dig, [mix.master_path(spec, m["name"]) for m in spec.masters], lambda a: mix.run(spec),
         deps=["sfx", "vo", "events"] + (["clip-audio"] if shot_audio.has_lines(spec) else []) + (["music"] if spec.raw.get("music") else []))
     outs = [spec.output_path(m.get("suffix", "")) for m in spec.masters]
@@ -422,7 +423,8 @@ def do_build(spec, args, job=None):
     from . import previz as PZ
     PZ.check_build(spec, look_only=getattr(args, "look", False) is True)
     A.gate(spec)
-    errs = spec.validate()
+    from .mix import spec_problems
+    errs = spec.validate() + spec_problems(spec.raw)
     if errs:
         raise SpecError("; ".join(errs))
     FT.gate(spec, set(args.shots) if args.shots else None)

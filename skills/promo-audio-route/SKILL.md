@@ -1,6 +1,6 @@
 ---
 name: promo-audio-route
-description: Pick a voice for promo-reel VO lines by quality, price and licence (free local Ming-3.0-tts or Kokoro vs Gemini 3.8 Flash TTS vs Eleven v4 vs Fish Drama 3 on OpenRouter), direct the read, make takes and pick one by ear, and read the VO audio gates (vo-fit, vo-clip, vo-tail). Use when a voice sounds robotic, artifacty or cut off, when asked which TTS model to use, when voicing a hero / podcast / explainer, or when the user runs /promo-audio-route.
+description: Pick a voice for promo-reel VO lines by quality, price and licence (free local Ming-3.0-tts or Kokoro vs Gemini 3.8 Flash TTS vs Eleven v4 vs Fish Drama 3 on OpenRouter), direct the read, make takes and pick one by ear, polish the voice and duck the music's speech band under it, and read the VO audio gates (vo-fit, vo-clip, vo-tail, vo-mix-asr, vo-masking). Use when a voice sounds robotic, artifacty, hissy, buried or cut off, when asked which TTS model to use, when voicing a hero / podcast / explainer, or when the user runs /promo-audio-route.
 ---
 
 # promo-audio-route
@@ -105,6 +105,23 @@ Auditions: `build/vo/takes/<id>-<k>.wav`. `promo vo takes <id>` shows the table;
 into promo.yaml and re-voices the line from the cache. Send the person the auditions; do not pick for them by score (the "best"
 score drifts to the flattest read).
 
+## Polish the voice and make room for it
+
+- `vo: {polish: on}` cleans each line in the mix (the takes stay as they are, so turning it on or off never re-voices):
+  - an 80 Hz high-pass;
+  - light 2:1 compression;
+  - a de-esser on 5-9 kHz;
+  - a gate that quiets the pauses between words.
+  Turn it on for every new project (the templates do); a line that must stay raw says `polish: off`. Override one stage with
+  e.g. `polish: {gate: {range: 12}, compress: off}`; the stages and their parameters are in `promo/vo_polish.py`.
+- The gate matters most for the local voice: its pauses sit ~40 dB under its words, against ~60 dB for the hosted voices. With
+  polish they drop to ~60 dB. Whisper still read every word (WER 0 on the test lines).
+- `mix: {duck: {db: 4, band: {lo: 1000, hi: 5000, db: 12}}}` carves a gap in the music where words live: under speech the 1-5 kHz
+  band drops 12 dB and the rest only 4, so the bed keeps its bass and sheen instead of pumping.
+  Without `band`, ducking is full-band as before. `anime-opening` keeps `duck.db: 0` on purpose.
+- Old projects stay as they were until someone adds the keys. A new mix code version re-runs only the `mix` step, never the
+  voices or the shots.
+
 ## Read the gates (`promo check`)
 
 | Gate | Means | Fix |
@@ -114,10 +131,11 @@ score drifts to the flattest read).
 | `vo-clip` WARN | flat-topped samples: the take itself clipped | re-voice (another take, or another voice); nothing in post can un-clip it |
 | `vo-tail` WARN | the take ends mid-sound (a cut word, or a `files` trim inside speech) | re-voice, or move the `trim: end` into a silence |
 | `vo-script` FAIL | whisper heard other words | a mis-read take: re-voice or pick another take; an alias if only the spelling differs |
+| `vo-mix-asr` FAIL | whisper, listening to the finished mix, lost script words that the clean take had (extra words heard, such as a lyric, do not count) | duck more, add `duck.band`, lower `bus_db.music`. WARN instead on a line with character `fx` |
+| `vo-masking` WARN | a line sits < `qa.vo_music_min_db` (10) dB over the music in 1-5 kHz | same fixes; listen first. Whisper hears through music a viewer strains at: it read every word at 0.6 dB |
 
 ## Not yet built (draft tickets)
 
-Per-line `direction:` translated per engine, a pronunciation lexicon, a VO polish chain (high-pass, de-ess, room tone),
-speech-band ducking and a denoise for the local voice's noise floor, generated SFX (MOSS-SoundEffect, ElevenLabs SFX v2) and music
-(ElevenLabs Music v2.5), an app-wide OpenRouter key in CommissionAI.
+Per-line `direction:` translated per engine, a pronunciation lexicon, room tone under gated pauses, generated SFX
+(MOSS-SoundEffect, ElevenLabs SFX v2) and music (ElevenLabs Music v2.5), an app-wide OpenRouter key in CommissionAI.
 See `docs/audio-stack-2026-10.md`. Until then: SFX stay `promo sfx` / licensed files, music stays a licensed track (rule 4).

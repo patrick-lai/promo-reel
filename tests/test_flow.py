@@ -1194,7 +1194,7 @@ def test_a_build_reports_each_step_and_the_one_that_failed(pd, tmp_path, monkeyp
     from promo import footage as FT
     published = recording_commissionctl(tmp_path, monkeypatch)
     build = str(tmp_path / "build")
-    spec = SimpleNamespace(root=pd, path=os.path.join(pd, "promo.yaml"), build=build, scale=1, validate=lambda: [])
+    spec = SimpleNamespace(root=pd, path=os.path.join(pd, "promo.yaml"), build=build, scale=1, raw={}, validate=lambda: [])
 
     def step(name, fail=False):
         def run(a):

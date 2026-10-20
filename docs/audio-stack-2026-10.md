@@ -76,12 +76,40 @@ catches it and the fix is another take. Which one sounds best is a listening cal
 - Billing: `GET /api/v1/generation?id=...` → `data.total_cost`; the record lands some time after the audio (still missing 10 s later in real runs), so `promo vo`
   settles costs once at the end of the run.
 
+## VO polish and speech-band ducking (built)
+
+`vo.polish` (`promo/vo_polish.py`) runs four stages on each line in the mix, numpy/scipy only:
+- an 80 Hz high-pass;
+- 2:1 compression;
+- a 5-9 kHz de-esser with a zero-phase split;
+- a pause gate. Its gain is decided on the take as it came, with look-ahead, and its ramps sit inside the pause.
+
+`mix.duck.band` dips the music's 1-5 kHz band further than the rest under speech. The new gates are `vo-mix-asr` (whisper on the
+finished mix, FAIL on script words the clean take had and the mix lost) and `vo-masking` (WARN under 10 dB of speech over music in
+1-5 kHz).
+
+Measured on the three Ming test lines over Kevin MacLeod's "Limit 70" (CC BY 4.0), all on real builds:
+
+| | without | with |
+|---|---|---|
+| Ming pause floor (≥ 200 ms pauses, under the line's loud level) | −42 / −42 / −47 dB | −63 / −59 / −66 dB |
+| hosted voices' pause floor (line 18) | −62 … −71 dB | −81 … −90 dB |
+| sibilant frames, 5-9 kHz (de-esser alone, 6 takes) | | −3.4 … −4.8 dB, 0.1-4 kHz within 0.1 dB |
+| whisper WER, polished voice track | 0 | 0 |
+| music under a line: < 300 Hz / 1-5 kHz / > 8 kHz | −7 / −7 / −7 dB (`duck.db: 7`) | −4 / −10.9 / −4 dB (`db: 4`, band 12) |
+
+What the gates showed:
+- With the music raised 12 dB and no duck, whisper still heard every word, though line 20 sat 0.6 dB over the music in 1-5 kHz.
+  That is why `vo-masking` exists next to `vo-mix-asr`.
+- At +24 dB `vo-mix-asr` FAILs, naming lines 08 and 18 and quoting what whisper heard.
+- The approved `commission-ai-jev` mix bottoms out at 11.7 dB, so 10 dB is the WARN line.
+
 ## Other layers (not built yet; draft tickets)
 
 | Layer | Best now | Notes |
 |---|---|---|
 | Direction | per-engine translation of one `direction:` per line; a pronunciation lexicon; neighbouring-line context | Eleven tags, Gemini instructions, Fish tags |
-| VO polish + mix | high-pass, de-ess, glue compression, room tone; speech-band (1-5 kHz) ducking; Sidon (ICASSP 2026: denoise, dereverb, bandwidth extension to 48 kHz) | a `vo-mix-asr` gate: whisper on the mixed voice, not just the stem |
+| VO restoration | room tone under gated pauses; Sidon (ICASSP 2026: denoise, dereverb, bandwidth extension to 48 kHz) | a spectral denoise risks the musical-noise artifacts the gate avoids |
 | Scoring | UTMOSv2 / `utmos` (MPS), DNSMOS | advisory only: scores favour flat reads |
 | ASR | whisper large-v3-turbo, Parakeet TDT | better word timings for lip-sync and lyric sync |
 | SFX | MOSS-SoundEffect v2.0 (Apache-2.0, 48 kHz, MLX 4-bit port); ElevenLabs `eleven_text_to_sound_v2` (0.5-30 s, loops) | Stable Audio 3 Small-SFX: sources disagree on its licence |
