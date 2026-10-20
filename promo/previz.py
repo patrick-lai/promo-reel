@@ -7,6 +7,10 @@
     promo previz open             the viewer (scrub with the arrow keys, [ ] jumps shots, O toggles ortho / perspective)
     promo previz cam|panel|type|dur|projection|reset ...   one nudge into `overrides`; `--strip` re-exports the strip in seconds
     promo previz apply            write the previz camera / panel nudges into the cinema shots (`promo designed apply`)
+    promo previz animatic         one `shots/<id>.previz.mp4` per shot on the music grid (only changed shots re-render) + the joined animatic
+    promo previz shots            a promo.yaml `shots:` skeleton (beats + cam) from the scene: timing and camera, nothing visual
+
+Sources, first that applies: the designed plan, the picked storyboards, a hand-written scene.json, the promo.yaml shot list (`promo new`).
 
 The scene is JSON, the picture is wireframes. A frame is a unit-height world: the camera is a box `(cx, cy, w)` exactly like a cinema `cam`
 key (w = visible width as a fraction of the frame, smaller = pushed in), so a shot can be directed here and carried to `promo.yaml`. Panels
@@ -22,6 +26,7 @@ from __future__ import annotations
 import argparse
 import base64
 import copy
+import functools
 import hashlib
 import io
 import json
@@ -202,7 +207,11 @@ def layout(scene, t):
     e = scene if scene.get("_effective") else effective(scene)
     shots = e["shots"]
     shot = next((s for s in shots if s["t0"] <= t < s["t0"] + s["dur"]), shots[-1])
-    lt = min(max(t - shot["t0"], 0.0), shot["dur"])
+    return layout_shot(e, shot, min(max(t - shot["t0"], 0.0), shot["dur"]))
+
+
+def layout_shot(e, shot, lt):
+    """layout() of one shot at shot-local time lt (the animatic renders each shot on its own, so a gap never borrows the last shot)."""
     proj = (shot.get("camera") or {}).get("projection") or e["projection"]
     cam = cam_at(shot, lt)
     A = aspect_of(e)
@@ -541,6 +550,123 @@ def from_storyboard(story, board, bdir, pd):
                 shots=shots, stills=stills, limits={})
 
 
+# ---------------------------------------------------------------- per-style defaults: animatic required? 2D or 3D?
+# The film-directing styles direct in the animatic before anything is generated; the rest may opt in. 3D (perspective) only where depth is
+# the look: cinematic-story's contained panel over its blurred backdrop. Not in styles.PRESETS: those are locked per version.
+PREVIZ_DEFAULTS = {"horizon": dict(animatic=True, projection="ortho"), "cinematic-story": dict(animatic=True, projection="persp"),
+                   "anime-mv": dict(animatic=True, projection="ortho")}
+OPT_IN = dict(animatic=False, projection="ortho")
+SETTING_KEYS = ("animatic", "projection")
+
+
+def _preset_of(pd):
+    raw, _ = _yaml_plan(pd)
+    name = ((raw or {}).get("style") or {}).get("preset")
+    if name:
+        from . import styles
+        return styles.split_preset(str(name))[0]
+    label = ((_read_json(os.path.join(pd, "flow", "flow.json"), {}) or {}).get("discover") or {}).get("style")
+    if label:
+        from . import flow as F
+        return F.style_preset(label)
+    return None
+
+
+def settings(pd):
+    """{preset, animatic, projection}: the style's default, then promo.yaml `previz:`, then previz/settings.json (`animatic --require`)."""
+    preset = _preset_of(pd)
+    out = dict(PREVIZ_DEFAULTS.get(preset, OPT_IN), preset=preset)
+    raw, _ = _yaml_plan(pd)
+    own = (raw or {}).get("previz") or {}
+    out.update({k: own[k] for k in SETTING_KEYS if k in own})
+    out.update({k: v for k, v in (_read_json(os.path.join(pd, "previz", "settings.json"), {}) or {}).items() if k in SETTING_KEYS})
+    if out["projection"] not in PROJECTIONS:
+        raise PrevizError(f"previz projection must be ortho or persp, not {out['projection']!r}")
+    return out
+
+
+# ---------------------------------------------------------------- source: a promo.yaml shot list (`promo new`, hand-written specs)
+def _has_spec_shots(pd):
+    raw, _ = _yaml_plan(pd)
+    return bool((raw or {}).get("shots"))
+
+
+def _frac(v, size, default):
+    """A spec position: pixels at scale 1 when > 1, else already a fraction of the frame."""
+    if v is None:
+        return default
+    v = _num(v, default * size)
+    return v / size if v > 1.0 else v
+
+
+def _spec_type(c, dur, W, H, zone):
+    """Type boxes of one spec shot: captions in the caption zone, `text` cards where they sit, cinema `lower_copy` and `title_bloom`."""
+    out = []
+
+    def add(text, at, until, cx, cy, size_pct, **kw):
+        at = min(max(_num(at), 0.0), dur)
+        out.append(dict(id=f"t{len(out) + 1}", text=str(text or ""), at=round(at, 4), dur=round(max(min(_num(until, dur), dur) - at, 0.05), 4),
+                        size_pct=round(size_pct, 3), cx=round(cx, 4), cy=round(cy, 4), **kw))
+    zcx, zcy = ((zone[0] + zone[2]) / 2, (zone[1] + zone[3]) / 2) if zone else (0.5, 0.84)
+    for o in c.get("overlays") or []:
+        t = o.get("t") or [0, dur]
+        if o.get("type") == "caption":
+            add(o.get("text"), t[0], t[1], zcx, zcy, _num(o.get("size"), 32) / H * 100, zone="caption")
+        elif o.get("type") == "text":
+            add(o.get("text"), t[0], t[1], _frac(o.get("cx"), W, 0.5), _frac(o.get("cy"), H, 0.5), _num(o.get("size"), 64) / H * 100)
+    for o in c.get("lower_copy") or []:
+        add(o.get("text"), o.get("at"), _num(o.get("at")) + _num(o.get("dur"), 2.0), 0.5, _frac(o.get("cy"), H, 0.86), 4.0)
+    tb = c.get("title_bloom")
+    if isinstance(tb, dict):
+        add(tb.get("text"), tb.get("at"), _num(tb.get("at")) + _num(tb.get("dur"), 2.0), 0.5, _frac(tb.get("cy"), H, 0.5), 8.0)
+    return out
+
+
+def from_spec(pd):
+    """Scene from promo.yaml `shots:`: each shot at its beats (frame-exact, as the build cuts it), its `cam` as the camera box over the
+    recording, captions / text / lower_copy / title_bloom as type boxes. A UI shot is one fullscreen stand-in for the recording (cinema UI
+    shots a floating panel with `cam` as its crop, as cinema draws them); a `ui: false` or card shot is a plate. Gaps between shots are kept
+    as gaps: the animatic shows them, the spec's `timeline` gate still fails them."""
+    from .render import RenderContext
+    from .spec import load_spec, resolve_cam_keys
+    spec = load_spec(os.path.join(pd, "promo.yaml"), plugins=False)
+    raw = spec.raw
+    frame = _frame_of(raw)
+    W, H = frame["aspect"]
+    A = W / H
+    z = RenderContext.from_spec(spec).caption.get("zone") or {}
+    zone = [round(_num(z.get("x0")) / W, 4), round(_num(z.get("y0")) / H, 4), round(_num(z.get("x1")) / W, 4), round(_num(z.get("y1")) / H, 4)] if z else None
+    shots = []
+    for s in spec.shots:
+        c = s.cfg
+        dur = round(s.n / spec.fps, 4)
+        ui = bool(c["ui"]) if "ui" in c else s.type != "card" and bool(c.get("source") or c.get("segs"))
+        keys = []
+        for k in resolve_cam_keys(c.get("cam") or [[0, 0.5, 0.5, 1.0]], dur):
+            key = dict(t=round(min(max(_num(k[0]), 0.0), dur), 4), cx=_num(k[1], 0.5), cy=_num(k[2], 0.5), w=round(min(max(_num(k[3], 1.0), CAM_W[0]), CAM_W[1]), 4))
+            if len(k) > 4 and k[4] == "linear":
+                key["ease"] = "linear"
+            keys.append(key)
+        panels, plate = [], None
+        if ui and s.type == "cinema":
+            pnl = (c.get("look") or {}).get("panel") or {}
+            panels.append(dict(id="ui-1", kind="floating", source=None, cx=0.5, cy=_num(pnl.get("cy"), 0.44), w=_num(pnl.get("w"), 0.62),
+                               aspect=round(_num(pnl.get("aspect"), A), 4), z=0.0, crop=keys, label=f"{c.get('source') or 'recording'} (real UI, never drawn)"))
+            keys = [dict(t=0.0, cx=0.5, cy=0.5, w=1.0)]
+            plate = dict(id=f"backdrop-{s.id}", ui=False)
+        elif ui:
+            panels.append(dict(id="ui-1", kind="fullscreen", source=None, cx=0.5, cy=0.5, w=1.0, aspect=round(A, 4), z=0.0,
+                               label=f"{c.get('source') or 'recording'} (real UI, never drawn)"))
+        else:
+            plate = dict(id=f"plate-{s.id}", ui=False)
+        shots.append(dict(id=s.id, beat=f"beats {s.b0:g}-{s.b1:g}", beats=[s.b0, s.b1], t0=round(s.f0 / spec.fps, 4), dur=dur,
+                          framing=panels[0]["kind"] if panels else "plate", ui=ui, type_of=s.type,
+                          camera=dict(mode=camera_mode(keys), keys=keys), plate=plate, panels=panels, type=_spec_type(c, dur, W, H, zone), notes=c.get("notes", "")))
+    tl = spec.timeline
+    return dict(schema=SCHEMA, source=dict(kind="spec", ref="promo.yaml shots"), frame=frame, projection=settings(pd)["projection"], shots=shots,
+                stills={}, limits={}, grid=dict(bpm=tl.bpm, beat_s=round(tl.B, 6), beats=tl.beats), caption_zone=zone)
+
+
 # ---------------------------------------------------------------- targets: where the scene and strip of a project live
 class Target:
     def __init__(self, pd, key, kind, dir_):
@@ -562,6 +688,8 @@ class Target:
             d = os.path.join(self.pd, "flow", "boards", self.key)
             from . import storyboard as SB
             return from_storyboard(self.key, SB.load(d), d, self.pd)
+        if self.kind == "spec":
+            return from_spec(self.pd)
         raise PrevizError(f"{self.dir}: a hand-written scene has no source to sync from (edit scene.json)")
 
     def load(self):
@@ -577,8 +705,13 @@ def _boards(pd, stories=None):
     return [s for s in picks if os.path.isfile(os.path.join(pd, "flow", "boards", s, "board.json"))]
 
 
+def _scene_kind(path):
+    return ((_read_json(path, {}) or {}).get("source") or {}).get("kind")
+
+
 def targets(pd, stories=None, source=None):
-    """Targets of a project: the designed plan (one scene) unless `source=storyboard`, else one per picked storyboard, else a hand-written scene."""
+    """Targets of a project: the designed plan (one scene) unless `source=storyboard`, else one per picked storyboard, else a hand-written
+    scene, else the promo.yaml shot list (`source=spec`)."""
     pd = os.path.abspath(pd)
     base = os.path.join(pd, "previz")
     _, plan = _yaml_plan(pd)
@@ -588,13 +721,18 @@ def targets(pd, stories=None, source=None):
         bs = _boards(pd, stories)
         if bs:
             return [Target(pd, s, "storyboard", os.path.join(base, s)) for s in bs]
-    if source in (None, "auto") and os.path.isfile(os.path.join(base, "scene.json")):
+    scene = os.path.join(base, "scene.json")
+    if source in (None, "auto") and os.path.isfile(scene) and _scene_kind(scene) != "spec":
         return [Target(pd, "", "manual", base)]
+    if source in (None, "auto", "spec") and _has_spec_shots(pd):
+        return [Target(pd, "", "spec", base)]
     if source == "designed":
         raise PrevizError("no plan.designed in promo.yaml: run `promo plan <name> --prompt ... --stills ...` first")
     if source == "storyboard":
         raise PrevizError("no storyboard to block out: `promo flow story` / `scene add` first")
-    raise PrevizError("nothing to block out: no plan.designed in promo.yaml, no picked storyboard in flow/, no previz/scene.json")
+    if source == "spec":
+        raise PrevizError("no `shots:` in promo.yaml to block out (`promo new NAME` writes a starter list)")
+    raise PrevizError("nothing to block out: no plan.designed or shots in promo.yaml, no picked storyboard in flow/, no previz/scene.json")
 
 
 # ---------------------------------------------------------------- build / sync
@@ -609,6 +747,10 @@ def sync(target):
     new = target.compile()
     old = _read_json(target.scene_path, {})
     new["overrides"] = old.get("overrides") or {}
+    if not old and target.kind == "storyboard":
+        proj = settings(target.pd)["projection"]        # the style's 2D / 3D default, as a nudge: `promo previz projection` changes it
+        if proj != new["projection"]:
+            new["overrides"]["scene"] = dict(projection=proj)
     new["source"]["hash"] = generated_hash(new)
     new["source"]["synced_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
     err, warn = problems(new)
@@ -730,6 +872,7 @@ def tile_label(e, t):
     return f"{shot['id']}  {t:.1f}s  {shot.get('framing', '')}  {camera_mode((shot.get('camera') or {}).get('keys') or [])}  {proj}"
 
 
+@functools.lru_cache(maxsize=32)
 def _font(px):
     from PIL import ImageFont
     for p in ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"):
@@ -739,6 +882,36 @@ def _font(px):
         return ImageFont.load_default(size=px)
     except TypeError:
         return ImageFont.load_default()
+
+
+def draw_items(tile, items, f_small, f_lbl, stand_in=False):
+    """Draw layout() items onto an RGBA tile and return it. `stand_in` marks every panel as a stand-in for a real recording (animatic)."""
+    from PIL import Image, ImageDraw
+    W, H = tile.size
+    for it in items:
+        layer = Image.new("RGBA", tile.size, (0, 0, 0, 0))          # ImageDraw writes RGBA rather than blending it: one layer per item
+        td = ImageDraw.Draw(layer)
+        u0, v0, u1, v1 = it["rect"]
+        box = [u0 * W, v0 * H, u1 * W, v1 * H]
+        c = COLORS.get(it["kind"], COLORS["floating"])
+        if it["kind"] == "crop":
+            td.rectangle(box, outline=c + (150,), width=1)
+            td.text((box[0] + 4, box[3] - 14), it["label"], fill=c + (170,), font=f_small)
+            tile = Image.alpha_composite(tile, layer)
+            continue
+        td.rectangle(box, fill=c + ((40 if it["kind"] == "plate" else 30 if it["kind"] != "type" else 22),), outline=c + (255,), width=2 if it["kind"] != "plate" else 1)
+        if it["kind"] == "type":
+            fy = getattr(f_lbl, "size", 12)
+            td.text((box[0] + 4, (box[1] + box[3]) / 2 - fy / 2 - 1), it["label"][:60], fill=c + (255,), font=f_lbl)
+        else:
+            td.line([box[0], box[1], box[2], box[3]], fill=c + (56,))
+            td.line([box[0], box[3], box[2], box[1]], fill=c + (56,))
+            x, y = max(box[0], 0) + 5, max(box[1], 0) + 4
+            td.text((x, y), it["label"][:48], fill=c + (255,), font=f_small)
+            if stand_in and it["kind"] in PANEL_KINDS:
+                td.text((x, y + getattr(f_small, "size", 11) + 4), "UI STAND-IN: real recording needed", fill=c + (255,), font=f_small)
+        tile = Image.alpha_composite(tile, layer)
+    return tile
 
 
 def render_pil(scene, times, out):
@@ -756,25 +929,7 @@ def render_pil(scene, times, out):
         y0 = g["pad"] + row * (g["tile_h"] + g["label_h"] + g["gap"])
         tile = Image.new("RGBA", (g["tile_w"], g["tile_h"]), BG + (255,))
         *_, items = layout(e, t)
-        for it in items:
-            layer = Image.new("RGBA", tile.size, (0, 0, 0, 0))          # ImageDraw writes RGBA rather than blending it: one layer per item
-            td = ImageDraw.Draw(layer)
-            u0, v0, u1, v1 = it["rect"]
-            box = [u0 * g["tile_w"], v0 * g["tile_h"], u1 * g["tile_w"], v1 * g["tile_h"]]
-            c = COLORS.get(it["kind"], COLORS["floating"])
-            if it["kind"] == "crop":
-                td.rectangle(box, outline=c + (150,), width=1)
-                td.text((box[0] + 4, box[3] - 14), it["label"], fill=c + (170,), font=f_small)
-                tile = Image.alpha_composite(tile, layer)
-                continue
-            td.rectangle(box, fill=c + ((40 if it["kind"] == "plate" else 30 if it["kind"] != "type" else 22),), outline=c + (255,), width=2 if it["kind"] != "plate" else 1)
-            if it["kind"] == "type":
-                td.text((box[0] + 4, (box[1] + box[3]) / 2 - 7), it["label"][:60], fill=c + (255,), font=f_lbl)
-            else:
-                td.line([box[0], box[1], box[2], box[3]], fill=c + (56,))
-                td.line([box[0], box[3], box[2], box[1]], fill=c + (56,))
-                td.text((max(box[0], 0) + 5, max(box[1], 0) + 4), it["label"][:48], fill=c + (255,), font=f_small)
-            tile = Image.alpha_composite(tile, layer)
+        tile = draw_items(tile, items, f_small, f_lbl)
         ImageDraw.Draw(tile).rectangle([0, 0, g["tile_w"] - 1, g["tile_h"] - 1], outline=COLORS["guide"] + (255,))
         im.paste(tile.convert("RGB"), (x0, y0))
         d.text((x0, y0 + g["tile_h"] + 3), tile_label(e, t), fill=(200, 205, 215), font=f_small)
@@ -866,6 +1021,371 @@ def strip(target, n=None, at=None, shot=None, ends=False, engine="auto", out=Non
     return dict(meta, warnings=b["warnings"], viewer=target.viewer_path)
 
 
+# ---------------------------------------------------------------- animatic: one clip per shot on the music grid, then one video
+# (idea from CodeVideoModel inference/render.py: a code scene encoded frame by frame, its camera kept beside it; templates/previz/vendor/codevideomodel/)
+ANIMATIC_FPS = 15
+ANIMATIC_H = 540
+NOT_FOOTAGE = "promo-reel previz: a wireframe blockout for timing and camera, NOT FOOTAGE and never product UI"
+CLICK_SR = 48000
+_CODE = None
+
+
+def _code():
+    """Hash of this module: a change to how a shot is drawn rebuilds every shot once."""
+    global _CODE
+    if _CODE is None:
+        with open(os.path.abspath(__file__), "rb") as f:
+            _CODE = hashlib.sha256(f.read()).hexdigest()[:12]
+    return _CODE
+
+
+def animatic_paths(target):
+    name = os.path.basename(target.pd) + (f"-{target.key}" if target.key else "")
+    return dict(dir=os.path.join(target.dir, "shots"), video=os.path.join(target.dir, f"{name}.previz-animatic.mp4"),
+                meta=os.path.join(target.dir, "animatic.previz.json"))
+
+
+ASSUMED_BPM = 120.0
+
+
+def _grid(target, scene):
+    """{bpm, beat_s, beats?, assumed?} of the music grid the animatic plays against: the scene's own (spec), else promo.yaml `timeline`,
+    else the board's `bpm`, else `animatic --bpm` (previz/settings.json), else 120 bpm marked assumed (the track is picked later)."""
+    if scene.get("grid"):
+        return scene["grid"]
+    raw, _ = _yaml_plan(target.pd)
+    board = _read_json(os.path.join(target.pd, "flow", "boards", target.key, "board.json"), {}) if target.kind == "storyboard" else {}
+    for bpm in (((raw or {}).get("timeline") or {}).get("bpm"), (board or {}).get("bpm"), _read_json(os.path.join(target.pd, "previz", "settings.json"), {}).get("bpm")):
+        if bpm:
+            return dict(bpm=float(bpm), beat_s=round(60.0 / float(bpm), 6))
+    return dict(bpm=ASSUMED_BPM, beat_s=round(60.0 / ASSUMED_BPM, 6), assumed=True)
+
+
+def _size(arg, aspect):
+    if arg:
+        m = re.fullmatch(r"(\d+)x(\d+)", str(arg))
+        if not m:
+            raise PrevizError(f"--size must be WxH (e.g. 960x540), not {arg!r}")
+        w, h = int(m.group(1)), int(m.group(2))
+    else:
+        h = ANIMATIC_H if aspect >= 1 else 960
+        w = round(h * aspect)
+    if w < 64 or h < 64:
+        raise PrevizError(f"--size {w}x{h} is too small to read")
+    return w + w % 2, h + h % 2
+
+
+def timeline_of(e, fps, end=None):
+    """[(kind, shot | None, t0, t1, f0, f1)] in film order: every shot and every gap (also before the first shot and up to `end`).
+    Overlapping shots raise: a shot that starts before the last one ended has no single picture to show."""
+    shots = sorted(e["shots"], key=lambda s: s["t0"])
+    for a, b in zip(shots, shots[1:]):
+        if b["t0"] < a["t0"] + a["dur"] - 1e-6:
+            raise PrevizError(f"shots {a['id']} and {b['id']} overlap ({a['id']} ends at {a['t0'] + a['dur']:g}s, {b['id']} starts at {b['t0']:g}s): "
+                              "fix their beats; nothing was rebuilt")
+    out, t = [], 0.0
+    for s in shots + [None]:
+        t_next = s["t0"] if s else max(end or 0.0, t)
+        if t_next - t > 0.5 / fps:
+            out.append(("gap", None, t, t_next, round(t * fps), round(t_next * fps)))
+        if s:
+            t1 = s["t0"] + s["dur"]
+            out.append(("shot", s, s["t0"], t1, round(s["t0"] * fps), max(round(t1 * fps), round(s["t0"] * fps) + 1)))
+            t = t1
+    return out
+
+
+def shot_digest(e, shot, n, size, fps, grid):
+    """What a shot's clip shows, and nothing about where it sits: its own content, frame count, size, the beat phase its ticks fall on, the
+    caption zone and this module's code. A shot that only moved in time keeps its clip (`shifted`)."""
+    core = {k: v for k, v in shot.items() if k not in VOLATILE + ("t0",)}
+    for sub in ("panels", "type"):
+        core[sub] = [{k: v for k, v in x.items() if k not in VOLATILE} for x in core.get(sub) or []]
+    if core.get("camera"):
+        core["camera"] = {k: v for k, v in core["camera"].items() if k != "mode"}
+    phase = round((shot["t0"] / grid["beat_s"]) % 4, 3) if grid else None
+    return _hash(dict(shot=core, n=n, size=list(size), fps=fps, proj=(shot.get("camera") or {}).get("projection") or e["projection"],
+                      frame=e["frame"], zone=e.get("caption_zone"), beat_s=(grid or {}).get("beat_s"), assumed=bool((grid or {}).get("assumed")), phase=phase, code=_code()))
+
+
+def _encode(frames, n, size, fps, out, title):
+    """Pipe n RGB frames into one libx264 pass, written beside `out` and moved over it when complete."""
+    tmp = out + ".part.mp4"
+    cmd = ["ffmpeg", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{size[0]}x{size[1]}", "-r", str(fps), "-i", "pipe:0",
+           "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "26", "-pix_fmt", "yuv420p", "-threads", "2", "-g", str(fps),
+           "-metadata", f"title={title}", "-metadata", f"comment={NOT_FOOTAGE}", tmp]
+    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        for i in range(n):
+            proc.stdin.write(frames(i).tobytes())
+        proc.stdin.close()
+        err = proc.stderr.read().decode(errors="replace")
+        if proc.wait() != 0:
+            raise PrevizError(f"ffmpeg could not encode {out}: {err.strip()[-300:]}")
+    except BrokenPipeError:
+        proc.wait()
+        raise PrevizError(f"ffmpeg stopped while encoding {out}: {proc.stderr.read().decode(errors='replace').strip()[-300:]}")
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
+    os.replace(tmp, out)
+
+
+def _beats_in(shot, grid):
+    """[(local t, beat index)] of the grid's beats inside a shot, from its phase (so the ticks do not depend on where the shot sits)."""
+    if not grid:
+        return []
+    bs = grid["beat_s"]
+    ph = (shot["t0"] / bs) % 4
+    out, k = [], math.ceil(ph - 1e-6)
+    while (k - ph) * bs <= shot["dur"] + 1e-6:
+        out.append(((k - ph) * bs, k % 4))
+        k += 1
+    return out
+
+
+def animatic_frame(e, shot, lt, size, grid):
+    """One animatic frame of a shot: the wireframes, the caption zone, the camera box on a minimap, beat ticks and the previz label."""
+    from PIL import Image, ImageDraw
+    W, H = size
+    k = H / 540.0
+    f_small, f_head = _font(max(10, round(12 * k))), _font(max(12, round(16 * k)))
+    _, _, proj, cam, items = layout_shot(e, shot, lt)
+    tile = Image.new("RGBA", size, BG + (255,))
+    for it in items:
+        if it["kind"] == "type":
+            it["font"] = _font(max(10, min(64, round((it["rect"][3] - it["rect"][1]) * H * 0.55))))
+    for it in items:                                      # type at its own size; the rest with the label font
+        tile = draw_items(tile, [it], f_small, it.get("font") or f_small, stand_in=bool(shot.get("ui")))
+    d = ImageDraw.Draw(tile)
+    g = COLORS["guide"]
+    if e.get("caption_zone"):
+        x0, y0, x1, y1 = (e["caption_zone"][0] * W, e["caption_zone"][1] * H, e["caption_zone"][2] * W, e["caption_zone"][3] * H)
+        for x in range(int(x0), int(x1), 12):
+            d.line([x, y0, min(x + 6, x1), y0], fill=g + (255,)); d.line([x, y1, min(x + 6, x1), y1], fill=g + (255,))
+        for y in range(int(y0), int(y1), 12):
+            d.line([x0, y, x0, min(y + 6, y1)], fill=g + (255,)); d.line([x1, y, x1, min(y + 6, y1)], fill=g + (255,))
+        d.text((x0 + 3, y0 - 14 * k), "caption zone", fill=g + (255,), font=f_small)
+    mw = round(W * 0.16)                                  # minimap: the recording / frame, and the box the camera frames of it (cinema `cam`)
+    mh = round(mw * H / W)
+    mx, my = W - mw - round(10 * k), round(10 * k)
+    d.rectangle([mx, my, mx + mw, my + mh], fill=(44, 48, 58, 255), outline=g + (255,))
+    keys = _composed_cam(shot)
+    cx, cy, cw = cam_at(dict(camera=dict(keys=[dict(t=q[0], cx=q[1], cy=q[2], w=q[3]) for q in keys])), lt)
+    d.rectangle([mx + (cx - cw / 2) * mw, my + (cy - cw / 2) * mh, mx + (cx + cw / 2) * mw - 1, my + (cy + cw / 2) * mh - 1], outline=COLORS["type"] + (255,), width=2)
+    d.text((mx, my + mh + 3), f"camera box w {cw:.2f}", fill=g + (255,), font=f_small)
+    head = f"{shot['id']}  {shot['dur']:.2f}s  {camera_mode([dict(t=q[0], cx=q[1], cy=q[2], w=q[3]) for q in keys])}  {'3D' if proj == 'persp' else '2D'}"
+    if grid:
+        head += f"  {shot['dur'] / grid['beat_s']:.4g} beats @ {grid['bpm']:g} bpm" + (" (assumed)" if grid.get("assumed") else "")
+    sub = str(shot.get("beat") or "")[:80]
+    d.rectangle([0, 0, max(d.textlength(head, font=f_head), d.textlength(sub, font=f_small)) + 20 * k, (48 if sub else 30) * k], fill=BG + (235,))
+    d.text((round(10 * k), round(6 * k)), head, fill=(230, 232, 238, 255), font=f_head)
+    if sub:
+        d.text((round(10 * k), round(28 * k)), sub, fill=g + (255,), font=f_small)
+    by = H - round(16 * k)                                # beat ticks: long on the downbeat, a flash as each beat lands
+    d.line([0, by, W, by], fill=g + (120,))
+    for bt, n in _beats_in(shot, grid):
+        x = bt / max(shot["dur"], 1e-6) * (W - 1)
+        d.line([x, by - (10 if n == 0 else 5) * k, x, by], fill=(COLORS["type"] if n == 0 else g) + (255,), width=2 if n == 0 else 1)
+        if 0 <= lt - bt < 0.12:
+            r = (9 if n == 0 else 6) * k
+            d.ellipse([W - 40 * k - r, by - 30 * k - r, W - 40 * k + r, by - 30 * k + r], fill=(COLORS["type"] if n == 0 else (230, 232, 238)) + (255,))
+    d.rectangle([0, by + 2, lt / max(shot["dur"], 1e-6) * W, by + 4], fill=COLORS["crop"] + (200,))
+    d.text((round(10 * k), by - round(22 * k)), "PREVIZ · NOT FOOTAGE", fill=(255, 120, 120, 255), font=f_small)
+    return tile.convert("RGB")
+
+
+def gap_frame(t0, t1, size):
+    from PIL import Image, ImageDraw
+    W, H = size
+    k = H / 540.0
+    im = Image.new("RGB", size, (60, 18, 18))
+    d = ImageDraw.Draw(im)
+    d.text((round(20 * k), H / 2 - 20 * k), f"GAP  {t0:.2f}-{t1:.2f}s: no shot here (fix the beats)", fill=(255, 200, 200), font=_font(max(12, round(20 * k))))
+    d.text((round(20 * k), H - round(38 * k)), "PREVIZ · NOT FOOTAGE", fill=(255, 120, 120), font=_font(max(10, round(12 * k))))
+    return im
+
+
+def click_track(path, total_s, beat_s):
+    """A beat click for the whole animatic (accented downbeat every 4 beats), 48 kHz stereo 16-bit."""
+    import wave
+
+    import numpy as np
+    n = max(1, int(round(total_s * CLICK_SR)))
+    y = np.zeros(n, dtype=np.float32)
+    L = int(0.03 * CLICK_SR)
+    k = 0
+    while k * beat_s < total_s:
+        i = int(round(k * beat_s * CLICK_SR))
+        t = np.arange(min(L, n - i)) / CLICK_SR
+        y[i:i + len(t)] += (0.5 if k % 4 == 0 else 0.3) * np.sin(2 * np.pi * (1760 if k % 4 == 0 else 1100) * t) * np.exp(-t * 120)
+        k += 1
+    pcm = (np.clip(y, -1, 1) * 32767).astype("<i2")
+    with wave.open(path, "wb") as w:
+        w.setnchannels(2)
+        w.setsampwidth(2)
+        w.setframerate(CLICK_SR)
+        w.writeframes(np.repeat(pcm, 2).tobytes())
+    return path
+
+
+def _music_bed(target):
+    if target.kind not in ("spec", "designed"):
+        return None
+    from . import music
+    from .spec import load_spec
+    p = music.music_path(load_spec(os.path.join(target.pd, "promo.yaml"), plugins=False))
+    return p if os.path.isfile(p) else None
+
+
+def animatic(target, only=None, fps=ANIMATIC_FPS, size=None, audio="auto", force=False):
+    """Render the animatic: a silent `shots/<id>.previz.mp4` per shot, rebuilt only when that shot's own content changed, then one
+    `<name>.previz-animatic.mp4` (every shot and gap, with a beat click or the built music bed) and `animatic.previz.json`. `only` re-renders
+    those shots even when unchanged. Returns {rebuilt, kept, shifted, gaps, video, meta, ...}. The strip is refreshed too (PIL)."""
+    b = build(target)
+    sc = b["scene"]
+    e = effective(sc)
+    ids = [s["id"] for s in e["shots"]]
+    bad = [i for i in only or [] if i not in ids]
+    if bad:
+        raise PrevizError(f"no shot {', '.join(bad)}: {', '.join(ids)}")
+    grid = _grid(target, sc)
+    end = grid["beats"] * grid["beat_s"] if grid and grid.get("beats") else None
+    tl = timeline_of(e, fps, end)
+    size = _size(size, aspect_of(e))
+    P = animatic_paths(target)
+    os.makedirs(P["dir"], exist_ok=True)
+    from .cache import Stamps
+    stamps = Stamps(P["dir"])
+    prev = {s["id"]: s for s in (_read_json(P["meta"], {}) or {}).get("shots") or []}
+    rep = dict(rebuilt=[], kept=[], shifted=[], gaps=[], warnings=b["warnings"])
+    parts, rows = [], []
+    t_start = time.time()
+    for kind, s, t0, t1, f0, f1 in tl:
+        n = f1 - f0
+        if kind == "gap":
+            path = os.path.join(P["dir"], f"gap-{f0}-{f1}.previz.mp4")
+            dig = _hash(dict(gap=[f0, f1], size=list(size), fps=fps, code=_code()))
+            if force or not stamps.is_fresh(os.path.basename(path), dig, [path]):
+                im = gap_frame(t0, t1, size)
+                _encode(lambda i: im, n, size, fps, path, f"previz gap {t0:.2f}-{t1:.2f}s")
+                stamps.write(os.path.basename(path), dig)
+            rep["gaps"].append(dict(t0=round(t0, 3), t1=round(t1, 3)))
+            parts.append(path)
+            continue
+        sid = s["id"]
+        path = os.path.join(P["dir"], f"{sid}.previz.mp4")
+        dig = shot_digest(e, s, n, size, fps, grid)
+        if force or sid in (only or []) or not stamps.is_fresh(sid, dig, [path]):
+            _encode(lambda i, s=s: animatic_frame(e, s, i / fps, size, grid), n, size, fps, path, f"previz shot {sid}")
+            stamps.write(sid, dig, frames=n)
+            rep["rebuilt"].append(sid)
+        elif sid in prev and abs(_num(prev[sid].get("t0")) - s["t0"]) > 1e-6:
+            rep["shifted"].append(sid)
+        else:
+            rep["kept"].append(sid)
+        parts.append(path)
+        rows.append(dict(id=sid, t0=round(t0, 4), dur=round(s["dur"], 4), frames=n, digest=dig, file=os.path.relpath(path, target.dir)))
+    total = tl[-1][5] if tl else 0
+    dur = total / fps
+    tmp = tempfile.mkdtemp(prefix="previz-animatic-")
+    try:
+        lst = os.path.join(tmp, "list.txt")
+        with open(lst, "w") as f:
+            f.writelines(f"file '{p}'\n" for p in parts)
+        bed, used = (_music_bed(target) if audio in ("auto", "music") else None), "music"
+        if audio == "music" and not bed:
+            raise PrevizError("--audio music: no built music bed (`promo build` writes build/audio/music-edit.wav); use --audio click")
+        if audio == "click" or (audio == "auto" and not bed):
+            bed, used = (click_track(os.path.join(tmp, "click.wav"), dur, grid["beat_s"]) if grid else None), "click"
+        if audio == "none" or not bed:
+            used = "none"
+        cmd = ["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", lst]
+        if used != "none":
+            cmd += ["-i", bed, "-map", "0:v", "-map", "1:a", "-c:a", "aac", "-b:a", "128k", "-af", f"apad,atrim=0:{dur:.6f}"]
+        cmd += ["-frames:v", str(total), "-r", str(fps), "-c:v", "libx264", "-preset", "veryfast", "-crf", "26", "-pix_fmt", "yuv420p", "-threads", "2",
+                "-movflags", "+faststart", "-metadata", f"title=previz animatic {os.path.basename(target.pd)} {target.key}".strip(),
+                "-metadata", f"comment={NOT_FOOTAGE}", P["video"] + ".part.mp4"]
+        r = subprocess.run(cmd, capture_output=True, text=True)
+        if r.returncode != 0:
+            raise PrevizError(f"ffmpeg could not join the animatic: {r.stderr.strip()[-300:]}")
+        os.replace(P["video"] + ".part.mp4", P["video"])
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    meta = dict(kind="previz", schema="promo-previz-animatic@1", not_footage=True, note=NOT_FOOTAGE, scene_hash=b["hash"], source=sc.get("source"),
+                bpm=(grid or {}).get("bpm"), bpm_assumed=bool((grid or {}).get("assumed")), beat_s=(grid or {}).get("beat_s"), fps=fps, size=list(size), frames=total, duration_s=round(dur, 4),
+                audio=used, video=os.path.relpath(P["video"], target.dir), shots=rows, gaps=rep["gaps"], trajectory=timing_camera(target),
+                at=time.strftime("%Y-%m-%dT%H:%M:%S%z"))
+    _write_json(P["meta"], meta)
+    st = strip(target, engine="pil")
+    return dict(rep, video=P["video"], meta=P["meta"], frames=total, duration_s=round(dur, 4), audio=used, seconds=round(time.time() - t_start, 2),
+                strip=st["png"], end_s=end, grid=grid)
+
+
+def animatic_status(target):
+    """ok | missing | stale: is there an animatic of the current scene?"""
+    P = animatic_paths(target)
+    m = _read_json(P["meta"])
+    if not m or not os.path.isfile(P["video"]):
+        return "missing"
+    sc = _read_json(target.scene_path)
+    try:
+        return "ok" if sc and m.get("scene_hash") == scene_hash(sc) and not stale_source(target) else "stale"
+    except (KeyError, TypeError, ValueError):
+        return "stale"
+
+
+# ---------------------------------------------------------------- handoff: timing and camera only, never the picture
+def timing_camera(target):
+    """[{id, t0, dur, cam: [[t, cx, cy, w], ...]}] of the scene as it plays: when each shot runs and the box the camera frames (on a panel
+    shot folded into the panel's crop, as `cinema` keys it). Keyframes and drafts read this; nothing visual is handed on."""
+    sc = _read_json(target.scene_path)
+    if not sc:
+        return []
+    return [dict(id=s["id"], t0=round(s["t0"], 4), dur=round(s["dur"], 4), cam=[k[:4] for k in _composed_cam(s)]) for s in effective(sc)["shots"]]
+
+
+def blocking(pd, stories=None):
+    """{story: {shot id: {t0, dur, start: (cx, cy, w), end: (cx, cy, w)}}} for the keyframes: where each frame's camera box sits."""
+    out = {}
+    try:
+        ts = targets(pd, stories)
+    except PrevizError:
+        return out
+    for t in ts:
+        rows = {}
+        for r in timing_camera(t):
+            world = dict(camera=dict(keys=[dict(t=k[0], cx=k[1], cy=k[2], w=k[3]) for k in r["cam"]]))
+            rows[r["id"]] = dict(t0=r["t0"], dur=r["dur"], start=tuple(round(v, 3) for v in cam_at(world, 0.0)), end=tuple(round(v, 3) for v in cam_at(world, r["dur"])))
+        out[t.key] = rows
+    return out
+
+
+def blocking_text(b, which):
+    """One line for a keyframe prompt / to-do from a blocking row (`which` = start | end; a mid frame gets none)."""
+    if which not in ("start", "end"):
+        return ""
+    cx, cy, w = b["end"] if which == "end" else b["start"]
+    t = b["t0"] + (b["dur"] if which == "end" else 0.0)
+    return f"Framing from the approved previz (timing and camera only): at {t:.1f}s the camera frames a box centred ({cx:.2f}, {cy:.2f}), {w:.2f} of the frame wide."
+
+
+def shots_skeleton(target, bpm=None):
+    """A promo.yaml `shots:` skeleton (id, beats from t via the bpm, cam) for drafts: timing and camera, nothing else."""
+    sc = target.load()
+    grid = _grid(target, sc)
+    bpm = float(bpm or (grid or {}).get("bpm") or 0)
+    if bpm <= 0:
+        raise PrevizError("no music grid to put the shots on: pass --bpm")
+    bs = 60.0 / bpm
+    out = []
+    for r in timing_camera(target):
+        cam = [[("end" if abs(k[0] - r["dur"]) < 1e-6 and i else round(k[0], 3)), round(k[1], 4), round(k[2], 4), round(k[3], 4)] for i, k in enumerate(r["cam"])]
+        out.append(dict(id=r["id"], beats=[round(r["t0"] / bs, 2), round((r["t0"] + r["dur"]) / bs, 2)], cam=cam))
+    return dict(timeline=dict(bpm=bpm, beats=round(max((s["beats"][1] for s in out), default=0), 2)), shots=out)
+
+
 # ---------------------------------------------------------------- status and gates
 def target_status(target):
     """{scene, hash, behind, strip: ok|missing|stale|no-scene, problems: [...]} for one target."""
@@ -943,9 +1463,11 @@ def skipped(spec):
 
 
 def needed(spec):
-    """Previz applies to a designed plan, a flow project, or a project that has started a previz scene. Plain hand-written specs are untouched."""
+    """Previz applies to a designed plan, a flow project, or a project that has started a hand-written previz scene. Plain hand-written
+    specs are untouched, also once they have an animatic of their shot list (it is a look at the spec, not a step it must pass)."""
     plan = _raw(spec).get("plan") or {}
-    return bool(plan.get("designed")) or os.path.isfile(os.path.join(spec.root, "previz", "scene.json")) or bool(_flow_stage(spec.root))
+    scene = os.path.join(spec.root, "previz", "scene.json")
+    return bool(plan.get("designed")) or (os.path.isfile(scene) and _scene_kind(scene) != "spec") or bool(_flow_stage(spec.root))
 
 
 def gates(spec):
@@ -1079,6 +1601,9 @@ def edit(target, args):
     """One nudge into overrides, from the `cam | panel | type | dur | projection | reset` subcommands. Returns the message to print."""
     sc = target.load()
     c = args.cmd
+    if target.kind == "spec":
+        raise PrevizError("this scene is compiled from promo.yaml: change the shot there (beats, cam, overlays), then re-run `promo previz animatic` "
+                          "(it rebuilds only the shots that changed); a nudge here would be lost at the next sync")
     if c == "reset":
         o = sc.setdefault("overrides", {})
         if args.shot:
@@ -1157,7 +1682,7 @@ def _pick_target(pd, args):
         ts = [t for t in ts if t.key == want]
         if not ts:
             raise PrevizError(f"no story {want} to block out")
-    elif len(ts) > 1 and args.cmd not in ("show", "status", "build", "sync", "strip"):
+    elif len(ts) > 1 and args.cmd not in ("show", "status", "build", "sync", "strip", "animatic"):
         raise PrevizError(f"{len(ts)} stories are picked: say which with --story ({', '.join(t.key for t in ts)})")
     return ts
 
@@ -1197,7 +1722,8 @@ def main(argv=None, project=None):
         p = sub.add_parser(name, **kw)
         p.add_argument("-p", "--project", default=argparse.SUPPRESS)
         p.add_argument("--story", help="the storyboard to block out when several are picked")
-        p.add_argument("--from", dest="source", choices=("designed", "storyboard"), help="force the source (default: the designed plan, else the picked storyboards)")
+        p.add_argument("--from", dest="source", choices=("designed", "storyboard", "spec"),
+                       help="force the source (default: the designed plan, else the picked storyboards, else a scene.json, else promo.yaml shots)")
         return p
 
     p = P("build", help="compile the scene (when missing or behind its source) and write the viewer")
@@ -1244,6 +1770,17 @@ def main(argv=None, project=None):
             q.add_argument("--strip", dest="restrip", action="store_true", help="re-export the strip right after the edit")
     p = P("apply", help="write previz camera / panel nudges into the cinema shots (runs `promo designed apply`)")
     p.add_argument("--force", action="store_true")
+    p = P("animatic", help="one clip per shot on the music grid + the joined animatic (only changed shots are rebuilt)")
+    p.add_argument("--shot", nargs="+", help="re-render these shots even if unchanged")
+    p.add_argument("--fps", type=int, default=ANIMATIC_FPS)
+    p.add_argument("--size", help=f"WxH (default {ANIMATIC_H}p at the film's aspect)")
+    p.add_argument("--audio", choices=("auto", "click", "music", "none"), default="auto", help="auto: the built music bed, else a beat click")
+    p.add_argument("--force", action="store_true", help="re-render every shot")
+    p.add_argument("--require", choices=("on", "off"), help="record whether this project's flow needs a current animatic (previz/settings.json), then render")
+    p.add_argument("--bpm", type=float, help="record the tempo to cut against when there is no promo.yaml timeline yet (previz/settings.json)")
+    p.add_argument("--json", action="store_true")
+    p = P("shots", help="print a promo.yaml shots: skeleton (beats + cam) from the scene: timing and camera only")
+    p.add_argument("--bpm", type=float)
     a = ap.parse_args(argv)
     pd = _pd_of(a.project)
     try:
@@ -1288,6 +1825,37 @@ def main(argv=None, project=None):
                         print(f"  note: {w}")
             if a.json:
                 print(json.dumps(dict(ok=True, strips=out), indent=1))
+        elif a.cmd == "animatic":
+            if a.require or a.bpm:
+                if a.bpm is not None and not 30 <= a.bpm <= 300:
+                    raise PrevizError(f"--bpm {a.bpm:g} is outside 30-300")
+                cur = _read_json(os.path.join(pd, "previz", "settings.json"), {}) or {}
+                cur.update({k: v for k, v in (("animatic", a.require == "on" if a.require else None), ("bpm", a.bpm)) if v is not None})
+                _write_json(os.path.join(pd, "previz", "settings.json"), cur)
+            out = []
+            for t in ts:
+                r = animatic(t, a.shot, a.fps, a.size, a.audio, a.force)
+                out.append(dict(r, story=t.key))
+                if a.json:
+                    continue
+                print(f"animatic of {t.label}: {r['video']}  ({r['frames']} frames, {r['duration_s']:g}s, audio {r['audio']}, {r['seconds']}s)")
+                print(f"  rebuilt: {' '.join(r['rebuilt']) or '-'}")
+                print(f"  kept:    {' '.join(r['kept']) or '-'}" + (f"\n  shifted (kept, only moved in time): {' '.join(r['shifted'])}" if r["shifted"] else ""))
+                for g in r["gaps"]:
+                    print(f"  GAP {g['t0']:g}-{g['t1']:g}s: no shot covers it (a slate fills it; `promo check` timeline fails until the beats meet)")
+                if r["grid"].get("assumed"):
+                    print(f"  note: no tempo yet, cut against an assumed {ASSUMED_BPM:g} bpm (`--bpm N` records one; promo.yaml timeline.bpm wins)")
+                if r["end_s"] is not None and abs(r["duration_s"] - r["end_s"]) > 1e-3:
+                    print(f"  note: the animatic is {r['duration_s']:g}s, the timeline {r['end_s']:g}s")
+                for w in r["warnings"]:
+                    print(f"  note: {w}")
+                print(f"  clips {os.path.dirname(r['video'])}/shots/   strip {r['strip']}   meta {r['meta']}")
+            if a.json:
+                print(json.dumps(dict(ok=True, animatics=out), indent=1))
+            print("previz is a blockout, never footage: UI shots still need real recordings", file=sys.stderr)
+        elif a.cmd == "shots":
+            import yaml
+            print(yaml.safe_dump(shots_skeleton(ts[0], a.bpm), sort_keys=False, default_flow_style=None).rstrip())
         elif a.cmd == "open":
             for t in ts:
                 build(t, stills=a.stills)

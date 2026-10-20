@@ -262,13 +262,28 @@ def save(spec, clips):
     spec._footage = None
 
 
-def add(spec, path, cid, shots=(), commit="unknown", capture="unknown", framing="unknown", dpr=None, notes="", demo=False,
+def is_previz(path):
+    """A `promo previz` output (shots/<id>.previz.mp4, *.previz-animatic.mp4): never a clip of the product."""
+    return ".previz." in os.path.basename(str(path)) or ".previz-" in os.path.basename(str(path))
+
+
+def previz_entries(spec):
+    """Ids of manifest clips that point at previz files (`promo check` previz-not-footage FAILs them)."""
+    try:
+        return sorted(c["id"] for c in load(spec).values() if is_previz(c.get("path", "")))
+    except FootageError:
+        return []
+
+
+def add(spec, path, cid, shots=(),commit="unknown", capture="unknown", framing="unknown", dpr=None, notes="", demo=False,
         captured_at=None, resolution=None, fps=None, generated=None):
     """Append/update a clip: computes sha256, probes resolution/fps, writes manifest.yaml and refreshes the manifest.md table."""
     path = os.path.abspath(os.path.expanduser(path)) if not str(path).startswith("$") else path
     real = expand_env(path)
     if not os.path.exists(real):
         raise FootageError(f"file not found: {real}")
+    if is_previz(real):
+        raise FootageError(f"{real} is previz (a wireframe blockout for timing and camera), never footage: record the real screen instead")
     res, pfps = probe_media(real)
     if captured_at is None:
         captured_at = datetime.datetime.fromtimestamp(os.path.getmtime(real), datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")

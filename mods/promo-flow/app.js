@@ -1815,8 +1815,12 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     if (pzr && !pzr.error && stageIdx() <= STAGE_IDS.indexOf("confirm")) {
       const slot = h("div", { class: "pz-img", style: "position:relative" });
       lazyInto(slot, pzr, (u) => h("img", { src: u, alt: "Rough layout of story " + b.id + ": one wireframe per scene" }));
+      /* The animatic plays the same wireframes against the beat, inside the one plan review: no gate of its own. */
+      const pza = pz.animatic ? mref(pz.animatic) : null, vslot = pza && !pza.error ? h("div", { class: "pz-anim" }) : null;
+      if (vslot) lazyInto(vslot, pza, (u) => h("video", { src: u, controls: "", preload: "metadata", playsinline: "", style: "width:100%;display:block", "aria-label": "Animatic of story " + b.id + ": the wireframes played in time with a beat click" }));
       box.append(h("details", { class: "card pz-card fold", open: S.pzOpen != null ? (S.pzOpen ? "" : null) : stageIdx() <= STAGE_IDS.indexOf("assets") ? "" : null, ontoggle: (e) => { S.pzOpen = e.target.open; } },
-        h("summary", { text: "Rough layout" }), h("p", { class: "sub", text: "Wireframes of each scene: where the camera goes, where the app sits and where the words land. The boxes stand in for your app." }), slot));
+        h("summary", { text: "Rough layout" }), h("p", { class: "sub", text: "Wireframes of each scene: where the camera goes, where the app sits and where the words land. The boxes stand in for your app." }), slot,
+        vslot ? h("p", { class: "sub", text: "Animatic: the same wireframes in time with the beat. A timing and camera check, not footage." }) : null, vslot));
     } else if (d.stage === "previz") box.append(h("div", { class: "warnline live", role: "status" }, ic("clock"), h("span", { text: "The agent is planning camera moves, layout and timing as rough wireframes before any final pictures are made." })));
     const unmade = PF.previewRule(d, "storyboard-approved");
     if (unmade && !confirm) box.append(makeBanner(unmade.note.replace(/ Ask the agent.*$/, ""), "storyboard frames"));

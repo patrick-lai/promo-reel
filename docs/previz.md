@@ -59,9 +59,55 @@ it in headless Chrome (SwiftShader WebGL; set `PROMO_CHROME` to choose a binary)
 draws the same wireframes with Pillow (`render_pil`), which is also what the unit tests use. `templates/previz/sample/scene.json` is a
 hand-written scene to try the viewer on.
 
+## Animatic: the cut against the beat
+
+```bash
+promo previz animatic                 # shots/<id>.previz.mp4 per shot + <name>.previz-animatic.mp4 + animatic.previz.json
+promo previz animatic --shot 03       # re-render 03 even if unchanged
+promo previz animatic --audio none    # auto (the built music bed, else a beat click) | click | music | none
+promo previz shots                    # a promo.yaml shots: skeleton (beats + cam) for drafts
+```
+
+Each shot renders on its own (Pillow wireframes, the caption zone dashed, a minimap of the camera box, beat ticks with the downbeat
+long and a flash as each beat lands, `PREVIZ · NOT FOOTAGE`, `UI STAND-IN` on panels), keyed by a digest of that shot's own content,
+frame count, beat phase and the drawing code, never its start time. The run lists `rebuilt`, `kept` and `shifted` (only moved in time,
+clip kept). A gap between shots becomes a red GAP slate and a note; overlapping shots are refused before anything renders. The joined
+video is one re-encode cut to the exact frame count, so it runs as long as the timeline (a `promo new` spec: `timeline.beats`).
+
+Sources: everything previz blocks out, plus a `promo new` / hand-written `promo.yaml` shot list: `beats` give the timing, `cam` the
+camera box over the recording, captions sit in the style's caption zone, `text` / `lower_copy` / `title_bloom` are type boxes. A
+UI shot is a fullscreen stand-in (a cinema UI shot a floating panel with `cam` as its crop), `ui: false` and cards are plates. That
+scene is the spec's: change the shot in `promo.yaml` and re-run (`cam` / `panel` / `type` / `dur` nudges are refused there).
+
+Per style (`PREVIZ_DEFAULTS`; `previz: {animatic: true|false, projection: ortho|persp}` in promo.yaml, or `animatic --require on|off`
+for a flow without one, overrides):
+
+| style | animatic in the flow | default blockout |
+|---|---|---|
+| horizon, anime-mv | required at the previz step | 2D (ortho) |
+| cinematic-story | required at the previz step | 3D (persp: the panel floats in front of its backdrop) |
+| every other style | opt-in | 2D (ortho) |
+
+It plays in the Stage's Rough layout card, inside the one plan review (`assets-approved`): there is no new gate, and the scene hash the
+approval covers is the one the animatic was cut from. After approval the keyframes read it for timing and camera only: each start /
+end frame's prompt and to-do get the camera box (`previz.blocking`); nothing visual is handed on.
+
+**Four review passes** (watch with sound; fix, re-run, the run says what it rebuilt):
+1. Order: does the story read in this shot order with the sound off?
+2. Timing: does each cut land on a beat or bar, is any shot shorter than the style's minimum, are there gaps?
+3. Framing: does the camera box frame the thing the shot is about, does the move have a reason?
+4. Words: is every caption inside the caption zone, short enough, held for 2 s or more?
+
+Previz is never footage: file names carry `.previz.`, the MP4 comment and `animatic.previz.json` (`not_footage: true`) say so,
+`promo footage add` refuses them and `promo check` `previz-not-footage` FAILs a manifest that points at one.
+
+The idea of encoding a code scene frame by frame with its camera kept beside it comes from CodeVideoModel (Apache-2.0;
+`templates/previz/vendor/codevideomodel/`, `docs/codevideomodel-harvest.md`).
+
 ## Gates
 
-* `promo flow advance` from previz needs a built scene in step with its source and a strip of the current scene hash.
+* `promo flow advance` from previz needs a built scene in step with its source and a strip of the current scene hash, and for the
+  film styles an animatic of it.
 * `promo flow frames` (keyframes) is refused while the strip is missing or stale.
 * `promo build` / `promo preview` of a designed plan above the quick look needs the strip (`promo build --look` does not).
 * `promo check` `previz-ready`: PASS with a current strip; WARN on a 540p preview without one; FAIL above 540p, in a flow at keyframes or later.

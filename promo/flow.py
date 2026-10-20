@@ -424,6 +424,14 @@ def previz_checks(pd, st, strip_only=False, plain=False):
         else:
             left = "" if ok else {"missing": ": no strip yet, `promo previz strip`", "stale": ": the strip is of an older scene, `promo previz strip`"}.get(t["strip"], ": `promo previz strip`")
             R.append((ok, f"previz strip for {who} is current for its scene (look at it, nudge, re-strip)" + left))
+    if not strip_only and PZ.settings(pd)["animatic"]:          # the film-directing styles play the cut against the grid before anything is made
+        for t in PZ.targets(pd, st["picks"]):
+            who = f"story {t.key}" if t.key else "the plan"
+            ok = PZ.animatic_status(t) == "ok"
+            if plain:
+                R.append((ok, f"Animatic of {who} is up to date" if ok else f"Animatic of {who} still to make"))
+            else:
+                R.append((ok, f"previz animatic for {who} is current (`promo previz animatic" + (f" --story {t.key}" if t.key else "") + "`, then watch it)"))
     return R
 
 
@@ -1000,8 +1008,8 @@ def hints(pd, st):
         scripts=f"Read what this person said in earlier videos (`promo flow lessons`), then write {MIN_SCRIPTS}+ scripts with different angles (any length: `script add --file -` then `script append` for the next parts; the Stage reads them page by page); run the council (evals/council-flow.md, scripts lens set) 1-2 rounds and record with `promo flow council scripts`; `promo flow script add`. Then ask which to progress.",
         pick="Ask which script(s) to progress (multi-select); record the answer with `approve scripts-picked --picks ... --by NAME`.",
         storyboard="Per picked story build the board with `promo flow story` + `scene add` (or write flow/boards/<id>/board.json); a denser board on request (`promo flow density --every 5`); then `promo flow frames` MAKES every scene's START and END frame as a real image (a text slate does not count); for every app scene put in the REAL screen (`promo flow scout add`, or `scout miss --why`); `promo flow board`, SHOW the page. There is NO approval here: when the frames are real and no scene comment is open, `advance` at once and go on to the previz wireframes (the person can comment on any scene any time; answer each, then carry on).",
-        previz="Block the story out as wireframes before any keyframe or render: `promo previz build` (a Three.js scene from the storyboard, one shot per scene), `promo previz strip` and LOOK at the PNG: is the camera doing something on purpose, does each panel sit where the eye lands, is the type clear of the real UI, does every shot read? Nudge cheaply (`promo previz cam|panel|type|dur ... --strip`, seconds each) until it does, then `advance`. Wire boxes and supplied stills only: nothing here is product UI. A storyboard change needs `promo previz sync` (your nudges are kept) and a new strip.",
-        assets="List every asset (screenshots, pictures, recordings, music, voice, sfx) with `promo flow asset add`, then `promo flow asset make` so each has a real sample to look at or hear (a placeholder is not a preview), publish. This is the person's ONE plan review (storyboard + previz strip + assets + the go for drafts): they approve once or comment; after `approve assets-approved` run keyframes, confirm and drafts without asking again.",
+        previz="Block the story out as wireframes before any keyframe or render: `promo previz build` (a Three.js scene from the storyboard, one shot per scene), `promo previz strip` and LOOK at the PNG: is the camera doing something on purpose, does each panel sit where the eye lands, is the type clear of the real UI, does every shot read? Nudge cheaply (`promo previz cam|panel|type|dur ... --strip`, seconds each) until it does, then `advance`. Wire boxes and supplied stills only: nothing here is product UI. A storyboard change needs `promo previz sync` (your nudges are kept) and a new strip. Then `promo previz animatic` (required for the film styles, cheap for any): one clip per scene on the beat grid joined with a click track; WATCH it with sound and make the four passes (order, timing on the grid, framing and camera box, caption zone and length); a fix re-renders only the scenes it touched.",
+        assets="List every asset (screenshots, pictures, recordings, music, voice, sfx) with `promo flow asset add`, then `promo flow asset make` so each has a real sample to look at or hear (a placeholder is not a preview), publish. This is the person's ONE plan review (storyboard + previz strip and animatic + assets + the go for drafts): they approve once or comment; after `approve assets-approved` run keyframes, confirm and drafts without asking again.",
         keyframes="Make the remaining keyframes (`promo flow make`) and replace every mock and sample with the real file (`promo flow needs`), then advance.",
         confirm="No question here: the plan approval already was the go. `advance` and build the drafts.",
         drafts="Build the first drafts (promo build, draft encode), register with `promo flow draft add`, advance, SHOW them.",
@@ -1063,15 +1071,23 @@ def _gate(pd, st):
     return out
 
 
+def approved_blocking(pd, st):
+    """{story: {scene: blocking}} from the previz once the person approved the plan (keyframes on): timing and camera only, never visuals."""
+    if STAGES.index(st["stage"]) < STAGES.index("keyframes") or not gate_ok(pd, st, "assets-approved"):
+        return {}
+    return PZ.blocking(pd, st["picks"])
+
+
 def _previz(pd, st):
-    """[{story, strip}]: the wireframe strip of each picked story, which the plan approval covers, so the person sees it before approving."""
+    """[{story, strip, animatic}]: the wireframe strip and the animatic (when made) of each picked story, which the plan approval covers, so
+    the person sees them before approving."""
     if STAGES.index(st["stage"]) < STAGES.index("previz"):
         return []
     try:
         ts = PZ.targets(pd, st["picks"])
     except PZ.PrevizError:          # nothing blocked out yet: no strip to show
         return []
-    return [dict(story=t.key, strip=_media(t.strip_png)) for t in ts]
+    return [dict(story=t.key, strip=_media(t.strip_png), animatic=_media(PZ.animatic_paths(t)["video"]) if PZ.animatic_status(t) == "ok" else None) for t in ts]
 
 
 def _media(path):
@@ -1464,11 +1480,13 @@ def snapshot(pd):
     gate = _gate(pd, st)
     nd = needs(pd, st)
     to_make = []
+    blk = approved_blocking(pd, st)
     for n in nd:
         if n["kind"] == "keyframe":
             label, at = _keyframe_label(bds, n)
+            b = (blk.get(n["story"]) or {}).get(n["scene"])
             to_make.append(dict(kind="keyframe", id=f"{n['story']}/{n['scene']}/{n['which']}", story=n["story"], scene=n["scene"], which=n["which"],
-                                label=label, at=at, detail=n.get("prompt") or ""))
+                                label=label, at=at, detail=n.get("prompt") or "", blocking=PZ.blocking_text(b, n["which"]) if b else ""))
         elif n["kind"] == "asset":
             to_make.append(dict(kind="asset", id=n["id"], label=n["id"], detail=n.get("how") or "", asset_kind=n.get("asset_kind"), source=n.get("source")))
     used = len(cycle_rounds(st))
@@ -1790,7 +1808,7 @@ def make_frames(pd, story, scene, which, force, provider, jobs, limit=None, live
         sid, sc, w = t[0].split("/", 2)
         return dict(id=t[0], label=_keyframe_label(bds, dict(story=sid, scene=sc, which=w))[0], story=sid, scene=sc)
     made, failed = _tracked(pd, "frames", "Generating storyboard images", jobs, live, meta,
-                            lambda start: PV.make_frames(bds, look, scene, which, force, provider, jobs, limit, job=start),
+                            lambda start: PV.make_frames(bds, look, scene, which, force, provider, jobs, limit, job=start, blocking=approved_blocking(pd, st)),
                             f"promo flow --project {shlex.quote(os.path.abspath(pd))} frames")
     _note(pd, f"Drew {len(made)} storyboard {'frame' if len(made) == 1 else 'frames'}" + (f", {len(failed)} failed" if failed else ""), "render", True)
     return _report("frames", made, failed)
