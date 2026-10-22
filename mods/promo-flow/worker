@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Promo-flow worker (protocol 3). Stdio NDJSON. No sockets unless ``--http``.
 
-The pane bridge sends ``{"type":"call","id","method","params"}``. This process answers
-``{"type":"progress","id","pct","note"}`` and ``{"type":"result","id","ok","value"|"error"}``.
+The host runs a pane job as ``{"type":"job.start","job","method","params","thread_id","data_dir"}``
+and ``{"type":"job.cancel","job"}``. This process answers ``{"type":"job.progress","job","pct","note"}``
+(pct 0–100) and ``{"type":"job.result","job","ok",value|error}``. Each job is its own thread, so stdin
+keeps being read and cancel arrives while work is in flight. On cancel the job stops at the next step
+and emits nothing; the host reports ``host.cancelled``.
 
-Today's Commission-ai host speaks a different protocol (``hello`` / ``event`` in, ``reply`` out).
-Those are answered so a host that starts this worker does not mark it failed. A pane ``call``
-is not routed by that host yet; see README "Host bridge gaps".
+``hello`` / ``event`` / ``reply`` and the older pane ``call`` shape are still answered.
 
 A host ``python3`` often cannot ``import yaml``. Before any call is read, this process
 ``os.execv``s ``$PROMO_PYTHON``, else the interpreter on the ``promo`` shebang, else
@@ -23,6 +24,7 @@ import json
 import os
 import shutil
 import sys
+import threading
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if os.path.isdir(os.path.join(ROOT, "promo")) and ROOT not in sys.path:
@@ -145,8 +147,193 @@ def use_promo_python(argv=None):
     _PROMO_PYTHON_MISSING = True
 
 
+# voices.call reports fractions. The host's job.progress pct is 0–100.
+# Long jobs heartbeat so the host's 120 s idle timeout does not fire (deadline is 15 min).
+HEARTBEAT_S = 20
+_LONG_METHODS = frozenset({
+    "voices.sample",
+    "voices.render",
+    "voices.model.download",
+    "voices.save",
+})
+_emit_lock = threading.Lock()
+_jobs_lock = threading.Lock()
+_jobs = {}
+
+
+class _Cancelled(BaseException):
+    """Host sent job.cancel. BaseException so ``except Exception`` inside a library does not turn it into a result."""
+
+
+class _Job:
+    def __init__(self, job, method, params, thread_id, data_dir):
+        self.job = job
+        self.method = method
+        self.params = params if isinstance(params, dict) else {}
+        self.thread_id = thread_id
+        self.data_dir = data_dir
+        self.cancel = threading.Event()
+        self.stop = threading.Event()
+        self.lock = threading.Lock()
+        self.done = False
+        self.pct = 0
+        self.note = "Working"
+
+
 def emit(obj):
-    print(json.dumps(obj, default=str), flush=True)
+    line = json.dumps(obj, default=str)
+    with _emit_lock:
+        sys.stdout.write(line + "\n")
+        sys.stdout.flush()
+
+
+def _pct(pct):
+    try:
+        n = float(pct)
+    except (TypeError, ValueError):
+        return 0
+    if 0 <= n <= 1:
+        n *= 100.0
+    if n < 0:
+        n = 0.0
+    if n > 100:
+        n = 100.0
+    return int(round(n))
+
+
+def _note(note):
+    if note is None or note == "":
+        return "Working"
+    return str(note)[:300]
+
+
+def _emit_progress(job, pct, note, scaled=False):
+    """``scaled`` is for the heartbeat, which repeats an already converted 0–100 pct.
+
+    A stored 1 means one percent. Passing it through ``_pct`` again would treat 1 as 100%.
+    """
+    with job.lock:
+        if job.cancel.is_set() or job.done:
+            return
+        if scaled:
+            try:
+                n = int(pct)
+            except (TypeError, ValueError):
+                n = 0
+            job.pct = 0 if n < 0 else 100 if n > 100 else n
+        else:
+            job.pct = _pct(pct)
+        job.note = _note(note)
+        emit({"type": "job.progress", "job": job.job, "pct": job.pct, "note": job.note})
+
+
+def _emit_result(job, ok, value=None, error=None):
+    with job.lock:
+        if job.cancel.is_set() or job.done:
+            return
+        job.done = True
+        job.stop.set()
+        body = {"type": "job.result", "job": job.job, "ok": bool(ok)}
+        if ok:
+            body["value"] = value
+        else:
+            body["error"] = error
+        emit(body)
+
+
+def _heartbeat(job):
+    """Progress at least every HEARTBEAT_S while a long call blocks. ``stop`` wakes this on cancel or finish."""
+    while True:
+        if job.stop.wait(HEARTBEAT_S):
+            return
+        _emit_progress(job, job.pct, job.note, scaled=True)
+
+
+def _download_weights(progress, job):
+    """Same download as ``voices.model.download``, with a cancel check between weight files."""
+    if _PROMO_PYTHON_MISSING:
+        raise _EngineMissing()
+    V = _voices()
+    try:
+        from huggingface_hub import hf_hub_download
+    except ImportError as e:
+        raise V.VoicesError(
+            "voices.engine_missing",
+            "huggingface_hub is not installed (it comes with chatterbox-tts). Nothing was downloaded.",
+        ) from e
+    dest = V.model_dir()
+    os.makedirs(dest, exist_ok=True)
+    names = tuple(V.WEIGHTS)
+    n = max(1, len(names))
+    for i, name in enumerate(names):
+        if job.cancel.is_set():
+            raise _Cancelled()
+        progress(i / n, "downloading " + name)
+        hf_hub_download(repo_id=V.MODEL_REPO, filename=name, local_dir=dest)
+    if job.cancel.is_set():
+        raise _Cancelled()
+    progress(1, "done")
+    return V.model_status()
+
+
+def _run_job(job):
+    try:
+        if job.cancel.is_set():
+            return
+        if job.method in _LONG_METHODS:
+            threading.Thread(target=_heartbeat, args=(job,), name="job-beat-" + job.job, daemon=True).start()
+            _emit_progress(job, 0, "Working")
+        if job.cancel.is_set():
+            return
+
+        def progress(pct, note):
+            if job.cancel.is_set():
+                raise _Cancelled()
+            _emit_progress(job, pct, note)
+
+        if job.method == "voices.model.download" and job.params.get("yes"):
+            value = _download_weights(progress, job)
+        else:
+            value = handle(job.method, job.params, progress)
+        if job.cancel.is_set():
+            return
+        _emit_result(job, True, value=value)
+    except _Cancelled:
+        return
+    except Exception as exc:  # noqa: BLE001  (the host always gets one result, unless the job was cancelled)
+        if job.cancel.is_set():
+            return
+        code = getattr(exc, "code", None) or "voices.error"
+        message = getattr(exc, "message", None) or str(exc)
+        _emit_result(job, False, error={"code": str(code), "message": str(message)})
+    finally:
+        with job.lock:
+            job.done = True
+            job.stop.set()
+        with _jobs_lock:
+            if _jobs.get(job.job) is job:
+                _jobs.pop(job.job, None)
+
+
+def start_job(msg):
+    job_id = msg.get("job")
+    if not isinstance(job_id, str) or not job_id:
+        return
+    job = _Job(job_id, msg.get("method"), msg.get("params") or {}, msg.get("thread_id"), msg.get("data_dir"))
+    with _jobs_lock:
+        if job_id in _jobs:
+            return
+        _jobs[job_id] = job
+    threading.Thread(target=_run_job, args=(job,), name="job-" + job_id, daemon=True).start()
+
+
+def cancel_job(job_id):
+    with _jobs_lock:
+        job = _jobs.get(job_id)
+    if not job:
+        return
+    job.cancel.set()
+    job.stop.set()
 
 
 def _voices():
@@ -180,6 +367,12 @@ def on_line(msg):
         return
     if kind == "event":
         emit({"type": "reply", "id": msg.get("id"), "publish": []})
+        return
+    if kind == "job.start":
+        start_job(msg)
+        return
+    if kind == "job.cancel":
+        cancel_job(msg.get("job"))
         return
     if kind == "call":
         answer(msg.get("id"), msg.get("method"), msg.get("params") or {})

@@ -1,18 +1,40 @@
 "use strict";
-/* Promo Reel home (Start / Voices / Projects). Talks to the worker through bridge `call` messages.
-   If the host never advertises `call`, the pane says it needs a Commission-ai update and does not probe. */
+/* Promo Reel home (Start / Voices / Projects).
+   Pane -> host: {type:"call", id, method, params} and {type:"cancel", id}.
+   Host -> pane: accepted, progress {pct 0..100, note}, result {ok, value|error}.
+   Jobs run with or without a thread. Agent actions stay disabled when thread_id is null (see app.js). */
 window.PFVoices = (function () {
   const MOODS = ["neutral", "excited", "calm", "warm"];
   const LABEL = { neutral: "Neutral", excited: "Excited", calm: "Calm", warm: "Warm" };
   const TITLES = ["Intro", "The idea", "How it works", "The picture", "Wrap up"];
   const SAMPLE = "Commission a feature tonight, and wake up to a reviewed pull request.";
+  const LONG = { "voices.sample": 1, "voices.save": 1, "voices.model.download": 1, "voices.render": 1 };
+  /* Host hard deadline is 15 min. This only unblocks the pane if that result never arrives. */
+  const JOB_MS = 15 * 60 * 1000 + 15000;
+  const HOST_MSG = {
+    "host.no_worker": "The voice worker isn't running. Turn Promo flow off and on in Settings, then try again.",
+    "host.idle_timeout": "That paused too long without an update, so it was stopped. Try again.",
+    "host.deadline": "That ran longer than 15 minutes and was stopped.",
+    "host.cancelled": "Cancelled.",
+    "host.worker_exited": "The voice worker stopped before it finished. Try again.",
+    "host.too_many_jobs": "Four jobs are already running. Wait for one to finish, then try again.",
+    "host.path_escape": "That file isn't in the folder the host allows.",
+    "host.file_too_large": "That file is larger than 100 MB.",
+    "host.file_not_found": "That audio file isn't in the host data folder.",
+    "network.unreachable": "Can't reach the app right now. Try again once it's back.",
+  };
+  const MIC_NOTE = "If no microphone prompt appears, the Mac app still needs microphone permission.";
+  const AUDIO_NOTE = "A long recording may be too big to send in one message. Audio files in the host data folder come in a later update.";
+  const KICKOFF_NOTE = "Opening a thread with this voice comes in a later update.";
   let api = null;
+  let alive = true;
   let seq = 0;
   const calls = new Map();
   let meterTimer = 0;
   let live = null;
   const state = {
     tab: "start", booted: false, voices: null, script: null, model: null, err: "", note: "", busy: "",
+    pct: null, long: false,
     brief: "", voice: "", flow: null, arm: null, renaming: null, renameText: "",
     sampleText: SAMPLE, mood: "excited", strength: 65, audio: null, projects: null,
   };
@@ -20,17 +42,62 @@ window.PFVoices = (function () {
   const h = (...a) => api.h(...a);
   const ic = (n) => (api.ic ? api.ic(n) : null);
 
+  function explain(e) {
+    if (!e) return "Something went wrong.";
+    if (typeof e === "string") return e;
+    const code = e.code || "";
+    if (Object.prototype.hasOwnProperty.call(HOST_MSG, code)) return HOST_MSG[code];
+    return e.message || code || "Something went wrong.";
+  }
+
+  function anyLong() {
+    for (const c of calls.values()) if (c.long) return true;
+    return false;
+  }
+
   function call(method, params, opts) {
     opts = opts || {};
+    const long = !!(opts.long || opts.slow || LONG[method]);
     return new Promise((resolve, reject) => {
       const id = "v" + ++seq;
       const timer = setTimeout(() => {
+        const c = calls.get(id);
+        if (!c) return;
         calls.delete(id);
-        reject({ code: "voices.timeout", message: "No answer from the worker." });
-      }, opts.slow ? 600000 : 20000);
-      calls.set(id, { resolve, reject, timer, onProgress: opts.onProgress || null });
+        state.long = anyLong();
+        if (api && api.post) api.post({ type: "cancel", id });
+        reject({ code: "host.deadline", message: HOST_MSG["host.deadline"] });
+      }, JOB_MS);
+      calls.set(id, { resolve, reject, timer, long, onProgress: opts.onProgress || null });
+      if (long) {
+        state.long = true;
+        if (state.pct == null) state.pct = 0;
+        if (!state.busy) state.busy = "Working…";
+      }
       api.post({ type: "call", id, method, params: params || {} });
     });
+  }
+
+  function cancelLong() {
+    let id = null;
+    for (const [k, c] of calls) if (c.long) id = k;
+    if (!id || !api) return;
+    state.busy = "Cancelling…";
+    const node = api.content && api.content.querySelector("[data-reel-busy]");
+    if (node) node.textContent = progressLabel();
+    api.post({ type: "cancel", id });
+  }
+
+  function progressLabel() {
+    const pct = typeof state.pct === "number" ? " " + Math.round(Math.max(0, Math.min(100, state.pct))) + "%" : "";
+    return (state.busy || "Working…") + pct;
+  }
+
+  function onAccepted(m) {
+    const c = m && calls.get(m.id);
+    if (!c) return false;
+    c.job = m.job;
+    return true;
   }
 
   function onResult(m) {
@@ -38,6 +105,8 @@ window.PFVoices = (function () {
     const c = calls.get(m.id);
     clearTimeout(c.timer);
     calls.delete(m.id);
+    state.long = anyLong();
+    if (!state.long) state.pct = null;
     if (m.ok) c.resolve(m.value);
     else c.reject(m.error || { message: "That didn't go through." });
     return true;
@@ -45,15 +114,23 @@ window.PFVoices = (function () {
 
   function onProgress(m) {
     const c = m && calls.get(m.id);
-    if (c && c.onProgress) c.onProgress(m);
-    if (!api || !api.content || !m) return;
+    if (!c) return;
+    if (typeof m.pct === "number" && isFinite(m.pct)) state.pct = Math.max(0, Math.min(100, m.pct));
+    if (m.note) state.busy = m.note;
+    if (c.onProgress) c.onProgress(m);
+    if (!alive || !api || !api.content) return;
     const node = api.content.querySelector("[data-reel-busy]");
-    if (node && m.note) node.textContent = m.note;
+    if (node) node.textContent = progressLabel();
+    const bar = api.content.querySelector("[data-reel-jobbar]");
+    if (bar && state.pct != null) bar.style.width = Math.max(0, Math.min(100, state.pct)) + "%";
   }
 
   function fail(e) {
+    if (!e || e.silent || !alive) return;
     state.busy = "";
-    state.err = (e && (e.message || e.code)) || "Something went wrong.";
+    if (!anyLong()) { state.pct = null; state.long = false; }
+    if (e.code === "host.cancelled") { state.err = ""; state.note = "Cancelled."; }
+    else { state.note = ""; state.err = explain(e); }
     paint();
   }
 
@@ -117,7 +194,7 @@ window.PFVoices = (function () {
     return { blob, dur: pcm.length / (sr || 1), url: URL.createObjectURL(blob) };
   }
 
-  function stop() {
+  function haltPlayback() {
     if (state.audio) { state.audio.pause(); state.audio = null; }
     stopLive();
   }
@@ -133,7 +210,7 @@ window.PFVoices = (function () {
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (e) {
-      state.err = e && e.name === "NotAllowedError" ? "Microphone access was denied." : "No microphone is available.";
+      state.err = e && e.name === "NotAllowedError" ? "Microphone access was denied. " + MIC_NOTE : "No microphone is available.";
       paint();
       return;
     }
@@ -225,6 +302,8 @@ window.PFVoices = (function () {
         if (ready || state.busy) return;
         state.err = "";
         state.busy = "Downloading the model (" + size + ")…";
+        state.pct = 0;
+        state.long = true;
         paint();
         call("voices.model.download", { yes: true }, { slow: true }).then((st) => {
           state.model = st; state.busy = ""; paint();
@@ -243,10 +322,16 @@ window.PFVoices = (function () {
   }
 
   function banner() {
+    const job = state.busy ? h("div", { class: "reel-card" },
+      h("div", { class: "reel-row" },
+        h("p", { class: "reel-dim reel-grow", "data-reel-busy": "1", text: progressLabel() }),
+        state.long ? h("button", { type: "button", class: "btn ghost sm", onclick: cancelLong }, "Cancel") : null),
+      state.pct != null ? h("div", { class: "reel-meter", role: "progressbar", "aria-valuemin": "0", "aria-valuemax": "100", "aria-valuenow": String(Math.round(state.pct || 0)), "aria-label": state.busy || "Working" },
+        h("i", { "data-reel-jobbar": "1", style: "width:" + Math.max(0, Math.min(100, state.pct || 0)) + "%" })) : null) : null;
     return [
       state.err ? h("p", { class: "reel-err", role: "alert", text: state.err }) : null,
       state.note ? h("p", { class: "reel-note", text: state.note }) : null,
-      state.busy ? h("p", { class: "reel-dim", "data-reel-busy": "1", text: state.busy }) : null,
+      job,
     ];
   }
 
@@ -266,6 +351,7 @@ window.PFVoices = (function () {
         sel,
         chosen && chosen.sample_b64 ? h("button", { type: "button", class: "icon-btn", "aria-label": "Hear it", onclick: () => playUrl("data:audio/wav;base64," + chosen.sample_b64) }, ic("play")) : null,
         h("button", { type: "button", class: "btn primary", onclick: startPromo }, "Start")),
+      h("p", { class: "reel-dim", text: KICKOFF_NOTE }),
       h("p", { class: "reel-dim", text: "Moods are picked per line later. You can change the voice any time." }),
       h("p", { class: "reel-kicker", text: "Before you start (optional)" }),
       h("button", { type: "button", class: "reel-card reel-link", onclick: beginRecord },
@@ -276,7 +362,7 @@ window.PFVoices = (function () {
         ic("film"),
         h("span", {}, h("b", { text: "Carry on a past promo" }), h("span", { class: "reel-dim", text: "Same picker as /promo-resume." })),
         h("span", { class: "reel-go", text: "Projects" })),
-      h("p", { class: "reel-dim", text: "No promo session is running. Nothing here starts an agent until you press Start." }));
+      h("p", { class: "reel-dim", text: "No promo session is running." }));
   }
 
   function startPromo() {
@@ -284,11 +370,13 @@ window.PFVoices = (function () {
     if (!brief) { state.err = "Say what the video is for."; state.note = ""; paint(); return; }
     state.err = "";
     state.note = "";
-    state.busy = "Handing this to the host…";
+    state.busy = "Checking…";
     paint();
     call("promo.start", { brief, voice: state.voice || null }).then((r) => {
       state.busy = "";
-      state.note = "Handed to the host. It opens a new thread with this brief" + (r && r.voice ? " (voice " + r.voice + ")." : ".");
+      state.note = r && r.voice
+        ? "Checked, with voice " + r.voice + ". " + KICKOFF_NOTE
+        : "Checked. Opening a thread comes in a later update.";
       paint();
     }).catch(fail);
   }
@@ -300,6 +388,7 @@ window.PFVoices = (function () {
       h("button", { type: "button", class: "btn primary", onclick: beginRecord }, "Record my voice"),
       h("p", { class: "reel-dim", text: "You'll need: a quiet room · any mic (AirPods are fine) · 2 minutes" }),
       h("p", { class: "reel-dim", text: "Recordings and voices stay on this Mac. Model: Chatterbox (MIT)." }),
+      h("p", { class: "reel-dim", text: MIC_NOTE }),
       modelButton());
   }
 
@@ -316,6 +405,8 @@ window.PFVoices = (function () {
   function voiceCard(v) {
     const hear = () => {
       state.busy = "Making a sample…";
+      state.pct = 0;
+      state.long = true;
       state.err = "";
       paint();
       call("voices.sample", { id: v.id, text: state.sampleText || SAMPLE, emotion: state.mood, intensity: state.strength / 100 }, { slow: true }).then((r) => {
@@ -379,10 +470,11 @@ window.PFVoices = (function () {
       return h("div", { class: "reel-stack" },
         h("div", { class: "reel-row" },
           h("div", {}, h("div", { class: "reel-dim", text: "New voice · Step 1 of 2" }), h("h2", { class: "reel-h", text: "Read each part out loud" })),
-          h("button", { type: "button", class: "btn ghost", onclick: () => { stop(); state.flow = null; paint(); } }, "Cancel")),
+          h("button", { type: "button", class: "btn ghost", onclick: () => { haltPlayback(); state.flow = null; paint(); } }, "Cancel")),
         h("div", { class: "reel-card" },
           h("div", { class: "reel-dim", text: "Part " + (part + 1) + " of " + (paras.length || 5) + " · " + title }),
           h("p", { class: "reel-read", text: paras[part] || "Loading the script…" }),
+          h("p", { class: "reel-dim", text: MIC_NOTE }),
           h("div", { class: "reel-row" },
             h("button", { type: "button", class: "reel-rec" + (live ? " on" : ""), "aria-label": live ? "Stop" : "Record", onclick: () => togglePart() }, live ? ic("pause") : null),
             h("div", {},
@@ -414,7 +506,7 @@ window.PFVoices = (function () {
       h("label", { class: "reel-dim", text: "Name" }),
       h("input", { class: "reel-inline", placeholder: "My voice", value: f.name, "aria-label": "Voice name", oninput: (e) => { f.name = e.target.value; } }),
       h("button", { type: "button", class: "btn primary", disabled: !canSave, onclick: saveFlow }, canSave ? "Save voice" : "Need 30 s and all four moods"),
-      h("p", { class: "reel-dim", text: "Saving keeps the recording on this Mac. A long take may be too big for the host's message limit until Commission-ai can write the file locally." }));
+      h("p", { class: "reel-dim", text: AUDIO_NOTE }));
   }
 
   function togglePart() {
@@ -447,6 +539,8 @@ window.PFVoices = (function () {
     if (!f) return;
     keepLive();
     state.busy = "Saving…";
+    state.pct = 0;
+    state.long = true;
     state.err = "";
     paint();
     try {
@@ -483,24 +577,35 @@ window.PFVoices = (function () {
   }
 
   function paint() {
-    if (!api || !api.content) return;
+    if (!alive || !api || !api.content) return;
     const body = state.tab === "start" ? viewStart() : state.tab === "projects" ? viewProjects() : viewVoices();
     api.content.replaceChildren(h("div", { class: "reel" }, tabs(), banner(), body));
     tickMeter();
   }
 
-  function paintNeed() {
-    api.content.replaceChildren(h("div", { class: "reel" },
-      h("p", { class: "reel-need", text: "needs Commission-ai update" })));
-  }
-
   function render(opts) {
+    alive = true;
     api = opts;
     state.projects = opts.projects || null;
-    if (!opts.callOk) { paintNeed(); return; }
     ensure();
     paint();
   }
 
-  return { render, onResult, onProgress, stop };
+  function stop() {
+    alive = false;
+    haltPlayback();
+    const post = api && api.post;
+    for (const [id, c] of [...calls]) {
+      clearTimeout(c.timer);
+      if (post) post({ type: "cancel", id });
+      c.reject({ code: "host.cancelled", silent: true });
+    }
+    calls.clear();
+    state.booted = false;
+    state.busy = "";
+    state.pct = null;
+    state.long = false;
+  }
+
+  return { render, onAccepted, onResult, onProgress, stop };
 })();
