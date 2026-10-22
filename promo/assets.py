@@ -62,7 +62,12 @@ def referenced_ids(spec):
     for name, e in (spec.raw.get("sfx", {}).get("library") or {}).items():
         if e.get("asset"):
             ids.append(e["asset"])
-    for _, v in voice_list(spec):                 # a dialogue's per-host / per-line voices (say, voicestudio) name their licence entry
+    for _, v in voice_list(spec):                 # a dialogue's per-host / per-line voices (say, voicestudio, clone) name their licence entry
+        if v.get("engine") == "clone":
+            aid = v.get("asset") or ("vo-" + str(v.get("voice") or ""))
+            if aid and aid not in ids:
+                ids.append(aid)
+            continue
         if v.get("asset") and v["asset"] not in ids:
             ids.append(v["asset"])
     return ids
@@ -88,6 +93,19 @@ def voice_problems(spec, manifest):
         seen.add(key)
         if eng == "kokoro":
             continue                               # vo.model_asset / voices_asset: referenced_ids checks them, `promo vo` needs them
+        if eng == "clone":
+            from . import voices as V
+            try:
+                V.require(v.get("voice"))
+            except V.VoicesError as e:
+                out.append(f"vo line {lid}: {e.code}: {e.message}")
+            aid = v.get("asset") or ("vo-" + str(v.get("voice") or ""))
+            a = manifest.get(aid) or {}
+            if a:
+                gen = a.get("generated") or {}
+                if gen.get("likeness") != "own" or not str(gen.get("consent") or "").strip():
+                    out.append(f"vo line {lid}: clone asset {aid} needs generated.likeness own and generated.consent")
+            continue                               # the entry itself is vo-<id> (or `asset:`); referenced_ids checks it is listed
         if not v.get("asset"):
             out.append(f"vo line {lid}: engine {eng} needs `asset:` in its voice (an assets.yaml entry of kind vo_model with the licence of that voice)")
     return out

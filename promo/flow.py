@@ -12,7 +12,7 @@ for the host's question widget. Inside CommissionAI the question is carried by t
 its turn: a blocking question widget there holds the thread and the person's click can never reach it. `promo flow board` writes the dashboard
 page (stepper, scripts, storyboards, assets, drafts, rounds) to show.
 
-    promo flow init <name> --intent TEXT          start (also creates the locked brief with the user's exact words)
+    promo flow init <name> --intent TEXT [--voice ID]   start (also creates the locked brief; --voice sets vo.engine clone + vo.voice)
     promo flow status [--json]                    where we are, what blocks, what to ask the person next
     promo flow discover --style TEXT [--ref URL ...] | --no-refs
     promo flow script add ID --title T --logline L (--file F | --file - | --text T) ;  promo flow script append ID --file F      a script of any length, in parts
@@ -252,10 +252,34 @@ def _new_project_dir(name, intent):
     return pd
 
 
-def init(pd, intent, force=False):
+def _apply_clone_voice(pd, voice):
+    """Merge ``vo.engine: clone`` and ``vo.voice`` into the project's promo.yaml, keeping every other key (including lines)."""
+    import yaml
+    path = os.path.join(pd, "promo.yaml")
+    raw = {}
+    if os.path.isfile(path):
+        with open(path) as f:
+            raw = yaml.safe_load(f) or {}
+    if not isinstance(raw, dict):
+        raw = {}
+    vo = dict(raw.get("vo") or {})
+    vo["engine"] = "clone"
+    vo["voice"] = voice
+    raw["vo"] = vo
+    with open(path, "w") as f:
+        yaml.safe_dump(raw, f, sort_keys=False, allow_unicode=True)
+
+
+def init(pd, intent, force=False, voice=None):
     p = os.path.join(fdir(pd), "flow.json")
     if os.path.exists(p) and not force:
         raise FlowError(f"{p} exists (use --force)")
+    if voice:
+        from . import voices as V
+        try:
+            V.require(voice)
+        except V.VoicesError as e:
+            raise FlowError(f"{e.code}: {e.message}") from e
     if not intent.strip():
         raise FlowError("--intent is required: the person's request, pasted exactly")
     os.makedirs(pd, exist_ok=True)
@@ -267,6 +291,8 @@ def init(pd, intent, force=False):
     log(st, "init")
     save(pd, st)
     home.remember(pd)
+    if voice:
+        _apply_clone_voice(pd, voice)
     return st
 
 
@@ -2163,6 +2189,7 @@ def main(argv=None):
         p.add_argument("--project", type=_resolve, default=argparse.SUPPRESS)
         return p
     p = P("init"); p.add_argument("name", nargs="?"); p.add_argument("--intent", required=True); p.add_argument("--force", action="store_true")
+    p.add_argument("--voice", default=None, help="clone voice id (`promo voices list`): writes vo.engine clone and vo.voice into promo.yaml")
     p = P("status"); p.add_argument("--json", action="store_true")
     P("advance")
     P("needs").add_argument("--json", action="store_true")
@@ -2253,7 +2280,7 @@ def main(argv=None):
         if a.cmd == "init" and not a.project:
             pd = a.name if a.name and os.sep in a.name else _new_project_dir(a.name, a.intent)
         if a.cmd == "init":
-            init(pd, a.intent, a.force)
+            init(pd, a.intent, a.force, voice=getattr(a, "voice", None))
             print(f"flow started in {pd}/flow ; brief locked with the exact words.\n" + status_text(status(pd)))
         elif a.cmd == "status":
             s = status(pd)

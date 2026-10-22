@@ -37,7 +37,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     notes: {}, noteSeq: 0, player: null, dropCk: null,
     booted: false, held: false, heldTimer: 0, builtAt: 0, previewUntil: 0, version: null, summary: {}, doc: {}, pending: null, offline: false, readonly: false,
     tab: null, userTab: false, stage: null, picks: new Set(), style: null, ownStyle: "", boardIdx: 0, draftSel: null, earlier: false, filter: null, checksOpen: false, assumeOpen: false,
-    ref: "", cast: {}, castOpen: false, settingsOpen: false, setSel: null, setText: "", compose: false, composeKind: null, reader: null, sbView: "scenes", cmtPending: 0, cmtTotal: 0, cmtShown: 0, cmtChip: null, docGroup: null, docQ: "", docBase: null, docOpened: new Set(), reqHint: "", sending: null, justSent: null, stall: false, err: "", stale: null, stash: null, updated: false, stepsOpen: false, lastAction: null, title: "", lastBadge: "", noState: false,
+    ref: "", cast: {}, castOpen: false, settingsOpen: false, setSel: null, setText: "", compose: false, composeKind: null, reader: null, sbView: "scenes", cmtPending: 0, cmtTotal: 0, cmtShown: 0, cmtChip: null, docGroup: null, docQ: "", docBase: null, docOpened: new Set(), reqHint: "", sending: null, justSent: null, stall: false, err: "", stale: null, stash: null, updated: false, stepsOpen: false, lastAction: null, title: "", lastBadge: "", noState: false, persistent: false, callOk: false, reel: false,
   };
 
   /* ---------------- tiny DOM helper ---------------- */
@@ -253,6 +253,8 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   const hasDoc = () => Object.keys(S.doc || {}).length > 0;
   const readable = () => !hasDoc() || (typeof S.doc.stage === "string" && Array.isArray(S.doc.steps));
   const isStarting = () => !hasDoc();
+  /* Promo Reel home: the host asked for a stage that stays up with no thread (thread_id null or stage_persistent). A live flow still wins. */
+  const homeMode = () => S.persistent === true && !(hasDoc() && typeof S.doc.stage === "string" && S.doc.stage);
   const hasSettings = () => !!(S.doc && S.doc.settings && S.doc.settings.output);
   /* Reaching the first draft is a milestone: the plan (style, scripts, storyboard, assets) is behind the person, so from then on the stepper is the
      production phase alone, Draft, Review, Final, and the planning tabs give way to the editor. Scripts stay one click away in the editor's bin. */
@@ -2892,6 +2894,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     render();
   }
   function onResult(m) {
+    if (window.PFVoices && window.PFVoices.onResult(m)) return;
     if (S.fileSend && S.fileSend.id === m.id) return onFilesResult(m);
     if (S.editSend && S.editSend.id === m.id) return onEditFilesResult(m);
     if (!m.ok && S.sending && S.sending.id === m.id && S.sending.name === "edit" && S.editor) S.editor.api.failed();
@@ -2924,8 +2927,41 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     if (mode === "arrive") S.introTimer = setTimeout(() => setIntro("off"), INTRO_MS);
   }
 
+  function renderReel() {
+    el.gate.hidden = true;
+    el.stepper.hidden = true;
+    el.tabs.hidden = true;
+    el.job.hidden = true;
+    el.working.hidden = true;
+    el.banners.replaceChildren();
+    el.stepsList.hidden = true;
+    el.badge.hidden = true;
+    el.stepsBtn.hidden = true;
+    el.settingsBtn.hidden = true;
+    el.stageName.textContent = "Promo Reel";
+    el.stepNo.textContent = "Runs on this Mac";
+    el.stateLine.textContent = S.callOk ? "Recordings and voices stay on this Mac." : "needs Commission-ai update";
+    if (window.PFVoices) window.PFVoices.render({ content: el.content, h, ic, post, callOk: S.callOk, projects: (S.doc && Array.isArray(S.doc.projects)) ? S.doc.projects : null });
+  }
+
   function render(force) {
     if (!S.booted) return;
+    if (homeMode()) {
+      S.reel = true;
+      el.app.dataset.boot = "ready";
+      el.app.dataset.reel = "1";
+      renderReel();
+      return;
+    }
+    if (S.reel) {
+      S.reel = false;
+      delete el.app.dataset.reel;
+      lastSig = "";
+      el.badge.hidden = false;
+      el.stepsBtn.hidden = false;
+      el.stepper.hidden = false;
+      el.gate.hidden = false;
+    }
     el.app.dataset.boot = "ready";
     if (isStarting() && !S.noState) setIntro("wait");
     else if (S.introMode === "wait") setIntro("arrive");
@@ -3007,15 +3043,22 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   function receive(m) {
     if (!m || typeof m !== "object") return;
     switch (m.type) {
-      case "init": setTheme(!!m.dark, m.tokens, !!m.reduceMotion); break;
+      case "init":
+        setTheme(!!m.dark, m.tokens, !!m.reduceMotion);
+        S.persistent = m.thread_id === null || m.stage_persistent === true;
+        S.callOk = m.call === true || (Array.isArray(m.capabilities) && m.capabilities.indexOf("call") >= 0) || typeof ctx.call === "function";
+        if (S.persistent) { clearTimeout(S.bootTimer); S.booted = true; S.noState = false; render(true); }
+        break;
       case "theme": setTheme(!!m.dark, m.tokens, null); break;
       case "state": if (S.noState) S.booted = hasDoc(); onState(m); break;
       case "media": onMediaReply(m); break;
+      case "progress": if (window.PFVoices) window.PFVoices.onProgress(m); break;
       case "result": onResult(m); break;
       default: break;
     }
   }
   function unmount() {
+    if (window.PFVoices) window.PFVoices.stop();
     clearTimeout(S.bootTimer); clearTimeout(S.stallTimer); clearTimeout(S.introTimer); clearInterval(S.agoTimer); clearInterval(S.jobTimer);
     if (S.sending) clearTimeout(S.sending.timer);
     for (const id of [...M.cache.keys()]) revoke(id);

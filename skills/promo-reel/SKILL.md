@@ -221,12 +221,26 @@ For "my voice and my face in a small box over the screen" (AGENTS.md rule 1 own-
 Worked example and tools: `projects/me-avatar-poc` (`tools/narration.py`, `tools/avatar.sh`, NOTES.md) and `~/work/avatar-poc` (venvs, patched Ditto).
 1. Voice: clone from a 5-8 s cut of whole sentences of their recording. Chatterbox (MIT, PyTorch MPS; `exaggeration`, Turbo `[chuckle]`
    tags) or Qwen3-TTS 1.7B Base (Apache-2.0, MLX, fastest). Make several takes per line, keep those that read back word for word, pick by ear.
-   The takes go in through `vo: {engine: files}`.
+   The takes go in through `vo: {engine: clone, voice: <id>}` (see Voices) or, for takes made elsewhere, `vo: {engine: files}`.
 2. Face: one sharp frontal selfie (`osxphotos export --selfie --download-missing --use-photokit`, rank by face size, sharpness and yaw).
    Ditto (Apache-2.0) on MPS with `DITTO_FACE_INIT=mediapipe` (its InsightFace finder is non-commercial), driven by the whole narration
    laid on the show timeline, ~3.7x real time at 768². Register it with `generated: {likeness: own, consent: "<who, when>"}`.
 3. Put it on any shot as `{type: avatar, source: <id>, t_in: <show time at the shot's start>, label: "AI voice + face"}`; `promo check`
    `generated-plates` FAILs a likeness anywhere else or without consent. Re-render the avatar whenever VO timing changes.
+
+## Voices (your own, on this Mac)
+`promo voices` keeps a clone of the person's own voice in `~/.promo-reel/voices/<id>/` (never in git; tests set `PROMO_VOICES_DIR`). `promo voices script` prints a guided reading of about 80 words (~30 s) and one line each for neutral, excited, calm and warm. `promo voices save --name N --script DIR --moods DIR` copies those WAVs in and refuses a reading under 30.0 s (`voices.too_short`) or a missing mood (`voices.mood_missing`).
+
+The engine in promo.yaml is `clone`. Chatterbox (Resemble, MIT, `pip install 'promo-reel[clone]'`) is imported only while synthesising. Weights are about 3 GB and download only with `promo voices model download --yes` (that prints the size first; `promo voices model status --json` does not download). A line's `emotion` is that mood's clip used as the audio prompt; `intensity` 0–1 maps to exaggeration about 0.25–1.0. Takes keep the Perth watermark (`watermark: perth` in `build/vo/vo.json` and in `licence.yaml`). Do not strip it.
+
+```yaml
+vo:
+  engine: clone
+  voice: <id>
+  lines: [{id, shot, at, text, emotion: neutral|excited|calm|warm, intensity: 0.5}]
+```
+
+`licence_to_asset(voice)` is the assets.yaml entry (`kind: vo_model`, MIT, the Chatterbox source URL, `generated: {likeness: own, consent}`). A non-commercial model is `test_only: true`. `promo check` accepts the clone when that entry is present. `promo flow init <name> --intent "..." --voice <id>` writes `vo.engine` and `vo.voice` into the new project's promo.yaml. The Stage pane (tabs Start / Voices / Projects) is `mods/promo-flow`; it needs a Commission-ai host that can `call` the worker (see that README, "Host bridge gaps").
 
 ## Anime music videos (style `anime-mv`)
 If the request is a **music video, MV, PV, lyric video or a song told in pictures** (in THE FLOW the "Anime music video" card is marked
@@ -320,6 +334,7 @@ reference. Structurally prevent that:
 ## CLI cheat-sheet
 - `promo styles`; `promo new <name> --style hero|anime-opening|livestream|podcast`; `promo grid` (bars, beats, markers of `timeline.grid`)
 - `promo podcast script|plan|set|preview|status -p <project>`: a podcast / VTuber show from a script (section above)
+- `promo voices list|save|rename|delete|sample|render|default|script|model status|model download --yes` (all accept `--json`; a cloned voice, engine `clone`; see Voices)
 - `promo status [--json]` what is up-to-date / stale / missing; `promo timeline`, `promo assets`, `promo footage list|verify|add`
 - `promo build [--shots 05 06] [--force] [--scale 2] [--look | --no-look]`; `promo strip [--shots ..] [--out F.png]`; `promo shot <id...>`; `promo sfx|vo|music|events|mix|assemble|contact`
 - `promo fx list | apply IN OUT --preset P [--amount A] [--set stage.param=V] | audition IN [--out DIR]` (radio / tape / vintage / telephone / vinyl / crackle on any file)

@@ -1,0 +1,166 @@
+#!/usr/bin/env python3
+"""Promo-flow worker (protocol 3). Stdio NDJSON. No sockets unless ``--http``.
+
+The pane bridge sends ``{"type":"call","id","method","params"}``. This process answers
+``{"type":"progress","id","pct","note"}`` and ``{"type":"result","id","ok","value"|"error"}``.
+
+Today's Commission-ai host speaks a different protocol (``hello`` / ``event`` in, ``reply`` out).
+Those are answered so a host that starts this worker does not mark it failed. A pane ``call``
+is not routed by that host yet; see README "Host bridge gaps".
+
+``--http ADDR`` is a dev server. ADDR's host must be exactly ``127.0.0.1``; anything else
+exits without binding.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if os.path.isdir(os.path.join(ROOT, "promo")) and ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
+
+
+def emit(obj):
+    print(json.dumps(obj, default=str), flush=True)
+
+
+def _voices():
+    from promo import voices as V
+    return V
+
+
+def handle(method, params, progress):
+    return _voices().call(method, params or {}, progress)
+
+
+def answer(cid, method, params):
+    def progress(pct, note):
+        emit({"type": "progress", "id": cid, "pct": pct, "note": note})
+    try:
+        value = handle(method, params, progress)
+        emit({"type": "result", "id": cid, "ok": True, "value": value})
+    except Exception as e:  # noqa: BLE001  (the pane always gets one result line)
+        code = getattr(e, "code", None) or "voices.error"
+        message = getattr(e, "message", None) or str(e)
+        emit({"type": "result", "id": cid, "ok": False, "error": {"code": code, "message": message}})
+
+
+def on_line(msg):
+    if not isinstance(msg, dict):
+        return
+    kind = msg.get("type")
+    if kind == "hello":
+        return
+    if kind == "event":
+        emit({"type": "reply", "id": msg.get("id"), "publish": []})
+        return
+    if kind == "call":
+        answer(msg.get("id"), msg.get("method"), msg.get("params") or {})
+
+
+def stdio():
+    for line in sys.stdin:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            msg = json.loads(line)
+        except json.JSONDecodeError:
+            emit({"type": "result", "id": None, "ok": False, "error": {"code": "voices.bad_json", "message": "line is not JSON"}})
+            continue
+        on_line(msg)
+    return 0
+
+
+def split_addr(addr):
+    addr = (addr or "").strip()
+    if addr.startswith("["):
+        host, _, rest = addr[1:].partition("]")
+        port = rest[1:] if rest.startswith(":") else "8765"
+        return host, port
+    if ":" in addr:
+        host, port = addr.rsplit(":", 1)
+        return host, port
+    return addr or "127.0.0.1", "8765"
+
+
+def refuse(host):
+    sys.stderr.write(f"refusing to bind {host}: promo-flow worker --http binds 127.0.0.1 only\n")
+    return 2
+
+
+def serve(host, port):
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    class H(BaseHTTPRequestHandler):
+        def do_POST(self):
+            n = int(self.headers.get("Content-Length") or 0)
+            try:
+                msg = json.loads(self.rfile.read(n) or b"{}")
+            except json.JSONDecodeError:
+                msg = {}
+            held = []
+
+            def progress(pct, note):
+                held.append({"type": "progress", "pct": pct, "note": note})
+
+            try:
+                value = handle(msg.get("method"), msg.get("params") or {}, progress)
+                body = {"type": "result", "id": msg.get("id"), "ok": True, "value": value, "progress": held}
+                status = 200
+            except Exception as e:  # noqa: BLE001
+                body = {"type": "result", "id": msg.get("id"), "ok": False,
+                        "error": {"code": getattr(e, "code", None) or "voices.error", "message": getattr(e, "message", None) or str(e)}}
+                status = 200
+            raw = json.dumps(body, default=str).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+
+        def do_GET(self):
+            raw = b'{"ok":true}'
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+
+        def log_message(self, fmt, *args):
+            sys.stderr.write("%s\n" % (fmt % args))
+
+    httpd = ThreadingHTTPServer((host, int(port)), H)
+    sys.stderr.write(f"promo-flow worker http://{host}:{port}\n")
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        return 0
+    return 0
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(prog="promo-flow worker")
+    ap.add_argument("--http", nargs="?", const="127.0.0.1:8765", default=None,
+                    help="dev HTTP on 127.0.0.1 only (host:port). Any other host is refused and nothing is bound.")
+    ap.add_argument("--host", default=None, help="must be 127.0.0.1 when set")
+    a = ap.parse_args(argv)
+    if a.http is None and a.host is None:
+        return stdio()
+    if a.host is not None and a.host != "127.0.0.1":
+        return refuse(a.host)
+    host, port = split_addr(a.http or "127.0.0.1:8765")
+    if host != "127.0.0.1":
+        return refuse(host)
+    try:
+        port_n = int(port)
+    except ValueError:
+        return refuse(host)
+    return serve("127.0.0.1", port_n)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -323,6 +323,8 @@ class Spec:
                 ImageColor.getrgb(str(c))
             except ValueError:
                 errs.append(f"shot {s.id}: fade color {c!r} is not a colour (a name like white or #rrggbb)")
+        from . import voices as V
+        errs.extend(V.vo_problems(self.raw))
         return errs
 
     # -- subtree hashing (for stamps)

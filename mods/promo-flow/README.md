@@ -228,3 +228,22 @@ Stages: the eleven flow stages plus `edit` (a small real project for the editor:
 **Read full script** (Scripts and Pick) opens the script in a dialog over the pane: the cards and the footer decision stay behind it (inert), Esc or the close button returns focus to the link; the Plan tab's documents still open in the tab.
 
 **Calm repaints.** An update from the agent never makes the page blink. While the agent works the open tab repaints at most once per 12 s (a thin accent bar under the tabs, `data-held` on the app, says news is waiting); a repaint the person did not cause does not fade the pane in (`.pane.calm`), a picture already shown moves into the new slot as the same `<img>` (`adoptImages`, `data-ms="img"`), a file already fetched fills its slot at once with no grey skeleton, clips and sounds still on the page keep their file (`releaseHeavy` runs after the swap), cards that appear ease in (`.pf-in`) and cards that go ease out (`.pf-out`, a collapsing copy kept for 260 ms). Reduce-motion skips the easing. Checked in `mod-dev/shoot.py --check` (storyboard).
+
+## Voices
+Promo Reel is this same stage pane, shown when the host mounts it with no thread (`thread_id: null` or `stage_persistent: true` on init) and no live flow is published. Tabs are Start, Voices and Projects (`voices.js`). Voices records a guided script (30 s) and four moods, plays a sample, renames, deletes (two taps) and sets the default. Start picks a voice and hands `{brief, voice}` back; the host opens the thread. The agent then runs `promo flow init --intent "..." --voice ID` (add `--voice` only when an id was chosen).
+
+The worker is `mods/promo-flow/worker` (protocol 3, stdio NDJSON, no network). A pane `call` is `{type:"call", id, method, params}` and the worker answers `{type:"progress", id, pct, note}` and `{type:"result", id, ok, value|error}`. Methods: `voices.list`, `voices.save`, `voices.rename`, `voices.delete`, `voices.sample`, `voices.default`, `voices.script`, `voices.model.status`, `voices.model.download`, `promo.start`. `promo.start` returns `{brief, voice}` and does not create the thread. `--http ADDR` is a dev server that binds `127.0.0.1` only. Model weights download only when download is called with `yes: true` (about 3 GB). Chatterbox stays MIT; every take keeps the Perth watermark.
+
+If init does not advertise `call` (`call: true`, `capabilities` containing `"call"`, or `ctx.call`), the pane shows "needs Commission-ai update" and does not send a call.
+
+## Host bridge gaps
+The current Commission-ai host does not implement the Voices bridge yet. Until it does, the pane cannot run the record flow inside the product:
+
+- The host does not mount this stage with `thread_id: null` or `stage_persistent: true`, so Promo Reel stays hidden. `stage_persistent` is in mod.json; the current manifest model ignores that field (the mod still loads).
+- The host does not route a pane `{type:"call"}` to the worker, and it does not send `progress` / `result` back. Init does not set `call` or `capabilities: ["call"]`. The pane shows "needs Commission-ai update" until that exists. It does not probe with a call, because today's host would never answer.
+- A protocol 3 worker today is spoken to with `hello` / `event` (worker replies `reply`). This worker answers those so the host does not mark it failed, and it answers `call` for the bridge above. The two shapes are not the same stream.
+- A worker `$file` is not turned into `$media` for the pane. `voices.list` / `voices.sample` also return a small `sample_b64` / `wav_base64` when the WAV is under 400 KB, so a short sample can play before that exists.
+- `host.file.write` is not available. A 30 s 16-bit WAV is about 1 MB at 16 kHz and larger at 48 kHz, and the host's NDJSON line cap is 1 MB, so saving a full recording as base64 can be dropped. The worker also accepts filesystem paths (`script` and `moods` directories) for the CLI.
+- Microphone permission (`NSMicrophoneUsageDescription`) and `host.kickoff` (creating the thread from `promo.start`) are host work. This mod only returns `{brief, voice}`.
+- The activate message does not receive a voice id until the host puts one in the payload. The instruction says to add `--voice ID` when an id was chosen; it does not emit a `{voice}` placeholder (the current host would replace an unknown placeholder with nothing).
+- No worker method lists past projects. The Projects tab points at `/promo-resume`.

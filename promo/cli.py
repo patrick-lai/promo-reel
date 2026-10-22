@@ -1073,6 +1073,9 @@ def _previz_argv(argv, cmd="previz"):
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else list(argv)
+    if argv[:1] == ["voices"]:          # `promo voices ...`: a cloned voice on this Mac (no promo.yaml)
+        from . import voices
+        return voices.main(argv[1:])
     if argv[:1] == ["fonts"]:           # `promo fonts fetch | list`: the presets' open-licence fonts on a machine without them
         from . import fonts
         return fonts.main(argv[1:])
