@@ -234,6 +234,8 @@ Promo Reel is this same stage pane, shown when the host mounts it with no thread
 
 The worker is `mods/promo-flow/worker` (protocol 3, stdio NDJSON, no network). A pane `call` is `{type:"call", id, method, params}` and the worker answers `{type:"progress", id, pct, note}` and `{type:"result", id, ok, value|error}`. Methods: `voices.list`, `voices.save`, `voices.rename`, `voices.delete`, `voices.sample`, `voices.default`, `voices.script`, `voices.model.status`, `voices.model.download`, `promo.start`. `promo.start` returns `{brief, voice}` and does not create the thread. `--http ADDR` is a dev server that binds `127.0.0.1` only. Model weights download only when download is called with `yes: true` (about 3 GB). Chatterbox stays MIT; every take keeps the Perth watermark.
 
+The host often starts that worker with a system `python3` that cannot `import yaml`. Before it reads a call, the worker replaces itself with `$PROMO_PYTHON`, otherwise the Python named by the shebang of `promo` on `PATH`, otherwise the repo `.venv` (`<repo>/.venv/bin/python`). Set `PROMO_PYTHON` to the interpreter that has promo installed. When none of those exists, calls return `voices.engine_missing` and ask for `PROMO_PYTHON`.
+
 If init does not advertise `call` (`call: true`, `capabilities` containing `"call"`, or `ctx.call`), the pane shows "needs Commission-ai update" and does not send a call.
 
 ## Host bridge gaps

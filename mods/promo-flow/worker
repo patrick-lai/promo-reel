@@ -8,6 +8,11 @@ Today's Commission-ai host speaks a different protocol (``hello`` / ``event`` in
 Those are answered so a host that starts this worker does not mark it failed. A pane ``call``
 is not routed by that host yet; see README "Host bridge gaps".
 
+A host ``python3`` often cannot ``import yaml``. Before any call is read, this process
+``os.execv``s ``$PROMO_PYTHON``, else the interpreter on the ``promo`` shebang, else
+``<repo>/.venv/bin/python``. ``PROMO_FLOW_WORKER_REEXEC`` stops a second hop. With none of
+those, calls return ``voices.engine_missing``.
+
 ``--http ADDR`` is a dev server. ADDR's host must be exactly ``127.0.0.1``; anything else
 exits without binding.
 """
@@ -16,11 +21,128 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if os.path.isdir(os.path.join(ROOT, "promo")) and ROOT not in sys.path:
     sys.path.insert(0, ROOT)
+
+# Set when this interpreter cannot import yaml and no promo Python was exec'd.
+_PROMO_PYTHON_MISSING = False
+_REEXEC_ENV = "PROMO_FLOW_WORKER_REEXEC"
+_ENGINE_MISSING_MESSAGE = "Set PROMO_PYTHON to a Python that has promo installed."
+
+
+class _EngineMissing(Exception):
+    def __init__(self):
+        self.code = "voices.engine_missing"
+        self.message = _ENGINE_MISSING_MESSAGE
+        super().__init__(self.message)
+
+
+def _yaml_imports():
+    try:
+        import yaml  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+def _executable(path):
+    if path is None:
+        return None
+    path = os.path.expanduser(str(path).strip())
+    if not path:
+        return None
+    found = shutil.which(path)
+    if not found:
+        return None
+    return os.path.abspath(found)
+
+
+def _venv_root(exe):
+    """Directory that holds ``pyvenv.cfg`` for this interpreter, or '' for a system Python."""
+    base = os.path.dirname(os.path.abspath(exe))
+    parent = os.path.dirname(base)
+    if os.path.isfile(os.path.join(parent, "pyvenv.cfg")):
+        return os.path.abspath(parent)
+    if os.path.isfile(os.path.join(base, "pyvenv.cfg")):
+        return os.path.abspath(base)
+    return ""
+
+
+def _same_running_python(path):
+    # A venv bin/python is often a symlink of this binary; its site-packages are not.
+    path = os.path.abspath(path)
+    current = os.path.abspath(sys.executable)
+    if path == current:
+        return True
+    try:
+        same = os.path.samefile(path, current)
+    except OSError:
+        return False
+    return same and _venv_root(path) == _venv_root(current)
+
+
+def _shebang_python(promo_path):
+    """Interpreter named by ``promo``'s shebang, or None."""
+    try:
+        with open(promo_path, "r", encoding="utf-8", errors="replace") as f:
+            line = f.readline(512)
+    except OSError:
+        return None
+    line = line.strip().lstrip("\ufeff")
+    if not line.startswith("#!"):
+        return None
+    parts = line[2:].strip().split()
+    if not parts:
+        return None
+    if os.path.basename(parts[0]) == "env":
+        i = 1
+        while i < len(parts) and parts[i].startswith("-"):
+            i += 1
+        if i >= len(parts):
+            return None
+        return _executable(parts[i])
+    return _executable(parts[0])
+
+
+def _promo_pythons():
+    """``$PROMO_PYTHON``, then ``promo``'s shebang interpreter, then ``ROOT/.venv/bin/python``."""
+    found = []
+    seen = set()
+
+    def add(path):
+        exe = _executable(path)
+        if not exe or exe in seen or _same_running_python(exe):
+            return
+        seen.add(exe)
+        found.append(exe)
+
+    add(os.environ.get("PROMO_PYTHON"))
+    promo = shutil.which("promo")
+    if promo:
+        add(_shebang_python(promo))
+    add(os.path.join(ROOT, ".venv", "bin", "python"))
+    return found
+
+
+def use_promo_python(argv=None):
+    """Replace this process when ``import yaml`` fails. Otherwise stay and fail calls plainly."""
+    global _PROMO_PYTHON_MISSING
+    if _yaml_imports():
+        return
+    if not os.environ.get(_REEXEC_ENV):
+        os.environ[_REEXEC_ENV] = "1"
+        script = os.path.abspath(__file__)
+        extra = list(sys.argv[1:] if argv is None else argv)
+        for py in _promo_pythons():
+            try:
+                os.execv(py, [py, script, *extra])
+            except OSError:
+                continue
+    _PROMO_PYTHON_MISSING = True
 
 
 def emit(obj):
@@ -33,6 +155,8 @@ def _voices():
 
 
 def handle(method, params, progress):
+    if _PROMO_PYTHON_MISSING:
+        raise _EngineMissing()
     return _voices().call(method, params or {}, progress)
 
 
@@ -143,6 +267,7 @@ def serve(host, port):
 
 
 def main(argv=None):
+    use_promo_python(argv)
     ap = argparse.ArgumentParser(prog="promo-flow worker")
     ap.add_argument("--http", nargs="?", const="127.0.0.1:8765", default=None,
                     help="dev HTTP on 127.0.0.1 only (host:port). Any other host is refused and nothing is bound.")
