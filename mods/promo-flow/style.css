@@ -2280,6 +2280,8 @@ h1 { font-size: 16px; }
 .app[data-reel="1"] #settingsBtn { display: none !important; }
 .reel { display: grid; gap: 12px; padding: 2px 0 24px; }
 .reel-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--c-line); }
+.reel-switch { flex: none; position: sticky; top: 0; z-index: 6; padding: 0 calc(var(--pad) - 4px); background: var(--c-raised); }
+.app:has(.reel-switch) .tabs { top: 37px; }
 .reel-tab { appearance: none; background: none; border: 0; border-bottom: 2px solid transparent; color: var(--c-dim); font: inherit; font-weight: 650; min-height: 36px; padding: 0 12px; cursor: pointer; }
 .reel-tab.on { color: var(--c-ink); border-bottom-color: var(--c-accent); }
 .reel-tab:focus-visible, .reel-play:focus-visible, .reel-rec:focus-visible, .reel-link:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 2px; }

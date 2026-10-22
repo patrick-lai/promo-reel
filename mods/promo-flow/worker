@@ -20,6 +20,7 @@ exits without binding.
 from __future__ import annotations
 
 import argparse
+import contextvars
 import json
 import os
 import shutil
@@ -147,7 +148,8 @@ def use_promo_python(argv=None):
     _PROMO_PYTHON_MISSING = True
 
 
-# voices.call reports fractions. The host's job.progress pct is 0–100.
+# voices.call reports 0..1 fractions. The host treats pct as a percent and clamps it to 0..100.
+# Convert once, in _pct. Heartbeats repeat the stored percent and must not convert again.
 # Long jobs heartbeat so the host's 120 s idle timeout does not fire (deadline is 15 min).
 HEARTBEAT_S = 20
 _LONG_METHODS = frozenset({
@@ -159,6 +161,8 @@ _LONG_METHODS = frozenset({
 _emit_lock = threading.Lock()
 _jobs_lock = threading.Lock()
 _jobs = {}
+# Set for the duration of one job thread. Not an env var: jobs run side by side.
+_JOB_DATA_DIR = contextvars.ContextVar("promo_flow_job_data_dir", default=None)
 
 
 class _Cancelled(BaseException):
@@ -188,15 +192,22 @@ def emit(obj):
 
 
 def _pct(pct):
+    """One conversion: a voices.py 0..1 fraction becomes a host percent, clamped to 0..100.
+
+    ``1`` is complete (100%). A stored percent must not be passed here again: a stored
+    ``1`` means one percent, and this would read it as 100%.
+    """
     try:
         n = float(pct)
     except (TypeError, ValueError):
+        return 0
+    if n != n:  # NaN
         return 0
     if 0 <= n <= 1:
         n *= 100.0
     if n < 0:
         n = 0.0
-    if n > 100:
+    elif n > 100:
         n = 100.0
     return int(round(n))
 
@@ -208,22 +219,17 @@ def _note(note):
 
 
 def _emit_progress(job, pct, note, scaled=False):
-    """``scaled`` is for the heartbeat, which repeats an already converted 0–100 pct.
+    """Store a 0–100 percent and emit it.
 
-    A stored 1 means one percent. Passing it through ``_pct`` again would treat 1 as 100%.
+    ``scaled`` is the heartbeat. It repeats ``job.pct`` / ``job.note`` and does not
+    convert again, so a stale snapshot cannot walk the bar backwards.
     """
     with job.lock:
         if job.cancel.is_set() or job.done:
             return
-        if scaled:
-            try:
-                n = int(pct)
-            except (TypeError, ValueError):
-                n = 0
-            job.pct = 0 if n < 0 else 100 if n > 100 else n
-        else:
+        if not scaled:
             job.pct = _pct(pct)
-        job.note = _note(note)
+            job.note = _note(note)
         emit({"type": "job.progress", "job": job.job, "pct": job.pct, "note": job.note})
 
 
@@ -242,11 +248,11 @@ def _emit_result(job, ok, value=None, error=None):
 
 
 def _heartbeat(job):
-    """Progress at least every HEARTBEAT_S while a long call blocks. ``stop`` wakes this on cancel or finish."""
+    """Repeat the stored 0–100 percent at least every HEARTBEAT_S. ``stop`` wakes this on cancel or finish."""
     while True:
         if job.stop.wait(HEARTBEAT_S):
             return
-        _emit_progress(job, job.pct, job.note, scaled=True)
+        _emit_progress(job, None, None, scaled=True)
 
 
 def _download_weights(progress, job):
@@ -277,6 +283,7 @@ def _download_weights(progress, job):
 
 
 def _run_job(job):
+    token = _JOB_DATA_DIR.set(job.data_dir)
     try:
         if job.cancel.is_set():
             return
@@ -307,6 +314,7 @@ def _run_job(job):
         message = getattr(exc, "message", None) or str(exc)
         _emit_result(job, False, error={"code": str(code), "message": str(message)})
     finally:
+        _JOB_DATA_DIR.reset(token)
         with job.lock:
             job.done = True
             job.stop.set()
@@ -341,15 +349,23 @@ def _voices():
     return V
 
 
+def _job_root():
+    """Host ``data_dir`` for the job running on this thread, or None for the CLI default."""
+    root = _JOB_DATA_DIR.get()
+    if isinstance(root, str) and root.strip():
+        return root
+    return None
+
+
 def handle(method, params, progress):
     if _PROMO_PYTHON_MISSING:
         raise _EngineMissing()
-    return _voices().call(method, params or {}, progress)
+    return _voices().call(method, params or {}, progress, _job_root())
 
 
 def answer(cid, method, params):
     def progress(pct, note):
-        emit({"type": "progress", "id": cid, "pct": pct, "note": note})
+        emit({"type": "progress", "id": cid, "pct": _pct(pct), "note": note})
     try:
         value = handle(method, params, progress)
         emit({"type": "result", "id": cid, "ok": True, "value": value})
@@ -422,7 +438,7 @@ def serve(host, port):
             held = []
 
             def progress(pct, note):
-                held.append({"type": "progress", "pct": pct, "note": note})
+                held.append({"type": "progress", "pct": _pct(pct), "note": note})
 
             try:
                 value = handle(msg.get("method"), msg.get("params") or {}, progress)

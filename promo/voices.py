@@ -1,6 +1,13 @@
 """Cloned voices on this Mac (Chatterbox, MIT). Nothing here is committed.
 
-Storage is ``~/.promo-reel/voices/<id>/`` (override with ``PROMO_VOICES_DIR``):
+Storage is ``~/.promo-reel/voices/<id>/`` (override with ``PROMO_VOICES_DIR``).
+A host job passes its ``data_dir`` as ``call(..., root=)``. That job then reads
+and writes ``<data_dir>/voices`` only, on its own thread, without changing the
+process environment. With ``data_dir`` set, every returned ``{"$file": ...}``
+is relative to it (``voices/<id>/sample.wav``) and must not escape it.
+``sample_b64`` and ``wav_base64`` are unchanged.
+
+Storage layout:
 
     voice.yaml          name, engine, created, moods, consent, default
     licence.yaml        model, MIT, source, watermark perth, likeness, consent
@@ -16,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import contextvars
 import datetime
 import importlib.util
 import json
@@ -52,6 +60,8 @@ EMOTIONS = {
 }
 _NC = re.compile(r"non-?commercial|\bcc-?by-nc\b|\bby-nc\b|\bnc\b", re.I)
 _MODEL = None
+# Per call, not a process env var: jobs run concurrently, each with its own data_dir.
+_DATA_DIR = contextvars.ContextVar("promo_voices_data_dir", default=None)
 
 
 class VoicesError(Exception):
@@ -62,6 +72,10 @@ class VoicesError(Exception):
 
 
 def voices_root():
+    """Voice tree for this call. A host ``data_dir`` wins over ``PROMO_VOICES_DIR``."""
+    data = _DATA_DIR.get()
+    if data:
+        return os.path.join(data, "voices")
     return os.path.abspath(os.path.expanduser(os.environ.get("PROMO_VOICES_DIR") or "~/.promo-reel/voices"))
 
 
@@ -627,8 +641,56 @@ def promo_start(params):
     return {"brief": brief, "voice": voice}
 
 
-def call(method, params=None, progress=None):
-    """One worker / CLI method. ``progress(pct, note)`` is optional."""
+def _rel_file(path, data_dir):
+    """Path of ``path`` relative to ``data_dir``, or an error if it escapes."""
+    path = os.path.abspath(path)
+    base = os.path.abspath(data_dir)
+    try:
+        common = os.path.commonpath([path, base])
+    except ValueError as e:
+        raise VoicesError("host.path_escape", "file is outside the host data folder") from e
+    if common != base:
+        raise VoicesError("host.path_escape", "file is outside the host data folder")
+    rel = os.path.relpath(path, base).replace("\\", "/")
+    if rel == ".." or rel.startswith("../") or rel.startswith("/") or ".." in rel.split("/"):
+        raise VoicesError("host.path_escape", "file is outside the host data folder")
+    return rel
+
+
+def _rewrite_files(value, data_dir):
+    """Turn ``{"$file": abs}`` into ``{"$file": rel}``. Leaves ``sample_b64`` / ``wav_base64`` alone."""
+    if isinstance(value, dict):
+        if set(value.keys()) == {"$file"} and isinstance(value.get("$file"), str):
+            return {"$file": _rel_file(value["$file"], data_dir)}
+        return {k: _rewrite_files(v, data_dir) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_rewrite_files(v, data_dir) for v in value]
+    return value
+
+
+def call(method, params=None, progress=None, root=None):
+    """One worker / CLI method. ``progress(pct, note)`` is a 0..1 fraction.
+
+    ``root`` is the host job's ``data_dir`` (absolute). Voices then live in
+    ``<root>/voices`` for this call only. Omit it for the CLI default.
+    """
+    base = None
+    token = None
+    if isinstance(root, str) and root.strip():
+        base = os.path.abspath(os.path.expanduser(root))
+        token = _DATA_DIR.set(base)
+    try:
+        value = _call(method, params, progress)
+        if base is not None:
+            value = _rewrite_files(value, base)
+        return value
+    finally:
+        if token is not None:
+            _DATA_DIR.reset(token)
+
+
+def _call(method, params=None, progress=None):
+    """Dispatch one method against the current voice root. ``progress`` is 0..1."""
     params = params or {}
     if method == "voices.list":
         return list_voices()

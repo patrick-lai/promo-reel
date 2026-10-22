@@ -1,5 +1,6 @@
 "use strict";
-/* Promo Reel home (Start / Voices / Projects).
+/* Promo Reel home (Start / Voices / Projects), with or without a thread.
+   Inside a thread, app.js adds a Flow tab while a live stage is published.
    Pane -> host: {type:"call", id, method, params} and {type:"cancel", id}.
    Host -> pane: accepted, progress {pct 0..100, note}, result {ok, value|error}.
    Jobs run with or without a thread. Agent actions stay disabled when thread_id is null (see app.js). */
@@ -313,6 +314,7 @@ window.PFVoices = (function () {
   }
 
   function tabs() {
+    if (state.hideTabs) return null;
     const items = [["start", "Start"], ["voices", "Voices"], ["projects", "Projects"]];
     return h("div", { class: "reel-tabs", role: "tablist", "aria-label": "Promo Reel" }, items.map(([id, label]) => h("button", {
       type: "button", class: "reel-tab" + (state.tab === id ? " on" : ""), role: "tab",
@@ -583,10 +585,26 @@ window.PFVoices = (function () {
     tickMeter();
   }
 
+  function active() {
+    return !!live || !!state.flow || !!state.busy || anyLong();
+  }
+
+  function select(id) {
+    if (id !== "start" && id !== "voices" && id !== "projects") return;
+    keepLive();
+    state.tab = id;
+    state.err = "";
+  }
+
+  function current() { return state.tab || "start"; }
+
+  function halt() { haltPlayback(); }
+
   function render(opts) {
     alive = true;
     api = opts;
     state.projects = opts.projects || null;
+    state.hideTabs = !!opts.hideTabs;
     ensure();
     paint();
   }
@@ -607,5 +625,5 @@ window.PFVoices = (function () {
     state.long = false;
   }
 
-  return { render, onAccepted, onResult, onProgress, stop };
+  return { render, onAccepted, onResult, onProgress, stop, select, current, active, halt };
 })();

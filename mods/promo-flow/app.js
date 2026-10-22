@@ -38,7 +38,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     notes: {}, noteSeq: 0, player: null, dropCk: null,
     booted: false, held: false, heldTimer: 0, builtAt: 0, previewUntil: 0, version: null, summary: {}, doc: {}, pending: null, offline: false, readonly: false,
     tab: null, userTab: false, stage: null, picks: new Set(), style: null, ownStyle: "", boardIdx: 0, draftSel: null, earlier: false, filter: null, checksOpen: false, assumeOpen: false,
-    ref: "", cast: {}, castOpen: false, settingsOpen: false, setSel: null, setText: "", compose: false, composeKind: null, reader: null, sbView: "scenes", cmtPending: 0, cmtTotal: 0, cmtShown: 0, cmtChip: null, docGroup: null, docQ: "", docBase: null, docOpened: new Set(), reqHint: "", sending: null, justSent: null, stall: false, err: "", stale: null, stash: null, updated: false, stepsOpen: false, lastAction: null, title: "", lastBadge: "", noState: false, persistent: false, threadId: undefined, reel: false,
+    ref: "", cast: {}, castOpen: false, settingsOpen: false, setSel: null, setText: "", compose: false, composeKind: null, reader: null, sbView: "scenes", cmtPending: 0, cmtTotal: 0, cmtShown: 0, cmtChip: null, docGroup: null, docQ: "", docBase: null, docOpened: new Set(), reqHint: "", sending: null, justSent: null, stall: false, err: "", stale: null, stash: null, updated: false, stepsOpen: false, lastAction: null, title: "", lastBadge: "", noState: false, threadId: undefined, face: null, reel: false,
   };
 
   /* ---------------- tiny DOM helper ---------------- */
@@ -254,13 +254,25 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   const hasDoc = () => Object.keys(S.doc || {}).length > 0;
   const readable = () => !hasDoc() || (typeof S.doc.stage === "string" && Array.isArray(S.doc.steps));
   const isStarting = () => !hasDoc();
-  /* Promo Reel home: init/state with thread_id null, or stage_persistent. A live flow still wins.
-     Jobs work with or without a thread. Agent actions and file sends do not: the host errors those when thread_id is null. */
-  const homeMode = () => S.persistent === true && !(hasDoc() && typeof S.doc.stage === "string" && S.doc.stage);
+  /* Start / Voices / Projects show for a null thread_id and for a string thread_id.
+     init/state carry thread_id and do not carry stage_persistent.
+     With no live stage, those tabs replace the getting-started screen.
+     A live stage inside a thread stays on screen, with the same tabs (Flow brings it back).
+     A live stage with no thread still fills the pane. Jobs work either way.
+     Agent actions and file sends stay off when thread_id is null: the host errors those. */
+  const liveStage = () => !!(hasDoc() && typeof S.doc.stage === "string" && S.doc.stage);
+  const inThread = () => typeof S.threadId === "string" && S.threadId !== "";
+  function showingReel() {
+    if (S.threadId === undefined) return false;
+    if (!liveStage()) return true;
+    if (!inThread()) return false;
+    if (S.face === "reel") return true;
+    if (S.face === "flow") return false;
+    return !!(window.PFVoices && window.PFVoices.active && window.PFVoices.active());
+  }
   function rememberThread(m) {
     if (!m || !("thread_id" in m)) return;
     S.threadId = m.thread_id;
-    if (m.thread_id === null || m.stage_persistent === true) S.persistent = true;
   }
   const hasSettings = () => !!(S.doc && S.doc.settings && S.doc.settings.output);
   /* Reaching the first draft is a milestone: the plan (style, scripts, storyboard, assets) is behind the person, so from then on the stepper is the
@@ -2938,7 +2950,36 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     if (mode === "arrive") S.introTimer = setTimeout(() => setIntro("off"), INTRO_MS);
   }
 
-  function renderReel() {
+  let homeNav = null;
+  function syncHomeNav(active) {
+    if (!active) {
+      if (homeNav) { homeNav.remove(); homeNav = null; }
+      return;
+    }
+    if (!homeNav) {
+      homeNav = h("div", { class: "reel-tabs reel-switch", role: "tablist", "aria-label": "Promo Reel" });
+      el.sc.insertBefore(homeNav, el.sc.firstElementChild);
+    }
+    if (homeNav.dataset.on === active && homeNav.childElementCount) return;
+    homeNav.dataset.on = active;
+    const items = [["flow", "Flow"], ["start", "Start"], ["voices", "Voices"], ["projects", "Projects"]];
+    homeNav.replaceChildren(...items.map(([id, label]) => h("button", {
+      type: "button", class: "reel-tab" + (active === id ? " on" : ""), role: "tab",
+      "aria-selected": active === id ? "true" : "false",
+      onclick: () => pickFace(id),
+    }, label)));
+  }
+  function pickFace(id) {
+    if (id === "flow") {
+      S.face = "flow";
+      if (window.PFVoices && window.PFVoices.halt) window.PFVoices.halt();
+    } else {
+      S.face = "reel";
+      if (window.PFVoices && window.PFVoices.select) window.PFVoices.select(id);
+    }
+    render(true);
+  }
+  function renderReel(hideTabs) {
     el.gate.hidden = true;
     el.stepper.hidden = true;
     el.tabs.hidden = true;
@@ -2952,21 +2993,27 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     el.stageName.textContent = "Promo Reel";
     el.stepNo.textContent = "Runs on this Mac";
     el.stateLine.textContent = "Recordings and voices stay on this Mac.";
-    if (window.PFVoices) window.PFVoices.render({ content: el.content, h, ic, post, projects: (S.doc && Array.isArray(S.doc.projects)) ? S.doc.projects : null });
+    if (window.PFVoices) window.PFVoices.render({ content: el.content, h, ic, post, projects: (S.doc && Array.isArray(S.doc.projects)) ? S.doc.projects : null, hideTabs: !!hideTabs });
   }
 
   function render(force) {
     if (!S.booted) return;
-    if (homeMode()) {
+    if (!liveStage()) S.face = null;
+    const reel = showingReel();
+    const stageInThread = inThread() && liveStage();
+    if (stageInThread) S.face = reel ? "reel" : "flow";
+    const homeTab = stageInThread ? (reel ? ((window.PFVoices && window.PFVoices.current && window.PFVoices.current()) || "start") : "flow") : null;
+    syncHomeNav(homeTab);
+    if (reel) {
       S.reel = true;
       el.app.dataset.boot = "ready";
       el.app.dataset.reel = "1";
-      renderReel();
+      renderReel(!!homeTab);
       return;
     }
     if (S.reel) {
       S.reel = false;
-      if (window.PFVoices) window.PFVoices.stop();
+      if (!inThread() && window.PFVoices) window.PFVoices.stop();
       delete el.app.dataset.reel;
       lastSig = "";
       el.badge.hidden = false;
@@ -3059,8 +3106,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       case "init":
         setTheme(!!m.dark, m.tokens, !!m.reduceMotion);
         rememberThread(m);
-        if (m.thread_id === null || m.stage_persistent === true) S.persistent = true;
-        if (S.persistent) { clearTimeout(S.bootTimer); S.booted = true; S.noState = false; render(true); }
+        if (m && "thread_id" in m) { clearTimeout(S.bootTimer); S.booted = true; S.noState = false; render(true); }
         break;
       case "theme": setTheme(!!m.dark, m.tokens, null); break;
       case "state": if (S.noState) S.booted = hasDoc(); onState(m); break;
