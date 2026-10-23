@@ -110,11 +110,19 @@ grok, codex/GPT, a person with a recorder. promo-reel only specifies, ingests an
   Write what you learn to the project's `docs/reference-study/<date>-<name>.md`; presets come from measurements, not vibes.
 - **Generated images / video for NON-UI plates (YOU generate, promo-reel ingests):** the calling agent makes the asset with whatever it has
   (Higgsfield/Runway ACP connectors — pick model with `skills/promo-video-route/SKILL.md` — its own image/video tool, `grok -p "..."`, `codex exec "..."`, a person) and hands the file down:
-  1. Declare what you need in `promo.yaml`: `broll: [{id, kind: video|image, prompt, seconds, aspect}]`; `promo gen plan [--json]` lists the open
-     requests with the full guard-prefixed prompt (no people / text / UI / logos), target path and size.
-  2. Generate each one yourself and save it to the `out` path (video 4 s, 16:9, >= 720p; a corner logo is fine, see `--watermark br`).
-  3. `promo gen register <file> -p projects/<n>/promo.yaml --id bg-night --prompt "..." --provider <who made it> --shots 03 [--watermark br]`
-     probes it, crops a Grok corner logo + upscales to 1080p (raw kept), writes the `.gen.json` sidecar and the footage-manifest entry with `generated:`.
+  1. Declare what you need in `promo.yaml`. A plain plate stays `broll: [{id, kind: video|image, prompt, seconds, aspect}]`. A spot that has to
+     hold a person, an object or a place across shots uses `stage`, in this order only: `character`, then `prop`, then `location`, then `shot`.
+     A shot tags earlier ids with a scope: `refs: [{id: hero, scope: identity}, {id: phone, scope: product}, {id: plaza, scope: geography}]`.
+     `promo gen plan [--json]` lists each request. A plain plate gets the guard-prefixed line. A staged entry gets that stage's template, and a
+     one-line shot is expanded into one skeleton: active references, timed beats, optics, camera, hard rules, positive constraints, a negative
+     list and audio. Each tag is scoped (`IDENTITY ONLY`, `PRODUCT ONLY`, `geography and materials only`) and locked with "100% matches the
+     reference"; a character tag says to take the person and the clothes, never the studio lighting. `promo gen prompt "line"` prints the terse
+     line and the expanded prompt and calls nothing. A later stage is `blocked` until every earlier stage is registered and approved.
+  2. Generate each open (not blocked) one yourself and save it to the `out` path (video 4 s, 16:9, >= 720p; a corner logo is fine, see `--watermark br`).
+     Send a staged `prompt` as-is. Attach the reference file it names when the generator accepts images.
+  3. `promo gen register <file> -p projects/<n>/promo.yaml --id bg-night --prompt "..." --provider <who made it> --shots 03 [--watermark br] [--stage character]`
+     probes the file, crops a Grok corner logo + upscales to 1080p (raw kept), and writes the `.gen.json` sidecar and the footage-manifest entry with `generated:`.
+     Then `promo gen approve <id> -p projects/<n>/promo.yaml` before any later stage. Approval is the lock; generating a shot before it is refused.
   4. Reference it as `source: bg-night` on a shot with `ui: false`. `promo gen detect` shows which built-in runners exist here; `promo gen video|image "..." --out F`
      and `promo gen plan --run` are the optional fallback that drives those CLIs headless (one-shot, ~1 min each) when you have no generator of your own.
   5. Seedance on the person's OpenRouter key (pay per job, never picked by `auto`): `promo gen models` (prices), then
@@ -136,7 +144,9 @@ grok, codex/GPT, a person with a recorder. promo-reel only specifies, ingests an
   USE FOR: backgrounds, scenery, macro textures, light leaks / bokeh overlays, dawn/night skies, transition plates between real shots.
   NEVER FOR: app UI, anything that reads as the product, text, logos, people-as-users. `promo check` FAILs a generated clip on a UI shot
   (`generated-plates`) and WARNs for human review (`generated-review`). Image to video is the Studio's start frame (`--first-frame` on
-  `promo gen video`); reference images (style guidance) are not wired, so describe the look in words.
+  `promo gen video`). A staged shot names each approved still in the prompt (`@id`, its scope, and the file once it exists). Attach those files
+  when the generator accepts images. The prompt already says what to take: the person and the clothes, the product, or the geography and
+  materials — never the sheet's studio lighting.
 
 ## Thin prompt + stills: the designed plan (`promo plan --stills`)
 A few lines of prompt, two or three real stills and a length is enough. `promo plan NAME --prompt "..." --stills a.png b.png` writes

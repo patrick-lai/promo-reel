@@ -841,7 +841,7 @@ def build_parser():
     sub.add_parser("fx", help="audio character effects (radio, tape, vintage, telephone, vinyl, crackle): list | apply | audition (see `promo fx -h`)")
     sub.add_parser("fonts", help="fetch | list: Inter, Barlow Condensed and DejaVu into ~/.promo-tools/fonts where the presets' Linux paths do not exist")
     sub.add_parser("listen", help="the agent's ears: numbers + sheet per VO line / file, --ear (audio model), compare A B, calibrate (see `promo listen -h`)")
-    sub.add_parser("gen", help="generated images/video for non-UI plates (backgrounds, transitions): detect | image | video | plan (see `promo gen -h`)")
+    sub.add_parser("gen", help="generated images/video for non-UI plates: detect | prompt | image | video | plan | approve (see `promo gen -h`)")
     sub.add_parser("depth", help="depth of a generated still plate and a 2.5D parallax clip from it, on this Mac: map | parallax (see `promo depth -h`)")
     sub.add_parser("brief", help="the locked brief (the user's exact words + references): init | show | check | confirm | conflict (see `promo brief -h`)")
     sub.add_parser("screen-quad", help="track the monitor quad of a generated plate (clip id or file): per-second quads + debug PNG (see `promo screen-quad -h`)")
