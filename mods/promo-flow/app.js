@@ -1,6 +1,7 @@
 "use strict";
 /* Promo flow mod, mounted by the host straight into its page inside a shadow root (protocol 2). It talks to the host only through ctx.post and receive.
-   in:  init, state, media, result, theme     out: ready, media, action, title, open-url */
+   in:  init, state, media, result, theme, accepted, progress
+   out: ready, media, action, title, open-url, call, cancel */
 window.commissionMods = window.commissionMods || {};
 window.commissionMods["promo-flow"] = function mount(ctx) {
   const STAGE_IDS = ["discover", "scripts", "pick", "storyboard", "previz", "assets", "keyframes", "confirm", "drafts", "review", "final"];
@@ -37,7 +38,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     notes: {}, noteSeq: 0, player: null, dropCk: null,
     booted: false, held: false, heldTimer: 0, builtAt: 0, previewUntil: 0, version: null, summary: {}, doc: {}, pending: null, offline: false, readonly: false,
     tab: null, userTab: false, stage: null, picks: new Set(), style: null, ownStyle: "", boardIdx: 0, draftSel: null, earlier: false, filter: null, checksOpen: false, assumeOpen: false,
-    ref: "", cast: {}, castOpen: false, settingsOpen: false, setSel: null, setText: "", compose: false, composeKind: null, reader: null, sbView: "scenes", cmtPending: 0, cmtTotal: 0, cmtShown: 0, cmtChip: null, docGroup: null, docQ: "", docBase: null, docOpened: new Set(), reqHint: "", sending: null, justSent: null, stall: false, err: "", stale: null, stash: null, updated: false, stepsOpen: false, lastAction: null, title: "", lastBadge: "", noState: false,
+    ref: "", cast: {}, castOpen: false, settingsOpen: false, setSel: null, setText: "", compose: false, composeKind: null, reader: null, sbView: "scenes", cmtPending: 0, cmtTotal: 0, cmtShown: 0, cmtChip: null, docGroup: null, docQ: "", docBase: null, docOpened: new Set(), reqHint: "", sending: null, justSent: null, stall: false, err: "", stale: null, stash: null, updated: false, stepsOpen: false, lastAction: null, title: "", lastBadge: "", noState: false, threadId: undefined, face: null, reel: false,
   };
 
   /* ---------------- tiny DOM helper ---------------- */
@@ -253,6 +254,26 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   const hasDoc = () => Object.keys(S.doc || {}).length > 0;
   const readable = () => !hasDoc() || (typeof S.doc.stage === "string" && Array.isArray(S.doc.steps));
   const isStarting = () => !hasDoc();
+  /* Start / Voices / Projects show for a null thread_id and for a string thread_id.
+     init/state carry thread_id and do not carry stage_persistent.
+     With no live stage, those tabs replace the getting-started screen.
+     A live stage inside a thread stays on screen, with the same tabs (Flow brings it back).
+     A live stage with no thread still fills the pane. Jobs work either way.
+     Agent actions and file sends stay off when thread_id is null: the host errors those. */
+  const liveStage = () => !!(hasDoc() && typeof S.doc.stage === "string" && S.doc.stage);
+  const inThread = () => typeof S.threadId === "string" && S.threadId !== "";
+  function showingReel() {
+    if (S.threadId === undefined) return false;
+    if (!liveStage()) return true;
+    if (!inThread()) return false;
+    if (S.face === "reel") return true;
+    if (S.face === "flow") return false;
+    return !!(window.PFVoices && window.PFVoices.active && window.PFVoices.active());
+  }
+  function rememberThread(m) {
+    if (!m || !("thread_id" in m)) return;
+    S.threadId = m.thread_id;
+  }
   const hasSettings = () => !!(S.doc && S.doc.settings && S.doc.settings.output);
   /* Reaching the first draft is a milestone: the plan (style, scripts, storyboard, assets) is behind the person, so from then on the stepper is the
      production phase alone, Draft, Review, Final, and the planning tabs give way to the editor. Scripts stay one click away in the editor's bin. */
@@ -1291,13 +1312,14 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   const wordsLabel = (w) => w.toLocaleString("en-US") + " words";
 
   /* ---------------- Add files: the person's own footage and pictures ---------------- */
-  const canFiles = () => !(S.readonly || S.offline || S.fileSend);
+  const canFiles = () => S.threadId !== null && !(S.readonly || S.offline || S.fileSend);
   function stageFiles(list) {
     const r = PF.addFiles(S.files, Array.from(list || []).filter((f) => f && typeof f.size === "number" && f.type !== undefined));
     S.files = r.files; S.fileErr = r.skipped ? "Up to " + PF.FILES_MAX + " files at a time. " + r.skipped + " not added." : ""; S.fv++;
     render(true);
   }
   function sendFiles() {
+    if (S.threadId === null) { S.fileErr = "Open a thread before sending files to the agent."; S.fv++; render(true); return; }
     if (!S.files.length || !canFiles()) return;
     const bad = S.files.map((f) => [f, PF.fileProblem(f)]).find((x) => x[1]);
     if (bad) { S.fileErr = bad[0].name + ": " + bad[1]; S.fv++; render(true); return; }
@@ -1335,6 +1357,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     box.addEventListener("drop", (e) => { if (!e.dataTransfer || !e.dataTransfer.files || !e.dataTransfer.files.length) return; e.preventDefault(); zone.classList.remove("over"); if (ok) stageFiles(e.dataTransfer.files); });
     box.append(zone, input);
     if (S.readonly) box.append(h("p", { class: "files-note", text: "This job is archived, so nothing can be added." }));
+    else if (S.threadId === null) box.append(h("p", { class: "files-note", text: "Open a thread before sending files to the agent." }));
     else if (S.offline) box.append(h("p", { class: "files-note", text: "Can't reach the host. Add files when it is back." }));
     const staged = S.fileSend ? S.fileSend.files : S.files;
     if (staged.length) {
@@ -2649,7 +2672,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
 
   /* ---------------- gate bar ---------------- */
   function editing() { return (S.compose && el.note.value.trim().length > 0) || (S.picks.size > 0 && !(S.picks.size === 1 && S.picks.has(S.autoPick))) || !!S.style || !!S.ownStyle.trim(); }
-  const offlineBlocked = () => S.offline;
+  const sendBlocked = () => S.offline || S.threadId === null;
 
   function gateModel() {
     const d = S.doc, g = gate();
@@ -2762,10 +2785,10 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       const jv = jobRunning() ? PF.jobView(S.doc.job, Date.now()) : null;
       if (jv) note("Sent " + (ACTION_WORD[m.name] || "your reply") + ". The agent picks it up when the " + jv.many + " above are done (" + (jv.done + jv.failed) + " of " + jv.total + ").", { spin: true });
       else note(S.stall ? (S.pending ? "Still queued. Check the chat." : "Still waiting. Check the chat.") : "Sent " + (ACTION_WORD[m.name] || "your reply") + ". Waiting for the agent to pick it up.", { spin: !S.stall });
-      if (!jv && S.stall && !S.pending && S.lastAction) { el.btn2.hidden = false; el.btn2.dataset.quiet = "1"; el.btn2.textContent = "Send again"; el.btn2.disabled = busy || offlineBlocked(); el.gate.dataset.layout = "bar"; }
+      if (!jv && S.stall && !S.pending && S.lastAction) { el.btn2.hidden = false; el.btn2.dataset.quiet = "1"; el.btn2.textContent = "Send again"; el.btn2.disabled = busy || sendBlocked(); el.gate.dataset.layout = "bar"; }
     } else if (m.mode === "work") {
       el.gate.dataset.layout = "bar";
-      if (m.primary && !S.compose) { el.btn1.hidden = false; el.btn1.textContent = busy ? "Sending" : m.primary; el.btn1.disabled = busy || offlineBlocked(); }
+      if (m.primary && !S.compose) { el.btn1.hidden = false; el.btn1.textContent = busy ? "Sending" : m.primary; el.btn1.disabled = busy || sendBlocked(); }
       else { el.btn2.hidden = false; el.btn2.dataset.quiet = "1"; }
       if (S.compose) { el.gate.dataset.layout = "stack"; el.btn2.hidden = false; el.btn2.removeAttribute("data-quiet"); }
       note(S.compose ? "" : m.note, { check: m.done });
@@ -2774,19 +2797,20 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       if (S.compose) {
         note("");
         el.btn2.hidden = false; el.btn2.textContent = "Cancel"; el.btn2.disabled = busy;
-      } else { el.btn2.textContent = m.secondary || ""; el.btn2.disabled = busy || offlineBlocked(); note(m.note); }
+      } else { el.btn2.textContent = m.secondary || ""; el.btn2.disabled = busy || sendBlocked(); note(m.note); }
       el.btn1.hidden = false;
       el.btn1.setAttribute("aria-describedby", "gateNote");
-      if (S.compose) { el.btn1.textContent = busy ? "Sending" : m.sendLabel; el.btn1.disabled = busy || !el.note.value.trim() || offlineBlocked() || !!(S.stale && S.stale.changedGate); }
-      else { el.btn1.textContent = busy ? "Sending" : m.primary; el.btn1.disabled = busy || !!m.primaryDisabled || offlineBlocked(); }
+      if (S.compose) { el.btn1.textContent = busy ? "Sending" : m.sendLabel; el.btn1.disabled = busy || !el.note.value.trim() || sendBlocked() || !!(S.stale && S.stale.changedGate); }
+      else { el.btn1.textContent = busy ? "Sending" : m.primary; el.btn1.disabled = busy || !!m.primaryDisabled || sendBlocked(); }
     }
-    if (S.offline && (m.mode === "gate" || m.mode === "work") && !S.compose) note("Offline: sending is paused. Reconnect to continue.");
+    if (S.threadId === null && (m.mode === "gate" || m.mode === "work") && !S.compose) note("Open a thread before sending this to the agent.");
+    else if (S.offline && (m.mode === "gate" || m.mode === "work") && !S.compose) note("Offline: sending is paused. Reconnect to continue.");
     /* The footer's Stop is the one Stop while the autopilot runs (the harness and the agent know it as ap-stop). */
     if (m.apStop && !S.compose) el.btn1.dataset.k = "ap-stop"; else delete el.btn1.dataset.k;
     el.btn1.classList.toggle("soft", !!m.pendPick && !S.compose);
     if (m.pendPick && !S.compose) el.btn1.setAttribute("aria-disabled", "true"); else el.btn1.removeAttribute("aria-disabled");
-    if (m.mode === "work" && S.compose) { el.btn1.hidden = false; el.btn1.textContent = busy ? "Sending" : m.sendLabel; el.btn1.disabled = busy || !el.note.value.trim() || offlineBlocked(); el.btn2.textContent = "Cancel"; el.btn2.disabled = busy; }
-    else if (m.mode === "work") { el.btn2.textContent = m.secondary; el.btn2.disabled = busy || offlineBlocked(); }
+    if (m.mode === "work" && S.compose) { el.btn1.hidden = false; el.btn1.textContent = busy ? "Sending" : m.sendLabel; el.btn1.disabled = busy || !el.note.value.trim() || sendBlocked(); el.btn2.textContent = "Cancel"; el.btn2.disabled = busy; }
+    else if (m.mode === "work") { el.btn2.textContent = m.secondary; el.btn2.disabled = busy || sendBlocked(); }
     const composing = S.compose && (m.mode === "gate" || m.mode === "work");
     el.compose.hidden = !composing;
     el.gate.dataset.compose = composing ? "1" : "";
@@ -2807,7 +2831,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
       el.btn1.classList.remove("soft");
       el.btn1.removeAttribute("aria-disabled");
       el.btn1.setAttribute("aria-describedby", "gateNote");
-      note(fn.count + (fn.count === 1 ? " change" : " changes") + " on " + fn.it.label + " not sent yet. " + (canAsk() ? "Send them before you decide." : "Your last message is still waiting for the agent."));
+      note(fn.count + (fn.count === 1 ? " change" : " changes") + " on " + fn.it.label + " not sent yet. " + (canAsk() ? "Send them before you decide." : S.threadId === null ? "Open a thread before sending this to the agent." : "Your last message is still waiting for the agent."));
     } else if (el.btn1.dataset.k === "notes-send") delete el.btn1.dataset.k;
     el.gateErr.hidden = !S.err;
     el.gateErr.textContent = S.err;
@@ -2841,7 +2865,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     el.note.focus();
     el.note.setSelectionRange(el.note.value.length, el.note.value.length);
   }
-  const canAsk = () => !(S.readonly || S.offline || S.pending || S.justSent || S.sending);
+  const canAsk = () => S.threadId !== null && !(S.readonly || S.offline || S.pending || S.justSent || S.sending);
   function closeCompose() { S.compose = false; S.composeKind = null; S.reqWhere = null; S.err = ""; renderGate(); el.btn2.focus(); }
   el.btn2.addEventListener("click", () => {
     const m = S.cur;
@@ -2883,6 +2907,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   const refTail = () => (/^https:\/\//i.test(S.ref.trim()) ? ". Reference: " + S.ref.trim() : ". No reference link.");
   function startStall() { clearTimeout(S.stallTimer); S.stall = false; S.stallTimer = setTimeout(() => { S.stall = true; renderGate(); }, STALL_MS); }
   function send(name, payload, again) {
+    if (S.threadId === null) { S.err = "Open a thread before sending this to the agent."; render(); return; }
     const id = "a" + ++M.seq;
     if (again && payload && typeof payload.text === "string" && !/^\(sent again\) /.test(payload.text)) payload = { ...payload, text: "(sent again) " + payload.text };
     S.lastAction = { name, payload };
@@ -2892,6 +2917,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     render();
   }
   function onResult(m) {
+    if (window.PFVoices && window.PFVoices.onResult(m)) return;
     if (S.fileSend && S.fileSend.id === m.id) return onFilesResult(m);
     if (S.editSend && S.editSend.id === m.id) return onEditFilesResult(m);
     if (!m.ok && S.sending && S.sending.id === m.id && S.sending.name === "edit" && S.editor) S.editor.api.failed();
@@ -2924,8 +2950,77 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
     if (mode === "arrive") S.introTimer = setTimeout(() => setIntro("off"), INTRO_MS);
   }
 
+  let homeNav = null;
+  function syncHomeNav(active) {
+    if (!active) {
+      if (homeNav) { homeNav.remove(); homeNav = null; }
+      return;
+    }
+    if (!homeNav) {
+      homeNav = h("div", { class: "reel-tabs reel-switch", role: "tablist", "aria-label": "Promo Reel" });
+      el.sc.insertBefore(homeNav, el.sc.firstElementChild);
+    }
+    if (homeNav.dataset.on === active && homeNav.childElementCount) return;
+    homeNav.dataset.on = active;
+    const items = [["flow", "Flow"], ["start", "Start"], ["voices", "Voices"], ["projects", "Projects"]];
+    homeNav.replaceChildren(...items.map(([id, label]) => h("button", {
+      type: "button", class: "reel-tab" + (active === id ? " on" : ""), role: "tab",
+      "aria-selected": active === id ? "true" : "false",
+      onclick: () => pickFace(id),
+    }, label)));
+  }
+  function pickFace(id) {
+    if (id === "flow") {
+      S.face = "flow";
+      if (window.PFVoices && window.PFVoices.halt) window.PFVoices.halt();
+    } else {
+      S.face = "reel";
+      if (window.PFVoices && window.PFVoices.select) window.PFVoices.select(id);
+    }
+    render(true);
+  }
+  function renderReel(hideTabs) {
+    el.gate.hidden = true;
+    el.stepper.hidden = true;
+    el.tabs.hidden = true;
+    el.job.hidden = true;
+    el.working.hidden = true;
+    el.banners.replaceChildren();
+    el.stepsList.hidden = true;
+    el.badge.hidden = true;
+    el.stepsBtn.hidden = true;
+    el.settingsBtn.hidden = true;
+    el.stageName.textContent = "Promo Reel";
+    el.stepNo.textContent = "Runs on this Mac";
+    el.stateLine.textContent = "Recordings and voices stay on this Mac.";
+    if (window.PFVoices) window.PFVoices.render({ content: el.content, h, ic, post, projects: (S.doc && Array.isArray(S.doc.projects)) ? S.doc.projects : null, hideTabs: !!hideTabs });
+  }
+
   function render(force) {
     if (!S.booted) return;
+    if (!liveStage()) S.face = null;
+    const reel = showingReel();
+    const stageInThread = inThread() && liveStage();
+    if (stageInThread) S.face = reel ? "reel" : "flow";
+    const homeTab = stageInThread ? (reel ? ((window.PFVoices && window.PFVoices.current && window.PFVoices.current()) || "start") : "flow") : null;
+    syncHomeNav(homeTab);
+    if (reel) {
+      S.reel = true;
+      el.app.dataset.boot = "ready";
+      el.app.dataset.reel = "1";
+      renderReel(!!homeTab);
+      return;
+    }
+    if (S.reel) {
+      S.reel = false;
+      if (!inThread() && window.PFVoices) window.PFVoices.stop();
+      delete el.app.dataset.reel;
+      lastSig = "";
+      el.badge.hidden = false;
+      el.stepsBtn.hidden = false;
+      el.stepper.hidden = false;
+      el.gate.hidden = false;
+    }
     el.app.dataset.boot = "ready";
     if (isStarting() && !S.noState) setIntro("wait");
     else if (S.introMode === "wait") setIntro("arrive");
@@ -2946,6 +3041,7 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   }
 
   function onState(m) {
+    rememberThread(m);
     const first = !(S.booted && hasDoc());
     const prevKey = first ? null : gateKey();
     const prevLabel = first ? "" : S.doc.stage_label || STAGE_LABEL[S.doc.stage] || "";
@@ -3007,15 +3103,22 @@ window.commissionMods["promo-flow"] = function mount(ctx) {
   function receive(m) {
     if (!m || typeof m !== "object") return;
     switch (m.type) {
-      case "init": setTheme(!!m.dark, m.tokens, !!m.reduceMotion); break;
+      case "init":
+        setTheme(!!m.dark, m.tokens, !!m.reduceMotion);
+        rememberThread(m);
+        if (m && "thread_id" in m) { clearTimeout(S.bootTimer); S.booted = true; S.noState = false; render(true); }
+        break;
       case "theme": setTheme(!!m.dark, m.tokens, null); break;
       case "state": if (S.noState) S.booted = hasDoc(); onState(m); break;
       case "media": onMediaReply(m); break;
+      case "accepted": if (window.PFVoices) window.PFVoices.onAccepted(m); break;
+      case "progress": if (window.PFVoices) window.PFVoices.onProgress(m); break;
       case "result": onResult(m); break;
       default: break;
     }
   }
   function unmount() {
+    if (window.PFVoices) window.PFVoices.stop();
     clearTimeout(S.bootTimer); clearTimeout(S.stallTimer); clearTimeout(S.introTimer); clearInterval(S.agoTimer); clearInterval(S.jobTimer);
     if (S.sending) clearTimeout(S.sending.timer);
     for (const id of [...M.cache.keys()]) revoke(id);

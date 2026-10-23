@@ -1,0 +1,500 @@
+#!/usr/bin/env python3
+"""Promo-flow worker (protocol 3). Stdio NDJSON. No sockets unless ``--http``.
+
+The host runs a pane job as ``{"type":"job.start","job","method","params","thread_id","data_dir"}``
+and ``{"type":"job.cancel","job"}``. This process answers ``{"type":"job.progress","job","pct","note"}``
+(pct 0–100) and ``{"type":"job.result","job","ok",value|error}``. Each job is its own thread, so stdin
+keeps being read and cancel arrives while work is in flight. On cancel the job stops at the next step
+and emits nothing; the host reports ``host.cancelled``.
+
+``hello`` / ``event`` / ``reply`` and the older pane ``call`` shape are still answered.
+
+A host ``python3`` often cannot ``import yaml``. Before any call is read, this process
+``os.execv``s ``$PROMO_PYTHON``, else the interpreter on the ``promo`` shebang, else
+``<repo>/.venv/bin/python``. ``PROMO_FLOW_WORKER_REEXEC`` stops a second hop. With none of
+those, calls return ``voices.engine_missing``.
+
+``--http ADDR`` is a dev server. ADDR's host must be exactly ``127.0.0.1``; anything else
+exits without binding.
+"""
+from __future__ import annotations
+
+import argparse
+import contextvars
+import json
+import os
+import shutil
+import sys
+import threading
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if os.path.isdir(os.path.join(ROOT, "promo")) and ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
+
+# Set when this interpreter cannot import yaml and no promo Python was exec'd.
+_PROMO_PYTHON_MISSING = False
+_REEXEC_ENV = "PROMO_FLOW_WORKER_REEXEC"
+_ENGINE_MISSING_MESSAGE = "Set PROMO_PYTHON to a Python that has promo installed."
+
+
+class _EngineMissing(Exception):
+    def __init__(self):
+        self.code = "voices.engine_missing"
+        self.message = _ENGINE_MISSING_MESSAGE
+        super().__init__(self.message)
+
+
+def _yaml_imports():
+    try:
+        import yaml  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+def _executable(path):
+    if path is None:
+        return None
+    path = os.path.expanduser(str(path).strip())
+    if not path:
+        return None
+    found = shutil.which(path)
+    if not found:
+        return None
+    return os.path.abspath(found)
+
+
+def _venv_root(exe):
+    """Directory that holds ``pyvenv.cfg`` for this interpreter, or '' for a system Python."""
+    base = os.path.dirname(os.path.abspath(exe))
+    parent = os.path.dirname(base)
+    if os.path.isfile(os.path.join(parent, "pyvenv.cfg")):
+        return os.path.abspath(parent)
+    if os.path.isfile(os.path.join(base, "pyvenv.cfg")):
+        return os.path.abspath(base)
+    return ""
+
+
+def _same_running_python(path):
+    # A venv bin/python is often a symlink of this binary; its site-packages are not.
+    path = os.path.abspath(path)
+    current = os.path.abspath(sys.executable)
+    if path == current:
+        return True
+    try:
+        same = os.path.samefile(path, current)
+    except OSError:
+        return False
+    return same and _venv_root(path) == _venv_root(current)
+
+
+def _shebang_python(promo_path):
+    """Interpreter named by ``promo``'s shebang, or None."""
+    try:
+        with open(promo_path, "r", encoding="utf-8", errors="replace") as f:
+            line = f.readline(512)
+    except OSError:
+        return None
+    line = line.strip().lstrip("\ufeff")
+    if not line.startswith("#!"):
+        return None
+    parts = line[2:].strip().split()
+    if not parts:
+        return None
+    if os.path.basename(parts[0]) == "env":
+        i = 1
+        while i < len(parts) and parts[i].startswith("-"):
+            i += 1
+        if i >= len(parts):
+            return None
+        return _executable(parts[i])
+    return _executable(parts[0])
+
+
+def _promo_pythons():
+    """``$PROMO_PYTHON``, then ``promo``'s shebang interpreter, then ``ROOT/.venv/bin/python``."""
+    found = []
+    seen = set()
+
+    def add(path):
+        exe = _executable(path)
+        if not exe or exe in seen or _same_running_python(exe):
+            return
+        seen.add(exe)
+        found.append(exe)
+
+    add(os.environ.get("PROMO_PYTHON"))
+    promo = shutil.which("promo")
+    if promo:
+        add(_shebang_python(promo))
+    add(os.path.join(ROOT, ".venv", "bin", "python"))
+    return found
+
+
+def use_promo_python(argv=None):
+    """Replace this process when ``import yaml`` fails. Otherwise stay and fail calls plainly."""
+    global _PROMO_PYTHON_MISSING
+    if _yaml_imports():
+        return
+    if not os.environ.get(_REEXEC_ENV):
+        os.environ[_REEXEC_ENV] = "1"
+        script = os.path.abspath(__file__)
+        extra = list(sys.argv[1:] if argv is None else argv)
+        for py in _promo_pythons():
+            try:
+                os.execv(py, [py, script, *extra])
+            except OSError:
+                continue
+    _PROMO_PYTHON_MISSING = True
+
+
+# voices.call reports 0..1 fractions. The host treats pct as a percent and clamps it to 0..100.
+# Convert once, in _pct. Heartbeats repeat the stored percent and must not convert again.
+# Long jobs heartbeat so the host's 120 s idle timeout does not fire (deadline is 15 min).
+HEARTBEAT_S = 20
+_LONG_METHODS = frozenset({
+    "voices.sample",
+    "voices.render",
+    "voices.model.download",
+    "voices.save",
+})
+_emit_lock = threading.Lock()
+_jobs_lock = threading.Lock()
+_jobs = {}
+# Set for the duration of one job thread. Not an env var: jobs run side by side.
+_JOB_DATA_DIR = contextvars.ContextVar("promo_flow_job_data_dir", default=None)
+
+
+class _Cancelled(BaseException):
+    """Host sent job.cancel. BaseException so ``except Exception`` inside a library does not turn it into a result."""
+
+
+class _Job:
+    def __init__(self, job, method, params, thread_id, data_dir):
+        self.job = job
+        self.method = method
+        self.params = params if isinstance(params, dict) else {}
+        self.thread_id = thread_id
+        self.data_dir = data_dir
+        self.cancel = threading.Event()
+        self.stop = threading.Event()
+        self.lock = threading.Lock()
+        self.done = False
+        self.pct = 0
+        self.note = "Working"
+
+
+def emit(obj):
+    line = json.dumps(obj, default=str)
+    with _emit_lock:
+        sys.stdout.write(line + "\n")
+        sys.stdout.flush()
+
+
+def _pct(pct):
+    """One conversion: a voices.py 0..1 fraction becomes a host percent, clamped to 0..100.
+
+    ``1`` is complete (100%). A stored percent must not be passed here again: a stored
+    ``1`` means one percent, and this would read it as 100%.
+    """
+    try:
+        n = float(pct)
+    except (TypeError, ValueError):
+        return 0
+    if n != n:  # NaN
+        return 0
+    if 0 <= n <= 1:
+        n *= 100.0
+    if n < 0:
+        n = 0.0
+    elif n > 100:
+        n = 100.0
+    return int(round(n))
+
+
+def _note(note):
+    if note is None or note == "":
+        return "Working"
+    return str(note)[:300]
+
+
+def _emit_progress(job, pct, note, scaled=False):
+    """Store a 0–100 percent and emit it.
+
+    ``scaled`` is the heartbeat. It repeats ``job.pct`` / ``job.note`` and does not
+    convert again, so a stale snapshot cannot walk the bar backwards.
+    """
+    with job.lock:
+        if job.cancel.is_set() or job.done:
+            return
+        if not scaled:
+            job.pct = _pct(pct)
+            job.note = _note(note)
+        emit({"type": "job.progress", "job": job.job, "pct": job.pct, "note": job.note})
+
+
+def _emit_result(job, ok, value=None, error=None):
+    with job.lock:
+        if job.cancel.is_set() or job.done:
+            return
+        job.done = True
+        job.stop.set()
+        body = {"type": "job.result", "job": job.job, "ok": bool(ok)}
+        if ok:
+            body["value"] = value
+        else:
+            body["error"] = error
+        emit(body)
+
+
+def _heartbeat(job):
+    """Repeat the stored 0–100 percent at least every HEARTBEAT_S. ``stop`` wakes this on cancel or finish."""
+    while True:
+        if job.stop.wait(HEARTBEAT_S):
+            return
+        _emit_progress(job, None, None, scaled=True)
+
+
+def _download_weights(progress, job):
+    """Same download as ``voices.model.download``, with a cancel check between weight files."""
+    if _PROMO_PYTHON_MISSING:
+        raise _EngineMissing()
+    V = _voices()
+    try:
+        from huggingface_hub import hf_hub_download
+    except ImportError as e:
+        raise V.VoicesError(
+            "voices.engine_missing",
+            "huggingface_hub is not installed (it comes with chatterbox-tts). Nothing was downloaded.",
+        ) from e
+    dest = V.model_dir()
+    os.makedirs(dest, exist_ok=True)
+    names = tuple(V.WEIGHTS)
+    n = max(1, len(names))
+    for i, name in enumerate(names):
+        if job.cancel.is_set():
+            raise _Cancelled()
+        progress(i / n, "downloading " + name)
+        hf_hub_download(repo_id=V.MODEL_REPO, filename=name, local_dir=dest)
+    if job.cancel.is_set():
+        raise _Cancelled()
+    progress(1, "done")
+    return V.model_status()
+
+
+def _run_job(job):
+    token = _JOB_DATA_DIR.set(job.data_dir)
+    try:
+        if job.cancel.is_set():
+            return
+        if job.method in _LONG_METHODS:
+            threading.Thread(target=_heartbeat, args=(job,), name="job-beat-" + job.job, daemon=True).start()
+            _emit_progress(job, 0, "Working")
+        if job.cancel.is_set():
+            return
+
+        def progress(pct, note):
+            if job.cancel.is_set():
+                raise _Cancelled()
+            _emit_progress(job, pct, note)
+
+        if job.method == "voices.model.download" and job.params.get("yes"):
+            value = _download_weights(progress, job)
+        else:
+            value = handle(job.method, job.params, progress)
+        if job.cancel.is_set():
+            return
+        _emit_result(job, True, value=value)
+    except _Cancelled:
+        return
+    except Exception as exc:  # noqa: BLE001  (the host always gets one result, unless the job was cancelled)
+        if job.cancel.is_set():
+            return
+        code = getattr(exc, "code", None) or "voices.error"
+        message = getattr(exc, "message", None) or str(exc)
+        _emit_result(job, False, error={"code": str(code), "message": str(message)})
+    finally:
+        _JOB_DATA_DIR.reset(token)
+        with job.lock:
+            job.done = True
+            job.stop.set()
+        with _jobs_lock:
+            if _jobs.get(job.job) is job:
+                _jobs.pop(job.job, None)
+
+
+def start_job(msg):
+    job_id = msg.get("job")
+    if not isinstance(job_id, str) or not job_id:
+        return
+    job = _Job(job_id, msg.get("method"), msg.get("params") or {}, msg.get("thread_id"), msg.get("data_dir"))
+    with _jobs_lock:
+        if job_id in _jobs:
+            return
+        _jobs[job_id] = job
+    threading.Thread(target=_run_job, args=(job,), name="job-" + job_id, daemon=True).start()
+
+
+def cancel_job(job_id):
+    with _jobs_lock:
+        job = _jobs.get(job_id)
+    if not job:
+        return
+    job.cancel.set()
+    job.stop.set()
+
+
+def _voices():
+    from promo import voices as V
+    return V
+
+
+def _job_root():
+    """Host ``data_dir`` for the job running on this thread, or None for the CLI default."""
+    root = _JOB_DATA_DIR.get()
+    if isinstance(root, str) and root.strip():
+        return root
+    return None
+
+
+def handle(method, params, progress):
+    if _PROMO_PYTHON_MISSING:
+        raise _EngineMissing()
+    return _voices().call(method, params or {}, progress, _job_root())
+
+
+def answer(cid, method, params):
+    def progress(pct, note):
+        emit({"type": "progress", "id": cid, "pct": _pct(pct), "note": note})
+    try:
+        value = handle(method, params, progress)
+        emit({"type": "result", "id": cid, "ok": True, "value": value})
+    except Exception as e:  # noqa: BLE001  (the pane always gets one result line)
+        code = getattr(e, "code", None) or "voices.error"
+        message = getattr(e, "message", None) or str(e)
+        emit({"type": "result", "id": cid, "ok": False, "error": {"code": code, "message": message}})
+
+
+def on_line(msg):
+    if not isinstance(msg, dict):
+        return
+    kind = msg.get("type")
+    if kind == "hello":
+        return
+    if kind == "event":
+        emit({"type": "reply", "id": msg.get("id"), "publish": []})
+        return
+    if kind == "job.start":
+        start_job(msg)
+        return
+    if kind == "job.cancel":
+        cancel_job(msg.get("job"))
+        return
+    if kind == "call":
+        answer(msg.get("id"), msg.get("method"), msg.get("params") or {})
+
+
+def stdio():
+    for line in sys.stdin:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            msg = json.loads(line)
+        except json.JSONDecodeError:
+            emit({"type": "result", "id": None, "ok": False, "error": {"code": "voices.bad_json", "message": "line is not JSON"}})
+            continue
+        on_line(msg)
+    return 0
+
+
+def split_addr(addr):
+    addr = (addr or "").strip()
+    if addr.startswith("["):
+        host, _, rest = addr[1:].partition("]")
+        port = rest[1:] if rest.startswith(":") else "8765"
+        return host, port
+    if ":" in addr:
+        host, port = addr.rsplit(":", 1)
+        return host, port
+    return addr or "127.0.0.1", "8765"
+
+
+def refuse(host):
+    sys.stderr.write(f"refusing to bind {host}: promo-flow worker --http binds 127.0.0.1 only\n")
+    return 2
+
+
+def serve(host, port):
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    class H(BaseHTTPRequestHandler):
+        def do_POST(self):
+            n = int(self.headers.get("Content-Length") or 0)
+            try:
+                msg = json.loads(self.rfile.read(n) or b"{}")
+            except json.JSONDecodeError:
+                msg = {}
+            held = []
+
+            def progress(pct, note):
+                held.append({"type": "progress", "pct": _pct(pct), "note": note})
+
+            try:
+                value = handle(msg.get("method"), msg.get("params") or {}, progress)
+                body = {"type": "result", "id": msg.get("id"), "ok": True, "value": value, "progress": held}
+                status = 200
+            except Exception as e:  # noqa: BLE001
+                body = {"type": "result", "id": msg.get("id"), "ok": False,
+                        "error": {"code": getattr(e, "code", None) or "voices.error", "message": getattr(e, "message", None) or str(e)}}
+                status = 200
+            raw = json.dumps(body, default=str).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+
+        def do_GET(self):
+            raw = b'{"ok":true}'
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+
+        def log_message(self, fmt, *args):
+            sys.stderr.write("%s\n" % (fmt % args))
+
+    httpd = ThreadingHTTPServer((host, int(port)), H)
+    sys.stderr.write(f"promo-flow worker http://{host}:{port}\n")
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        return 0
+    return 0
+
+
+def main(argv=None):
+    use_promo_python(argv)
+    ap = argparse.ArgumentParser(prog="promo-flow worker")
+    ap.add_argument("--http", nargs="?", const="127.0.0.1:8765", default=None,
+                    help="dev HTTP on 127.0.0.1 only (host:port). Any other host is refused and nothing is bound.")
+    ap.add_argument("--host", default=None, help="must be 127.0.0.1 when set")
+    a = ap.parse_args(argv)
+    if a.http is None and a.host is None:
+        return stdio()
+    if a.host is not None and a.host != "127.0.0.1":
+        return refuse(a.host)
+    host, port = split_addr(a.http or "127.0.0.1:8765")
+    if host != "127.0.0.1":
+        return refuse(host)
+    try:
+        port_n = int(port)
+    except ValueError:
+        return refuse(host)
+    return serve("127.0.0.1", port_n)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

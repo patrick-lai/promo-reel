@@ -29,6 +29,10 @@ Voices per line (a dialogue): the vo block's engine/voice/speed/lang, then the l
   mlx          a free local voice on Apple Silicon (promo/vo_mlx.py): Ming-3.0-tts-0.5B, MIT. `voice` (UK_Charlotte, US_James, ...;
                `promo vo voices --local`) or `instructions` (a voice designed from words), `seed`. One-time `promo vo setup`;
                needs `asset:`.
+  clone        the person's own voice (promo/voices.py): Chatterbox, MIT, on this Mac. `voice` is an id from `promo voices`.
+               Each line's `emotion` (neutral|excited|calm|warm) is that mood's reference clip; `intensity` 0-1 sets
+               exaggeration (~0.25-1.0). Takes keep the Perth watermark (`watermark: perth` in vo.json). Weights download
+               only with `promo voices model download --yes`. The licence entry is `vo-<id>` (or an explicit `asset:`).
   files       pre-rendered WAVs (below); the whole vo block only.
 
 Pre-rendered VO (e.g. a two-host talk show voiced elsewhere):
@@ -194,9 +198,9 @@ def run_files(spec):
     return meta
 
 
-ENGINES = ("kokoro", "say", "voicestudio", "openrouter", "mlx", "files")
+ENGINES = ("kokoro", "say", "voicestudio", "openrouter", "mlx", "clone", "files")
 DRAFT_ENGINES = ("say",)
-VARYING_ENGINES = ("voicestudio", "openrouter", "mlx")  # a second take sounds different; kokoro and say repeat themselves exactly
+VARYING_ENGINES = ("voicestudio", "openrouter", "mlx", "clone")  # a second take sounds different; kokoro and say repeat themselves exactly
 SEEDED_ENGINES = ("voicestudio", "mlx")                # take k is seed + k (an OpenRouter call varies by itself; its API takes no seed)
 VOICE_KEYS = ("engine", "voice", "speed", "lang", "asset", "profile", "instruct", "seed", "rate", "model", "instructions")
 CACHE_VERSION = 2                                    # 2: the cache holds raw float takes (1 held trimmed PCM_16, which clipped)
@@ -243,6 +247,16 @@ def voice_of(spec, line):
     if v["engine"] == "mlx" and not v.get("instructions"):
         from .vo_mlx import DEFAULT_VOICE
         v.setdefault("voice", DEFAULT_VOICE)
+    if v["engine"] == "clone":
+        # emotion / intensity live on the line (and may be inherited from the vo block). Not validated here:
+        # a bad value must not raise out of voice_of, or the assets gate would skip the line (it only swallows RuntimeError).
+        v["emotion"] = line.get("emotion") if line.get("emotion") not in (None, "") else cfg.get("emotion") or "neutral"
+        if line.get("intensity") is not None:
+            v["intensity"] = line["intensity"]
+        elif cfg.get("intensity") is not None:
+            v["intensity"] = cfg["intensity"]
+        else:
+            v["intensity"] = 0.5
     return v
 
 
@@ -332,12 +346,15 @@ def synth(spec, v, text, man=None, max_usd=None):
         from . import vo_mlx
         vo_mlx.check_voice(v)
         return vo_mlx.synth(v, text)
+    if eng == "clone":
+        from . import voices as V
+        return V.synth_array(v.get("voice"), text, v.get("emotion") or "neutral", v.get("intensity", 0.5))
     raise RuntimeError(f"engine {eng!r}")
 
 
 def take_key(spec, v, text, take=0):
-    """What a take depends on (the cache key): the voice, the text, the take index and, for kokoro and mlx, the model files / local
-    install. Take 0's key does not depend on how many takes the line asks for, so going from 1 to 3 takes reuses the first."""
+    """What a take depends on (the cache key): the voice, the text, the take index and, for kokoro, mlx and clone, the model files /
+    local install / mood clip. Take 0's key does not depend on how many takes the line asks for, so going from 1 to 3 takes reuses the first."""
     import hashlib
     extra = None
     if v["engine"] == "kokoro":
@@ -348,6 +365,12 @@ def take_key(spec, v, text, take=0):
     if v["engine"] == "mlx":
         from . import vo_mlx
         extra = vo_mlx.signature()
+    if v["engine"] == "clone":
+        from .cache import file_sig
+        from . import voices as V
+        emo = str(v.get("emotion") or "neutral")
+        mood = os.path.join(V.voice_dir(str(v.get("voice") or "")), "moods", emo + ".wav")
+        extra = [file_sig(mood), emo, v.get("intensity")]
     return hashlib.sha256(json.dumps([v, text, extra, CACHE_VERSION, take], sort_keys=True, default=str).encode()).hexdigest()[:20]
 
 
@@ -389,6 +412,15 @@ def _plan(spec, cfg):
             vo_mlx.check_voice(v)
             if not vo_mlx.ready():
                 raise RuntimeError(f"VO line {lid}: the local voice (engine mlx) is not set up on this Mac: run `promo vo setup` once")
+        if v["engine"] == "clone":
+            from . import voices as V
+            try:
+                V.ensure_engine()
+                V.require(v.get("voice"))
+                v["emotion"] = V.check_emotion(v.get("emotion") or "neutral")
+                v["intensity"] = V.check_intensity(0.5 if v.get("intensity") is None else v["intensity"])
+            except V.VoicesError as e:
+                raise RuntimeError(f"VO line {lid}: {e.code}: {e.message}") from e
         out.append((line, v, [take_key(spec, take_voice(v, k), say, k) for k in range(n)]))
     return out
 
@@ -451,9 +483,14 @@ def run(spec, force=False, max_usd=None):
         x = trim(x, sr)
         fn = f"vo-{lid}.wav"
         _write_wav(os.path.join(spec.vo_dir, fn), x, sr)
-        meta.append(dict(id=lid, shot=str(line["shot"]), host=line.get("host"), text=txt, tts=say, file=fn, dur=round(len(x) / sr, 3),
-                         sr=sr, engine=v["engine"], voice=v.get("voice") or v.get("profile") or v.get("instruct") or v.get("instructions"),
-                         take=pick, takes=takes))
+        row = dict(id=lid, shot=str(line["shot"]), host=line.get("host"), text=txt, tts=say, file=fn, dur=round(len(x) / sr, 3),
+                   sr=sr, engine=v["engine"], voice=v.get("voice") or v.get("profile") or v.get("instruct") or v.get("instructions"),
+                   take=pick, takes=takes)
+        if v["engine"] == "clone":
+            row["watermark"] = "perth"                 # Chatterbox Perth stays in the samples; never strip it
+            row["emotion"] = v.get("emotion")
+            row["intensity"] = v.get("intensity")
+        meta.append(row)
         print("vo", lid, v["engine"], meta[-1]["voice"], round(meta[-1]["dur"], 2), txt, flush=True)
         if takes:
             print(vo_score.table(takes, pick), flush=True)
@@ -467,6 +504,9 @@ def run(spec, force=False, max_usd=None):
         os.remove(os.path.join(cache, f))
         if os.path.exists(os.path.join(cache, f[:-4] + ".score.json")):
             os.remove(os.path.join(cache, f[:-4] + ".score.json"))
+    doc = dict(voice=cfg.get("voice"), lang=cfg.get("lang"), speed=cfg.get("speed"), lines=meta)
+    if cfg.get("engine") == "clone" or any(x.get("watermark") == "perth" for x in meta):
+        doc["watermark"] = "perth"
     with open(vo_json_path(spec), "w") as f:
-        json.dump(dict(voice=cfg.get("voice"), lang=cfg.get("lang"), speed=cfg.get("speed"), lines=meta), f, indent=1)
+        json.dump(doc, f, indent=1)
     return meta

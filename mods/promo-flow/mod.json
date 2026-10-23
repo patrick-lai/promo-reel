@@ -1,14 +1,15 @@
 {
   "id": "promo-flow",
   "name": "Promo flow",
-  "version": "0.8.3",
-  "protocol": 2,
+  "version": "0.9.0",
+  "protocol": 3,
   "description": "Plan, storyboard and review a produced video with the person in the loop.",
   "entry": "index.html",
   "surface": "stage",
+  "stage_persistent": true,
   "state_limit_kb": 1024,
   "slash": {"name": "promo-flow", "description": "Plan and review a produced video step by step", "args": "what the video is for"},
-  "activate": {"message": "[mod:promo-flow] {by} started the promo flow. Their request, verbatim: {args}. Run: promo flow init, then publish the state."},
+  "activate": {"message": "[mod:promo-flow] {by} started the promo flow. Their request, verbatim: {args}. Run: promo flow init, then publish the state. If a saved voice id was chosen, add --voice ID (promo voices list)."},
   "actions": {
     "approve":  {"guard": {"state": "/gate/gate", "payload": "gate"}, "message": "[mod:promo-flow] {by} approved {gate}. Run: promo flow approve {gate} --by \"{by}\", then advance and publish the next state.", "sent": "Sent your approval"},
     "pick":     {"guard": {"state": "/gate/gate", "payload": "gate"}, "message": "[mod:promo-flow] {by} picked scripts {picks}. Run: promo flow approve scripts-picked --picks {picks} --by \"{by}\".", "sent": "Sent your picks"},
@@ -43,5 +44,6 @@
     "bible": {"message": "[mod:promo-flow] {by} wants the look of the whole music video changed: {text}. Change the look bible with promo mv bible -p promo.yaml --prompt \"<the new look in full, keeping what they did not mention>\" (and --ref ROLE=FILE for new reference images), then tell them that every plate drawn before is now stale (gate look-bible) and ask before redrawing them all (promo mv gen). Publish. Do not approve anything.", "sent": "Sent your request"},
     "edit_keep": {"message": "[mod:promo-flow] {by} kept your editor suggestion {id} ({note}); its edits are now in their pending edits and render with their next Render. Run: promo flow edit keep {id} --by \"{by}\", then publish.", "sent": "Sent your pick"}
   },
-  "skill": "agent/SKILL.md"
+  "skill": "agent/SKILL.md",
+  "worker": {"command": ["worker"]}
 }
